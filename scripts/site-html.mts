@@ -67,7 +67,7 @@ export function webManifest(target: DeployTarget): string {
     start_url: './',
     scope: './',
     display: 'standalone',
-    orientation: 'landscape',
+    orientation: 'any',
     background_color: PLATE,
     theme_color: PLATE,
     icons: [

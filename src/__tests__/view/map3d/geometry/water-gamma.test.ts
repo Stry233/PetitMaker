@@ -1,10 +1,7 @@
 /**
- * A ground-islet cut (the inner concave corner of an L-shaped water pool, and
- * any grass corner poking into water) must render on the same micro grid as the
- * water it sits in — mirroring 2D, where the None+corners cut draws at the
- * terrain grid offset over the full macro zone floor. Drawn a half-cell off
- * (macro grid) as a skirted islet, it floats detached from the pool instead.
- * The kept grass and recessed water partition the same trimmed footprint.
+ * A ground-islet cut (the concave corner of an L-shaped pool, or any grass corner poking into water)
+ * renders on the water's micro grid, as 2D does; drawn a half-cell off it would float detached. The
+ * kept grass and the revealed water partition the same trimmed footprint.
  */
 import { describe, it, expect } from 'vitest';
 import { buildChunkTerrain } from '../../../../view/map3d/geometry/terrain-geometry';
@@ -15,8 +12,8 @@ import { makeState, setTerrain } from '../../../_support/map-state';
 import { PLACEMENT_GRID } from '../../../../core/game/profile';
 
 /** An L of water at (1,1),(2,1),(1,2) with (2,2) a grass islet whose TL corner
- *  is cut (fan) to reveal the pool at the concave bend — the minimal repro of the
- *  L-pool inner corner. */
+ *  is cut (fan) to reveal the pool at the concave bend: the smallest L-pool
+ *  inner corner. */
 function lPoolState(): GridState {
   const s = makeState(4, 4) as GridState;
   setTerrain(s, 1, 1, TerrainType.Water, 0);
@@ -38,7 +35,6 @@ describe('ground-islet cut (L-pool inner corner) alignment', () => {
     const s = lPoolState();
     const c = cellCornerWorld(2, 2, 4, 4, PLACEMENT_GRID); // macro corner of the islet cell
     const m = buildChunkTerrain(s, 0, 0);
-    // The macro grass floor covers the cut cell at slab height (no gap).
     const topAtCorner: number[] = [];
     for (let i = 0; i < m.ground.positions.length; i += 3) {
       if (Math.abs(m.ground.positions[i]! - (c.x + 1)) < 1e-4 && Math.abs(
@@ -46,9 +42,8 @@ describe('ground-islet cut (L-pool inner corner) alignment', () => {
       ) < 1e-4) topAtCorner.push(m.ground.positions[i + 1]!);
     }
     expect(topAtCorner.some((y) => Math.abs(y - GROUND_SLAB_Y) < 1e-4), 'grass floor at the cut cell BR corner').toBe(true);
-    // A skirted islet drives grass walls to GROUND_BOTTOM even on edges shared with
-    // solid grass — a false detached cliff. A connected cut cell (no void/sea
-    // neighbour) must produce none.
+    // A skirted islet would drive grass walls to GROUND_BOTTOM even on edges shared with solid
+    // grass; a cut cell with no void or sea neighbour gets none.
     let deep = 0;
     for (let i = 0; i < m.ground.positions.length; i += 3) {
       const x = m.ground.positions[i]!, y = m.ground.positions[i + 1]!, z = m.ground.positions[i + 2]!;
@@ -61,32 +56,25 @@ describe('ground-islet cut (L-pool inner corner) alignment', () => {
     const s = lPoolState();
     const c = cellCornerWorld(2, 2, 4, 4, PLACEMENT_GRID);
     const m = buildChunkTerrain(s, 0, 0);
-    // A macro-aligned backing puts a reveal quadrant at [c.x, c.x+0.5]×[c.z, c.z+0.5],
-    // leaving a water vertex at the macro mid-cell corner. The micro-aligned reveal
-    // (offset −0.5) never does, and no pool cell reaches the islet cell's +x/+z half,
-    // so that vertex can only come from a macro placement.
+    // Only a macro-aligned reveal would put a water vertex at the macro mid-cell corner: the micro
+    // reveal sits 0.5 lower, and no pool cell reaches the islet cell's +x/+z half.
     expect(has(m.water.positions, c.x + 0.5, c.z + 0.5), 'no water reveal on the macro grid').toBe(false);
-    // The reveal lands at the micro TL corner of the cut cell (aligned with the pool).
     expect(has(m.water.positions, c.x - 0.5, c.z - 0.5), 'water reveal on the micro grid').toBe(true);
   });
 
   it('a cosmetic water Γ fillet (generator gamma, no real base) draws ONLY the fillet, not a full square', () => {
-    // The generator emits patchOnly water fillets like [empty,empty,empty,fan] with patchBase
-    // undefined → baseTier -1 (a cosmetic round over ground, no elevated pool beneath). 2D draws
-    // no base body, just the wrapped corner's fillet over the grass floor. Flooding the whole cell
-    // (emitSquareWater at the degenerate tier) inverts fill and empty.
+    // A patchOnly fillet with no `patchBase` has base tier -1: a cosmetic round over ground. As in
+    // 2D, only the wrapped corner's fillet is drawn, never a flooded base.
     const s = makeState(6, 6) as GridState;
-    // Water wrapping the BR corner of the patch cell, so patchCornerSplit sees it wrapped.
+    // Water wrapping the patch cell's BR corner, so `patchCornerSplit` sees it wrapped.
     setTerrain(s, 3, 2, TerrainType.Water, 0); // +x edge
     setTerrain(s, 2, 3, TerrainType.Water, 0); // +y edge
     setTerrain(s, 3, 3, TerrainType.Water, 0); // diagonal
     s.cells[2]![2]!.terrain = { type: TerrainType.Water, elevation: 0, patchOnly: true, corners: ['empty', 'empty', 'empty', 'fan'] };
     const c = cellCornerWorld(2, 2, 6, 6, PLACEMENT_GRID);
     const m = buildChunkTerrain(s, 0, 0);
-    // The empty corners must stay grass: no water surface at the patch cell's micro TL corner
-    // (which a flooding full-square base would occupy).
+    // A flooded base would put water at the patch cell's micro TL corner.
     expect(has(m.water.positions, c.x - 0.5, c.z - 0.5), 'no flood over the empty corner').toBe(false);
-    // The fillet itself is present (some water in the BR quadrant).
     let brWater = 0;
     for (let i = 0; i < m.water.positions.length; i += 3) {
       const x = m.water.positions[i]!, z = m.water.positions[i + 2]!;
@@ -98,8 +86,7 @@ describe('ground-islet cut (L-pool inner corner) alignment', () => {
   it('reveals the water in the rounded fan shape, not a square quadrant', () => {
     const s = lPoolState();
     const m = buildChunkTerrain(s, 0, 0);
-    // A square reveal has only half-grid-aligned vertices; a fan reveal traces an arc with
-    // off-grid points. The cut is a fan, so the reveal must curve — matching 2D's rounded corner.
+    // A square reveal has only half-grid vertices; a fan traces an arc through off-grid points.
     let offGrid = 0;
     for (let i = 0; i < m.water.positions.length; i += 3) {
       const x = m.water.positions[i]!, z = m.water.positions[i + 2]!;
@@ -113,10 +100,8 @@ describe('ground-islet cut (L-pool inner corner) alignment', () => {
     const s = lPoolState();
     const c = cellCornerWorld(2, 2, 4, 4, PLACEMENT_GRID);
     const m = buildChunkTerrain(s, 0, 0);
-    // The reveal's land-facing arc walls down to the floor. Its arc lies strictly inside the cut
-    // cell (the cell-side edges are interior to the pool and culled), so a near-floor water vertex
-    // strictly inside the cell can only come from that shore wall — absent when the reveal is a
-    // flat surface. (Pool-cell shore walls sit on cell boundaries, never strictly inside (2,2).)
+    // The reveal's arc lies strictly inside the cut cell, and pool-cell shore walls sit on cell
+    // boundaries, so a near-floor water vertex strictly inside the cell comes from the reveal's wall.
     let wallBottom = 0;
     for (let i = 0; i < m.water.positions.length; i += 3) {
       const x = m.water.positions[i]!, y = m.water.positions[i + 1]!, z = m.water.positions[i + 2]!;
@@ -148,10 +133,8 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
       }
       return false;
     };
-    // A full-quadrant bank would put a mountain top at the cut cell's center (the quadrant's inner
-    // corner). The cut-away cap never reaches the center — the water body owns it.
+    // A full-quadrant bank would put a mountain top at the cut cell's centre, which the water owns.
     expect(solidAt(x0 + 0.5, z0 + 0.5), 'no full-quadrant bank at the water cell centre').toBe(false);
-    // The bank is present at the rounded-off outer corner.
     expect(solidAt(x0, z0), 'bank fills the cut-away corner').toBe(true);
   });
 
@@ -176,9 +159,7 @@ describe('elevated trimmed water backing (round pool on a plateau)', () => {
       }
       return false;
     })();
-    // The water reveal must not reach the cell centre — that belongs to the kept mountain fan.
     expect(waterAtCentre, 'no full-block water over the mountain islet').toBe(false);
-    // The mountain fan owns the cell centre.
     const solidAtCentre = (() => {
       for (let i = 0; i < m.solid.positions.length; i += 3) {
         if (Math.abs(m.solid.positions[i]! - (x0 + 0.5)) < 1e-4 && Math.abs(m.solid.positions[i + 2]! - (z0 + 0.5)) < 1e-4) return true;

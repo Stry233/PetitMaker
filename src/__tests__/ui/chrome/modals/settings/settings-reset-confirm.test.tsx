@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// SettingsModal — the "Erase & restart" two-step confirm.
+// SettingsModal: the "Erase & restart" two-step confirm.
 //
 // The confirm is a small dialog over the dimmed panel (a second ModalShell), so the pill that
-// opened it never vanishes and the settings card never changes height — the layout-stability
-// rule. These pins cover the state machine (collapsed → dialog → cancel/confirm) and the
+// opened it never vanishes and the settings card never changes height (the layout-stability
+// rule). These pins cover the state machine (collapsed → dialog → cancel/confirm) and the
 // stability facts jsdom can see: the pill stays in the document while the dialog stands.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';

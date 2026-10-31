@@ -21,8 +21,9 @@ export interface RegionBrushHandler {
   preview?(coord: MacroCoord): void;
   /** The press in flight never happened (the browser cancelled it, or a second finger landed). */
   cancel?(): void;
-  /** `time` is the release event's timestamp, for a multi-click figure's double-click window. */
-  done(time?: number): void;
+  /** `time` is the release event's timestamp and `windowMs` the releasing pointer's double-click
+   *  window, for a multi-click figure. */
+  done(time?: number, windowMs?: number): void;
   /** Escape: abandons a standing multi-click figure; false when none stands. */
   cancelPending?(): boolean;
   /** Delete: takes back the newest anchor of a standing figure; false when none stands. */
@@ -45,7 +46,7 @@ export function setRegionBrushHandler(next: RegionBrushHandler | null): () => vo
 export function paintRegionCell(coord: MacroCoord): void { handler?.paint(coord); }
 export function previewRegionCell(coord: MacroCoord): void { handler?.preview?.(coord); }
 export function cancelRegionStroke(): void { handler?.cancel?.(); }
-export function finishRegionStroke(time?: number): void { handler?.done(time); }
+export function finishRegionStroke(time?: number, windowMs?: number): void { handler?.done(time, windowMs); }
 export function clearRegionSelection(): void { handler?.clear(); }
 export function cancelPendingRegion(): boolean { return handler?.cancelPending?.() ?? false; }
 export function undoPendingRegionStep(): boolean { return handler?.undoPendingStep?.() ?? false; }

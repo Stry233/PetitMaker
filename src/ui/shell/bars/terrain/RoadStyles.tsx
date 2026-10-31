@@ -1,7 +1,7 @@
 /** Catalog swatches share native scrolling and portal tooltips, so hover art can extend beyond the row.
  * Picking a material marks tileMaterialPicked; until then road macros infer their material from the map. */
-import { TILE, GAP, INNER, ROUND, GROW, SLACK, useSwatchStripRow } from '../swatch-strip';
-import { ActionButton } from '../../../primitives/ActionButton';
+import { TILE, GAP, INNER, GROW, SLACK, useSwatchStripRow } from '../swatch-strip';
+import { SWATCH_FACE, SwatchTile } from '../SwatchTile';
 import { useRef, useState, type ReactNode } from 'react';
 import { ContentSwap } from './ContentSwap';
 import { SwapIcon } from '../../../primitives/line-glyphs';
@@ -10,13 +10,13 @@ import { localizedName, useLocale, useT } from '../../../../i18n/context';
 import { isSurfacePrint } from '../../../../core/model/traits';
 import { getRoadMaterials, getCatalogItem } from '../../../../state/catalog';
 import { useEditorStore } from '../../../../state/store';
-import { btnReset, cursors, z } from '../../../design/styles';
-import { ACTIVE, PLATE, DARK_PLATE, PLATE_INK } from '../../../design/tokens';
+import { z } from '../../../design/styles';
+import { PLATE, DARK_PLATE, PLATE_INK } from '../../../design/tokens';
 import { SHELF_SCALE } from '../../units';
-import { CardNameBubble, type CardNameReach } from '../CardNameBubble';
+import { CardNameBubble, useTileReach, type CardNameReach } from '../CardNameBubble';
 import { ROW } from '../objects/object-shelf';
-import { useRailClearance } from '../../frame-layout';
-import { SWATCH_ROW_BOTTOM } from '../ToolRow';
+import { usePlanGlide, useRailClearance } from '../../frame-layout';
+import { SWATCH_ROW_BOTTOM } from '../terrain-cells';
 import { cssMotion } from '../../../design/motion';
 
 /** The row's negative top margin collapses out of its wrapper. The name keeps the shelf's
@@ -71,21 +71,22 @@ export function MaterialStrip({ label, swatches, active: activeId, onPick }: {
   onPick: (id: string) => void;
 }) {
   const clearance = useRailClearance(SWATCH_ROW_BOTTOM, TILE);
+  const glide = usePlanGlide('frame.layout.adapt');
   const [reached, setReached] = useState<CardNameReach | null>(null);
   const { rowRef, rowProps } = useSwatchStripRow('auto');
 
-  const reach = (el: HTMLButtonElement, name: string): void => {
+  const reach = (el: HTMLElement, name: string): void => {
     const scrollLeft = rowRef.current?.scrollLeft ?? 0;
     // `- SLACK` undoes the row's own negative-margin overhang (see `SLACK` above): without it the
     // bubble lands `SLACK` px right of the swatch it names, at every scroll offset.
-    setReached({ name, centre: el.offsetLeft + el.offsetWidth / 2 - scrollLeft - SLACK });
+    setReached({ name, centre: el.offsetLeft + el.offsetWidth / 2 - scrollLeft - SLACK, tile: el });
   };
 
   return (
     <div style={{
       position: 'relative',
       marginRight: clearance,
-      transition: cssMotion('frame.layout.adapt', ['margin-right']),
+      transition: glide(['margin-right']),
     }}>
       <div
         ref={rowRef}
@@ -106,12 +107,12 @@ export function MaterialStrip({ label, swatches, active: activeId, onPick }: {
 
 function SurfaceSwitch({ prints, onToggle }: { prints: boolean; onToggle: () => void }) {
   const t = useT();
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered] = useState<HTMLElement | null>(null);
   const item = { id: 'surface-switch', name: t(prints ? 'design.switch_to_roads' : 'design.switch_to_prints'), art: <SwapIcon size={INNER * 0.65} /> };
   return (
     <div style={{ position: 'relative', flex: 'none', zIndex: z.panel }}>
-      <MaterialTile item={item} onPick={onToggle} onReach={() => setHovered(true)} onLeave={() => setHovered(false)} />
-      <CardNameBubble reached={hovered ? { name: item.name, centre: TILE / 2 } : null} lift={NAME_LIFT} />
+      <MaterialTile item={item} onPick={onToggle} onReach={(el) => setHovered(el)} onLeave={() => setHovered(null)} />
+      <CardNameBubble reached={hovered ? { name: item.name, centre: TILE / 2, tile: hovered } : null} lift={NAME_LIFT} />
     </div>
   );
 }
@@ -120,35 +121,14 @@ function MaterialTile({ item, active, onPick, onReach, onLeave }: {
   item: MaterialSwatch;
   active?: boolean;
   onPick: () => void;
-  onReach: (el: HTMLButtonElement, name: string) => void;
+  onReach: (el: HTMLElement, name: string) => void;
   onLeave: () => void;
 }) {
   const { name, icon } = item;
+  const ref = useRef<HTMLButtonElement>(null);
+  const { bind } = useTileReach(ref, (tile) => { if (tile) onReach(tile, name); else onLeave(); });
   return (
-    <ActionButton
-      interaction="tile"
-      aria-label={name}
-      aria-pressed={active}
-      onClick={onPick}
-      onPointerEnter={(e) => onReach(e.currentTarget, name)}
-      onPointerLeave={onLeave}
-      onFocus={(e) => onReach(e.currentTarget, name)}
-      onBlur={onLeave}
-      style={{
-        ...btnReset, position: 'relative', flex: 'none', overflow: 'visible',
-        pointerEvents: 'auto', cursor: cursors.clickable,
-        width: TILE, height: TILE,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute', background: active ? ACTIVE : PLATE,
-          ...(active
-            ? { inset: -GROW, borderRadius: (TILE + 2 * GROW) * ROUND }
-            : { inset: 0, borderRadius: TILE * ROUND }),
-        }}
-      />
+    <SwatchTile ref={ref} aria-label={name} active={active} onClick={onPick} {...bind}>
       {item.art ? (
         <span aria-hidden="true" style={{ position: 'relative', display: 'flex', color: PLATE_INK }}>{item.art}</span>
       ) : icon ? (
@@ -157,22 +137,15 @@ function MaterialTile({ item, active, onPick, onReach, onLeave }: {
           alt=""
           draggable={false}
           style={{
-            position: 'relative',
-            width: INNER, height: INNER, borderRadius: INNER * ROUND,
+            ...SWATCH_FACE,
             background: item.transparent ? DARK_PLATE : undefined,
             objectFit: 'cover', transform: `rotate(${item.rotation ?? 0}deg)`,
             transition: cssMotion('frame.layout.adapt', ['transform']),
           }}
         />
       ) : (
-        <span
-          style={{
-            position: 'relative',
-            width: INNER, height: INNER, borderRadius: INNER * ROUND,
-            background: item.color ?? PLATE,
-          }}
-        />
+        <span style={{ ...SWATCH_FACE, background: item.color ?? PLATE }} />
       )}
-    </ActionButton>
+    </SwatchTile>
   );
 }

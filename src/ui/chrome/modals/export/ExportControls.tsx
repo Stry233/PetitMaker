@@ -23,6 +23,8 @@ import { WRAPS_EXPORT_OPTION_LABELS } from '../../../../platform/build/edition';
 import type { TextField } from '../../../../pipelines/moderation';
 import { ReviewIndicator } from './review/ReviewIndicator';
 import { showNotesForEditing } from '../../../../editor/editing/annotation-edit';
+import { useEditorStore } from '../../../../state/store';
+import { notesOpenable } from '../../../../state/slices/shell';
 
 const hasCurrentProv = (s: MapProvenanceSummary | null) => !!s && (s.containsAi || s.containsProcedural);
 
@@ -42,6 +44,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
   descriptionLocked?: boolean;
 }) {
   const t = useT();
+  const notesOpen = useEditorStore(notesOpenable);
   const [details, setDetails] = useState(initialOpen);
   const set = <K extends keyof ExportOptions>(k: K, v: ExportOptions[K]) => setOptions({ ...options, [k]: v });
 
@@ -126,7 +129,7 @@ export function ExportControls({ options, setOptions, notes, setNotes, summary, 
             <Row>
               <span style={rowLabel}>{t('annot.export_include')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                <ActionButton interaction="pill" {...helpTargetAttr('notes')} onClick={() => showNotesForEditing({ close: 'share' })} style={editNotesBtn}>{t('annot.export_edit')}</ActionButton>
+                <ActionButton interaction="pill" {...helpTargetAttr('notes')} unavailable={!notesOpen} onClick={() => showNotesForEditing({ close: 'share' })} style={{ ...editNotesBtn, cursor: notesOpen ? cursors.clickable : cursors.blocked }}>{t('annot.export_edit')}</ActionButton>
                 <Switch on={options.annotations} onClick={() => set('annotations', !options.annotations)} label={t('annot.export_include')} />
               </span>
             </Row>
@@ -162,7 +165,7 @@ const detailsBtn: CSSProperties = { alignSelf: 'flex-start', background: 'transp
 
 const editNotesBtn: CSSProperties = {
   background: 'transparent', border: `1.5px dashed ${skin.muted}`, borderRadius: radii.pill,
-  padding: '2px 10px', cursor: cursors.clickable, fontFamily: font.family,
+  padding: '2px 10px', fontFamily: font.family,
   ...roleFont('caption'), color: skin.ink,
 };
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };

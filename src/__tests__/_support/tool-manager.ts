@@ -12,12 +12,13 @@ export function headlessViewVerbs(): Omit<EditorView, 'projection' | 'overlay'> 
     plopObject() {}, animateRotation() {}, animateGroupRotation() {},
     rendersState: () => null,
     onNextPaint: (cb) => cb(),
+    showLoupe() {}, hideLoupe() {},
   };
 }
 
 // A stub EditorView: ToolManager.buildCtx only reads projection/overlay (never calls
 // through them) unless a tool's onPointer* handler runs, which cursor-focused suites
-// never trigger — they only swap the active tool and read its cursor/context.
+// never trigger; they only swap the active tool and read its cursor/context.
 export function makeStubView(): EditorView {
   return {
     projection: {} as EditorView['projection'],

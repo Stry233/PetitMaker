@@ -1,6 +1,6 @@
 /**
- * One generate implementation, three callers. This is the test that fails if a second one appears:
- * two contexts, one seed, and the results have to be indistinguishable down to the provenance.
+ * The one generate operation every caller shares: a seed gives the same map in any editor context, and
+ * a candidate lands, cancels and undoes as one run.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -15,29 +15,24 @@ import { defaultConfig, type GenerateConfig } from '../../../tools/generation/re
 
 const config = (seed: number): GenerateConfig => (defaultConfig('designed', { maxElevation: 4, seed, richness: 1 }));
 
-/** A square over the town — the ground around hexia's plaza, which every planet design builds on,
- *  so a scoped run reliably drops both pavement and planting there and leaves at least one cell free
- *  for a hand placement. A region over open outskirts legitimately comes back bare: the planet is
- *  designed whole and the commands are cropped, so a region only receives what the design put in it. */
+/** The ground around hexia's plaza, where every design builds, so a scoped run reliably places
+ *  pavement and planting there and leaves a cell free for a hand placement. A region over open
+ *  outskirts may come back bare: the design is whole and the commands are cropped to the region. */
 function denseRegion(): MacroCoord[] {
   const region: MacroCoord[] = [];
   for (let y = 62; y < 92; y++) for (let x = 56; x < 100; x++) region.push({ x, y });
   return region;
 }
 
-/** The map itself: its cells and its objects, ids included. An object id is minted per placement
- *  and is never seed-derived, so two maps that match down to the ids were made by one run. */
+/** Cells and objects, ids included. Object ids are minted per placement, never seed-derived, so two
+ *  maps that match with ids were made by one run. */
 const withIds = (state: GridState): string =>
   JSON.stringify({ cells: state.cells, objects: [...state.objects.values()] });
 
 /**
- * The map alone, through the codec, which is what makes it comparable.
- *
- * Two things about a restored map are not facts about it: the order `state.objects` was refilled in
- * (undo reinstates what it removed, not in the order it was placed), and the order of a cell's own
- * keys (a cell written by an undo carries the same values under a different insertion order, and
- * `JSON.stringify` prints that). Serializing normalises both. The provenance ledger is left out for
- * the reason it is left out everywhere else: it is a history, and a history does not rewind.
+ * The map through the codec, with objects sorted by id: undo refills `state.objects` and a cell's keys
+ * in a different order, and the codec normalises cell key order. The provenance ledger is a history
+ * that undo does not rewind, so it is left out.
  */
 const mapOnly = (state: GridState): string => {
   const parsed = JSON.parse(serialize(state));
@@ -47,13 +42,13 @@ const mapOnly = (state: GridState): string => {
   });
 };
 
-/** The same by value, which is what two separate runs of one recipe can be expected to share. */
+/** Cells and objects without ids: what two separate runs of one recipe share. */
 const withoutIds = (state: GridState): string => JSON.stringify({
   cells: state.cells,
   objects: [...state.objects.values()].map(({ id, ...rest }) => rest),
 });
 
-/** Somebody paints a block while the cards are standing on the shelf. */
+/** A hand paint, as a user makes while candidate cards stand on the shelf. */
 function paintByHand(state: GridState, at: MacroCoord): void {
   const kit = currentEditor()!;
   const watermark = kit.executor.beginStroke();
@@ -120,7 +115,7 @@ describe('generate operation', () => {
   it('treats an empty region array the same as no region, like the UI\'s at-rest state', async () => {
     const kit = currentEditor()!;
     const outcome = await generateMap(kit, { config: config(6), region: [] });
-    // A full run: state.generation gets recorded and the flash covers the whole template.
+    // A full run records state.generation and its flash covers the whole template.
     expect(kit.state.generation).toBeDefined();
     expect(outcome.cells.length).toBe(kit.state.template.width * kit.state.template.height);
   });
@@ -162,7 +157,7 @@ describe('generate operation', () => {
 
     await generateMap(kit, { config: config(2718), region: null, candidate });
 
-    // The candidate's own run arriving on the map, not a repeat of it.
+    // Matching ids prove the candidate's own run landed rather than a rerun.
     expect(withIds(kit.state)).toBe(withIds(candidate!.state));
     expect(kit.executor.historyDepth()).toBe(1);
     expect(kit.executor.getProvenanceSummary().containsProcedural).toBe(true);
@@ -201,7 +196,6 @@ describe('generate operation', () => {
     const outcome = await generateMap(kit, { config: config(31), region: null, candidate, signal });
     spy.mockRestore();
 
-    // The landing stopped at the command the cancel came in on.
     expect(calls).toBe(300);
     expect(outcome.cancelled).toBe(true);
     expect(mapOnly(kit.state)).toBe(before);
@@ -217,18 +211,13 @@ describe('generate operation', () => {
     kit.executor.undo();
     await generateMap(kit, { config: config(2719), region: null, candidate: second });
 
-    // Undo put the map back to the one both were built on, so the second lands as itself.
+    // Undo restored the map both were built on, so the second lands by reuse.
     expect(withIds(kit.state)).toBe(withIds(second!.state));
   }, 90_000);
 
   /**
-   * A card landed over another card's planet is still its own run arriving, because a full run
-   * clears before it builds and a planet clears to the same ground a blank map does. What the
-   * candidate was photographed on is not the map underneath, it is the map after that clearing.
-   *
-   * And each click is still its own undo step. Undoing the previous apply before landing another
-   * card is the other way to make the replay run — it puts the candidate's base map back — but it
-   * costs the history: one entry and one redo however many planets have been looked at.
+   * A full run clears before it builds, and a planet clears to the same ground a blank map does, so a
+   * card lands by reuse over another card's planet. Each landing stays its own undo step.
    */
   it('lands a second card over the first planet without building it again', async () => {
     const kit = currentEditor()!;
@@ -239,21 +228,15 @@ describe('generate operation', () => {
     const landedFirst = mapOnly(kit.state);
     await generateMap(kit, { config: config(2719), region: null, candidate: second });
 
-    // The card's own run arrived, over a planet, without being built a second time.
     expect(withIds(kit.state)).toBe(withIds(second!.state));
-    // A second planet, not the first one left standing.
     expect(mapOnly(kit.state)).not.toBe(landedFirst);
     expect(kit.executor.historyDepth()).toBe(2);
 
-    // And every step walks back, compared by content rather than by `state.objects`' iteration
-    // order, which is the order the undo happened to reinstate them in and is not a fact about the
-    // map.
     kit.executor.undo();
     expect(mapOnly(kit.state)).toBe(landedFirst);
   }, 120_000);
 
-  /** A paint the run's own clearing takes with it is not a map that moved: the card was never a
-   *  promise about that cell. */
+  /** A paint the run's own clearing erases does not invalidate the candidate. */
   it('lands the card over a hand paint the run would erase anyway', async () => {
     const kit = currentEditor()!;
     const candidate = await generateCandidate(kit, { config: config(1729), region: null });
@@ -266,8 +249,8 @@ describe('generate operation', () => {
     expect(kit.executor.historyDepth()).toBe(2);   // the hand stroke, then the run
   }, 90_000);
 
-  /** A scoped run keeps its surroundings, so a paint outside the region is the map moving: the
-   *  commands were validated against ground that no longer exists and the recipe runs again. */
+  /** A scoped run keeps its surroundings, so a paint outside the region invalidates the validated
+   *  commands and the recipe runs again. */
   it('builds for real when a scoped candidate\'s surroundings moved, and still lands the picture', async () => {
     const kit = currentEditor()!;
     const region = denseRegion();
@@ -278,7 +261,7 @@ describe('generate operation', () => {
 
     await generateMap(kit, { config: rich, region, candidate });
 
-    // Fresh ids: the stale commands were dropped and the generator ran.
+    // Fresh ids show the generator ran again.
     expect([...kit.state.objects.keys()]).not.toEqual([...candidate!.state.objects.keys()]);
     expect(kit.executor.historyDepth()).toBe(2);   // the hand stroke, then the run
   }, 90_000);

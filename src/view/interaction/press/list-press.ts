@@ -11,10 +11,7 @@
  * scrolling and only a hold lifts the entry. A hold lifts it for every pointer, so the gesture
  * taught for touch works with a mouse too.
  */
-import { DRAG_THRESHOLD, TOUCH_SLOP, travelledPast } from './travel';
-
-/** How long a press stays put before the entry lifts, in milliseconds. */
-export const LIST_HOLD_MS = 400;
+import { travelledPast, modalityOf, timingFor } from '../../../platform/input/gesture-timing';
 
 export interface ListPressFacts {
   /** `PointerEvent.pointerType`: `mouse`, `pen`, `touch`, or an empty or unknown type a browser
@@ -31,16 +28,10 @@ export interface ListPressFacts {
  *  list's to scroll, and nothing it does later carries the entry. */
 export type ListPressOutcome = 'wait' | 'carry' | 'scroll';
 
-/** Whether this pointer pans what it presses on: a finger or a pen tip. */
-function pans(pointerType: string): boolean {
-  return pointerType === 'touch' || pointerType === 'pen';
-}
-
+/** The hold time `timingFor(f).holdMs` lifts the entry; a touch press, which pans what it lands
+ *  on, scrolls once it moves past its drag threshold before that. */
 export function resolveListPress(f: ListPressFacts): ListPressOutcome {
-  if (pans(f.pointerType)) {
-    if (travelledPast(f.dx, f.dy, TOUCH_SLOP)) return 'scroll';
-    return f.heldMs >= LIST_HOLD_MS ? 'carry' : 'wait';
-  }
-  if (travelledPast(f.dx, f.dy, DRAG_THRESHOLD)) return 'carry';
-  return f.heldMs >= LIST_HOLD_MS ? 'carry' : 'wait';
+  const { dragThreshold, holdMs } = timingFor(f);
+  if (travelledPast(f.dx, f.dy, dragThreshold)) return modalityOf(f) === 'touch' ? 'scroll' : 'carry';
+  return f.heldMs >= holdMs ? 'carry' : 'wait';
 }

@@ -3,10 +3,11 @@
  * to the figure. Clusters are found by the shell's own anchors (`data-tour-target`, `data-help`), so the
  * spotlight and the section cuts bound exactly what the shell drew.
  */
+import { useReducedMotionConfig } from 'framer-motion';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { INERT } from './PreviewFrame';
 import { cssMotion } from '../../../design/motion';
-import { viewportRect } from '../../../../platform/device/viewport-space';
+import { visualRect } from '../../../design/visual-rect';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Shell } from '../../../shell/Shell';
 import { tourTargetSelector } from '../../../chrome/tour/steps';
@@ -18,11 +19,10 @@ import { useEditorStore } from '../../../../state/store';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { DEFAULT_MAP } from '../../../../config/maps';
 import type { GridState } from '../../../../core/model/types';
-import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { useT } from '../../../../i18n/context';
 import { radii, z } from '../../../design/styles';
 import { FOCUS_RING, rgbaOf } from '../../../design/tokens';
-import { spotlightRx } from '../../../chrome/tour/TourOverlay';
+import { spotlightRx } from '../../../chrome/tour/ShowMe';
 import { figureCaption } from '../caption';
 import { bareGridState } from '../../../../core/model/template';
 import type { TextKey } from '../../../../i18n/keys';
@@ -74,15 +74,16 @@ function useMapBackdrop(aspect: number): string | null {
 /** Measure a cluster's box within the pictured shell, in the shell's own (pre-zoom) pixels.
  *  The screen-to-shell ratio is read off the root itself (its laid-out width is the pictured
  *  window's), so the answer holds under any ancestor zoom: the figure's own scale, the chrome
- *  scale the Help window rides, and the user's UI zoom all cancel out. */
+ *  scale the Help window rides, and the user's UI zoom all cancel out. Rects come through
+ *  `visualRect`, so the root and a target under the pictured shell's own zoom answer in one unit. */
 export function measureBox(root: HTMLElement, selectors: readonly string[], winW: number, padPx: number): Box | null {
-  const rootRect = viewportRect(root);
+  const rootRect = visualRect(root);
   if (rootRect.width <= 0) return null;
   const zoom = rootRect.width / winW;
   const boxes: Box[] = [];
   for (const selector of selectors) {
     for (const el of root.querySelectorAll(selector)) {
-      const r = viewportRect(el);
+      const r = visualRect(el);
       if (r.width <= 0 || r.height <= 0) continue;
       boxes.push({ x: (r.left - rootRect.left) / zoom, y: (r.top - rootRect.top) / zoom, w: r.width / zoom, h: r.height / zoom });
     }
@@ -98,13 +99,13 @@ export function measureBox(root: HTMLElement, selectors: readonly string[], winW
 /** A point in the same shell-pixel space `measureBox` answers in: the first present anchor's
  *  centre. */
 export function measurePoint(root: HTMLElement, selectors: readonly string[], winW: number): { x: number; y: number } | null {
-  const rootRect = viewportRect(root);
+  const rootRect = visualRect(root);
   if (rootRect.width <= 0) return null;
   const zoom = rootRect.width / winW;
   for (const selector of selectors) {
     const el = root.querySelector(selector);
     if (!el) continue;
-    const r = viewportRect(el);
+    const r = visualRect(el);
     if (r.width <= 0 || r.height <= 0) continue;
     return { x: (r.left + r.width / 2 - rootRect.left) / zoom, y: (r.top + r.height / 2 - rootRect.top) / zoom };
   }
@@ -171,18 +172,18 @@ export function FrameOverview() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
-  const still = useRef(isMotionReduced());
+  const still = useReducedMotionConfig() === true;
 
   useEffect(() => {
-    if (!ready || still.current) return undefined;
+    if (!ready || still) return undefined;
     const timer = setInterval(() => setStep((n) => (n + 1) % CYCLE.length), 2200);
     return () => clearInterval(timer);
-  }, [ready]);
+  }, [ready, still]);
 
   const corner = CYCLE[step]!;
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!ready || !root || still.current) return undefined;
+    if (!ready || !root || still) return undefined;
     const read = () => {
       const b = measure(root, corner, win.w);
       if (b) setBox(b);
@@ -194,12 +195,12 @@ export function FrameOverview() {
     read();
     const timer = setTimeout(() => { if (!read()) setStep((n) => (n + 1) % CYCLE.length); }, 80);
     return () => clearTimeout(timer);
-  }, [corner, win.w, ready]);
+  }, [corner, win.w, ready, still]);
 
   return (
     <div ref={rootRef} aria-hidden {...INERT} style={{ position: 'relative', width, height: Math.round(win.h * scale), overflow: 'hidden', borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none' }}>
       {ready && <PicturedShell win={win} zoom={scale}>
-        {!still.current && box && (
+        {!still && box && (
           <>
             {/* Figure annotations stand at the ladder's top: the pictured chrome carries the
                 app's own rungs, and the name plate must read over all of it. */}

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AskRecord, GateOption, JobView, LiveConnection, PanelView } from '../../agent/panel';
 import type { RegionBounds } from '../../core/grid/rect';
-import type { DockSide } from '../shell/panel-frame';
+import type { DockEdge } from '../shell/panel-frame';
 import type { Checkpoint } from './record/ticket-parts';
 import type { LaneView } from './record/Lane';
 import type { RepairAct } from './derive/repair';
@@ -79,12 +79,12 @@ export interface PanelRegionProps {
   onClearRegion?(): void;
 }
 
-/** Where the panel stands: floating, or docked to one side. */
+/** Where the panel stands: floating, or docked to a side or the foot. */
 export interface PanelDockProps {
-  /** Whether the panel fills a side region instead of floating over the map. */
+  /** Whether the panel fills a dock region instead of floating over the map. */
   pinned?: boolean;
-  /** Dock side, read only while pinned. */
-  dockSide?: DockSide;
+  /** Dock edge, read only while pinned; the foot takes no dock controls. */
+  edge?: DockEdge;
   /** Intermediate dock-transition state; folded is hidden beneath the covering sheet. */
   away?: 'leaving' | 'folded';
   /** Whether the current viewport is too narrow to dock. */

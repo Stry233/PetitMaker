@@ -1,10 +1,9 @@
 /**
  * The one safety model every take-back in the panel reads.
  *
- * The defect this pins: "Rewind to start" popped the undo stack down to a depth and took the user's
- * own later edits with it, saying nothing. The model's whole job is to state what a press costs and
- * to say which part of that cost was never the job's — so these tests are about the numbers and the
- * Words, not about any card.
+ * A rewind must not pop the user's own later edits off the undo stack in silence. The model's job is
+ * to state what a press costs and which part of that cost was never the job's, so these tests are
+ * about the numbers and the words, not about any card.
  *
  * `t` is stubbed rather than run through `I18nProvider`: what matters here is which key is chosen
  * and which params reach it, and a stub says both in one string.

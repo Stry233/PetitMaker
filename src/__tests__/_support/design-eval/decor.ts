@@ -1,11 +1,8 @@
 /**
- * The grain of the planting, read off the finished map.
- *
- * Planting reads as designed when it works at both extremes — the single deliberate specimen and the
- * large uniform block — and reads as noise when everything lands at the same middle size. The
- * reference lays flora as 27 clusters at a median of 18 cells and trees as 179 clusters at a median
- * of 1; 64 to 86 flora clusters at a median of 4 to 7 is one middling grain everywhere, the failure
- * this reading exists to catch.
+ * The grain of the planting: designed planting works at both extremes (the lone specimen and the
+ * large block), noise lands everywhere at one middle size. The reference lays flora as 27 clusters at
+ * a median of 18 cells and trees as 179 clusters at a median of 1; 64 to 86 flora clusters at a
+ * median of 4 to 7 is the middling grain this reading catches.
  */
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { categoryOf } from '../../../state/catalog';
@@ -13,17 +10,14 @@ import { gapClusters } from './grid';
 import { readMap, waterBodies, type MapMasks } from '../../../tools/reading';
 import { ItemCategory } from '../../../config/catalog/categories';
 
-/**
- * A cluster is same-category planting with a gap of one tolerated, so a bed laid as blocks with a cell
- * of air between them reads as the one bed a viewer sees. Run over the reference, this definition
- * returns its 27-and-179 cluster counts, which is the check that the two are the same definition.
- */
+/** Same-category planting with one empty cell between still forms one cluster, as a viewer sees one
+ *  bed; this yields the reference's 27 and 179 cluster counts. */
 const GRAIN_GAP = 2;
 
-/** The two grains, in cells: a mass is a bed of this size or more, a specimen stands alone or in a
- *  pair. The proxy asks for a quarter of the decoration in masses and a fifth in specimens. */
+/** A mass is a planted cluster of this many cells or more. */
 export const GRAIN_MASS = 40;
 
+/** A specimen stands alone or in a pair. */
 export const GRAIN_SPECIMEN = 2;
 
 export interface GrainReading {
@@ -36,7 +30,7 @@ export interface GrainReading {
   /** Share of all planted cells standing in a mass, and in a specimen. */
   massShare: number;
   specimenShare: number;
-  /** Share in the middle band, which is asked to stay under 45%. */
+  /** Share of planted cells in clusters between the two grains. */
   middleShare: number;
 }
 
@@ -57,12 +51,9 @@ export function decorGrain(state: GridState, g = readMap(state)): GrainReading {
 }
 
 /**
- * Whether a water body is a composed garden or bare cyan. A body counts as dressed where a
- * same-species straight row of `ROW_MIN` or more stands within `BANK_READ` cells of it: the
- * target's own bank grammar, where counting plants alone does not tell a row from confetti.
- *
- * The row is read on the bank the flat sweep leaves standing (N/NW/NE/W/SW), the only side a plant
- * beside water can legally stand on.
+ * Whether a water body is a composed garden or bare cyan: it counts as dressed where a same-species
+ * straight row of `ROW_MIN` or more stands within `BANK_READ` cells, which a plant count cannot tell
+ * from confetti. Only the `BANKS` directions are read.
  */
 export function bankDressing(state: GridState, g = readMap(state)): BankDressing {
   const { W, H } = g;
@@ -94,8 +85,6 @@ export function bankDressing(state: GridState, g = readMap(state)): BankDressing
     let hit = false;
     for (const i of body) {
       const x = i % W, y = (i / W) | 0;
-      // The banks the sweep leaves standing: north of the water, west of it, and the two corners
-      // between.
       for (const [dx, dy] of BANKS) {
         for (let k = 1; k <= BANK_READ && !hit; k++) {
           const nx = x + dx * k, ny = y + dy * k;
@@ -117,14 +106,13 @@ export interface BankDressing {
   dressedShare: number;
 }
 
-/** The smallest body the dressing reading asks about, how far from its bank a row may stand, and how
- *  long a row has to be to count. The body floor is the accent class that reads as a thing beside a
- *  path rather than as a feature; the row length is the short end of the target's own histogram. */
+/** Smaller bodies are accents beside a path, not features to compose against. */
 const BODY_MIN = 15;
+/** How far from the water a row may stand, in cells. */
 const BANK_READ = 2;
+/** The shortest row on the reference's bank-row histogram. */
 const ROW_MIN = 4;
-/** The banks a plant beside water may stand on: north, west, and the corners between (the sweep
- *  reaches east, south and south-east, so nothing can stand there). */
+/** The sides a plant beside water may stand on (N, W, NW, NE, SW); the flat sweep clears E, S and SE. */
 const BANKS = [[0, -1], [-1, 0], [-1, -1], [1, -1], [-1, 1]] as const;
 
 /** Cluster sizes of one planting category, gap-tolerant, descending. */

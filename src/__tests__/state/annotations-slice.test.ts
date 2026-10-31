@@ -1,7 +1,7 @@
 /**
  * The annotation slice: the data lives on `gridState.annotations` and every mutation goes through
  * the slice's verbs, which bump the epoch and keep the layer's own undo/redo lanes. A gesture is
- * One lane entry however many edits it applies, and a new or loaded map resets the session (lanes,
+ * one lane entry however many edits it applies, and a new or loaded map resets the session (lanes,
  * selection, draft) without carrying the previous map's history over.
  */
 import { describe, it, expect, beforeEach } from 'vitest';

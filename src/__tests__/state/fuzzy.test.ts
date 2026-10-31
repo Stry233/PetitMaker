@@ -24,7 +24,7 @@ describe('fuzzyScore', () => {
     const wordStart = fuzzyScore('apple', candidate)!;
     // 'ple' is a literal substring of 'Apple' but starts mid-word.
     const midWord = fuzzyScore('ple', candidate)!;
-    // 'aple' (one 'p' dropped) is not a literal substring of 'Apple' at all — subsequence only.
+    // 'aple' (one 'p' dropped) is not a literal substring of 'Apple' at all: subsequence only.
     const typo = fuzzyScore('aple', candidate)!;
     expect(whole).toBeGreaterThan(wordStart);
     expect(wordStart).toBeGreaterThan(midWord);

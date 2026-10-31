@@ -1,15 +1,16 @@
 /**
  * The Ctrl rubber band. A Ctrl-held press arms it regardless of what is under the pointer (an
  * object still toggles on press, but Ctrl never arms a move); it activates once the drag clears
- * DRAG_THRESHOLD, and releasing Ctrl mid-drag does not cancel it: nothing re-reads the modifier
- * once armed. Only the drawn rect updates per move; membership is resolved once, on release.
+ * the pressing pointer's drag threshold, and releasing Ctrl mid-drag does not cancel it: nothing
+ * re-reads the modifier once armed. Only the drawn rect updates per move; membership is resolved
+ * once, on release.
  */
 import type { MacroCoord } from '../../../core/model/types';
 import { useEditorStore } from '../../../state/store';
 import { getActiveToolManager, getActiveView } from '../../active-view';
 import { cellUnder } from '../../../core/grid/pointer';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
-import { DRAG_THRESHOLD, travelledPast } from '../press/travel';
+import { travelledPast } from '../../../platform/input/gesture-timing';
 import { macroRect, objectsInBand } from '../marquee';
 
 export class BandSelect {
@@ -18,13 +19,16 @@ export class BandSelect {
   private startMacro: MacroCoord | null = null;
   private startX = 0;
   private startY = 0;
+  private threshold = 0;
 
-  /** Arms a band from cell `from`, pressed at screen (x, y). */
-  arm(from: MacroCoord, x: number, y: number): void {
+  /** Arms a band from cell `from`, pressed at screen (x, y) by a pointer whose drag threshold is
+   *  `dragThreshold` (`gesture-timing.ts:timingFor`). */
+  arm(from: MacroCoord, x: number, y: number, dragThreshold: number): void {
     this.armed = true;
     this.startMacro = from;
     this.startX = x;
     this.startY = y;
+    this.threshold = dragThreshold;
   }
 
   /** Grows the drawn rect. Swallows the move unconditionally once armed: a band-armed press must
@@ -32,7 +36,7 @@ export class BandSelect {
   move(x: number, y: number): boolean {
     if (!this.armed) return false;
     if (!this.active
-      && travelledPast(x - this.startX, y - this.startY, DRAG_THRESHOLD)) {
+      && travelledPast(x - this.startX, y - this.startY, this.threshold)) {
       this.active = true;
     }
     const bandView = getActiveView();

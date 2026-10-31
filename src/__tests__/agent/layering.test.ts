@@ -2,10 +2,10 @@
  * The harness has four doors and an inner order. Outside `src/agent`, code reads the harness only
  * through `boot.ts` (what the frame's first load watches), `limits.ts` (its published limits, core
  * modules only), `panel.ts` (what the panel's chunk reads) or, from the panel's lazy boundary alone,
- * `panel-runtime.ts`. Inside, a folder imports only the
- * folders below it: core < providers < security < skills < tools < prompts < session < connection < exec < the facades.
- * Type-only imports count, so a contract lives in the lowest folder that names it; Markdown assets are
- * exempt and dynamic `import()` loads stay direct.
+ * `panel-runtime.ts`. Inside, a folder imports only the folders below it: core < providers < security
+ * < skills < tools < prompts < session < connection < exec < the facades. Type-only imports count, so
+ * a contract lives in the lowest folder that names it; Markdown assets are exempt and dynamic
+ * `import()` loads stay direct.
  */
 import { describe, it, expect } from 'vitest';
 import { join, relative } from 'node:path';
@@ -20,7 +20,7 @@ const FACADES = new Set(['boot', 'limits', 'panel', 'panel-runtime']);
 /** The lazy boundary, the one place that runs the harness rather than reading it. */
 const BOUNDARY = new Set(['ui/agent/PanelColumn.tsx', 'ui/agent/hooks/use-panel-runner.ts']);
 
-/** Edges that break the rules today, each with its reason (`layering-allowlist.json`). */
+/** Edges that break the rules, each with its reason (`layering-allowlist.json`). */
 const ALLOWED: ReadonlySet<string> = new Set(Object.keys(ALLOWLIST));
 
 /** The source files a file imports statically, types included; a Markdown `?raw` asset resolves

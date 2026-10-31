@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The dev site has to say so. A visitor who lands on it should be told it is for evaluation and
- * pointed at the release, and should keep seeing that it is a dev build while they use it.
- *
- * The condition is derived from the version, not from an environment flag — a build carries
- * `-dev` unless the publish workflow wrote a release marker into its stamp — so these tests
- * mock `platform/build/build-info` to stand in for the two kinds of build rather than setting
- * any config.
+ * A dev build shows a dismissible notice pointing at the release and a standing watermark. The
+ * condition is the version's `-dev` suffix, so the tests mock `platform/build/build-info` rather
+ * than any config.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
@@ -16,22 +12,19 @@ import { en } from '../../../../i18n/locales/en';
 
 const actual = await vi.importActual<typeof import('../../../../platform/build/build-info')>('../../../../platform/build/build-info');
 
-/** Mount the notice as a build of the given version (the `-dev` suffix is the whole signal). */
+/** Mounts the notice as a build of the given version. */
 async function mountAs(version: string) {
   vi.resetModules();
   vi.doMock('../../../../platform/build/build-info', () => ({
     ...actual, APP_VERSION: version, IS_DEV_BUILD: version.endsWith('-dev'),
   }));
-  // Provider and component from the same fresh module graph: resetModules gives the reimported
-  // component a different React context object, so a provider held from the outer graph would
-  // supply nothing and every string would render as its key.
+  // Provider and component from the same fresh module graph, or they would hold different contexts.
   const [{ DevBuildNotice }, { I18nProvider }, { useEditorStore }] = await Promise.all([
     import('../../../../ui/chrome/guards/DevBuildNotice'),
     import('../../../../i18n/context'),
     import('../../../../state/store'),
   ]);
-  // The fresh graph's store, not `_store.ts`'s: `resetModules` above made a second store instance,
-  // and the component reimported here subscribes to that one.
+  // The fresh graph's store instance, which the reimported component subscribes to.
   useEditorStore.setState({ locale: 'en' });
   return render(<I18nProvider><DevBuildNotice /></I18nProvider>);
 }
@@ -44,7 +37,7 @@ describe('a dev build says so', () => {
     await mountAs('0.1.1492-dev');
     expect(screen.getByTestId('dev-notice').textContent).toContain(en['dev.notice']);
     const link = screen.getByRole('link');
-    expect(link.getAttribute('href')).toBe(LEGAL.canonicalOrigin); // the release, from config
+    expect(link.getAttribute('href')).toBe(LEGAL.canonicalOrigin);
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toContain('noopener');
   });
@@ -53,30 +46,28 @@ describe('a dev build says so', () => {
     await mountAs('0.1.1492-dev');
     const mark = screen.getByTestId('dev-watermark');
     expect(mark.textContent).toContain('0.1.1492-dev');
-    // It sits over the map, so it must never intercept a click or a drag.
+    // It sits over the map.
     expect(mark.style.pointerEvents).toBe('none');
     expect(mark.style.userSelect).toBe('none');
     expect(mark.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('centres the notice through framer, not a CSS transform it would overwrite', async () => {
-    // motion writes `transform` to animate `y`, so a `translateX(-50%)` in the style is
-    // silently dropped and the card sits half its own width off centre (measured at +190px across
-    // every viewport width). The offset has to travel in framer's `x`.
+    // Framer writes `transform` to animate `y`, which would drop a `translateX(-50%)` in the style,
+    // so the offset travels in framer's `x`.
     await mountAs('0.1.1492-dev');
     const notice = screen.getByTestId('dev-notice');
     expect(notice.style.left).toBe('50%');
     expect(notice.style.transform).toContain('-50%');
-    // And the watermark, which is not animated, keeps doing it the plain way.
+    // The watermark is not animated.
     expect(screen.getByTestId('dev-watermark').style.transform).toBe('translateX(-50%)');
   });
 
   it('lets the notice be dismissed, and keeps the watermark', async () => {
     await mountAs('0.1.1492-dev');
     fireEvent.click(screen.getByRole('button'));
-    // AnimatePresence unmounts when the exit finishes, so this is a wait, not a poll for luck.
+    // AnimatePresence unmounts when the exit finishes.
     await waitFor(() => expect(screen.queryByTestId('dev-notice')).toBeNull());
-    // The watermark is the standing signal; only the notice is dismissible.
     expect(screen.getByTestId('dev-watermark')).toBeTruthy();
   });
 });
@@ -89,7 +80,6 @@ describe('a release build says nothing', () => {
   });
 
   it('is decided by the version alone, so a published snapshot cannot show them', async () => {
-    // resolveVersion drops `-dev` only for a tree the publish workflow marked as released.
     for (const version of ['0.1.1492', '1.2.7', '10.0.0']) {
       await mountAs(version);
       expect(screen.queryByTestId('dev-watermark'), version).toBeNull();

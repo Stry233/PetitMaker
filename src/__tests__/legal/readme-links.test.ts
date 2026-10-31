@@ -15,7 +15,7 @@ const READMES: Array<[string, string]> = [
 ];
 
 const REPO = new URL(LEGAL.repoUrl);
-// The owner path segment (e.g. "/Stry233") — any repo-host URL under this owner
+// The owner path segment (e.g. "/Stry233"). Any repo-host URL under this owner
 // is treated as "the project repository URL" and must equal LEGAL.repoUrl.
 const REPO_OWNER_PREFIX = `/${REPO.pathname.split('/').filter(Boolean)[0] ?? ''}`;
 

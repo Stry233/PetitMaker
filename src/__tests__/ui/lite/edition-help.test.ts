@@ -4,7 +4,8 @@ vi.hoisted(() => { (globalThis as { __PETIT_LITE__?: boolean }).__PETIT_LITE__ =
 // The offline build aliases the edition's Help module to its own (`scripts/edition-build.mts`).
 vi.mock('../../../ui/help/edition-help', () => import('../../../ui/lite/edition-help'));
 import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/help/catalog';
-import { shellTourSteps } from '../../../ui/shell/tour/tour-steps';
+import { tourCards } from '../../../ui/chrome/tour/deck';
+import { REEL_FILES } from '../../../ui/lite/tour-reel-files';
 import { TABS } from '../../../ui/shell/bars/generate/generate-shelf';
 import { START_PAGES } from '../../../ui/help/pages/start';
 import { BUILD_PAGES } from '../../../ui/help/pages/build';
@@ -60,13 +61,19 @@ describe('Lite help and tour', () => {
     expect(borrowed).toEqual([]);
   });
 
-  it('returns to 2D before sharing and skips unavailable tour targets', () => {
-    const steps = shellTourSteps(true);
-    expect(steps.map(step => step.id)).toEqual(['welcome', 'camera', 'modes', 'bar', 'view3d', 'orbit', 'build3d', 'share', 'menu']);
-    expect(steps.find(step => step.id === 'share')).toMatchObject({ view: '2d', bodyKey: 'lite.save_hint' });
-    expect(shellTourSteps(false).map(step => step.id)).toEqual(['welcome', 'camera', 'modes', 'bar', 'share', 'menu']);
-    expect(steps.find(step => step.id === 'menu')).toMatchObject({ bodyKey: 'lite.tour_menu' });
-    for (const step of steps) expect(step).not.toHaveProperty('needsWebGL2');
+  it('[UI-46] leaves out the assistant\'s card and words the cards for the offline edition', () => {
+    const cards = tourCards(true);
+    expect(cards.map(card => card.kind)).toEqual(['welcome', 'move', 'shape', 'objects', 'view3d', 'generate', 'share']);
+    expect(tourCards(false).map(card => card.kind)).not.toContain('view3d');
+    expect(cards.find(card => card.kind === 'share')).toMatchObject({ bodyKey: 'lite.save_hint' });
+    // Its save window has no tabs to show, so the share card offers no Show me.
+    expect(cards.find(card => card.kind === 'share')?.show ?? []).toEqual([]);
+    expect(cards.find(card => card.kind === 'generate')).toMatchObject({ bodyKey: 'lite.tour_generate' });
+    for (const card of cards) expect(card).not.toHaveProperty('needsWebGL2');
+  });
+
+  it('[UI-49] carries no reels, so every card stands on its words', () => {
+    expect(REEL_FILES).toEqual({});
   });
 
   it('offers the island and maze generators only', () => {

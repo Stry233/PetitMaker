@@ -1,14 +1,7 @@
-// The large composed bodies, read as shapes and then as cut ground.
-//
-// The shape claims are what the water ledger's reading rests on, so they are asserted directly off
-// the draw: every form mirrors about both axes of its own box, none of them fills it the way a
-// dropped rectangle does, and each one carries the dry ground its own accounting class is defined by
-// — two or more enclosed islets for a basin and a medallion, one platform for a ring, a 3:1-or-thinner
-// profile for a trough. A figure that lost those would pass through the ledger as water belonging to
-// no story.
-//
-// The cut claims are read on a synthetic flat map: the figures land, they are few and large, no two
-// of them are congruent, and the ground commits through the live rules with no violation.
+// The large composed water bodies, read as shapes and then as ground cut into a synthetic flat map.
+// Each shape carries what the water ledger accounts it by (two or more islets for a basin and a
+// medallion, one platform for a ring, a thin profile for a trough); without it a figure would read as
+// water belonging to no story.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { flatIndex } from '../../../../../core/grid/rect';
@@ -26,9 +19,8 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 const SEEDS = [12345, 777, 42, 2026, 7, 31337];
 const FORMS: WaterForm[] = ['basin', 'ring', 'medallion', 'trough'];
 
-/** How many dry components the figure encloses: ground inside its bounding box that cannot reach the
- *  box border without crossing the body. The water ledger's own hole test, re-implemented here so
- *  the shape claim is checked against the same definition the grader uses. */
+/** How many dry components the figure encloses: ground inside its box that cannot reach the box border
+ *  without crossing the body. The water ledger's hole test, re-implemented independently. */
 function holesOf(cells: readonly MacroCoord[], box: Rect): number {
   const inBody = new Set(cells.map((c) => `${c.x},${c.y}`));
   const seen = new Set<string>();
@@ -78,12 +70,10 @@ const boxOf = (cells: readonly MacroCoord[]): Rect => {
   return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 };
 
-/** A room every form can be drawn in: long past `SPAN.min` and wide enough for the medallion's three
- *  bands, which is the widest ask in the vocabulary. */
+/** A room every form fits: long past `SPAN.min` and wide enough for the medallion's three bands. */
 const ROOM = { x: 50, y: 50, w: 27, h: 21 };
 
-/** A flat map at one tier: the ground a still figure is cut into. Tier 1 rather than 0, so the
- *  figure is a body on a terrace and the cut has to hold its own rim up. */
+/** A flat map at one tier. Tier 1 rather than 0, so the cut has to hold its own rim up. */
 function flatIsland(template: MapTemplate, tier = 1): {
   t: TerrainPlan; grass: Uint8Array; flat: Uint8Array;
 } {
@@ -235,14 +225,12 @@ describe('the figures, cut into a terrace', () => {
 });
 
 describe('the figures set into the terrace', () => {
-  // The reference's water is cut into its terraces and framed by their edges (calibration §8.3, §8.5),
-  // not floated in the middle of an open plate. `fitForm` centres its box in the room it was given, so
-  // the pass pushes the box against whichever sides of that room a step rises on — and only a rise,
-  // since a body flush against lower ground shows a face nobody composed.
+  // Reference water is framed by terrace edges, not floated mid-plate, so the pass pushes the box
+  // against the sides of its room where a step rises (never a drop, which would show a face).
   it('lays a figure against the riser its room ends at, and never against a drop', () => {
     const { t, grass, flat } = flatIsland(HEXIA);
     const W = HEXIA.width;
-    // A hill down the middle of the map: everything east of it stands a tier higher.
+    // Everything east of the middle stands a tier higher.
     for (let y = 0; y < HEXIA.height; y++) {
       for (let x = Math.round(W / 2); x < W; x++) if (grass[flatIndex(x, y, W)]) t.tier[flatIndex(x, y, W)] = 2;
     }
@@ -257,7 +245,6 @@ describe('the figures set into the terrace', () => {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
           const i = flatIndex(c.x + dx, c.y + dy, W);
           const surface = t.water[i]! >= 0 ? t.water[i]! : t.tier[i]!;
-          // Nothing below: a face is what the rules would ask for caps at, and no figure here shows one.
           expect(surface, `${body.form} at ${c.x},${c.y} faces lower ground`)
             .toBeGreaterThanOrEqual(body.tier);
           if (t.water[i]! < 0 && t.tier[i]! > body.tier) against++;

@@ -136,7 +136,7 @@ const candidate = (w: World, commands: Command[]): Candidate => ({
 const replay = (w: World, commands: Command[]) =>
   generateMap(ctx(w), { config: candidate(w, []).config, region: null, candidate: candidate(w, commands) });
 
-/** A mountain at (5, 5), then a second command; each caller runs that pair its own way. */
+/** Two mountains for each caller to run its own way, and floating water for the post-stroke violation. */
 const PAIR = { mountain: mountain(5, 5), second: mountain(7, 7), floating: floatingWater(5, 8) };
 
 describe('every caller, on a throw part-way through the stroke', () => {

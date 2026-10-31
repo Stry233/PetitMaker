@@ -38,6 +38,11 @@ export interface Autosave {
   /** Write the owed save now. A phone browser discards a hidden tab without another timer tick, so
    *  `visibilitychange` and `pagehide` are the last chance the pending edits get. */
   flush(): void;
+  /** While held, the live map is on loan (a Show me's tries), so no save is written and whatever is
+   *  owed waits: the save keeps the map as the loan found it, through a reload, a closed tab or a
+   *  discarded one. Taking the hold writes what is owed first, which the loan has not touched yet;
+   *  letting go writes what is owed then. */
+  setHeld(on: boolean): void;
   /** Forget the autosave (e.g. a deliberate reset), its history with it. */
   clear(): void;
   /** While suspended, no save is scheduled or serialized: the live map is a scratch canvas, not the user's map. */
@@ -61,6 +66,7 @@ export function createAutosave(sources: AutosaveSources): Autosave {
   let compression: AbortController | null = null;
   let revision = 0;
   let suspended = false;
+  let held = false;
   /** The debounced write waiting to happen, kept so backgrounding the tab can still make it. */
   let pending: { state: GridState; revision: number } | null = null;
   let lifecycleBound = false;
@@ -74,6 +80,7 @@ export function createAutosave(sources: AutosaveSources): Autosave {
    *  hidden or unloaded may never run another task. */
   const write = (state: GridState, current: number, immediate: boolean): void => {
     if (suspended) return;
+    if (held) { pending = { state, revision: current }; return; }
     if (!prefStorageAvailable()) return;
     const save: AutosaveFile = { ...buildSaveFile(state, sources.camera()), autosave: 1, history: history(state) };
     let json = JSON.stringify(save);
@@ -119,6 +126,7 @@ export function createAutosave(sources: AutosaveSources): Autosave {
       if (document.visibilityState === 'hidden') flush();
     });
     // Safari does not reliably report a hidden state when the page is being replaced or frozen.
+    // A page entering the back-forward cache hears it too, where the write is merely early.
     window.addEventListener('pagehide', flush);
   };
 
@@ -138,6 +146,16 @@ export function createAutosave(sources: AutosaveSources): Autosave {
       }, AUTOSAVE_DEBOUNCE_MS);
     },
     flush,
+    setHeld(on) {
+      if (on === held) return;
+      if (on) flush();
+      held = on;
+      const owed = pending;
+      // An owed save whose debounce still runs is written as it ends.
+      if (on || !owed || timer !== null) return;
+      pending = null;
+      write(owed.state, owed.revision, false);
+    },
     clear() {
       revision++;
       compression?.abort();

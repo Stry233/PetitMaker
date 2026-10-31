@@ -25,6 +25,7 @@ import { scanBridgeSites } from './search';
 import { objectLine, zoneGlyph } from './serialize';
 import { defineTool } from './spec';
 import { runStroke, runStrokeBody } from './stroke';
+import { zoneArea, zoneArg } from './zone-area';
 import { BUILDABLE_ZONES } from './game-terms';
 
 const firstTreeId = (): string => getCatalogByRole('canopy')[0]?.id ?? 'tree';
@@ -156,6 +157,7 @@ export const buildRoadTool = defineTool({
     width: int({ min: 1, description: 'Line stroke width (default 1).' }),
     line: obj({ ...corners, width: int({ min: 1 }) }, { description: 'Nested alternative to shape "line".' }),
     cells: list(cellItem),
+    ...zoneArg,
     smooth: oneOf(['round', 'rect', 'off'], { description: "End-cap/bend trim style (default 'round', the manual brush's Auto Trim)." }),
   }),
   access: 'write',
@@ -166,7 +168,10 @@ export const buildRoadTool = defineTool({
     if (!isCoatingItem(item) || isSurfacePrint(item)) {
       return argError(`"${catalogId}" is not a road item, pass a road id from the catalog.`, `catalogId: "${defaultRoadId()}"`);
     }
-    const resolvedRoad = resolveCells(input, deps.getState(), 'line');
+    const drawn = resolveCells(input, deps.getState(), 'line');
+    const zoned = input.zone !== undefined ? zoneArea(deps.getState(), input.zone, drawn.length ? drawn : undefined) : null;
+    if (typeof zoned === 'string') return argError(zoned);
+    const resolvedRoad = zoned ?? drawn;
     if (resolvedRoad.length === 0) return geometryError(input, 'path');
     if (resolvedRoad.length > 400) return argError('road too long for one call (max 400 cells), split it into segments.');
     const { cells, offZone } = clipBuildable(resolvedRoad, deps.getState());
@@ -220,6 +225,7 @@ export const scatterObjectsTool = defineTool({
     count: req(int({ min: 1, max: 200 })),
     ...coordProps,
     rect: obj(corners, { description: 'Scatter area; the flat corners x1,y1,x2,y2 mean the same.' }),
+    ...zoneArg,
     pattern: oneOf(['scatter', 'fill', 'grid'], { description: 'scatter = natural arrangement (default); fill = solid row-major fill; grid = a lattice of every step-th cell.' }),
     step: int({ min: 2, max: 6, description: 'Grid pitch for pattern "grid" (default 2: an open lattice).' }),
     spacing: int({ min: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid.' }),
@@ -236,10 +242,13 @@ export const scatterObjectsTool = defineTool({
     }
     const state = deps.getState();
     const rect = rectInput(input);
-    const resolvedPool = rect ? resolveCells({ rect }, state) : [...deps.getRegion()];
+    const area = rect ? resolveCells({ rect }, state) : undefined;
+    const zoned = input.zone !== undefined ? zoneArea(state, input.zone, area) : null;
+    if (typeof zoned === 'string') return argError(zoned);
+    const resolvedPool = zoned ?? area ?? [...deps.getRegion()];
     const { cells: pool, offZone } = clipBuildable(resolvedPool, state);
     if (pool.length === 0) {
-      return argError('no area to scatter over, pass the rect corners or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
+      return argError('no area to scatter over, pass the rect corners or a zone, or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
     }
     const pattern = input.pattern ?? 'scatter';
     const spacing = pattern === 'scatter' ? input.spacing ?? 0 : 0;

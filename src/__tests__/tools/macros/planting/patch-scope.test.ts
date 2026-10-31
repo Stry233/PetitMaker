@@ -1,11 +1,5 @@
-/**
- * The two smart-planting cards.
- *
- * The ID is the scope: `patch-tree` and `patch-flora` are two macros, one per card, each pinned here
- * on the property its card promises. One undifferentiated `patch` armed from either tab of the object
- * shelf cannot keep either promise — a press from the Trees card could plant flowers with no tree at
- * all, and a press from the Flora card could plant a tree.
- */
+/** The two smart-planting cards are two macros, `patch-tree` and `patch-flora`, each held to the
+ *  property its card promises. */
 import { describe, it, expect } from 'vitest';
 import { createDefaultRegistry } from '../../../../rules';
 import type { GridState } from '../../../../core/model/types';
@@ -37,12 +31,9 @@ const AT = { x: 20, y: 20 };
 const RADIUS = 8;
 
 describe('the tree-led card (patch-tree)', () => {
-  /**
-   * A 300-seed sweep, since the mass and floor passes draw over independent noise and a few seeds
-   * miss the presses where the floor outnumbers the mass. Every seed that plants anything plants a
-   * tree, trees strictly outnumber flora (`capFloorToMass` guarantees it), and no press's flora share
-   * exceeds `FLOOR_CAP_FRACTION`, so a stand reads as trees at a glance.
-   */
+  /** The mass and floor passes draw over independent noise, so 300 seeds are swept: every press that
+   *  plants anything plants a tree, trees outnumber flora (`capFloorToMass`), and no flora share
+   *  exceeds `FLOOR_CAP_FRACTION`. */
   it('plants trees, allows flora too, and its mass is STRICTLY trees, over 300 seeds', () => {
     let pressed = 0;
     let worstShare = 0;
@@ -60,9 +51,8 @@ describe('the tree-led card (patch-tree)', () => {
       expect(trees, `seed ${seed}: flora (${flora}) was not strictly outnumbered by trees (${trees})`).toBeGreaterThan(flora);
       expect(share, `seed ${seed}: flora share ${share} exceeded the accent ceiling`).toBeLessThanOrEqual(0.25);
     }
-    // The sweep has to have exercised the property on more than a token few of its 300 seeds.
     expect(pressed).toBeGreaterThan(100);
-    // And has to have come close to the ceiling at least once, or the bound above proves nothing.
+    // Some press comes close to the ceiling, so the bound is exercised.
     expect(worstShare).toBeGreaterThan(0.15);
   });
 });
@@ -78,7 +68,7 @@ describe('the flora-led card (patch-flora)', () => {
       expect(c[ItemCategory.Tree] ?? 0, `seed ${seed}: the flora-led card planted a tree`).toBe(0);
       if ((c[ItemCategory.Flora] ?? 0) > 0) anyPlanted = true;
     }
-    // The card is not silently dead: over a sweep it plants something, just never a tree.
+    // Over the sweep it plants something.
     expect(anyPlanted).toBe(true);
   });
 });
@@ -92,12 +82,11 @@ describe('the ghost and the preview cache', () => {
     const floraCells = previewMacro(kit, 'patch-flora', opts).added;
     expect(treeCells.length).toBeGreaterThan(0);
     expect(floraCells.length).toBeGreaterThan(0);
-    // Same aim, same seed, same everything but the id: two different answers, not one shape reused.
+    // Everything but the id is the same.
     const key = (cells: typeof treeCells) => cells.map((c) => `${c.x},${c.y}`).sort().join('|');
     expect(key(treeCells)).not.toBe(key(floraCells));
 
-    // Re-asking the same question (same id, same opts, same map) is a cache hit: the identical
-    // array, not a second run.
+    // The same question again is a cache hit: the identical array.
     expect(previewMacro(kit, 'patch-tree', opts).added).toBe(treeCells);
     expect(previewMacro(kit, 'patch-flora', opts).added).toBe(floraCells);
   });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { rectCells, circleCells, lineCells, brushCells, expandLine, line4, snapShapeEnd } from '../../../core/grid/shapes';
+import { rectCells, circleCells, lineCells, brushCells, expandLine, line4, polygonCells, ellipseCells, snapShapeEnd } from '../../../core/grid/shapes';
 
 /** Every cell reachable from the first via edge-adjacent steps (a width-1
- *  spine must form one 4-connected trail — no diagonal-only links). */
+ *  spine must form one 4-connected trail, no diagonal-only links). */
 function isFourConnected(cells: { x: number; y: number }[]): boolean {
   if (cells.length <= 1) return true;
   const set = new Set(cells.map((c) => `${c.x},${c.y}`));
@@ -51,8 +51,7 @@ describe('shapes', () => {
       expect(circleCells({ x: 5, y: 5 }, 0, 0)).toHaveLength(1);
     });
     it('has no 1-cell cardinal tip — extreme rows/cols stay flat so auto-trim rounds them smoothly', () => {
-      // A 1-cell cardinal extreme gets rounded by auto-trim into a sharp point on all 4 sides,
-      // so every cardinal band must be wider than 1.
+      // Auto-trim would round a 1-cell cardinal extreme into a sharp point.
       for (const r of [2, 3, 4, 5, 6]) {
         const cells = circleCells({ x: 0, y: 0 }, r, r);
         const xs = cells.map((c) => c.x), ys = cells.map((c) => c.y);
@@ -62,10 +61,39 @@ describe('shapes', () => {
         expect(widthAt(Math.max(...ys)), `bottom row flat (r=${r})`).toBeGreaterThan(1); // S
         expect(heightAt(Math.min(...xs)), `left col flat (r=${r})`).toBeGreaterThan(1);  // W
         expect(heightAt(Math.max(...xs)), `right col flat (r=${r})`).toBeGreaterThan(1); // E
-        // ...without growing the disc: the extent still matches the requested radius.
+        // The extent still matches the requested radius.
         expect(Math.max(...xs)).toBe(r);
         expect(Math.max(...ys)).toBe(r);
       }
+    });
+  });
+
+  describe('polygonCells', () => {
+    const keys = (cells: { x: number; y: number }[]) => cells.map((c) => `${c.x},${c.y}`).sort();
+    it('covers what rectCells covers for a rectangle through its corners', () => {
+      const square = [{ x: 2, y: 3 }, { x: 6, y: 3 }, { x: 6, y: 5 }, { x: 2, y: 5 }];
+      expect(keys(polygonCells(square))).toEqual(keys(rectCells({ x: 2, y: 3 }, { x: 6, y: 5 })));
+    });
+    it('covers a triangle and nothing outside its outline', () => {
+      const cells = polygonCells([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 4 }]);
+      expect(cells.every((c) => c.x + c.y <= 4)).toBe(true);
+      expect(cells).toHaveLength(15);
+    });
+    it('covers nothing under three vertices', () => {
+      expect(polygonCells([{ x: 0, y: 0 }, { x: 4, y: 4 }])).toEqual([]);
+    });
+  });
+
+  describe('ellipseCells', () => {
+    it('stays inside its box and spans its middle row and column edge to edge', () => {
+      const cells = ellipseCells(10, 4, 20, 10);
+      expect(cells.every((c) => c.x >= 10 && c.x <= 20 && c.y >= 4 && c.y <= 10)).toBe(true);
+      expect(cells.filter((c) => c.y === 7)).toHaveLength(11);
+      expect(cells.filter((c) => c.x === 15)).toHaveLength(7);
+      expect(cells.some((c) => c.x === 10 && c.y === 4)).toBe(false);
+    });
+    it('covers the one cell of a one-cell box', () => {
+      expect(ellipseCells(3, 3, 3, 3)).toEqual([{ x: 3, y: 3 }]);
     });
   });
 
@@ -82,7 +110,7 @@ describe('shapes', () => {
     it('a diagonal line is 4-connected — no diagonal-only links (matches the free brush)', () => {
       const cells = lineCells({ x: 0, y: 0 }, { x: 5, y: 5 }, 1);
       expect(isFourConnected(cells)).toBe(true);
-      // line4 staircase, not bresenham's 6-cell diagonal
+      // A 4-connected staircase, not Bresenham's 6-cell diagonal.
       expect(cells.length).toBe(11);
     });
   });

@@ -104,6 +104,7 @@ function nextValidRoadState(state: GridState, roads: RoadLookup, road: PlacedObj
 
 export class EdgeCutTool implements Tool<typeof PLACEMENT_GRID> {
   readonly id = ToolType.EdgeCut;
+  magnifies(): boolean { return true; }
   grid(): typeof PLACEMENT_GRID { return PLACEMENT_GRID; }
   cursor(): CursorId { return 'edge-cut'; }
 

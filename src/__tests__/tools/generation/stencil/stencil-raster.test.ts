@@ -15,9 +15,7 @@ describe('the air a region can spare', () => {
   });
 
   it('gives it to the glyph where a region has none to spare', () => {
-    // The letter floor is above this now — eight cells, so that every letter is served and not only
-    // the ones made of bars — but the rule is about the ink a glyph needs rather than about the gate,
-    // and a five-cell square is exactly the E's own five rows with nothing left over.
+    // Below the eight-cell letter floor, a five-cell square is exactly the E's five rows.
     expect(textMinBox('E').height).toBe(8);
     expect(glyphFrame('E', box(5, 5))).toEqual({ cell: 2, margin: 0, mayShift: false });
     // An ideograph asks for thirteen, so a region of exactly that gives up its air the same way.
@@ -25,16 +23,14 @@ describe('the air a region can spare', () => {
   });
 
   it('will not shift a glyph it has no room to shift', () => {
-    // The search spends the air to move the glyph by up to half a cell. With none, every phase but
-    // the centred one pushes a sliver of stroke off the region and can only lose ink — measured at
-    // five cells, searching anyway costs N 0.94 -> 0.68, Z 0.82 -> 0.60, X 0.67 -> 0.53.
+    // The search spends the air to move the glyph by up to half a cell; with none, every phase but the
+    // centred one pushes stroke off the region and can only lose ink.
     for (const side of [3, 4, 5]) expect(glyphFrame('E', box(side, side)).mayShift, `${side} cells`).toBe(false);
     for (const side of [6, 8, 20]) expect(glyphFrame('E', box(side, side)).mayShift, `${side} cells`).toBe(true);
   });
 
   it('asks of the REGION\'s grid, so a magnified draw is the same picture larger', () => {
-    // The evaluation draws its reference four times over. Told nothing, it would find room for air a
-    // five-cell region does not have and come back a different size as well as a finer picture.
+    // The evaluation draws its reference at four times the resolution.
     const region = glyphFrame('E', box(5, 5));
     const magnified = glyphFrame('E', box(20, 20), 4);
     expect(magnified.margin, 'no air at four times a region that has none').toBe(0);
@@ -63,13 +59,11 @@ function magnified(rows: string[], scale: number): Stencil {
 }
 
 describe('the verdict on a glyph that has been drawn', () => {
-  // Everything up to the two drawings needs a canvas; everything after is arithmetic, and this is it.
-  // The letters themselves are judged on committed font rasters in `stencil-glyph.test.ts`.
+  // Real letters are judged on committed font rasters in `stencil-glyph.test.ts`.
   const SCALE = 4;
 
   it('refuses a picture with nothing in it', () => {
-    // A region too small for the word leaves the raster empty, and an empty picture crosses none of
-    // the drawing's pieces and fills none of its own box: every reading comes back perfect.
+    // A region too small for the word leaves the raster empty, and every ratio reading comes back perfect.
     const truth = magnified(['.###.', '.#...', '.###.', '.#...', '.###.'], SCALE);
     const verdict = judgeDrawn(drawn(['.....', '.....', '.....', '.....', '.....']), truth, SCALE);
     expect(verdict.ok).toBe(false);
@@ -93,9 +87,7 @@ describe('the verdict on a glyph that has been drawn', () => {
   });
 
   it('refuses one whose PIECES have run together, which a share cannot see', () => {
-    // Two letters side by side, touching along one row. The other two bars pass: nearly every row and
-    // column still crosses what it did (0.875 separation) and the shape is under the density bar
-    // (0.778), so this case is the pieces bar alone — take it out and the fusion is offered.
+    // Two letters touching along one row pass the separation and density bars; only the pieces bar refuses.
     const truth = magnified(['#.#', '#.#', '#.#'], SCALE);
     const verdict = judgeDrawn(drawn(['###', '#.#', '#.#']), truth, SCALE);
     expect(verdict.wholePieces).toBe(2);
@@ -106,7 +98,7 @@ describe('the verdict on a glyph that has been drawn', () => {
   });
 
   it('asks for density only where the drawing gave more than one stroke', () => {
-    // A bare stem fills its own box by definition, so the bar that catches a slab must not catch it.
+    // A bare stem fills its own box by definition.
     const rows = ['.#.', '.#.', '.#.'];
     const verdict = judgeDrawn(drawn(rows), magnified(rows, SCALE), SCALE);
     expect(verdict.density).toBe(1);

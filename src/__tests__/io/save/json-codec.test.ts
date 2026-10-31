@@ -62,7 +62,7 @@ describe('json-codec', () => {
 
   it('preserves objects through roundtrip', () => {
     const state = makeState(10, 10);
-    // must be a real catalog id — import validation drops unknown ones
+    // A real catalog id: import validation drops unknown ones.
     const obj = { ...makeObject('obj1', 4, 6, 90), catalogId: 'building-myhouse' };
     state.objects.set('obj1', obj);
 
@@ -78,8 +78,8 @@ describe('json-codec', () => {
   });
 
   it('preserves a half-cell anchor through roundtrip', () => {
-    // 7.5 is a JSON number, so the save format carries it with no version bump. What the load
-    // path had to learn is that it is legal — for a halfStep item only.
+    // 7.5 is a JSON number, so the save format carries it with no version bump; the load path
+    // accepts it for a halfStep item only.
     const state = makeState(16, 16);
     state.objects.set('r', { ...makeObject('r', 0, 0, 90), catalogId: 'ramp-plank', position: { x: 4.5, y: 9 } });
     state.objects.set('b', { ...makeObject('b', 0, 0, 0), catalogId: 'bridge-teak', position: { x: 6, y: 11.5 }, spanLength: 4 });
@@ -124,7 +124,7 @@ describe('json-codec', () => {
     const state = makeState(20, 20);
     const json = serialize(state);
     expect(json.length).toBeLessThan(5000);
-    // Verify RLE is working: 400 empty cells → "400*_"
+    // 400 empty cells run-length encode to "400*_".
     const parsed = JSON.parse(json) as { cells: string };
     expect(parsed.cells).toContain('*_');
   });
@@ -158,7 +158,7 @@ describe('json-codec', () => {
     expect(b.patchOnly).toBe(true); expect(b.elevation).toBe(2); expect(b.patchBase).toBe(1); expect(b.corners?.[0]).toBe('tri-NW');
   });
 
-  // Format-drift guard: the encoded grammar must not change without a version bump.
+  // The encoded grammar must not change without a version bump.
   // Captured from the real encoder (Mountain elev 3 at (1,1); Water elev 1 at (2,2)).
   it('encodes cells with the frozen grammar', () => {
     const state = makeState(4, 4);
@@ -195,7 +195,7 @@ describe('json-codec', () => {
     it('does not need a migration: a pre-camera save (no `camera` key) deserializes cleanly and reports no camera', () => {
       const state = makeState(4, 4);
       setTerrain(state, 1, 1, TerrainType.Mountain, 2);
-      const legacyJson = serialize(state); // exactly what a build before this feature wrote
+      const legacyJson = serialize(state); // the shape of a save without a camera
       expect(() => deserialize(legacyJson, state.template)).not.toThrow();
       const restored = deserialize(legacyJson, state.template);
       expect(restored.cells[1]![1]!.terrain?.elevation).toBe(2); // the map itself is untouched

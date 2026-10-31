@@ -4,11 +4,11 @@
  * labels and by the command bodies (`editor/commands/commands.ts`) alike.
  */
 import { isAnnotating, isContentMode, type BuildMode } from '../editing/edit-mode';
-import type { AnnotationTool, DesignMode } from '../editing/vocabulary';
+import type { AnnotationTool, DesignMode, ObjectBrush } from '../editing/vocabulary';
 import type { I18nKey } from '../../i18n/keys';
 import type { CommandId } from './registry';
 
-export const TOOLBAR_CONTEXTS = ['terrain', 'region', 'notes-zone', 'notes-erase', 'notes-chip', 'notes-route', 'notes-other'] as const;
+export const TOOLBAR_CONTEXTS = ['terrain', 'region', 'objects', 'notes-zone', 'notes-erase', 'notes-chip', 'notes-route', 'notes-other'] as const;
 export type ToolbarContext = typeof TOOLBAR_CONTEXTS[number];
 
 /** Where a contextual key acts: a toolbar's context, or the map, where no build toolbar is up and
@@ -20,12 +20,15 @@ export interface KeyContextInputs {
   selectingRegion: boolean;
   editMode: { mode: BuildMode };
   annotationTool: AnnotationTool;
+  /** The object shelf's brush bar stands in its place (EDIT-64). */
+  objectBrushBar: boolean;
 }
 
-/** Where a key acts, in precedence order: the region brush, the notes (by their armed tool), a
- *  terrain surface's build tools, or the map. */
+/** Where a key acts, in precedence order: the region brush, the object brush bar, the notes (by
+ *  their armed tool), a terrain surface's build tools, or the map. */
 export function keyContext(s: KeyContextInputs): KeyContext {
   if (s.selectingRegion) return 'region';
+  if (s.objectBrushBar && s.editMode.mode === 'object') return 'objects';
   if (isAnnotating(s)) {
     const tool = s.annotationTool;
     return tool === 'zone' || tool === 'erase' || tool === 'chip' || tool === 'route' ? `notes-${tool}` : 'notes-other';
@@ -52,6 +55,8 @@ export type KeyAction =
   | { do: 'open-build'; mode: DesignMode }
   /** Picks the region brush (with its remembered figure) or the region eraser. */
   | { do: 'region-tool'; tool: 'brush' | 'erase' }
+  /** Picks how an armed card places. */
+  | { do: 'object-brush'; brush: ObjectBrush }
   /** Toggles a notes tool. */
   | { do: 'note-tool'; tool: Exclude<AnnotationTool, 'none'> }
   | { do: 'smart-build' }
@@ -101,6 +106,10 @@ export const CONTEXT_KEYS: Readonly<Record<KeyContext, ContextKeys>> = {
     'tool.trim': { action: { do: 'open-build', mode: 'trim' } },
     'tool.smart': { action: { do: 'smart-build' } },
   },
+  objects: {
+    'tool.brush': { action: { do: 'object-brush', brush: 'place' }, label: 'objects.place' },
+    'tool.erase': { action: { do: 'object-brush', brush: 'paint' }, label: 'objects.paint' },
+  },
   region: {
     'tool.brush': { action: { do: 'region-tool', tool: 'brush' } },
     'tool.erase': { action: { do: 'region-tool', tool: 'erase' } },
@@ -118,8 +127,12 @@ const NOTE_TOOLS: readonly CommandId[] = [...TERRAIN_TOOLS, 'tool.measure'];
 const OPTIONS: readonly CommandId[] = ['tool.shape_cycle', 'tool.option_cycle'];
 const COMMANDS: ReadonlySet<string> = new Set([...NOTE_TOOLS, ...OPTIONS]);
 
+/** The brush bar keeps the terrain bar's keys: its two pills on 1 and 2, the shape on the terrain's 5. */
+const OBJECT_BINDINGS: ReadonlyMap<string, string> = new Map([['tool.brush', '1'], ['tool.erase', '2'], ['tool.shape_cycle', '5']]);
+
 /** Main pills and intermediate option groups count from 1; the final option group uses Q. */
 function makeBindings(context: ToolbarContext): ReadonlyMap<string, string> {
+  if (context === 'objects') return OBJECT_BINDINGS;
   const numbered: readonly CommandId[] = context === 'region' ? ['tool.brush', 'tool.erase', 'tool.shape_cycle']
     : context === 'terrain' ? [...TERRAIN_TOOLS, 'tool.shape_cycle']
     : context === 'notes-zone' || context === 'notes-erase' ? [...NOTE_TOOLS, 'tool.shape_cycle'] : NOTE_TOOLS;

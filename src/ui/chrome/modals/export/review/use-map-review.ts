@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../../../../state/store';
-import { MAP_REVIEW_UNAVAILABLE, reviewLiveMap, type MapReview } from '../../../../../editor/review/map-review';
+import { MAP_REVIEW_UNAVAILABLE, forgetMapReview, knownMapReview, reviewLiveMap, type MapReview } from '../../../../../editor/review/map-review';
 import { useStylizeVersions } from '../stylize/use-stylize-versions';
 import { useUiPreview } from '../../../../design/preview';
 import { useMapRevision } from '../../../../session/use-map-revision';
@@ -22,7 +22,8 @@ export function useMapReview(open: boolean, automatic: boolean, illustration: bo
     active.current?.controller.abort(); active.current = null; setPending(false);
   }, []);
   useEffect(() => { cancel(); return cancel; }, [open, map, key, cancel]);
-  const result = pictured ? CLEAR : snapshot?.map === map && snapshot?.key === key ? snapshot.result : null;
+  const known = map ? knownMapReview({ map, key }) : null;
+  const result = pictured ? CLEAR : snapshot?.map === map && snapshot?.key === key ? snapshot.result : known;
   const check = useCallback(async (): Promise<MapReview> => {
     if (!open || !map) return EMPTY;
     if (result) return result;
@@ -31,7 +32,7 @@ export function useMapReview(open: boolean, automatic: boolean, illustration: bo
     setPending(true);
     const promise = (async () => {
       try {
-        const verdict = await reviewLiveMap({ illustration, annotations: includeAnnotations }, controller.signal);
+        const verdict = await reviewLiveMap({ illustration, annotations: includeAnnotations }, controller.signal, { map, key });
         setSnapshot({ map, key, result: verdict });
         return verdict;
       } finally {
@@ -42,6 +43,6 @@ export function useMapReview(open: boolean, automatic: boolean, illustration: bo
     return promise;
   }, [open, map, key, result, illustration, includeAnnotations]);
   useEffect(() => { if (open && automatic && !result) void check().catch(() => {}); }, [open, automatic, result, check]);
-  const retry = useCallback(() => { cancel(); setSnapshot(null); }, [cancel]);
+  const retry = useCallback(() => { cancel(); forgetMapReview(); setSnapshot(null); }, [cancel]);
   return { result, pending, check, retry, cancel, revision: key, previewReady: !!result && result.status !== 'blocked' };
 }

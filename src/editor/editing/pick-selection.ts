@@ -36,7 +36,7 @@ export function pickSelection(): void {
   if (!material) return;
   batchStore(() => {
     const state = useEditorStore.getState();
-    state.setSelection([]);
+    state.setSelection([], { record: false });
     state.setSelectingRegion(false);
     if (material.mode === 'object') {
       state.setEditMode({ mode: 'object', arm: { kind: 'item', itemId: material.itemId } });

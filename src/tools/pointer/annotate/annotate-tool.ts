@@ -31,7 +31,7 @@ import type { AnnotateContext } from './channel';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
 import { gridCell, mapPoint, type GridCell, type MapPoint, cellSet } from '../../../core/grid/grids';
 import { chipAt, hitAt, zoneBodyAt } from './note-hits';
-import { CLICK_SLOP, copyNote, curveCells, figureCells, finePoint, footprint, layerEditable, run, stepAt, stepDistance } from './note-edits';
+import { copyNote, curveCells, figureCells, finePoint, footprint, layerEditable, run, stepAt, stepDistance, pressTravelled } from './note-edits';
 import { RouteGesture } from './route-gesture';
 import { EraseGesture } from './erase-gesture';
 import { MeasureGesture } from './measure-gesture';
@@ -95,6 +95,11 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
   /** Only a note selected before this press can start a move. */
   grabAt(coord: MacroCoord, ctx: AnnotateContext): boolean {
     return !ctx.state.annotations?.locked && this.selectHit(coord, ctx)?.selected === true;
+  }
+
+  /** Laying or erasing notes acts on the cells under the pointer; selecting and chips pick a note. */
+  magnifies(ctx: AnnotateContext): boolean {
+    return ctx.arming.annotationTool !== 'none' && ctx.arming.annotationTool !== 'chip';
   }
 
   selects(ctx: AnnotateContext): boolean {
@@ -302,7 +307,7 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
   private zoneMove(p: MacroCoord, ctx: AnnotateContext): void {
     const s = this.stroke!;
     if (!s.moved) {
-      if (Math.hypot(p.x - s.start.x, p.y - s.start.y) < CLICK_SLOP) return;
+      if (!pressTravelled(s.start, p, ctx)) return;
       s.moved = true;
       // Existing zones begin history only after the press becomes a paint stroke.
       if (s.zoneId) ctx.annotationEdit.begin();
@@ -410,7 +415,7 @@ export class AnnotateTool implements Tool<typeof PLACEMENT_GRID, AnnotateContext
     const dx = p.x - drag.start.x;
     const dy = p.y - drag.start.y;
     if (!drag.began) {
-      if (Math.abs(dx) + Math.abs(dy) < CLICK_SLOP) return;
+      if (!pressTravelled(drag.start, p, ctx)) return;
       if (!layerEditable(ctx)) { this.drag = null; return; }
       ctx.annotationEdit.begin();
       drag.began = true;

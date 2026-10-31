@@ -1,16 +1,11 @@
 // @vitest-environment jsdom
 /**
  * The object shelf: what a tab shows, what search finds, what a card arms, and what the badges say.
- *
- * The arming assertions are on the resolved tool, never on the inputs the click wrote: a card names
- * an item and the edit-mode selectors decide what the map holds, so a test that read the inputs back
- * would pass while the map was armed with nothing.
- *
- * The tabs are asserted against the live catalog rather than a copy of the six names, so a seventh
- * category arrives here as a failure rather than as a category with no way to reach it.
+ * Arming is asserted on the resolved tool, not the inputs the click wrote, and the tabs against the
+ * live catalog, so a new category fails here rather than going unreachable.
  */
 import { placeObjectCommand } from '../../../../../core/model/command-build';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
@@ -26,6 +21,9 @@ import { pickSelection } from '../../../../../editor/editing/pick-selection';
 import { generateObjectId } from '../../../../../core/model/object-id';
 import { ScaleProvider, fittedUiScale } from '../../../../../ui/design/scale';
 import { ObjectShelf } from '../../../../../ui/shell/bars/objects/ObjectShelf';
+import { InputModeProvider } from '../../../../../ui/design/input-mode';
+import { spec } from '../../../../_support/spec';
+import { GESTURE_TIMING } from '../../../../../platform/input/gesture-timing';
 import { CARD, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, planetShelfItems, shelfItems } from '../../../../../ui/shell/bars/objects/object-shelf';
 import { newMap } from '../../../../../editor/operations/map';
 import { editorPort } from '../../../../../editor/session/context';
@@ -54,7 +52,7 @@ function mount(itemId: string | null = null) {
   );
 }
 
-/** The card row, which is where "how many items are showing" is asked. */
+/** The card row. */
 function row(): HTMLElement {
   return document.getElementById('shell-shelf-row')!;
 }
@@ -63,7 +61,7 @@ function cardNames(): string[] {
   return within(row()).queryAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
 }
 
-/** The row of category names, which is the scroller the names travel in. */
+/** The scroller holding the category names. */
 function tabList(): HTMLElement {
   return screen.getAllByRole('tab')[0]!.parentElement as HTMLElement;
 }
@@ -105,8 +103,7 @@ describe('the shelf tabs', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
     const trees = getCatalogByCategory(ItemCategory.Tree).map((i) => localizedName(i.name, 'en'));
-    // The planting stands first in the two categories it plants, and in no other: a patch of
-    // bridges is not a thing the placement rules would ever accept.
+    // Smart planting leads only the two categories it plants.
     expect(cardNames()).toEqual(['Smart planting', ...trees]);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Bridges' }));
@@ -123,17 +120,12 @@ describe('the shelf tabs', () => {
   it('marks the chosen one with a stadium, whatever the label is wide', () => {
     mount();
     const mark = screen.getAllByTestId('shell-shelf-tab-mark')[0]!;
-    // A radius at least half the height is what a browser clamps to semicircular caps; the mark's
-    // width is its label's, so nothing here may depend on that.
+    // A radius of at least half the height gives semicircular caps at any label width.
     expect(Number.parseFloat(mark.style.borderRadius))
       .toBeGreaterThanOrEqual(Number.parseFloat(mark.style.height) / 2);
   });
 
-  /**
-   * The mark carries the choice on its own, exactly as the game's category row does. Giving the
-   * chosen word the active yellow too puts the one name the eye is looking for in the lightest
-   * colour the interface has, over an island bordered in sand of nearly that colour.
-   */
+  /** As in the game's category row; the active yellow on the chosen word would vanish against the sand. */
   it('marks the chosen one by the bar alone: every name is one colour on one outline', () => {
     mount();
     const words = screen.getAllByRole('tab').map((tab) => tab.firstElementChild as HTMLElement);
@@ -145,29 +137,12 @@ describe('the shelf tabs', () => {
     const filled = marks.filter((m) => m.style.background !== 'transparent');
     expect(filled).toHaveLength(1);
   });
-
-  it('stands the search field in the tab row rather than under it', () => {
-    mount();
-    const field = screen.getByRole('searchbox', { name: 'Search' }).parentElement as HTMLElement;
-    const tablist = screen.getAllByRole('tab')[0]!.parentElement as HTMLElement;
-    // Same flex line: the field is a sibling of the tab list, not a row of its own.
-    expect(field.parentElement).toBe(tablist.parentElement);
-    expect(field.previousElementSibling).toBe(tablist);
-  });
 });
 
-/**
- * The field is part of the row of names, so what is asserted here is its relationship to them: the
- * ring it takes as a pill, and that a long language cannot push it onto a line of its own. There is
- * no layout in jsdom, so these read the arrangement the row is laid out from.
- */
+/** jsdom has no layout, so these read the styles the row is laid out from. */
 describe('the search field belongs to the row of names', () => {
-  /**
-   * An outline follows its own element's corner, and the input is a rectangle laid over the drawn
-   * capsule: focused, it would be ringed as a rectangle. `pw-field-wrap` + `pw-field-input` is the pair
-   * `animations.css` moves the ring up with, and the box it lands on wears the plate's own corner,
-   * which is half its height because the drawing is a stadium.
-   */
+  /** The input is a rectangle over the drawn capsule; `pw-field-wrap` and `pw-field-input` move the
+   *  focus ring onto the wrapper (`animations.css`), which wears the stadium's corner. */
   it('is ringed as the pill it is drawn as when it takes focus', () => {
     expect(SEARCH.radius).toBe(SEARCH.h / 2);
 
@@ -179,38 +154,27 @@ describe('the search field belongs to the row of names', () => {
     expect(field.style.borderRadius).toBe(`${SEARCH.radius}px`);
   });
 
-  /** Russian, Thai and French names are half again as wide as the Chinese, and a wrapping row puts
-   *  the field on a line of its own at the shelf's left edge, under the first name. Nothing in this
-   *  row wraps: the names take the shortfall by scrolling, which is the block below. */
+  /** Russian, Thai and French names run half again as wide as Chinese; the names scroll instead. */
   it('never wraps onto a line of its own, whatever the names are wide', () => {
     mount();
-    const row = screen.getByRole('searchbox').parentElement!.parentElement as HTMLElement;
+    const row = screen.getByRole('searchbox').parentElement!.parentElement!.parentElement as HTMLElement;
     expect(row.style.flexWrap).toBe('nowrap');
     expect(tabList().style.flexWrap).toBe('nowrap');
   });
 
-  /** The field keeps its place because the names give way: the tab list is the shrinkable item and
-   *  can go to nothing, where the field is `flex: none`. A tab list that could not shrink below its
-   *  own content would push the field off the end of the row instead. */
+  /** The tab list shrinks to nothing if needed while the search group does not shrink. */
   it('keeps its place by making the names the side that gives way', () => {
     mount();
     expect(tabList().style.flexShrink).toBe('1');
     expect(Number.parseFloat(tabList().style.minWidth)).toBe(0);
-    expect((screen.getByRole('searchbox').parentElement as HTMLElement).style.flexShrink).toBe('0');
+    expect((screen.getByRole('searchbox').parentElement!.parentElement as HTMLElement).style.flexShrink).toBe('0');
   });
 });
 
-/**
- * The row of names travels sideways rather than onto a second line. Six names at one fixed size
- * are wider than the room beside the search field in every language but Chinese and Japanese, and
- * wrapping them grew the shelf upward into the map.
- *
- * jsdom lays nothing out, so the row can never actually overflow here: what these assert is the
- * arrangement that makes it scroll, and the behaviour, driven by declaring the two numbers the row
- * would have measured.
- */
+/** Outside Chinese and Japanese the names overflow the room beside the search field, and wrapping
+ *  would grow the shelf into the map. Overflow is simulated by declaring the row's scroll metrics. */
 describe('the row of names travels sideways', () => {
-  /** Give the row a width and a content wider than it, the way a long language would. */
+  /** Declares a content width beyond the row's own, as a long language would produce. */
   function overflowing(clientWidth = 400, scrollWidth = 900): HTMLElement {
     const list = tabList();
     Object.defineProperty(list, 'clientWidth', { value: clientWidth, configurable: true });
@@ -240,21 +204,16 @@ describe('the row of names travels sideways', () => {
     expect(list.scrollLeft).toBe(500);
   });
 
-  /**
-   * Six names is not forty cards: the item row below draws the design's own track and thumb, and a
-   * second bar directly above it would read as a second control for the same shelf. The row says it
-   * continues by fading at the end it can still travel toward, and says nothing when it cannot.
-   */
+  /** A second bar above the item row's would read as a second control; the names fade at an end
+   *  they can still travel toward instead. */
   it('draws no bar of its own, and fades only at an end it can reach', async () => {
     mount();
-    // One scrollbar in the shelf, and it belongs to the cards.
     expect(screen.getAllByRole('scrollbar')).toHaveLength(1);
 
     const list = overflowing();
-    expect(list.style.maskImage).toBe('');   // nothing measured yet: nothing to say
+    expect(list.style.maskImage).toBe('');   // nothing measured yet
 
-    // The row shares the item row's settle loop (`useScrollFade`), so a scroll event moves
-    // the target and the mask arrives over several frames rather than on the triggering event.
+    // `useScrollFade` settles the mask over several frames after a scroll event.
     fireEvent.scroll(list);
     await waitFor(() => {
       expect(list.style.maskImage).toContain('transparent 100%');   // room to the right
@@ -269,11 +228,8 @@ describe('the row of names travels sideways', () => {
     });
   });
 
-  /**
-   * A scroll container clips at its padding box, so a focus ring — 3 px of outline 2 px out — and
-   * the hover growth would be cut off the first and the last name. The slack is taken straight back
-   * off as margin, which is what keeps the shelf's left edge and the search field where they were.
-   */
+  /** A scroll container clips at its padding box, which would cut the focus ring and hover growth off
+   *  the end names; the padding is taken back as negative margin. */
   it('keeps room for a ring at its ends without moving either of them', () => {
     mount();
     const list = tabList();
@@ -281,25 +237,20 @@ describe('the row of names travels sideways', () => {
     expect(list.style.margin).toBe(`calc(0px - ${CONTROL_CLEARANCE})`);
   });
 
-  /**
-   * The same wheel rule the item row takes (`row-scroll.ts:wheelPush`), which is the point: the two
-   * rows stand one above the other, and a notch has to travel the same distance in whichever of
-   * them the pointer is over. Withholding the wheel here would also leave a name pushed off the end
-   * with no pointer reach at all.
-   */
+  /** The two rows stand one above the other, so a notch travels the same distance in either
+   *  (`scroll-input.ts:wheelPush`). */
   it('takes a wheel by the same rule the item row does', async () => {
     mount();
     const list = overflowing();
 
-    // The live zoom carries the window's fit below the design reference (jsdom's window is one).
+    // The live zoom includes the window's fit below the design reference.
     const zoom = ZOOM * fittedUiScale(window.innerWidth, window.innerHeight, 1);
     fireEvent.wheel(list, { deltaX: 0, deltaY: 100, deltaMode: 0 });
-    // The notch glides (row-scroll.ts:wheelGlider), so the distance rule is pinned where the glide
-    // settles: the run snaps to its exact target on arrival.
+    // The notch glides (`wheelGlider`) and snaps to its exact target on arrival.
     await waitFor(() => expect(list.scrollLeft).toBeCloseTo(100 / zoom, 6), { timeout: 2000 });
     expect(list.scrollLeft).toBeCloseTo(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 400, zoom)!.by, 6);
 
-    // A sideways wheel is the container's own scroll and the browser is already doing it.
+    // A sideways wheel is left to the browser's native scroll.
     const was = list.scrollLeft;
     fireEvent.wheel(list, { deltaX: 40, deltaY: 0, deltaMode: 0 });
     expect(list.scrollLeft).toBe(was);
@@ -328,14 +279,8 @@ describe('the row of names travels sideways', () => {
   });
 });
 
-/**
- * The item row wears the same soft edge the tab row does (`ui/primitives/scroll-fade.ts`), on the
- * row itself rather than a copy of the mechanism: jsdom lays nothing out, so what is worth pinning
- * is that the row's own scroll metrics decide the mask, driven by declaring them the way a real
- * overflow would report them. The mask arrives and leaves over a settle loop rather than popping,
- * so what a scroll event produces is asserted with `waitFor` against the real (unstubbed)
- * `requestAnimationFrame` rather than synchronously against the triggering event.
- */
+/** The item row's own scroll metrics decide its fade (`scroll-fade.ts`); the mask settles over real
+ *  animation frames, so it is awaited. */
 describe('the item row fades where it can still travel', () => {
   it('carries the mask only where scroll metrics say there is room', async () => {
     mount();
@@ -352,8 +297,7 @@ describe('the item row fades where it can still travel', () => {
       expect(list.style.maskImage).toContain('transparent 100%');
     });
 
-    // Fitted (no room to travel either way): the mask comes off rather than fading an end
-    // it cannot reach.
+    // Fitted: no room either way, no mask.
     Object.defineProperty(list, 'scrollWidth', { value: 400, configurable: true });
     Object.defineProperty(list, 'scrollLeft', { value: 0, configurable: true });
     fireEvent.scroll(list);
@@ -375,7 +319,6 @@ describe('search', () => {
     const names = cardNames();
     expect(names.length).toBeGreaterThan(0);
     expect(names.every((n) => /bridge/i.test(n))).toBe(true);
-    // No tab reads as chosen while a query stands.
     expect(screen.getAllByRole('tab').some((el) => el.getAttribute('aria-selected') === 'true')).toBe(false);
   });
 
@@ -415,18 +358,14 @@ describe('search', () => {
     );
   });
 
-  /** `state/catalog-search.ts:searchCatalog` fuzzy-matches rather than requiring a literal substring,
-   *  so a query missing one letter of a real word still finds it (the subsequence tier). */
   it('forgives a dropped letter (typo) via the subsequence fallback', () => {
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'aple' } });
     expect(cardNames()).toContain('Apple Tree');
   });
 
-  /** The catalog has no "cherry tree" — the peach tree's pink blossoms are the closest in-game
-   *  analog to what a visitor picturing sakura/cherry blossom is picturing, so that is where the
-   *  alias lives (`config/catalog/tree/tree-peach.json`). Aliases mix languages in one list, same
-   *  as the name fields already cross locales. */
+  /** The catalog has no cherry tree, so the peach tree carries the cherry blossom aliases, in
+   *  several languages in one list. */
   it('finds an item through an authored alias, in English', () => {
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'sakura' } });
@@ -440,10 +379,8 @@ describe('search', () => {
     expect(cardNames()).toContain('桃花树');
   });
 
-  /** Two fixtures share the exact same match: one on its own name, the other only through an
-   *  alias. `fuzzyScore` returns the identical raw number for both — what breaks the tie is which
-   *  kind of field produced it, and the name wins ("ranks by best score, name match outranks
-   *  equal alias match"). */
+  /** Both fixtures score the same with `fuzzyScore`, one on its name and one through an alias; the
+   *  name wins the tie. */
   it('ranks an item\'s own name above an equal-score match reached only through another item\'s alias', () => {
     __setCatalogItem({
       id: 'test-shelf-rank-name', category: ItemCategory.Flora,
@@ -461,11 +398,8 @@ describe('search', () => {
   });
 });
 
-/**
- * The bar under the row. Its geometry is computed from its props alone, so it can be asserted
- * without a layout: what matters is that the thumb's travel is the track less its own length, which
- * is the difference between reaching the end of the track and stopping a thumb-width short of it.
- */
+/** The bar's geometry comes from its props alone; the thumb travels the track less its own length,
+ *  so it reaches the end. */
 describe('the scrollbar', () => {
   function bar(scrollLeft: number, viewportW: number, contentW: number) {
     render(
@@ -505,13 +439,12 @@ describe('the scrollbar', () => {
     expect(half.width).toBeCloseTo(50, 3);
     cleanup();
 
-    // A catalog long enough to make the true fraction a sliver stops at the drawn thumb's length.
+    // A sliver of a fraction is clamped to the thumb's minimum length.
     const sliver = bar(0, 1000, 90_000);
     expect(sliver.width).toBeCloseTo((SCROLL.thumb.minW / SCROLL.track.w) * 100, 3);
   });
 
-  /** With everything in view the thumb is the whole track. An empty track reads as a control that
-   *  lost its handle, and "all of it is on screen" is as much a state as any other. */
+  /** An empty track would read as a control that lost its handle. */
   it('fills the track when there is nothing to scroll', () => {
     const full = bar(0, 1000, 1000);
     expect(full.left).toBe(0);
@@ -519,32 +452,21 @@ describe('the scrollbar', () => {
   });
 });
 
-/**
- * What a wheel does to the row, and how a scroll already running is added to. Neither can be
- * asserted through the component: jsdom lays nothing out, so a scroll container there has no room
- * to scroll at all.
- */
+/** `wheelPush` directly, since a jsdom scroll container has no room to scroll. */
 describe('scrolling the row', () => {
   it('turns a wheel that reports downward into travel along the row', () => {
     expect(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1)?.by).toBe(100);
-    // Lines and pages are what a wheel reports in outside Chromium; taken raw, a notch moves the
-    // row three pixels.
+    // Outside Chromium a wheel reports lines or pages; taken raw, a notch would move three pixels.
     expect(wheelPush({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 800, 1)!.by).toBeGreaterThan(100);
     expect(wheelPush({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 800, 1)!.by).toBe(800);
   });
 
-  /**
-   * The row is drawn inside the frame's zoom, so one of its pixels is bigger than one of the
-   * page's — and a wheel reports the page's. The browser scrolling this row from a horizontal wheel
-   * already divides them out; a vertical notch handed straight to `scrollLeft` does not, and
-   * travels a quarter further at the shipped zoom. Measured over both axes, that is the whole of
-   * the difference between them.
-   */
+  /** The row is drawn inside the frame's zoom while a wheel reports page pixels; the browser divides
+   *  the zoom out of a sideways scroll, so a vertical notch must be divided too. */
   it('turns the same notch into the same travel as the browser does sideways', () => {
     expect(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1.25)!.by).toBe(80);
     expect(wheelPush({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 800, 1.25)!.by)
       .toBeCloseTo(wheelPush({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 800, 1)!.by / 1.25);
-    // A page is the row's own width, so it is already in the row's pixels.
     expect(wheelPush({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 800, 1.25)!.by).toBe(800);
   });
 
@@ -554,17 +476,13 @@ describe('scrolling the row', () => {
     expect(wheelPush({ deltaX: 0, deltaY: 0, deltaMode: 0 }, 800, 1)).toBeNull();
   });
 
-  /** A trackpad's near-vertical swipe carries a pixel or two of sideways drift. Standing back from
-   *  the whole gesture for it leaves the row moving by that drift alone: 2 px where 80 was asked
-   *  for. The dominant direction decides, and the browser still adds the sideways part itself. */
+  /** A trackpad's near-vertical swipe drifts a pixel or two sideways; the dominant direction decides. */
   it('takes a swipe that is mostly downward, drift and all', () => {
     expect(wheelPush({ deltaX: 3, deltaY: 100, deltaMode: 0 }, 800, 1.25)!.by).toBe(80);
     expect(wheelPush({ deltaX: -3, deltaY: -100, deltaMode: 0 }, 800, 1.25)!.by).toBe(-80);
   });
 
-  /** A wheel says only how far, never how it should get there. Smoothing a notch is measurably
-   *  worse to use than the browser's own direct horizontal scroll of the same row: the travel
-   *  time lands between the hand and the row. */
+  /** The glide is the caller's business (`wheelGlider`). */
   it('says how far and nothing about gliding', () => {
     expect(Object.keys(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1)!))
       .toEqual(['by']);
@@ -600,7 +518,7 @@ describe('a card arms the item the map places', () => {
 
     fireEvent.click(within(row()).getByRole('button', { name: 'Apple Tree' }));
     expect(armedItemOf(useEditorStore.getState())).toBeNull();
-    // A null id in object mode resolves to rest: nothing armed, so the map takes no marks.
+    // Nothing armed in object mode resolves to the hand tool.
     expect(activeToolOf(useEditorStore.getState())).toBe(ToolType.Hand);
   });
 
@@ -661,10 +579,8 @@ describe('switching category puts down a card that does not belong there', () =>
     expect(activeToolOf(useEditorStore.getState())).toBe(ToolType.Hand);
   });
 
-  /** A search arms across categories on purpose (`shelfItems`), so an item picked while searching
-   *  can belong to a category other than the one the tabs remember. A tab click always clears the
-   *  query (`onSelect` above), which is the same call that checks the mismatch — so this is not a
-   *  second path, but it is worth pinning as its own case. */
+  /** A search reaches across categories, so the armed item can belong to a tab other than the
+   *  remembered one. */
   it('puts down an item armed from a cross-category search on a switch to another tab', () => {
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'apple' } });
@@ -684,7 +600,6 @@ describe('the smart-planting card arms per tab', () => {
     fireEvent.click(within(row()).getByRole('button', { name: 'Smart planting' }));
     expect(armedMacroOf(useEditorStore.getState())).toBe('patch-tree');
 
-    // Putting the card down disarms; switching tabs while nothing is armed offers the other id.
     fireEvent.click(within(row()).getByRole('button', { name: 'Smart planting' }));
     expect(armedMacroOf(useEditorStore.getState())).toBeNull();
 
@@ -753,15 +668,10 @@ describe('the planet session shelf', () => {
 });
 
 describe('the card is a picture and a count', () => {
-  /**
-   * The footprint and the turn mark are gone from the tile, and this is what would put them back:
-   * both are facts about a placement, answered by the ghost over the cell the item would land on,
-   * where they can be acted on. Printed on eighty tiles they are badges the eye sorts through to
-   * find the picture it came for.
-   */
+  /** Footprint and turn are placement facts the ghost shows on the map. */
   it('carries no footprint badge and no turn mark', () => {
     mount();
-    // A rotatable item, so the mark's absence is the card's doing and not the item's.
+    // A rotatable item, so a missing turn mark is the card's doing.
     const turns = getCatalogByCategory(ItemCategory.Building).find((i) => i.rotatable)!;
     expect(screen.queryAllByLabelText(`Takes ${turns.width} by ${turns.height} cells`)).toEqual([]);
 
@@ -771,8 +681,7 @@ describe('the card is a picture and a count', () => {
     expect(drawn.some((src) => /rotate/.test(src))).toBe(false);
   });
 
-  /** The name is how you tell two cabins apart, so it is one hover away rather than gone: drawn by
-   *  the shelf, since the row clips on both axes and a label above a tile would be cut in half. */
+  /** The name is drawn by the shelf, outside the row, since the row clips on both axes. */
   it('names the item the pointer reaches, above the row', async () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
@@ -787,22 +696,58 @@ describe('the card is a picture and a count', () => {
     fireEvent.pointerLeave(card);
     await waitFor(() => expect(screen.queryByTestId('shell-card-name')).toBeNull());
   });
+
+  spec('UI-29', 'in touch mode the selected card wears its name, and a hold carries rather than names', () => {
+    const apple = getCatalogByCategory(ItemCategory.Tree).find((i) => localizedName(i.name, 'en') === 'Apple Tree')!;
+    useEditorStore.getState().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: apple.id } });
+    render(
+      <I18nProvider>
+        <InputModeProvider inputMode="touch">
+          <ScaleProvider value={0.5}><ObjectShelf /></ScaleProvider>
+        </InputModeProvider>
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId('shell-card-name').textContent).toBe('Apple Tree');
+    fireEvent.pointerEnter(within(row()).getByRole('button', { name: localizedName(getCatalogByCategory(ItemCategory.Tree).find((i) => i.id !== apple.id)!.name, 'en') }));
+    expect(screen.getByTestId('shell-card-name').textContent).toBe('Apple Tree');
+  });
+
+  spec('UI-29', 'in touch mode a chooser card names itself when held, and the hold picks nothing', () => {
+    vi.useFakeTimers();
+    try {
+      const onPick = vi.fn();
+      const trees = getCatalogByCategory(ItemCategory.Tree);
+      render(
+        <I18nProvider>
+          <InputModeProvider inputMode="touch">
+            <ScaleProvider value={0.5}>
+              <ObjectShelf only={(i) => i.category === ItemCategory.Tree} pick={{ current: trees[0]!.id, onPick }} />
+            </ScaleProvider>
+          </InputModeProvider>
+        </I18nProvider>,
+      );
+      fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
+      const other = localizedName(trees[1]!.name, 'en');
+      const card = within(row()).getByRole('button', { name: other });
+      fireEvent.pointerDown(card, { pointerType: 'touch', button: 0 });
+      act(() => { vi.advanceTimersByTime(GESTURE_TIMING.touch.holdMs + 50); });
+      expect(screen.getAllByTestId('shell-card-name').map((el) => el.textContent)).toContain(other);
+      fireEvent.pointerUp(card, { pointerType: 'touch', button: 0 });
+      fireEvent.click(card, { detail: 1 });
+      expect(onPick).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 /**
- * The shelf is proportioned against the game, not against the design canvas.
- *
- * The drawing gives the tile 280 design px and the backing band 217, which lands a card barely
- * bigger than the band; against a category name whose size is fixed by this frame's own rule, that
- * reads as a row of stamps under a heading, with the item's picture half inside the dark bar. The
- * numbers below come from a photograph of the game's own shelf (a 1080-tall frame) instead: the
- * card is 119 px, the band shows 97 above the bottom edge, a name's ink is 29.
- *
- * They are asserted from the layout the shelf is built from rather than from a rendered box, since
- * jsdom lays nothing out — every one of them is a ratio between two numbers declared here.
+ * The shelf is proportioned against the game's own shelf (in a 1080-tall frame: a 119 px card, a band
+ * 97 px above the bottom edge, 29 px name ink), not the design canvas. Asserted as ratios of the
+ * declared layout, since jsdom lays nothing out.
  */
 describe('the item card against the band it stands out of', () => {
-  /** As they land, in css px. */
+  /** In CSS px. */
   const card = ROW.card * SHELF_SCALE;
   /** How far the card's own bottom edge stands above the window's, in css px: the scrollbar row,
    *  the gap over it, and the row's padding. */
@@ -813,11 +758,6 @@ describe('the item card against the band it stands out of', () => {
     expect(TEXT.shelfTab).toBeGreaterThan(MODE.label.size);
   });
 
-  /**
-   * A card proportioned against the design canvas stands half of the picture inside the dark
-   * bar; in the game it does not. The picture is centred on the card, so where it meets the band
-   * follows from the card's size and nothing else.
-   */
   it('keeps the item\'s picture mostly clear of the band, as the game does', () => {
     const iconH = CARD.icon.h * SHELF_SCALE;
     const iconBottom = cardBottom + (card - iconH) / 2;
@@ -831,13 +771,10 @@ describe('the item card against the band it stands out of', () => {
   });
 });
 
-/**
- * Swapping the whole row between two frames is the one change in this shelf that nothing says. The
- * row of cards is one keyed reel, so picking another name destroys it and remakes it, which is what
- * plays the motion.
- */
+/** The cards are one keyed reel, so choosing a category remakes it and plays the entrance. */
 describe('the row of cards arrives', () => {
-  const reel = () => row().firstElementChild as HTMLElement;
+  /** The element the cards stand in, which a category swap replaces. */
+  const reel = () => row().querySelector('[data-catalog-id]')!.parentElement as HTMLElement;
 
   it('makes a new reel for the category chosen', () => {
     mount();
@@ -847,8 +784,7 @@ describe('the row of cards arrives', () => {
     expect(MOTIONS['shelf.category.swap'], 'the swap names no motion').toBeTruthy();
   });
 
-  /** A search narrows the row under the visitor's own typing, which is its own feedback: replaying
-   *  an entrance per keystroke is noise, so every query is one reel. */
+  /** Typing is its own feedback, so a search stays one reel. */
   it('does not replay it on each letter of a search', () => {
     mount();
     const field = screen.getByRole('searchbox');

@@ -55,7 +55,7 @@ const welcome: HelpScene = {
         on: () => { view.clearSelection(); },
       },
       { press: true, strip: 0, follow: { catalogId: CABIN2 }, dur: 240 },
-      { press: false, pointer: 'place', move: [65.5, 114.5], dur: 900 },
+      { press: false, pointer: 'place', move: [67.5, 115.5], dur: 900 },
       {
         press: true, follow: null, strip: null, dur: 240,
         on: ({ world: w }) => { w.place(CABIN2, 65, 114, { plop: view.plop }); },

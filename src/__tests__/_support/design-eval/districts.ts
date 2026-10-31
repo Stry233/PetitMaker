@@ -1,10 +1,7 @@
 /**
- * Do the blocks read as blocks: the size, the shape and the frontage of the pieces the streets and
- * the terraces cut the planet into. The failure these readings exist to catch is a map whose regions
- * do not read as regions at all.
- *
- * Both readings are taken over `segmentRegions`, the scorecard's own region table. The legibility
- * reading counts a region as a district only where the smallest house stands inside it whole.
+ * Whether the blocks read as blocks: the size, shape and frontage of the regions `segmentRegions` cuts
+ * the planet into. The legibility reading counts a region as a district only where the smallest house
+ * fits inside it whole.
  */
 import type { GridState } from '../../../core/model/types';
 import { bandScore } from './reference';
@@ -15,10 +12,9 @@ import { getPlaceableByRole } from '../../../state/catalog';
 import { CLEARANCE } from '../../../core/game/profile';
 import { rectSum, summedArea } from '../../../tools/generation/designer/summed-area';
 
-/** The two references' own districts, read by `districtLegibility`: 36 of median 134 cells on the
- *  terraced planet (cut by its terraces), 18 of median 260 on the garden town (cut by its streets).
- *  Counting every region of 20 cells instead gives 70 of median 54 and 20 of median 256, so the
- *  numbers are definition-sensitive. The band spans both, because either partition is a legible map. */
+/** The references' districts by `districtLegibility`: 36 of median 134 cells on the terraced planet,
+ *  18 of median 260 on the garden town. The band spans both; the numbers depend on the district
+ *  definition (counting every region of 20 cells gives 70 of 54 and 20 of 256). */
 export const DISTRICT_COUNT_BAND = [18, 36] as const;
 
 export const DISTRICT_MEDIAN_BAND = [134, 260] as const;
@@ -36,11 +32,8 @@ export interface DistrictLegibility {
 }
 
 /**
- * The size distribution against both references' segmentation tables, plus how rectangular the
- * districts are — the references' blocks are outlined by straight streets and straight terrace
- * steps, so their pieces fill their own bounding boxes. Scored, not gated: a size histogram alone
- * cannot tell a block from a leftover of the same area, which is what the rectangularity is here
- * to start saying.
+ * District count and median size against the references, plus rectangularity, since a size histogram
+ * alone cannot tell a block from a leftover of the same area. Scored, not gated.
  */
 export function districtLegibility(state: GridState, g = readMap(state)): DistrictLegibility {
   const house = smallestHouse();
@@ -107,63 +100,46 @@ function holdsFootprint(region: Region, W: number, { w, h }: { w: number; h: num
   return false;
 }
 
-/** How far a cell may stand from pavement and still be part of a fronted block. Ten cells is one
- *  composed place's own depth (the references' places run 7x7 to 10x10), so a block every cell of
- *  which is within it is a block a walker meets the street from. */
+/** How far a cell may stand from pavement and still be part of a fronted block: one composed place's
+ *  depth (the references' places run 7x7 to 10x10). */
 export const FRONTAGE_REACH = 10;
 
-/** The shortest stretch of street along a boundary that reads as frontage rather than as a corner
- *  the pavement happens to touch. Six cells is the shortest street this generator lays. */
+/** The shortest street run along a boundary that counts as frontage rather than a touching corner:
+ *  the shortest street the generator lays. */
 const FRONTAGE_RUN_MIN = 6;
 
 /** The share of a block's cells that must stand within reach before the block counts as fronted. */
 const FRONTAGE_COVER = 0.9;
 
 /**
- * What the reading separates: the terraced planet reads 0.50 and the garden town 0.67, while a network
- * routed per lot reads 0.08 at richness 0.2 and 0.20 to 0.26 at richness 1. The threshold sits between
- * the two populations rather than at either's edge.
- *
- * It is a batch reading, not a per-map gate. A seed whose composition leaves one huge terrace has a
- * block no street layer can subdivide on its own, and it scores below this while being exactly the
- * map the composition asked for. Judge a batch mean against it; a hard per-map check here would fail
- * honest maps and pass nothing the other readings do not already catch.
+ * Sits between the references (terraced planet 0.50, garden town 0.67) and a network routed per lot
+ * (0.08 at richness 0.2, 0.20 to 0.26 at richness 1). Judge a batch mean against it, not each map: a
+ * composition that leaves one huge terrace legitimately scores below it.
  */
 export const FRONTED_SHARE_MIN = 0.35;
 
 export interface DistrictFrontage {
   districts: number;
-  /** Area share of districts that a street both outlines and reaches: a straight run of pavement
-   *  along the boundary, and every corner of the block within `FRONTAGE_REACH` of pavement. */
+  /** Area share of districts a street both outlines and reaches: a straight pavement run along the
+   *  boundary, and at least `FRONTAGE_COVER` of the cells within `FRONTAGE_REACH` of pavement. */
   frontedShare: number;
   /** Area share of districts a straight street run outlines, however deep they are. */
   outlinedShare: number;
   /** Share of open land within `FRONTAGE_REACH` of pavement: the access reading, block-blind. */
   accessShare: number;
   /**
-   * Area share standing in districts no street serves: fewer than half their cells within
-   * `FRONTAGE_REACH` of pavement.
-   *
-   * The access reading above is block-blind, so a map whose shortfall is spread thinly over every
-   * block reads the same as one carrying two enormous fields nothing goes near — and it is the second
-   * that a thin seed produces: large fields with no street near them. This is that failure as a
-   * number: the references read 1% and 0%.
+   * Area share in districts no street serves (fewer than half their cells within `FRONTAGE_REACH`):
+   * the large unreached fields a thin seed produces, which the block-blind access share cannot tell
+   * from a thinly spread shortfall. The references read 1% and 0%.
    */
   unservedShare: number;
   score: number;
 }
 
 /**
- * Do the districts front onto streets?
- *
- * The size and rectangularity of the blocks cannot answer that on their own — a map of few enormous
- * blocks scores better than the terraced reference on boundary straightness, since a blob bounded by a
- * long coast and a long terrace step is straight-edged and still reads as leftover ground. What
- * separates the references from such a map is the pair of facts a town block has and a leftover does
- * not: a street runs along it, and no part of it is far from that street.
- *
- * Both parts are needed and neither is sufficient. A map of few enormous blocks, each touching some
- * road somewhere, outlines 77% of its area by the first test alone and 8% by both together.
+ * Whether the districts front onto streets: a street runs along the block and little of it is far from
+ * that street. Both tests are needed; a map of few enormous blocks each touching some road outlines 77%
+ * of its area by the first alone and 8% by both.
  */
 export function districtFrontage(state: GridState, g = readMap(state)): DistrictFrontage {
   const { W, H } = g;
@@ -226,9 +202,7 @@ export function districtFrontage(state: GridState, g = readMap(state)): District
   };
 }
 
-/** Cells by their walking distance to the nearest paved cell, crossing, or the plaza; far past any
- *  reach where the map holds no pavement at all. Terrain is not an obstacle here: the reading is how
- *  far a block stands from its street, not whether a walker could climb there. */
+/** Step distance from each cell to the nearest paved cell, crossing or plaza, ignoring terrain. */
 function pavementDistance(g: MapMasks): Int16Array {
   const seeds: number[] = [];
   for (let i = 0; i < g.W * g.H; i++) if (g.paved[i] || g.crossing[i] || g.anchor[i]) seeds.push(i);

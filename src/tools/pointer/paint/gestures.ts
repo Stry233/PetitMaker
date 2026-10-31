@@ -10,9 +10,11 @@ import {
   brushCells, dragShapeCells, dragShapeSpans, expandLine, line4, snapShapeEnd, splineCells, type DragShapeKind,
 } from '../../../core/grid/shapes';
 import type { BuildShape } from '../../../state/editing/vocabulary';
+import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 
-/** Two clicks on one cell whose releases fall inside this window finish a chain. */
-const CHAIN_DOUBLE_CLICK_MS = 400;
+/** Two clicks on one cell whose releases fall inside the double-click window finish a chain; this is
+ *  the mouse window, for a release whose caller passes none (a headless context). */
+const CHAIN_DOUBLE_CLICK_MS = GESTURE_TIMING.pc.doubleTapMs;
 
 const same = (a: MacroCoord, b: MacroCoord): boolean => a.x === b.x && a.y === b.y;
 
@@ -64,8 +66,9 @@ export class AnchorChain {
   }
 
   /** `time` is the release event's timestamp (`Event.timeStamp`), so a handler that runs late on a
-   *  busy device does not stretch the gap between two taps past the window. */
-  up(at: MacroCoord, time: number = this.now()): ChainRelease {
+   *  busy device does not stretch the gap between two taps past the window; `windowMs` is the
+   *  releasing pointer's double-click window (`ToolContext.doubleTapMs`). */
+  up(at: MacroCoord, time: number = this.now(), windowMs: number = CHAIN_DOUBLE_CLICK_MS): ChainRelease {
     this.pressAdded = false;
     const first = this.anchors[0];
     if (this.anchors.length === 1 && first && !same(first, at)) {
@@ -82,7 +85,7 @@ export class AnchorChain {
     // The release says a press was a click; recording it on the press would let one click's own
     // release read it as the second of a pair.
     const prev = this.lastClick;
-    if (prev && time - prev.time <= CHAIN_DOUBLE_CLICK_MS && same(prev.at, at) && this.anchors.length >= 2) {
+    if (prev && time - prev.time <= windowMs && same(prev.at, at) && this.anchors.length >= 2) {
       return 'finish';
     }
     this.lastClick = { at: { x: at.x, y: at.y }, time };

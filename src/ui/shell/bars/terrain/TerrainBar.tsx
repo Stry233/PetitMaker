@@ -1,18 +1,18 @@
+import type { ReactNode } from 'react';
 import { isSurfacePrint } from '../../../../core/model/traits';
 import type { AutoEdgeCut, EraserShape } from '../../../../state/editing/vocabulary';
-import { brushSizeOf, buildShapeOf, buildToolOf, toggleBuildTool, type BuildShape, type BuildTool, type ContentArming } from '../../../../state/editing/edit-mode';
+import { buildShapeOf, buildToolOf, toggleBuildTool, type BuildShape, type BuildTool, type ContentArming } from '../../../../state/editing/edit-mode';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { tourTargetAttr } from '../../../chrome/tour/steps';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { modeLabelKey } from '../../frame';
-import { BrushSizeControl } from '../BrushSizeControl';
+import { LiveBrushSize } from '../BrushSizeControl';
 import { MaterialStrip, RoadStyles, type MaterialSwatch } from './RoadStyles';
 import { SmartBuild } from './SmartBuild';
 import { AutoTrim } from './AutoTrim';
-import { ToolPill, toolPillCentre } from '../ToolPill';
+import { ToolPill, toolPillCentre, useCellPill } from '../ToolPill';
 import { ShapeOptions } from '../ShapeOptions';
-import { TOOL_CELLS } from '../terrain-cells';
 import type { ContentType } from '../../../../state/editing/edit-mode';
 import { ToolbarRow, type ToolbarSlot, type ToolbarSpec } from '../toolbar-morph';
 import { ELEVATION_COLORS, ZONE_COLORS } from '../../../../core/model/palette';
@@ -26,7 +26,8 @@ const noop = () => {};
 
 interface TerrainRowProps {
   surface: ContentType; activeTool: BuildTool; activeShape: BuildShape; eraserShape: EraserShape;
-  brushSize: number; onBrushSize: (n: number) => void;
+  /** The size slider the row ends with where the armed tool takes a size. */
+  sizeControl: ReactNode;
   onSelect: (arm: ContentArming) => void;
   autoEdgeCut?: AutoEdgeCut; onAutoEdgeCut?: (mode: AutoEdgeCut) => void;
   onEraserShape?: (shape: EraserShape) => void;
@@ -35,10 +36,10 @@ interface TerrainRowProps {
 }
 
 /** The terrain tool row's slots, shared by the editor and Help figures. */
-function useTerrainRow({ surface, activeTool, activeShape, eraserShape, brushSize, onBrushSize, onSelect,
+function useTerrainRow({ surface, activeTool, activeShape, eraserShape, sizeControl, onSelect,
   autoEdgeCut = 'off', onAutoEdgeCut = noop, onEraserShape = noop, basicTools = false,
 }: TerrainRowProps): Omit<ToolbarSpec, 'rows'> {
-  const t = useT();
+  const cellPill = useCellPill(surface);
   const drawing = activeTool === 'brush' || activeTool === 'shape';
   const erasing = activeTool === 'erase';
   const shape = erasing ? eraserShape : activeShape;
@@ -48,12 +49,12 @@ function useTerrainRow({ surface, activeTool, activeShape, eraserShape, brushSiz
   const centre = (id: string) => toolPillCentre(ids.indexOf(id), activePill ? ids.indexOf(activePill) : -1);
   const toggle = (tool: 'brush' | 'erase' | 'trim') => onSelect(toggleBuildTool({ tool: activeTool, shape: activeShape }, tool));
   const pills: ToolbarSlot[] = [
-    { id: 'brush', node: <ToolPill helpTarget={{ page: 'terrain', anchor: 'terrain-brush' }} glyph={TOOL_CELLS[0]!.glyph[surface]} label={t('terrain.brush')} commandId="tool.brush"
+    { id: 'brush', node: <ToolPill helpTarget={{ page: 'terrain', anchor: 'terrain-brush' }} tourTarget="brush" {...cellPill('draw')}
       active={drawing} centre={centre('brush')} onSelect={() => toggle('brush')}/> },
-    { id: 'eraser', node: <ToolPill helpTarget={{ page: 'terrain', anchor: 'terrain-eraser' }} glyph={TOOL_CELLS[1]!.glyph[surface]} label={t('design.eraser')} commandId="tool.erase"
+    { id: 'eraser', node: <ToolPill helpTarget={{ page: 'terrain', anchor: 'terrain-eraser' }} tourTarget="eraser" {...cellPill('erase')}
       active={erasing} centre={centre('eraser')} onSelect={() => toggle('erase')}/> },
     ...(basicTools ? [] : [
-      { id: 'trim', node: <div {...helpTargetAttr('trim')}><ToolPill glyph={TOOL_CELLS[2]!.glyph[surface]} label={t('design.edge_cut')} commandId="tool.trim"
+      { id: 'trim', node: <div {...helpTargetAttr('trim')}><ToolPill {...cellPill('trim')}
         active={activeTool === 'trim'} centre={centre('trim')} onSelect={() => toggle('trim')}/></div> },
       { id: 'smart', node: <SmartBuild surface={surface} centre={centre('smart')} active={activeTool === 'smart'}/> },
     ]),
@@ -67,7 +68,7 @@ function useTerrainRow({ surface, activeTool, activeShape, eraserShape, brushSiz
   ] : [];
   return {
     pills, activePill, pillAttrs: { ...tourTargetAttr('bar'), ...helpTargetAttr('terrain') }, options,
-    trailing: sized ? [{ id: 'size', end: true, node: <BrushSizeControl value={brushSize} onChange={onBrushSize}/> }] : [],
+    trailing: sized ? [{ id: 'size', end: true, sizeSlider: true, node: sizeControl }] : [],
     frameAttrs: helpTargetAttr('terrain'),
   };
 }
@@ -82,8 +83,6 @@ export function useTerrainToolbar(surface: ContentType): ToolbarSpec {
   const activeTool = useEditorStore(buildToolOf);
   const activeShape = useEditorStore(buildShapeOf);
   const setEditMode = useEditorStore((s) => s.setEditMode);
-  const brushSize = useEditorStore(brushSizeOf);
-  const setBrushSize = useEditorStore((s) => s.setBrushSize);
   const eraserShape = useEditorStore((s) => s.eraserShape);
   const setEraserShape = useEditorStore((s) => s.setEraserShape);
   const autoEdgeCut = useEditorStore((s) => s.autoEdgeCut);
@@ -92,7 +91,7 @@ export function useTerrainToolbar(surface: ContentType): ToolbarSpec {
   const session = useEditorStore((s) => s.planetSession !== null);
   const row = useTerrainRow({
     surface, activeTool, activeShape, eraserShape, onEraserShape: setEraserShape,
-    autoEdgeCut, onAutoEdgeCut: setAutoEdgeCut, brushSize, onBrushSize: setBrushSize, onSelect: (arm) => setEditMode({ arm }),
+    autoEdgeCut, onAutoEdgeCut: setAutoEdgeCut, sizeControl: <LiveBrushSize of="brush"/>, onSelect: (arm) => setEditMode({ arm }),
     basicTools: session || (surface === 'road' && isSurfacePrint(getCatalogItem(tileMaterial))),
   });
   const rows: ToolbarSlot[] = [

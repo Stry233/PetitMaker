@@ -1,15 +1,8 @@
 /**
- * A painted region is a boundary the agent cannot cross, on every write path. `runStroke` and
- * `runStrokeBody` (the callback variant `build_road`, `scatter_objects`, `rotate_object` and the four
- * director tools use) both read every applied command back off the stroke once its body settles and
- * check that list against the same test. One rule, two entry points.
- *
- * The check reads commands as applied — the bridge and ramp traits snap position during
- * validation, so where a command finally lands is only knowable once it has run.
- *
- * `build_road_network` and `frame_crossing` plan from a whole-map terrain analysis, so for them the
- * region is also an input: confined to it, they design inside it instead of designing island-wide
- * and being refused. Their cases below assert the containment rather than a refusal.
+ * A painted region is a boundary the agent cannot cross on any write path: `runStroke` and the callback
+ * variant `runStrokeBody` both check every command as applied, since bridge and ramp snapping moves a
+ * command during validation. `build_road_network` and `frame_crossing` also take the region as a planning
+ * input, so their cases assert containment rather than refusal.
  */
 import { describe, it, expect } from 'vitest';
 import { runStroke } from '../../../agent/tools/stroke';
@@ -56,7 +49,7 @@ describe('with a region painted', () => {
   });
 
   it('refuses an edit that reaches outside, and applies NOTHING', () => {
-    // All-or-nothing on purpose: a half-applied edit makes undo restore a state the user never saw.
+    // All or nothing: a half-applied edit would make undo restore a state the user never saw.
     const { state, executor, deps } = world(REGION);
     const before = executor.historyDepth();
     const r = runStroke(deps, [paint({ x: 2, y: 2 }, { x: 9, y: 9 })], (n) => `ok ${n}`);
@@ -108,7 +101,6 @@ describe('objects are measured by their footprint', () => {
   const strays = (content: string) => [...content.matchAll(/\((\d+),(\d+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
 
   it('[ASST-11] refuses an object whose anchor is inside but whose body is outside', () => {
-    // A building whose corner is inside and whose body is outside is outside.
     const free = grassWorld([]);
     expect(runStroke(free.deps, [{ type: CommandType.PlaceObject, object: cabin(4, 4) }], (n) => `ok ${n}`).isError, 'the cabin stands there unconfined').toBe(false);
 
@@ -134,9 +126,8 @@ describe('objects are measured by their footprint', () => {
 });
 
 describe('a half-anchored ramp partially over the region boundary', () => {
-  // The plateau/shoulder/water lane from half-step-detection.test.ts's case (a): a ramp anchored
-  // at (4.5, 10) can only snap at the half x-anchor, landing at { x: 4.5, y: 9 } — width 2 (covers
-  // x = 4, 5, 6), height 2 (covers y = 9..10).
+  // A plateau with a shoulder and a water lane: a ramp anchored at (4.5, 10) snaps to { x: 4.5, y: 9 },
+  // covering x = 4 to 6 and y = 9 to 10.
   function rampMap(size = 20): GridState {
     const state = makeState(size, size);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) setZone(state, x, y, CellZone.Grass);
@@ -158,8 +149,7 @@ describe('a half-anchored ramp partially over the region boundary', () => {
   }
 
   it('refuses when the snapped footprint reaches outside it, even by one half-covered column', () => {
-    // Region columns 1..5 only — the ramp's far column (x = 6, covered by the half x-anchor's
-    // floor/ceil expansion) is just outside it.
+    // Columns 1 to 5: the ramp's far column x = 6, covered by the half anchor, is just outside.
     const region: MacroCoord[] = [];
     for (let y = 1; y <= 12; y++) for (let x = 1; x <= 5; x++) region.push({ x, y });
     const { state, executor, deps } = place(region);
@@ -182,7 +172,7 @@ describe('a half-anchored ramp partially over the region boundary', () => {
   });
 });
 
-/* ── the callback variant: the same rule over what the body actually issued ── */
+/* The callback variant: the same rule over what the body actually issued. */
 
 const call = (name: string, input: Record<string, unknown>) => ({ id: 't1', name, input });
 
@@ -357,7 +347,7 @@ describe('frame_crossing', () => {
   });
 
   it('scans only the region, so a seam outside it is never touched', async () => {
-    const region = rect(1, 1, 6, 6); // low ground only — the seam is nowhere near it
+    const region = rect(1, 1, 6, 6); // low ground only; the seam is nowhere near it
     const { state, deps } = world(region, 32, 32);
     cliff(state);
     const r = await executeToolCall(call('frame_crossing', { x: 15, y: 11 }), deps);

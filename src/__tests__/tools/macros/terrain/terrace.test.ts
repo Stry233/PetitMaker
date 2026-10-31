@@ -1,13 +1,6 @@
 /**
- * The nested-ring growth engine, pinned on live cells.
- *
- * The headline is a proof rather than a case: every disc from radius 4 to 8, both step widths and
- * every peak from 1 to 8 is built, painted straight into the cells and handed to the real rule
- * registry. Nothing peels, nothing retries, so a failure here is the shape being wrong and not a
- * repair pass being missing.
- *
- * Rings are painted in ascending tier order. They are cumulative, so the last ring that claims a
- * cell is the highest one, and the painted state is exactly what the caller would commit.
+ * The nested-ring terrace engine on live cells. Rings are painted in ascending tier order straight
+ * into the cells and judged by the real rule registry with no repair pass, so a failure is the shape.
  */
 import { describe, expect, it } from 'vitest';
 import { createDefaultTerrainCell } from '../../../../core/model/grid-model';
@@ -18,8 +11,8 @@ import {
 } from '../../../../tools/macros/terrain/terrace';
 import { makeState } from '../../../_support/map-state';
 
-/** Wide enough that a radius-8 disc keeps 3 cells of grass between itself and the grid edge: a
- *  mountain at the border has no 3x3 to stand on and would fail for the map's sake, not the shape's. */
+/** Wide enough that a radius-8 disc keeps 3 cells of grass from the grid edge, where a mountain has no
+ *  3x3 to stand on. */
 const SIZE = 24;
 const CENTRE: MacroCoord = { x: 12, y: 12 };
 
@@ -52,9 +45,7 @@ describe('terraceRings', () => {
   it('a raise is legal by construction', () => {
     const registry = createDefaultRegistry();
     for (let radius = 4; radius <= 8; radius++) {
-      // 0 and 1 ride along because they are clamped: they are the only cases where the sweep is
-      // testing the floor rather than the ring math, and without them a floor lowered back to 1
-      // leaves this proof green.
+      // 0 and 1 are clamped, so they test the inset floor rather than the ring math.
       for (const inset of [0, 1, 2, 4]) {
         for (let peak = 1; peak <= 8; peak++) {
           const state = makeState(SIZE, SIZE);
@@ -78,7 +69,6 @@ describe('terraceRings', () => {
       expect(ring.cells).toEqual(base);
     }
     expect(rings[FLAT_TOP]!.cells.length).toBeLessThan(base.length);
-    // A summit ring is never smaller than three cells: anything less is a pixel on a hillside.
     for (const ring of rings.slice(FLAT_TOP)) expect(ring.cells.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -98,9 +88,8 @@ describe('terraceRings', () => {
   });
 
   it('the footprint is the ceiling', () => {
-    // Radius 6, not 4: a radius-4 disc at this inset erodes away on its first step above the flat
-    // top, so it would stop at FLAT_TOP and prove nothing about where erosion runs out. This one
-    // climbs a step, then runs out of core.
+    // Radius 6, not 4: a radius-4 disc at this inset stops at FLAT_TOP; this one climbs a step, then
+    // runs out of core.
     const base = disc(CENTRE, 6);
     const first = terraceRings({ base, peak: 8, inset: 4, width: SIZE, height: SIZE });
     expect(first.length).toBeGreaterThan(FLAT_TOP);
@@ -117,10 +106,8 @@ describe('terraceRings', () => {
   });
 
   it('one summit, not two', () => {
-    // Two equal lobes on a narrow bar. Equal, because with one lobe larger the small one erodes
-    // away before the top tier is reached and the fixture passes with no component search at all.
-    // At this size both lobes survive to the summit, so keeping every component would answer with
-    // two of them.
+    // Two equal lobes on a narrow bar: both survive to the summit, so keeping every component would
+    // answer with two. With one lobe larger the small one erodes first and proves nothing.
     const base = [...disc({ x: 7, y: 12 }, 4), ...disc({ x: 16, y: 12 }, 4), { x: 11, y: 12 }, { x: 12, y: 12 }];
     const rings = terraceRings({ base, peak: 8, inset: 2, width: SIZE, height: SIZE });
     expect(rings.length).toBeGreaterThan(FLAT_TOP);
@@ -139,9 +126,8 @@ describe('terraceRings', () => {
   });
 
   it('an inset below two is an inset of two', () => {
-    // 0 would stack a vertical wall; 1 encloses only the 4-neighbours, so a diagonal falls off the
-    // un-eroded base at the first eroded tier and breaks V-MTN-03 (measured while this landed: 25
-    // of 40 radius-by-peak discs, every failure at tier 4). Both clamp to the real floor.
+    // 0 would stack a vertical wall; 1 encloses only the 4-neighbours, so a diagonal falls off the base
+    // at the first eroded tier and breaks V-MTN-03.
     const base = disc(CENTRE, 8);
     const two = terraceRings({ base, peak: 8, inset: 2, width: SIZE, height: SIZE });
     for (const below of [0, 1]) {

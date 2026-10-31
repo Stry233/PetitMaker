@@ -119,6 +119,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'objects-place', titleKey: 'help.objects.place_t', bodyKeys: ['help.objects.place_b1', 'help.objects.place_b2', 'help.objects.place_b3'],
         figure: { kind: 'demo', scene: 'spacing' },
       },
+      { kind: 'prose', anchor: 'objects-batch', titleKey: 'help.objects.batch_t', bodyKeys: ['help.objects.batch_b1', 'help.objects.batch_b2', 'help.objects.batch_b3'] },
       {
         kind: 'prose', anchor: 'objects-rotate', titleKey: 'help.objects.rotate_t', bodyKeys: ['help.objects.rotate_b1'],
         figure: { kind: 'demo', scene: 'rotate' },
@@ -178,6 +179,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'select-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       { kind: 'prose', anchor: 'select-multi', titleKey: 'help.select.multi_t', bodyKeys: ['help.select.multi_b1'] },
       { kind: 'prose', anchor: 'select-group', titleKey: 'help.select.group_t', bodyKeys: ['help.select.group_b1', 'help.select.move3d_b1'] },
+      { kind: 'prose', anchor: 'select-copy', titleKey: 'help.select.copy_t', bodyKeys: ['help.select.copy_b1', 'help.select.copy_b2', 'help.select.copy_b3'] },
       {
         kind: 'prose', anchor: 'select-rotate', titleKey: 'help.select.rotate_t', bodyKeys: ['help.select.rotate_b1'],
         figure: { kind: 'demo', scene: 'grouprotate' },

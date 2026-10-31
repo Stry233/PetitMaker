@@ -79,8 +79,8 @@ describe('searchCatalog', () => {
   });
 
   it('ranks an item whose own NAME matches above one that only matches via alias, on an exact tie', () => {
-    // Both fields are the exact string "Kappa", so `fuzzyScore` returns the identical raw number
-    // for each — the only thing that can separate them is which kind of field produced it.
+    // Both fields are the exact string "Kappa", so `fuzzyScore` ties and only the kind of field can
+    // separate them.
     __setCatalogItem({
       id: 'test-rank-by-name', category: ItemCategory.Flora,
       name: { en: 'Kappa' }, icon: 'flower',
@@ -110,7 +110,7 @@ describe('searchCatalog', () => {
   it('finds the red set by colour in Chinese, including an item whose own name carries no colour word', () => {
     const ids = searchCatalog('红', 'zh').map((i) => i.id);
     expect(ids).toContain('flower-sunflower-red'); // name match
-    // The bamboo cabin's name names a building, not a colour: this is a colour ALIAS-only match.
+    // The bamboo cabin's name names a building, not a colour: this is a colour alias-only match.
     expect(ids).toContain('building-bamboo-cabin');
   });
 
@@ -222,7 +222,7 @@ describe('category search terms', () => {
       .toBeLessThan(categorySearchTerms('fr')(ItemCategory.Tree).indexOf('木'));
   });
 
-  // The category words search answered to before they moved into the locale tables.
+  // English and Chinese category words that every locale's terms contain.
   const earlierTerms: ReadonlyArray<readonly [ItemCategory, readonly string[]]> = [
     [ItemCategory.Building, ['building', '建筑', 'house', 'home', 'cabin', '房', '屋', '家']],
     [ItemCategory.Tree, ['tree', '树木', '树', '木']],

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * An imported save file's camera waits for the view that draws the installed map. The 2D view frames
- * a new map when it draws it, so a pose set straight onto the view before that draw was lost; the
+ * a new map when it draws it, so a pose set straight onto the view before that draw is lost; the
  * import parks it for the map, as the autosave restore does.
  */
 import { beforeEach, describe, expect, it } from 'vitest';

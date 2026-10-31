@@ -1,18 +1,9 @@
 /**
- * How well a small region reproduces a picture, measured rather than argued.
- *
- * The harness reconstructs: a fixture is drawn at source resolution, read into a stencil at the cell
- * count a small region gives (20x20 to 40x40, the sizes reported as losing the shape), matched to a
- * palette, and the result compared back against the source's own area average per cell. The distance
- * is the mean over cells in a luma-weighted RGB space, 0 for a perfect reproduction and about 200 for
- * two unrelated pictures.
- *
- * Two numbers, because dithering is not meant to win per cell: a dithered cell is deliberately the
- * wrong colour so that its neighbourhood is the right one. So the per-cell distance is reported and
- * the 2x2-averaged one — the one the eye actually takes — is what the thresholds are set on.
- *
- * The fixtures are ours: three pieces of pixel art written as characters and a colour key
- * (`_stencil-art.ts`). Fixed shapes, fixed colours, no fetching and nothing borrowed.
+ * How well a small region (20x20 to 40x40 cells) reproduces a picture. A fixture is read into a
+ * stencil, matched to a palette and compared with the source's area average per cell, as a mean
+ * luma-weighted RGB distance (0 is perfect, about 200 is unrelated). A dithered cell is deliberately
+ * wrong so its neighbourhood is right, so distances are taken over 2x2 blocks, as the eye reads them.
+ * The fixtures are pixel art written as characters (`_stencil-art.ts`).
  */
 import { describe, it, expect } from 'vitest';
 import { matchWithDiffusion, RAMP_DIFFUSION, stencilFromPixels, type SourcePixels } from '../../../../tools/generation/stencil/stencil-sample';
@@ -20,9 +11,8 @@ import { nearestByColor, nearestTerrain, terrainPalette, type Stencil } from '..
 import { FACE, HEART, LETTER, pixels, type Art } from './_stencil-art';
 
 /**
- * Point sampling, the baseline the area-integrating reading is measured against: one source pixel per
- * destination quadrant, taken at its centre. It is what a canvas downscaling by a large factor does,
- * and at a small cell count it drops whole features of the picture.
+ * The baseline: one source pixel per destination quadrant, at its centre, as a canvas downscaling by
+ * a large factor does. At a small cell count it drops whole features.
  */
 function pointSampled(src: SourcePixels, box: { width: number; height: number }): Stencil {
   const { width, height } = box;
@@ -54,20 +44,16 @@ function pointSampled(src: SourcePixels, box: { width: number; height: number })
   return { width, height, coverage, color, quad };
 }
 
-/** What the picture truly is at this cell count: the area average of the source under each cell,
- *  asked for explicitly, since the sampler's own reading of a drawing is deliberately not that. */
+/** The area average of the source under each cell, asked for explicitly because the sampler reads a
+ *  drawing by majority. */
 function truth(src: SourcePixels, box: { width: number; height: number }): Stencil {
   return stencilFromPixels(src, box, { nature: 'photographic', background: false })!;
 }
 
 /**
- * The reading these cases are about: integrate the area, keep the whole footprint.
- *
- * Asked for explicitly, because it is one of the two the sampler chooses between and this file
- * measures it against point sampling — the reduction, and nothing else. A drawing is read by
- * majority in production and a backdrop is dropped from it, and both of those change the answer in
- * ways that are meaningless against an area-average truth (a majority reading is deliberately not
- * the mean). What they do to the map is measured where it can be: `stencil-image.test.ts`.
+ * The area-integrating reading, forced so only the reduction is compared with point sampling; the
+ * production reading of a drawing (by majority, backdrop dropped) is measured in
+ * `stencil-image.test.ts`.
  */
 function sampled(src: SourcePixels, box: { width: number; height: number }): Stencil {
   return stencilFromPixels(src, box, { nature: 'photographic', background: false })!;
@@ -110,8 +96,7 @@ function reconstructionDistance(got: number[], want: Stencil, blur: number): num
   return n === 0 ? 0 : total / n;
 }
 
-/** A palette with a real spread of hues, standing in for the item catalogue: the colours a picture
- *  can actually be built from. Fixed here so the numbers below mean the sampler, not the catalog. */
+/** A spread of hues standing in for the catalog, fixed so the thresholds measure the sampler. */
 const ITEMS = [
   0xffffff, 0xdcd7c9, 0xa8a29a, 0x555049, 0x201c18,
   0xd44a5a, 0xf2a0b4, 0x8d2a3a, 0xf5c542, 0xe08a2c,
@@ -138,9 +123,8 @@ function reproduce(stencil: Stencil, palette: readonly { rgb: number }[], diffus
 const FIXTURES: readonly [string, Art][] = [['heart', HEART], ['face', FACE], ['letter', LETTER]];
 const SIZES = [20, 28, 40];
 
-/** The committed thresholds, in the distance units above: no fixture at any size is worse than the
- *  first, and reading by area with diffusion is better than point-sampling and rounding by at least
- *  the second, as a ratio of the means. Measured 6.5 to 9.6 against 9.5 to 11.7 when they were set. */
+/** No fixture at any size reads worse than `WORST_AREA`, and area reading with diffusion beats point
+ *  sampling by at least `GAIN` as a ratio of means. Readings sit at 6.5 to 9.6 against 9.5 to 11.7. */
 const WORST_AREA = 10.5;
 const GAIN = 1.25;
 
@@ -167,8 +151,7 @@ describe('a small region reproduces a picture', () => {
   });
 
   it('keeps the features a point sample drops', () => {
-    // The face's eyes are two dark pixels of sixteen. Point-sampled at 20 cells they land between
-    // samples and can vanish outright; integrated, every cell they touch darkens.
+    // The eyes are two dark pixels of sixteen and can fall between point samples at 20 cells.
     const src = pixels(FACE, 6);
     const box = { width: 20, height: 20 };
     const darkCells = (s: Stencil): number =>
@@ -177,8 +160,7 @@ describe('a small region reproduces a picture', () => {
   });
 
   it('spends the error on the neighbours, so an area reads as the colour it was', () => {
-    // A flat colour sitting between two palette entries: undithered every cell is the same wrong
-    // colour, dithered the mix averages back to what the picture had.
+    // A flat grey halfway between two palette entries.
     const side = 24;
     const stencil: Stencil = {
       width: side, height: side,
@@ -203,7 +185,7 @@ describe('a small region reproduces a picture', () => {
 
   it('leaves the cells the picture does not reach uncovered', () => {
     const src = pixels(HEART, 4);
-    // A wide box: the picture is fitted to the shorter side and centred, so whole columns are empty.
+    // The picture is fitted to the shorter side and centred, so the outer columns are empty.
     const s = sampled(src, { width: 40, height: 12 });
     expect(s.coverage[0]).toBe(0);
     expect([...s.coverage].some((c) => c >= 128)).toBe(true);

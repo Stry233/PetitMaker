@@ -86,8 +86,8 @@ describe('ground-level placement sits on the visible surface', () => {
   it('an elevation-0 object stands on the ground slab, not buried inside it', () => {
     // The land slab tops at GROUND_SLAB_Y; an object based at raw layer 0 sinks a
     // third of a flower into it, and the buried faces depth-fight the slab plane
-    // (small models shimmer at viewing distance). Elevated terrain has no slab —
-    // its surface is layerToY(e) — so only layer 0 carries the offset.
+    // (small models shimmer at viewing distance). Elevated terrain has no slab
+    // (its surface is layerToY(e)), so only layer 0 carries the offset.
     const flora: PlacedObject = {
       id: 'f', catalogId: 'flower-bellflower', position: { x: 3, y: 3 },
       rotation: 0, elevation: 0,
@@ -103,7 +103,7 @@ describe('ground-level placement sits on the visible surface', () => {
       rotation: 0, elevation: 2,
     };
     // The terrain puts it up there. A body that sits on the ground is drawn at the ground, so a
-    // fixture that raised only the stored number would be asserting the stale-elevation bug.
+    // fixture that raised only the stored number would assert a stale elevation.
     const grid = emptyGrid(10, 10, [flora]);
     grid.cells[3]![3]!.terrain = { type: TerrainType.Mountain, elevation: 2, corners: ['square', 'square', 'square', 'square'] };
     const groups = buildObjectInstances(grid);

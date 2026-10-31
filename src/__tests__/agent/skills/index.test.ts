@@ -1,9 +1,8 @@
 /**
  * The skill library contract. A skill is picked from name+description alone
  * (progressive disclosure: only those sit in the tool surface), so descriptions
- * must be one short line; and a body is followed verbatim by the model, so a
- * tool or catalog id it names must exist — a playbook that misnames a tool is
- * worse than no playbook.
+ * must be one short line. A body is followed verbatim by the model, so every
+ * tool or catalog id it names must exist.
  */
 import { describe, expect, it } from 'vitest';
 import { SKILLS } from '../../../agent/skills';

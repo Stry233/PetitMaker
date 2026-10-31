@@ -45,7 +45,7 @@ describe('map coder', () => {
   it('picks up a lattice the plain shape misses', async () => {
     // A maze is decided by the parity of its cells; the shape that knows about parity must beat
     // the one that does not, or the variant is not earning the byte that names it. The margin is
-    // narrow — the neighbourhood context already accounts for most of a lattice on its own — so
+    // narrow (the neighbourhood context already accounts for most of a lattice on its own), so
     // this asserts the ordering holds, not a particular size of win.
     const { state } = (await corpusCases()).find((c) => c.name === 'maze-64')!;
     const c = canonicalize(state);

@@ -1,10 +1,10 @@
 /**
- * The overlay shade inventory (3D) — the twin of __tests__/view/map2d/layers/overlay-geometry.test.ts.
+ * The overlay shade inventory (3D), the twin of __tests__/view/map2d/layers/overlay-geometry.test.ts.
  *
  * The 3D view draws the same shades as surface-draped decals, so it owes the same contract: each
  * covers its body exactly, on the grid that body renders at (terrain −0.5 in world units, objects
- * unshifted). The hard cases are where a fractional anchor meets those two grids — the plaza's
- * body at x.5/y.5, a halfStep bridge/ramp anchor — because a body that is not a whole number
+ * unshifted). The hard cases are where a fractional anchor meets those two grids (the plaza's
+ * body at x.5/y.5, a halfStep bridge/ramp anchor), because a body that is not a whole number
  * of cells from the origin cannot be described by the cells it touches.
  *
  * Everything here is measured in macro units off the mesh's own vertices, so a shade that drifts

@@ -1,9 +1,9 @@
 /**
  * The map's scale is the user's, not the browser's.
  *
- * `zoom` and the offsets are CSS px, and page zoom redefines the CSS px — so the same numbers draw
+ * `zoom` and the offsets are CSS px, and page zoom redefines the CSS px, so the same numbers draw
  * a bigger map at 110%. The 3D view has no such problem (its canvas covers the same device pixels
- * either way), so leaving 2D exposed made the two views disagree about how big the world is.
+ * either way), so leaving 2D exposed would make the two views disagree about how big the world is.
  */
 import { describe, it, expect } from 'vitest';
 import { Viewport } from '../../../../view/map2d/camera/viewport';

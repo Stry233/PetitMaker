@@ -4,7 +4,7 @@
  *
  * Two items carry an orientation the user never set: a bridge lies along the gap it spans, and a
  * ramp climbs one particular way. Both are drawn from one piece of art, so the art has to be turned
- * to match — otherwise the map shows a bridge across the wrong axis, or a slope running downhill.
+ * to match; otherwise the map shows a bridge across the wrong axis, or a slope running downhill.
  */
 import '../../../_support/pixi-env';   // ramp-graphic imports pixi, which needs jsdom's missing 2D context
 import { describe, it, expect } from 'vitest';

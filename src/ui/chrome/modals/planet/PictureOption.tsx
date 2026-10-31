@@ -7,9 +7,10 @@
 import { useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { motion } from 'framer-motion';
 import { cssMotion } from '../../../design/motion';
-import { cursors, font, interactionProfiles, radii } from '../../../design/styles';
+import { cursors, font, radii } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { skin, windowChip } from '../../../design/window-skin';
+import { useInteractionProfiles } from '../../../design/input-mode';
 
 const optionStyle: CSSProperties = {
   position: 'relative', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: 10,
@@ -38,8 +39,7 @@ const badgeStyle = (lifted: boolean): CSSProperties => ({
   transition: cssMotion('planet.choice.select', ['background-color']),
 });
 const swatchStyle: CSSProperties = { width: 14, height: 14, borderRadius: radii.sm, flex: 'none' };
-/** The whole option presses as one control; a press on its picture is a pan and does not. */
-const press = interactionProfiles.row;
+/* The whole option presses as one control; a press on its picture is a pan and does not. */
 
 export function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId, label, badge, children }: {
   checked: boolean;
@@ -54,6 +54,7 @@ export function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId,
 }) {
   const [hover, setHover] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const press = useInteractionProfiles().row;
   const labelId = useId();
   const badgeId = useId();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -67,7 +68,7 @@ export function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId,
       onPointerEnter={() => setHover(true)} onPointerLeave={() => { setHover(false); setPressed(false); }}
       onPointerDown={(e: PointerEvent) => { if (!stageRef.current?.contains(e.target as Node)) setPressed(true); }}
       onPointerUp={() => setPressed(false)} onPointerCancel={() => setPressed(false)}
-      animate={pressed ? press.whileTap : hover ? press.whileHover : { scale: 1 }} transition={press.transition}
+      animate={pressed ? press.whileTap : hover && press.whileHover ? press.whileHover : { scale: 1 }} transition={press.transition}
       style={{ ...optionStyle, background: fill, boxShadow: checked ? 'none' : `inset 0 0 0 2px ${skin.line}` }}>
       <div ref={stageRef} style={pictureStage}>
         {children(onSelect)}

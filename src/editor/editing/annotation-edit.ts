@@ -5,30 +5,42 @@ import { resizeMeasurement } from '../../core/model/annotation/dimensions';
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { SELECTABLE_ANNOTATION_TAGS } from '../../config/annotation-tags';
 import type { I18nKey } from '../../i18n/keys';
-import type { ModalId } from '../../state/slices/shell';
+import { notesOpenable, type ModalId } from '../../state/slices/shell';
 import { useEditorStore } from '../../state/store';
 import { recordTextVerdict, textApproved } from '../../state/text-verdicts';
 import { editorCurves } from '../session/tool-wiring';
 
-/** Arms annotate on the notes, showing them first if hidden; `close` names a window to close first. */
+/** Arms annotate on the notes, showing them first if hidden; `close` names a window to close first.
+ *  Does nothing while Notes cannot be opened (`notesOpenable`). */
 export function showNotesForEditing(options: { close?: ModalId } = {}): void {
   const s = useEditorStore.getState();
+  if (!notesOpenable(s)) return;
   if (options.close) s.setModal(options.close, false);
   s.setAnnotationsVisible(true);
   s.setEditMode({ mode: 'annotate' });
 }
 
+/** The finished notes and the map's custom tags, as a scripted edit reads and returns them. */
+export interface NoteSet {
+  items: MapAnnotation[];
+  customTags: CustomTag[];
+}
+
 /**
- * Applies `edit` to the notes of `gridState` as one Notes stroke, keeping only the selected notes
- * that survive it. Refused (false) when the map has since been replaced or the layer is locked or hidden.
+ * Applies `edit` to the notes and custom tags of `gridState` as one Notes stroke, keeping only the
+ * selected notes that survive it. Refused (false) when the map has since been replaced or the layer
+ * is locked or hidden.
  */
-export function editAnnotationsOn(
-  gridState: GridState, edit: (items: MapAnnotation[]) => MapAnnotation[],
-): boolean {
+export function editAnnotationsOn(gridState: GridState, edit: (notes: NoteSet) => NoteSet): boolean {
   const s = useEditorStore.getState();
   if (s.gridState !== gridState || gridState.annotations?.locked || gridState.annotations?.visible === false) return false;
   s.beginAnnotationStroke();
-  s.applyAnnotationEdit((data) => { data.items = edit(data.items); });
+  s.applyAnnotationEdit((data) => {
+    const next = edit({ items: data.items, customTags: data.customTags ?? [] });
+    data.items = next.items;
+    if (next.customTags.length) data.customTags = next.customTags;
+    else delete data.customTags;
+  });
   const ids = new Set(gridState.annotations?.items.map((n) => n.id));
   s.setAnnotationSelection(s.annotationSelection.filter((id) => ids.has(id)));
   return true;

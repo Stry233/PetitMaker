@@ -41,8 +41,7 @@ beforeEach(async () => {
     provider: 'claude', model: emptyModels(), oversight: 'checkpoint',
     customBaseUrl: '', keyed: [], providerPinned: false, hydrated: true,
   });
-  // The keyring is a module global (deliberately, so no component can select a secret) and no test
-  // may inherit another's key: clearing it through the store's own verb is the only way in.
+  // The keyring is a module global no component can select from, so it is cleared through the store's verb.
   for (const id of PROVIDER_IDS) useAgentConnection.getState().forgetKey(id);
   useAgentConnection.setState({ provider: 'claude', providerPinned: false });
   backing.clear();
@@ -59,8 +58,6 @@ const pickDefault = () => {
 };
 const noteText = () => screen.queryByTestId('setup-note')?.textContent ?? null;
 const rowFace = () => screen.getByTestId('setup-prov-face');
-
-/* ── the shape reading, on its own ─────────────────────────── */
 
 describe('readKeyShape', () => {
   it('tells the three non-answers apart from a name', () => {
@@ -203,11 +200,7 @@ describe('local provider identification', () => {
   });
 });
 
-/**
- * Where a key in the field is owed to go, as the one table the quiet and the press both read. Written
- * twice, the two drift: one branch tests a pin the other cannot see, and the shape it tests
- * for cannot occur while that pin stands.
- */
+/** Where a key in the field goes: the one table both the idle gate and Enter read. */
 describe('keyDestination', () => {
   const dest = (over: Partial<Parameters<typeof keyDestination>[0]>) => keyDestination({
     shape: 'claude', usable: true, endpointFiled: false, explicit: false, ...over,
@@ -224,9 +217,8 @@ describe('keyDestination', () => {
     expect(dest({ shape: 'claude', usable: false, explicit: true })).toBe('commit');
   });
 
-  /** A pin is not an address. `custom` reaches this table as a standing pick, and the key in the
-   *  field is read against an endpoint: with none filed the destination is the address, not a check
-   *  no request could carry. */
+  /** A pinned `custom` with no endpoint filed goes to the address step, not to a check no request
+   *  could carry. */
   it('asks the user\'s own server for its address before it reads a key against it', () => {
     expect(dest({ shape: 'custom', endpointFiled: false })).toBe('endpoint');
     expect(dest({ shape: 'custom', endpointFiled: false, explicit: true })).toBe('endpoint');
@@ -234,15 +226,11 @@ describe('keyDestination', () => {
   });
 });
 
-/* ── the key masks at rest, and reveals on focus ─────────────── */
-
-/** API keys mask at rest and reveal on focus on both entry and verification screens. */
 describe('the key masks when the field rests, and reveals on focus', () => {
   it('rests masked once it holds a value, and reveals again on focus', () => {
     renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
-    // Typed, so the focus comes first: a value arriving into an unfocused field is the password
-    // manager's shape and masks on arrival (its own test below).
+    // Focus first: a value arriving in an unfocused field masks at once (tested below).
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: KEY.claude } });
     expect(input.type).toBe('text');
@@ -254,11 +242,8 @@ describe('the key masks when the field rests, and reveals on focus', () => {
     expect(input.type).toBe('text');
   });
 
-  /**
-   * A value can arrive with no focus cycle. The mask moved on focus and blur only, and a password
-   * manager (or any extension) filling an unfocused empty field reaches `onChange` and neither — so
-   * the key stood on screen in plain text, unattended, until something happened to touch the field.
-   */
+  /** A password manager filling an unfocused field fires `onChange` with no focus or blur, so the
+   *  mask cannot wait for a blur. */
   it('masks a value that arrives without the field ever being focused', () => {
     renderWithI18n(<SetupScreen />);
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
@@ -284,14 +269,12 @@ describe('the key masks when the field rests, and reveals on focus', () => {
     fireEvent.change(input, { target: { value: KEY.claude } });
     expect(input.type).toBe('text');
     expect(input.value).toBe(KEY.claude);
-    // A paste is the same change event React sees, so the value lands whole.
+    // A paste is the same change event to React.
     fireEvent.change(input, { target: { value: `${KEY.claude}-pasted` } });
     expect(input.value).toBe(`${KEY.claude}-pasted`);
     expect(input.type).toBe('text');
   });
 });
-
-/* ── the idle gate ─────────────────────────────────────────── */
 
 describe('the field never leaves while the hands are moving', () => {
   it('holds a fully-typed Anthropic key until 900ms of quiet, and a keystroke at 800ms resets it', async () => {
@@ -300,15 +283,14 @@ describe('the field never leaves while the hands are moving', () => {
     renderWithI18n(<SetupScreen listModels={listModels} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
-    // The row already says the reading, which is the point of B-below: the screen answers without
-    // moving.
+    // The row shows the reading at once while the step waits.
     expect(rowFace().getAttribute('data-provider')).toBe('claude');
     expect(phaseOf()).toBe('key');
 
     await act(async () => { vi.advanceTimersByTime(IDLE - 100); });
     expect(phaseOf(), 'still short of the quiet').toBe('key');
 
-    // A keystroke lands with 100ms to go: the gate starts over rather than firing on schedule.
+    // A keystroke with 100ms to go restarts the gate.
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: `${KEY.claude}x` } });
     await act(async () => { vi.advanceTimersByTime(IDLE - 100); });
     expect(phaseOf(), 'the keystroke reset the quiet').toBe('key');
@@ -347,8 +329,7 @@ describe('the field never leaves while the hands are moving', () => {
     expect(noteText()).toBe(translations.en['agent.setup_note_unknown']);
 
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
-    // The bail must not replace the field node, which cuts the key at its twelfth character. The
-    // field stands, whole, and the row is what opened.
+    // The field node is not replaced, so the key stays whole, and the row opens.
     expect((screen.getByTestId('setup-key-input') as HTMLInputElement).value).toBe(KEY.unknown);
     expect(screen.getByTestId('setup-prov-row').getAttribute('aria-expanded')).toBe('true');
     expect(phaseOf()).toBe('key');
@@ -360,24 +341,20 @@ describe('the field never leaves while the hands are moving', () => {
     renderWithI18n(<SetupScreen listModels={listModels} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
 
-    // The waiting step carries Back, and pressing it means "I am still editing".
+    // Back on the waiting step means "I am still editing".
     fireEvent.click(screen.getByTestId('setup-act-reenter'));
     await act(async () => { vi.advanceTimersByTime(IDLE * 3); });
     expect(phaseOf(), 'a re-fired gate would undo the press').toBe('key');
     expect(listModels).not.toHaveBeenCalled();
 
-    // Editing the field arms it again.
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: `${KEY.claude}9` } });
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
     expect(phaseOf()).toBe('manage');
   });
 });
 
-/* ── the row as the manual override ────────────────────────── */
-
 describe('the row is the chooser, and an explicit pick outranks the shape', () => {
-  /** The row is the only door to the roster. The empty field stands quiet under it: no second
-   *  entry point below the note, and no line of prose standing in the note's own place. */
+  /** The row is the only way to the roster; the empty field shows no second entry and no note. */
   it('offers no roster door of its own on the empty field', () => {
     renderWithI18n(<SetupScreen />);
     expect(screen.queryByTestId('setup-open-roster')).toBeNull();
@@ -394,7 +371,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     expect(useAgentConnection.getState().providerPinned).toBe(true);
     expect(useAgentConnection.getState().provider).toBe('openai');
 
-    // An ANTHROPIC-shaped key now: the pin stands, and the row says whose pick it is.
+    // An Anthropic-shaped key: the pin stands, and the note says whose pick it is.
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
     expect(rowFace().getAttribute('data-provider')).toBe('openai');
     expect(noteText()).toBe(
@@ -420,19 +397,13 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
 
   });
 
-  /**
-   * Picking a provider that is already connected is the end of setup, not the start of it.
-   *
-   * The trap it avoids: connected on one provider, the manage row picks a keyless one, the panel
-   * drops to setup — and picking the first one back leaves the screen standing over a live key with
-   * no way out. There is no draft to commit, so a pick that merely pins and returns strands the
-   * user on a deliberately gearless surface whose only door is pasting the key again.
-   */
+  /** Picking back a provider that is already keyed ends setup; pinning it alone would leave setup
+   *  standing over a live key whose only way out is pasting the key again. */
   it('leaves setup when the pick is a provider already keyed, with a model filed', () => {
     const onDone = vi.fn();
     useAgentConnection.getState().connectKey('claude', KEY.claude);
     useAgentConnection.getState().setModel('claude-sonnet-4-5');
-    // The keyless provider the user tried, which is what put the screen up.
+    // The keyless provider that put the screen up.
     useAgentConnection.getState().pinProvider('openai');
 
     renderWithI18n(<SetupScreen onDone={onDone} />);
@@ -457,8 +428,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     expect(phaseOf()).toBe('manage');
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: KEY.claude });
     expect(onDone).not.toHaveBeenCalled();
-    // And the way out is live. A step whose only control refuses is the strand this branch exists to
-    // avoid: the key is filed, the provider is armed, and nothing else is owed.
+    // Done waits for a model, since none is selected on the user's behalf.
     expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -514,7 +484,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     fireEvent.click(screen.getByText(translations.en['agent.setup_custom_endpoint']!));
     expect(phaseOf()).toBe('custom');
 
-    // The advancing control is gated until the address is one the app could reach.
+    // Save stays disabled until the address has a usable shape.
     expect((screen.getByTestId('setup-endpoint-save') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'http://localhost:11434/v1' } });
     expect((screen.getByTestId('setup-endpoint-save') as HTMLButtonElement).disabled).toBe(false);
@@ -530,8 +500,7 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
     renderWithI18n(<SetupScreen />);
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent.setup_custom_endpoint']!));
-    // Sanitization is the store's; the shape gate only reads the prefix, so an address that looks
-    // like one and cannot be parsed passes the gate and is refused by the verb.
+    // The shape gate reads only the prefix, so an unparseable address passes it and the store refuses it.
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'https://[' } });
     fireEvent.click(screen.getByTestId('setup-endpoint-save'));
     expect(useAgentConnection.getState().customBaseUrl).toBe('');
@@ -541,9 +510,6 @@ describe('the row is the chooser, and an explicit pick outranks the shape', () =
   });
 });
 
-/* ── the two dead ends ─────────────────────────────────────── */
-
-
 describe('the chooser outranks the check it was opened over', () => {
   it('holds the advance while the list is open, and after Back', async () => {
     vi.useFakeTimers();
@@ -551,13 +517,12 @@ describe('the chooser outranks the check it was opened over', () => {
     renderWithI18n(<SetupScreen listModels={listModels} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
-    // The list, by hand, while the shape's own advance is armed.
+    // Open the list while the shape's advance is armed.
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     await act(async () => { vi.advanceTimersByTime(IDLE * 3); });
     expect(phaseOf(), 'the list is what the user is reading').toBe('key');
     expect(listModels).not.toHaveBeenCalled();
 
-    // And out of it again: still the key step, still nothing committed.
     fireEvent.keyDown(window, { key: 'Escape' });
     await act(async () => { vi.advanceTimersByTime(IDLE * 3); });
     expect(phaseOf()).toBe('key');
@@ -573,7 +538,7 @@ describe('the chooser outranks the check it was opened over', () => {
  expect(listModels).not.toHaveBeenCalled(); expect(useAgentConnection.getState().keyed).toEqual([]);
 });
 
-  /** And a keystroke re-arms it. The hold is on the key that was stepped off, not on the screen. */
+  /** The hold is on the key that was stepped off, so a keystroke re-arms the advance. */
   it('advances again on the next keystroke', async () => {
     vi.useFakeTimers();
     const listModels = vi.fn(() => Promise.resolve(['claude-sonnet-4-5']));
@@ -688,11 +653,8 @@ describe('a check that failed says so on the row it failed at', () => {
  expect(listModels).toHaveBeenCalledTimes(1);
 });
 
-  /**
-   * A refused key is not an unavailable list. The first request a key ever makes is the model list,
-   * so a dead key lands in that same catch — and "type a model id instead" would let it be pressed
-   * through to Done, leaving a panel that claims to be connected and fails on the first order.
-   */
+  /** A refused key is not an unavailable list: the model list is the key's first request, and routing
+   *  a refusal to "type a model id" would leave a panel that claims to be connected. */
   it('sends a refused key back to the field, un-filed, in danger, with the row crossed', async () => {
     const refusal = Object.assign(new Error('Unauthorized'), { status: 401 });
     renderWithI18n(<SetupScreen listModels={() => Promise.reject(refusal)} />);
@@ -706,10 +668,9 @@ describe('a check that failed says so on the row it failed at', () => {
       .toBe(translations.en['agent.setup_row_refused']);
     expect(noteText()).toBe(translations.en['agent.setup_key_refused']);
     expect(screen.queryByTestId('setup-models-unavailable')).toBeNull();
-    // The key is no longer filed, so the panel is back to disconnected rather than half-connected.
     expect(useAgentConnection.getState().keyed).toEqual([]);
 
-    // Editing the field clears the accusation: the field is the action.
+    // Editing the field clears the warning.
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: `${KEY.claude}z` } });
     expect(screen.getByTestId('setup-key-field').getAttribute('data-danger')).toBeNull();
     expect(noteText()).not.toBe(translations.en['agent.setup_key_refused']);
@@ -756,8 +717,7 @@ describe('model selection on the management page', () => {
     expect((screen.getByTestId('manage-done') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  /** A pick already made outranks the list. The filed model is the user's own answer from a past
-   *  session, and the settings card is the only place one is chosen. */
+  /** A model filed in a past session is the user's own pick and outranks the list. */
   it('leaves a model already filed for the provider exactly where it was', async () => {
     useAgentConnection.getState().setModel('claude-haiku-4-5');
     await toManage(() => Promise.resolve(['claude-sonnet-4-5', 'claude-opus-4-1']));
@@ -789,13 +749,8 @@ describe('model selection on the management page', () => {
   });
 });
 
-/* ── the step, reported up to the desk ─────────────────────── */
-
-/**
- * The desk has to know which step the screen is on, and the session's phase cannot tell it: setup
- * stands over a session that has not begun. So the screen reports its step, and the dock owns what
- * that step looks like (`DeskHeader`'s own table). What is asserted here is the reading only.
- */
+/** The screen reports its step upward, since setup stands over a session that has not begun; the
+ *  dock owns how each step looks (`DeskHeader`). */
 describe('the step the screen reports upward', () => {
   const faces = () => {
     const seen: (string | null)[] = [];
@@ -803,9 +758,7 @@ describe('the step the screen reports upward', () => {
     return { onFace, seen, last: () => seen[seen.length - 1] ?? null };
   };
 
-  /** The mouth is a step like the rest of them. A standing connection screen over a card reading
-   *  "Not connected / add a key to start" said the character was asleep while she was plainly up and
-   *  asking; the sleep belongs to a desk with no screen under it. */
+  /** The first step reports awake: asleep belongs to a desk with no screen open. */
   it('says it is awake at the mouth, where the screen is standing and asking', () => {
     const f = faces();
     renderWithI18n(<SetupScreen onFace={f.onFace} />);
@@ -842,7 +795,7 @@ describe('the step the screen reports upward', () => {
       <SetupScreen onFace={f.onFace} />,
     );
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.ambiguous } });
-    // "Asking both" is the request being out. During the idle gate the key is still being read,
+    // During the idle gate the key is still being read.
     expect(f.last()).toBe('typing');
     await act(async () => { vi.advanceTimersByTime(IDLE + 50); });
     expect(f.last()).toBe('unknown');
@@ -908,11 +861,8 @@ describe('the step the screen reports upward', () => {
   });
 });
 
-/* ── the leave verb, and what setup does not ask ───────────── */
-
 describe('one leave verb per screen', () => {
-  /** Every step this screen can stand in, and how to get there. The count is the assertion: a step
-   *  with two ways out asks the user which of them is the way out. */
+  /** Every step the screen can stand in, and how to reach it. */
   it('draws exactly one, on every step', async () => {
     const steps: [string, () => Promise<void> | void][] = [
       ['mouth', () => {}],
@@ -956,9 +906,8 @@ describe('one leave verb per screen', () => {
     expect(screen.queryByTestId('setup-leave')).toBeNull();
   });
 
-  /** And it says back, on every step that draws it. The form is walked into from the keyless rest, so
-   *  a prior step always exists and no step of this screen is a mouth: a decline ("Not now")
-   *  presumes a first screen of the flow's own, which this screen is not. */
+  /** The screen is entered from the keyless rest, so a prior step always exists and the verb is Back,
+   *  never a decline such as "Not now". */
   it('says Back wherever it stands, never a decline', async () => {
     const steps: [string, () => Promise<void> | void][] = [
       ['mouth', () => {}],
@@ -980,14 +929,8 @@ describe('one leave verb per screen', () => {
     }
   });
 
-  /**
-   * And it is the house button, not an underlined line.
-   *
-   * The steps of this flow are as closely joined as two screens get, and the house has two back
-   * idioms: the quiet underlined text where space is genuinely tight, and the footer's ghost button
-   * everywhere else. So every step of the family draws the same control, which is what makes the
-   * mouth's Back and the waiting step's Back one verb rather than two.
-   */
+  /** Every step draws Back as the same footer ghost button; the underlined text idiom is for tight
+   *  spaces only. */
   it('draws Back as the footer ghost button, the same on every step that has one', async () => {
     const ghost = (el: HTMLElement) => ({
       background: el.style.background,
@@ -1000,13 +943,12 @@ describe('one leave verb per screen', () => {
     const mouth = renderWithI18n(<SetupScreen onLeave={() => {}} />);
     const atMouth = screen.getByTestId('setup-leave');
     expect(atMouth.tagName).toBe('BUTTON');
-    // Never the underlined text idiom, which belongs where the room genuinely is not there.
     expect(atMouth.style.textDecoration).not.toBe('underline');
     const shape = ghost(atMouth);
     expect(shape.background, 'the footer ghost brings its own fill').not.toBe('');
     mouth.unmount();
 
-    // The waiting step's own Back, which is the foot's ghost verb: the two must be one control.
+    // The waiting step's Back must match.
     vi.useFakeTimers();
     renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['m'])} onLeave={() => {}} />);
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
@@ -1015,8 +957,7 @@ describe('one leave verb per screen', () => {
     vi.useRealTimers();
   });
 
-  /** Oversight is not asked at setup. A visitor pasting their first key has no way to judge the
-   *  answer, so it defaults quietly and lives on the manage card. */
+  /** A first-time visitor cannot judge oversight yet, so it defaults and lives on the manage card. */
   it('never asks for oversight, on any step', async () => {
     renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['claude-sonnet-4-5'])} />);
     const segments = () => [
@@ -1111,9 +1052,8 @@ describe('custom providers use the same management page', () => {
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  /** And a gateway that will not list goes to the card that takes a typed ID, by itself. The key is
-   *  live (it was not refused) and the address stands, so the one thing still owed is the model, and
-   *  the flow routes to the surface that takes one rather than standing a dead end of its own. */
+  /** A gateway that lists nothing has a live key and a filed address, so only the model is owed and
+   *  the flow hands off to the manage card, which takes a typed id. */
   it('hands an endpoint that names nothing to the manage card', async () => {
     const done = vi.fn();
     const manage = vi.fn();
@@ -1130,25 +1070,20 @@ describe('custom providers use the same management page', () => {
     expect(phaseOf()).toBe('manage');
     expect(screen.queryByTestId('setup-models-unavailable'), 'no unavailable-model dead end').toBeNull();
     expect(screen.queryByTestId('setup-model-note')).toBeNull();
-    // The key stayed filed: an unlisted model is not a refusal.
     expect(useAgentConnection.getState().keyed).toContain('custom');
     expect(manage).toHaveBeenCalledTimes(1);
     expect(done).not.toHaveBeenCalled();
   });
 
-  /**
-   * The key is usually in the field before the address is, and that order is the one this path is
-   * walked in: paste a gateway's key, find that no platform claims its shape, open the row, pick the
-   * custom endpoint, then say where the server is. Filing the address answers the reading the key
-   * was waiting on, so the key already in the field is read against it.
-   */
+  /** The usual order: paste a gateway's key no platform claims, pick the custom endpoint, then file
+   *  the address, which reads the key already in the field against it. */
   it('reads the key already in the field once the address is filed', async () => {
     vi.useFakeTimers();
     const asked = vi.fn(() => Promise.resolve(['qwen2.5-coder:14b']));
     renderWithI18n(<SetupScreen listModels={asked} />);
 
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.unknown } });
-    // By hand, which is what puts the idle gate down for the key in the field.
+    // Opening the row by hand stops the idle gate for the key in the field.
     fireEvent.click(screen.getByTestId('setup-prov-row'));
     fireEvent.click(screen.getByText(translations.en['agent.setup_custom_endpoint']!));
     fireEvent.change(screen.getByTestId('setup-endpoint-input'), { target: { value: 'https://gateway.example/v1' } });
@@ -1163,20 +1098,11 @@ describe('custom providers use the same management page', () => {
     expect(useAgentConnection.getState().keyed).toContain('custom');
   });
 
-  /**
-   * No step of this path rests on a reading, whatever the gateway does with the key.
-   *
-   * The screen's own words for a reading in progress are the dock's "Reading the key", and a reading
-   * that never lands is the one failure this flow cannot report: there is no verb on that step and
-   * nothing on screen says what to do next. So every answer a gateway can give is walked here, and
-   * each one has to arrive at a step that either finishes or says where to go.
-   */
+  /** Whatever a gateway answers, the flow never rests on a reading step, which has no verb and says
+   *  nothing about what to do next. */
   it('lands on a step that finishes or points somewhere, for every answer a gateway gives', async () => {
     const READING = new Set(['awake', 'typing', 'shaped', 'ambiguous']);
-    // A gateway that answers badly lands on the step that repairs what it proved: no list from a
-    // server that answered is the model's problem, so the flow routes to the card that takes a typed
-    // id, while a check nothing answered is the address's (`endpointCheckVerdict`) — the failed
-    // check files the endpoint gap, so the step is the address.
+    // A refusal returns to the key; every other failure hands off to the manage card.
     const cases: [string, () => Promise<string[]>, string][] = [
       ['lists its models', () => Promise.resolve(['llama3.2']), 'manage'],
       ['names nothing', () => Promise.resolve([]), 'manage'],
@@ -1218,13 +1144,8 @@ describe('custom providers use the same management page', () => {
   });
 });
 
-/**
- * The step moves the groups, it does not redraw them somewhere else.
- *
- * The first character typed retires the line above the field, so the field, the row and the note all
- * stand ~57px higher for it while the plate's own edge comes up by the same distance. Jump-cutting the
- * inside of that read as a different screen arriving under the hands, with the caret in it.
- */
+/** The first character typed retires the line above the field, so the groups move up; they slide
+ *  rather than jump, so the screen does not read as a new one under the caret. */
 describe('a step change is a movement', () => {
   const template = (_v: object, generated: string) => generated;
 
@@ -1232,11 +1153,10 @@ describe('a step change is a movement', () => {
     const slide = stepSlide(false, template);
     expect(slide.layout, 'a size tween would stretch the field and its radius').toBe('position');
     expect(slide.transition).toEqual(framerMotion('panel.setup.step'));
-    // The plate's own height move and this are one movement, so they run the same length.
+    // One movement with the plate's height change, so the same length.
     expect(seconds('panel.setup.step')).toBe(seconds('panel.height'));
   });
 
-  /** And nothing moves under reduced motion: the step is said by what the groups hold. */
   it('takes nothing at all under reduced motion', () => {
     expect(stepSlide(true, template)).toEqual({});
   });

@@ -9,7 +9,7 @@
  */
 import type { BuildShape, ToolType } from './vocabulary';
 import {
-  activeToolOf, armedItemOf, armedMacroOf, brushSizeOf, contentTypeOf, designModeOf, isDrawingMode,
+  activeToolOf, armedItemOf, armedMacroOf, armedPicksOf, brushSizeOf, contentTypeOf, designModeOf, isDrawingMode,
   type ContentType,
 } from './edit-mode';
 import type { EditorStore } from '../store';
@@ -20,6 +20,7 @@ const STORE_FIELDS = [
   'tileMaterial', 'tileMaterialPicked', 'placementRotation', 'armingEpoch', 'region',
   'planetMaterial', 'annotationTool', 'annotationZoneShape', 'annotationColor', 'annotationTag',
   'annotationSize', 'annotationRouteDashed', 'annotationRouteWidth',
+  'objectBrush', 'objectPaintShape', 'objectPaintSpacing',
 ] as const satisfies readonly (keyof EditorStore)[];
 
 /** The plan notes' document state the annotate tool reads beside the arming: what is selected, the
@@ -46,6 +47,8 @@ export interface ToolArming extends Readonly<Pick<EditorStore, typeof STORE_FIEL
   readonly floor: number;
   /** The armed catalog item (`armedItemOf`), or null with nothing armed. */
   readonly armedItem: string | null;
+  /** The armed items in the order they were picked (`armedPicksOf`), the armed item first. */
+  readonly picks: readonly string[];
   /** The planet session unlocks layer 0: sea and bare ground become paintable levels. */
   readonly groundEditable: boolean;
   /** Document state, not what the bar arms; snapshotted with the arming so a call reads one moment. */
@@ -70,6 +73,7 @@ export function armingOf(s: EditorStore): ToolArming {
       armedMacro: armedMacroOf(s),
       floor: s.activeLayer,
       armedItem: armedItemOf(s),
+      picks: armedPicksOf(s),
       groundEditable: s.planetSession !== null,
       notes: {
         selection: s.annotationSelection,

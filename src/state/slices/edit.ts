@@ -8,7 +8,8 @@
 import { laneRecord, laneStep, type HistoryLane } from '../history-lane';
 import type { StateCreator } from 'zustand';
 import { type MacroCoord, type Rotation } from '../../core/model/types';
-import { DEFAULT_REGION_REQUEST, type AutoEdgeCut, type BuildShape, type EraserShape, type RegionRequest, type RegionTool } from '../editing/vocabulary';
+import type { Arrangement } from '../clipboard';
+import { DEFAULT_REGION_REQUEST, OBJECT_SPACING, type AutoEdgeCut, type BuildShape, type EraserShape, type ObjectBrush, type RegionRequest, type RegionTool } from '../editing/vocabulary';
 import {
   activeToolOf, armedItemOf, armedMacroOf, buildToolOf, holdsSelection, isAnnotating, modeOpenIn, nextEditMode, withSurfaceTools, REST_INPUTS,
   type EditModeChange, type EditModeInputs,
@@ -19,6 +20,7 @@ import type { AnnotationsSlice } from './annotations';
 import type { EngineSlice } from './engine';
 import type { PlanetSessionSlice } from './planet-session';
 import type { RepairSessionSlice } from './repair-session';
+import { notesOpenable, type ShellSlice } from './shell';
 
 export interface EditSlice {
   /** The mode and its one arming. The active tool, drawing mode, content, armed item and macro and
@@ -70,6 +72,9 @@ export interface EditSlice {
    *  reads it while nothing is armed. */
   placementRotation: Rotation;
   setPlacementRotation: (r: Rotation) => void;
+  /** The page's copied arrangement, or null before anything is copied (EDIT-53). */
+  clipboard: Arrangement | null;
+  setClipboard: (a: Arrangement | null) => void;
   selectingRegion: boolean;
   regionSelectionOwner: 'agent' | 'generator' | null;
   regionTool: RegionTool;
@@ -104,7 +109,8 @@ export interface EditSlice {
    *  is still the current one, so a remount that claims before the old release keeps it. */
   claimRegionRequest: (request: RegionRequest) => () => void;
   /** Applies `change` to `editMode` in one `set`; a mode the planet session does not offer
-   *  (`modeOpenIn`) changes nothing. */
+   *  (`modeOpenIn`) changes nothing, and nor does opening Notes while a Show me stands, since the
+   *  Show me gives back the map and a note's own history is apart from it. */
   setEditMode: (change: EditModeChange) => void;
   /** Reinstates exact inputs a caller saved from `editMode`, resolved as `setEditMode` resolves them. */
   restoreEditMode: (inputs: EditModeInputs) => void;
@@ -124,15 +130,39 @@ export interface EditSlice {
    *  which the rules, copies and the save's session read), so a parked map keeps its own. */
   setLayerLocked: (layer: number, locked: boolean) => void;
   setBrushSize: (size: number) => void;
+  /** How an armed card places (EDIT-65), kept across the brush bar's Done and across cards. */
+  objectBrush: ObjectBrush;
+  /** The figure a Paint stroke lays along, apart from the terrain brush's. */
+  objectPaintShape: BuildShape;
+  /** The empty cells a Paint stroke keeps between items (`OBJECT_SPACING`). */
+  objectPaintSpacing: number;
+  /** The brush bar stands in the object shelf's place (EDIT-64), opened with or without a card armed
+   *  but never beside a planting card; it closes when the shelf's mode or its armed card goes. */
+  objectBrushBar: boolean;
+  setObjectBrush: (brush: ObjectBrush) => void;
+  setObjectPaintShape: (shape: BuildShape) => void;
+  setObjectPaintSpacing: (spacing: number) => void;
+  setObjectBrushBar: (open: boolean) => void;
+  /** Touch multi-select: while on, a press reads as if the multi-select key were held
+   *  (`keymap/held.ts`). Any change of mode or arming ends it. */
+  multiSelectLatched: boolean;
+  /** Touch move: while on, the next one-finger drag anywhere on the map moves the selection. The
+   *  next selection write, a change of mode or arming, or the drop ends it. */
+  moveLatched: boolean;
+  setMultiSelectLatched: (on: boolean) => void;
+  setMoveLatched: (on: boolean) => void;
+  /** Ends both latches: the input mode left touch. Clearing the selection (`clearSelection`) ends
+   *  them as well. */
+  endTouchLatches: () => void;
 }
 
-/** What `editModeFields` reads: the edit slice and the selection an arming may drop. */
-type EditModeReads = EditSlice & Pick<EngineSlice, 'selection'>;
+/** What `editModeFields` reads: the edit slice and the selection and picked block an arming may drop. */
+type EditModeReads = EditSlice & Pick<EngineSlice, 'selection' | 'pickedCell'>;
 
 /**
  * The one update that stores `editMode`, shared by `setEditMode`, `restoreEditMode` and a selection
  * write that puts a brush away (`slices/engine.ts`). Arming a tool that cannot hold a selection
- * drops it in the same update.
+ * drops it in the same update, and any change of arming drops the picked block.
  */
 export function editModeFields(s: EditModeReads, inputs: EditModeInputs): Partial<EditModeReads> {
   const editMode = withSurfaceTools(inputs, isSurfacePrint(getCatalogItem(s.tileMaterial)));
@@ -147,6 +177,12 @@ export function editModeFields(s: EditModeReads, inputs: EditModeInputs): Partia
   const leftRegion = editMode.mode !== s.editMode.mode && s.selectingRegion;
   const macroChanged = armedMacroOf(next) !== armedMacroOf(s);
   const dropsSelection = s.selection.length > 0 && !holdsSelection(activeToolOf(next));
+  const rearmed = editMode.mode !== s.editMode.mode || activeToolOf(next) !== activeToolOf(s) || armedChanged;
+  const endsLatches = rearmed && (s.multiSelectLatched || s.moveLatched);
+  const unpicks = (rearmed || macroChanged) && s.pickedCell !== null;
+  // The bar opens with nothing armed too, so only putting down a card it stood for closes it.
+  const closesBrushBar = s.objectBrushBar
+    && (editMode.mode !== 'object' || (!!armedItemOf(s) && !armedItemOf(next)) || armedMacroOf(next) !== null);
   return {
     editMode,
     displayLayer: null,
@@ -154,6 +190,9 @@ export function editModeFields(s: EditModeReads, inputs: EditModeInputs): Partia
     ...(armedChanged ? { placementRotation: 0 } : null),
     ...(leftRegion ? { selectingRegion: false, regionSelectionOwner: null, regionUndoLane: [], regionRedoLane: [] } : null),
     ...(dropsSelection ? { selection: [] } : null),
+    ...(unpicks ? { pickedCell: null } : null),
+    ...(endsLatches ? { multiSelectLatched: false, moveLatched: false } : null),
+    ...(closesBrushBar ? { objectBrushBar: false } : null),
   };
 }
 
@@ -175,7 +214,7 @@ function stepRegion(get: () => EditSlice, set: (patch: Partial<EditSlice>) => vo
   return true;
 }
 
-export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'annotationDraft' | 'requestAnnotationDiscard'> & Pick<EngineSlice, 'gridState' | 'selection'> & Pick<PlanetSessionSlice, 'planetSession'> & Pick<RepairSessionSlice, 'repairSession'>, [], [], EditSlice> = (set, get) => ({
+export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'annotationDraft' | 'requestAnnotationDiscard'> & Pick<EngineSlice, 'gridState' | 'selection' | 'pickedCell'> & Pick<PlanetSessionSlice, 'planetSession'> & Pick<RepairSessionSlice, 'repairSession'> & Pick<ShellSlice, 'tourRunning' | 'tourPhase'>, [], [], EditSlice> = (set, get) => ({
   editMode: REST_INPUTS,
   // The catalog's first Road item in authored order — something has to be armed, and nobody has
   // chosen yet.
@@ -192,6 +231,8 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
   armingEpoch: 0,
   placementRotation: 0,
   setPlacementRotation: (r) => set({ placementRotation: r }),
+  clipboard: null,
+  setClipboard: (a) => set({ clipboard: a }),
   selectingRegion: false,
   regionSelectionOwner: null,
   regionTool: 'free',
@@ -214,6 +255,8 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
     const change = () => set({
       selectingRegion: v, regionSelectionOwner: v ? owner : null,
       ...(v === get().selectingRegion ? null : { regionUndoLane: [], regionRedoLane: [] }),
+      // The brush takes the map's presses, and a paste then aims at the region it paints.
+      ...(v && get().pickedCell ? { pickedCell: null } : null),
     });
     if (v && get().annotationDraft) get().requestAnnotationDiscard(change);
     else change();
@@ -231,6 +274,7 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
   setEditMode: (change) => {
     const editMode = nextEditMode(get().editMode, change);
     if (!modeOpenIn(get().planetSession, editMode.mode, get().repairSession?.phase === 'hand')) return;
+    if (editMode.mode === 'annotate' && get().editMode.mode !== 'annotate' && !notesOpenable(get())) return;
     if (get().annotationDraft && editMode.mode !== get().editMode.mode) {
       get().requestAnnotationDiscard(() => get().setEditMode(change));
       return;
@@ -266,5 +310,18 @@ export const createEditSlice: StateCreator<EditSlice & Pick<AnnotationsSlice, 'a
     // A new Set, so a selector over `gridState.lockedLayers` sees the change this update publishes.
     set({ gridState: grid });
   },
+  objectBrush: 'place',
+  objectPaintShape: 'free',
+  objectPaintSpacing: 0,
+  objectBrushBar: false,
+  setObjectBrush: (brush) => set({ objectBrush: brush }),
+  setObjectPaintShape: (shape) => set({ objectPaintShape: shape }),
+  setObjectPaintSpacing: (spacing) => set({ objectPaintSpacing: Math.max(OBJECT_SPACING.min, Math.min(OBJECT_SPACING.max, Math.round(spacing))) }),
+  setObjectBrushBar: (open) => set((s) => (open && (s.editMode.mode !== 'object' || armedMacroOf(s) !== null) ? s : { objectBrushBar: open })),
+  multiSelectLatched: false,
+  moveLatched: false,
+  setMultiSelectLatched: (on) => set({ multiSelectLatched: on }),
+  setMoveLatched: (on) => set({ moveLatched: on }),
+  endTouchLatches: () => { if (get().multiSelectLatched || get().moveLatched) set({ multiSelectLatched: false, moveLatched: false }); },
   setBrushSize: (size) => set((s) => (buildToolOf(s) === 'erase' ? { eraserBrushSize: size } : { drawingBrushSize: size })),
 });

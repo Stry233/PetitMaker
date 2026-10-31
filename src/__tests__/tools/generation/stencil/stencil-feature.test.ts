@@ -1,18 +1,8 @@
 /**
- * What a small box spends its decoration on, pinned on pictures whose features are known by
- * construction.
- *
- * The decoration is the one instrument in a terrain picture that carries a real hue, so a small box
- * spends it on the few small interior areas the ramp cannot say — an eye, a marking, a throat — and on
- * nothing else (`tools/generation/stencil/stencil-feature.ts`). Three kinds of case here:
- *
- *  - the reading: which candidates are features and in what order, on a face with two eyes and on an
- *    emblem with one accent, plus each of the four gates refusing on its own picture;
- *  - the budget: how many marks a figure may carry, and that the budget is spread over the features
- *    rather than spent on the first;
- *  - the placement, through the real executor and the real rules: marks land on the features, the count
- *    stays inside the budget, nothing is left illegal, and above the gate the background texture is
- *    exactly what it was.
+ * A small box spends its decoration, the one instrument in a terrain picture with a real hue, only on
+ * small interior areas the ramp cannot say (an eye, a marking, a throat). Proven on pictures whose
+ * features are known by construction: the reading and its gates, the mark budget, and placement
+ * through the real executor and rules.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
@@ -33,10 +23,10 @@ import { smallBoxWeight } from '../../../../tools/generation/stencil/stencil-sma
 const exec = (state: GridState): CommandExecutor =>
   makeExecutor(state);
 
-/** The ramp a terrain picture is told in — what a feature's colour has to be out of reach of. */
+/** The terrain ramp: a feature's colour must be out of its reach. */
 const RAMP = terrainPalette(8, false);
 
-/** An accent palette with real hues in it, as the catalog now declares them. */
+/** An accent palette with real hues in it, as the catalog declares them. */
 const ACCENT = [
   { catalogId: 'flower-canna-red', rgb: 0xdc7064 },
   { catalogId: 'flower-agapanthus-blue', rgb: 0x696389 },
@@ -90,14 +80,13 @@ describe('the features a small box spends its decoration on', () => {
     const features = detectFeatures(s, covered(s), RAMP, ACCENT);
     expect(features.length).toBeGreaterThanOrEqual(3);
     const cells = features.slice(0, 3).flatMap((f) => f.cells);
-    // Every cell of the top three is one of the three marks, and none of them is the face.
     for (const i of cells) {
       const x = i % s.width, y = (i / s.width) | 0;
       const onEye = (y === 6 || y === 7) && ((x === 6 || x === 7) || (x === 12 || x === 13));
       const onThroat = (y === 12 || y === 13) && x >= 8 && x < 12;
       expect(onEye || onThroat).toBe(true);
     }
-    // And both eyes are found, which is what says the reading is about features and not about one peak.
+    // Both eyes, so the reading finds features rather than one peak.
     const left = features.some((f) => f.cells.every((i) => i % s.width < 10));
     const right = features.some((f) => f.cells.every((i) => i % s.width >= 10));
     expect(left && right).toBe(true);
@@ -113,8 +102,7 @@ describe('the features a small box spends its decoration on', () => {
   });
 
   it('declines a colour the primary palette says as well as the accent can', () => {
-    // The same picture with its accent drawn in one of the ramp's own greens: a mark there would add an
-    // object and no information, which is the whole difference between an accent and a decoration.
+    // The accent drawn in one of the ramp's own greens: a mark would add an object and no information.
     const s = subject(20, 0xe8e8e8, { x: 3, y: 3, w: 14, h: 14 });
     block(s, { x0: 8, y0: 8, w: 3, h: 3 }, hexStringToNumber(ELEVATION_COLORS[7]!));
     expect(detectFeatures(s, covered(s), RAMP, ACCENT)).toEqual([]);
@@ -212,8 +200,8 @@ describe('what the decoration lays on the map', () => {
     expect(res.placed).toBeGreaterThan(0);
     const figure = [...s.coverage].filter((c) => c >= 128).length;
     expect(res.placed).toBeLessThanOrEqual(featureBudget(figure));
-    // Every mark is on a feature's own cells or the cell beside one: a feature is a colour boundary and
-    // so a tier boundary, and a flat placement is refused beside a step.
+    // A mark may sit beside its feature: a colour boundary is a tier step, and a flat placement there
+    // is refused.
     const features = detectFeatures(s, covered(s), RAMP, ACCENT).slice(0, FEATURE_MAX);
     const near = new Set<number>();
     for (const feature of features) {
@@ -258,8 +246,7 @@ describe('what the decoration lays on the map', () => {
   });
 
   it('lays nothing on a picture whose colours the ramp can say, however detailed it is', () => {
-    // A chequer of two of the ramp's own greens: every cell is an edge, so the background pass would
-    // mark it densely, and there is nothing here an accent could add.
+    // A chequer of two ramp greens: all edges, which the background pass would mark densely.
     const side = 20;
     const s = field(side, 0);
     for (let y = 0; y < side; y++) {
@@ -278,10 +265,9 @@ describe('what the decoration lays on the map', () => {
   });
 
   it('takes a cell of the paving its own picture borrowed, because a feature is the finer statement', () => {
-    // The mixed material borrows a road surface for a region the ramp has no hue for
-    // (`stencil-small.ts:planBorrow`) and nothing may stand on a coating (V-PLACE-COATED), so a mark on
-    // a paved feature has to take the cell. The picture is a flat green field with one pink patch: the
-    // patch is both the borrow's best region and the accent's one feature.
+    // The mixed material paves a region the ramp has no hue for (`stencil-small.ts:planBorrow`) and
+    // nothing stands on a coating (V-PLACE-COATED), so a mark takes its cell. The pink patch is both
+    // the borrow's best region and the one feature.
     const side = 16;
     const s = field(side, hexStringToNumber(ELEVATION_COLORS[4]!));
     block(s, { x0: 6, y0: 6, w: 4, h: 4 }, 0xe0407a);
@@ -297,7 +283,6 @@ describe('what the decoration lays on the map', () => {
     expect(res.decorated).toBeGreaterThan(0);
     const marks = [...state.objects.values()].filter((o) => o.catalogId.startsWith('flower-'));
     expect(marks.length).toBe(res.decorated);
-    // Each one stands inside the patch, on ground the paving had taken.
     for (const mark of marks) {
       expect(mark.position.x - 6).toBeGreaterThanOrEqual(5);
       expect(mark.position.x - 6).toBeLessThanOrEqual(10);
@@ -308,9 +293,8 @@ describe('what the decoration lays on the map', () => {
   });
 
   it('is the background texture again above the gate, and nothing below it', () => {
-    // One picture, both sides of the gate. A hard seam between two flat halves holds no feature at all —
-    // each half is half the figure — so a small box says nothing about it, while above the gate the same
-    // seam is the ranked anchor points it always was, spaced, in the same cells.
+    // A seam between two flat halves holds no feature (each half is half the figure), so a small box
+    // lays nothing; above the gate the background pass marks the seam.
     const seam = (side: number): Stencil => {
       const s = field(side, 0x202020);
       for (let y = 0; y < side; y++) {

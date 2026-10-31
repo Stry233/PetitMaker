@@ -14,6 +14,7 @@ import type { GridState, PlacedObject } from '../../../core/model/types';
 import { watchContextLoss } from '../../shared/gl/context-loss';
 import { glQuality, canIncreaseRenderScale, type GlQuality } from '../../../platform/device/device-quality';
 import { resolveHistoryFlash } from '../../shared/overlay/error-flash';
+import { hideLoupe, loupeFramePainted, releaseLoupeSource, showLoupe, type LoupeSource } from '../../shared/overlay/loupe';
 import { dirtyChunksFor } from '../geometry/chunk-dirty';
 import { bodyRoute } from '../geometry/object-meshes';
 import { visibilityView } from '../geometry/visibility-view';
@@ -65,6 +66,9 @@ export class MapRenderer3D implements ViewSettingsTarget {
   private presenter: Presenter;
   /** The presenter's renderer and the camera's own handles, read by the capture and model rigs. */
   private renderer: THREE.WebGLRenderer;
+  /** The canvas as the magnifier's source. The drawing buffer is not preserved, so a loupe that
+   *  needs pixels asks for a frame and reads it in the task that drew it. */
+  private readonly loupeSource: LoupeSource;
   private cam: SceneCamera;
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
@@ -164,6 +168,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.lite = glQuality() === 'lite';
     this.presenter = new Presenter(container, w, h, this.lite, this.frameBudget.scale);
     this.renderer = this.presenter.renderer;
+    this.loupeSource = { canvas: this.renderer.domElement, requestFrame: this.requestRender };
     // A GPU reset loses the context mid-session. preventDefault asks the browser for a restore;
     // rendering pauses meanwhile, and the restore reopens the render window.
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
@@ -300,6 +305,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.flushAnnotations();
     this.overlayLayer?.flush();
     this.presenter.present(this.scene, this.camera);
+    loupeFramePainted(this.loupeSource);
     this.frames.painted();
   }
 
@@ -596,6 +602,8 @@ export class MapRenderer3D implements ViewSettingsTarget {
       this.editorView = {
         rendersState: () => this.liveState,
         onNextPaint: (cb: () => void) => this.onNextPaint(cb),
+        showLoupe: (at) => showLoupe(this.loupeSource, at),
+        hideLoupe,
         projection: new Projection3D({
           camera: this.camera,
           canvas: this.renderer.domElement as HTMLCanvasElement,
@@ -688,6 +696,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.disposed = true;
     this.running = false;
     this.frames.painted();  // a disposed scene never draws again; a waiter must not hang on it
+    releaseLoupeSource(this.loupeSource);
     cancelAnimationFrame(this.raf);
     this.busDetach?.();
     this.overlayLayer?.dispose();

@@ -10,6 +10,7 @@ import type { RegionBounds } from '../../../core/grid/rect';
 import { ACTIVE, INK, PLATE, rgbaOf } from '../../design/tokens';
 import { radii } from '../../design/styles';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { Icon } from '../parts/sprite';
 import { MarkedShot } from '../parts/map-shot';
 import { amplitude, framerMotion } from '../../design/motion';
@@ -52,6 +53,7 @@ export function RegionVignette({ bounds, width, height }: {
 }
 
 const BUTTON_BASE: CSSProperties = {
+  position: 'relative',
   width: 30,
   height: 30,
   borderRadius: radii.pill,
@@ -74,12 +76,13 @@ export function RegionButton({ bounds, marking, onPress }: {
   const t = useT();
   const lit = bounds !== null || marking;
   const label = bounds ? cellsSaid(t, bounds.count) : t('agent.region_mark');
+  const name = useNameReveal(label);
   return (
     <ActionButton
       data-testid="composer-region-mark"
       data-lit={lit}
-      title={label}
       aria-label={label}
+      {...name.bind}
       aria-pressed={marking}
       onClick={onPress}
       fill={lit ? ACTIVE : rgbaOf(ACTIVE, 0)}
@@ -87,6 +90,7 @@ export function RegionButton({ bounds, marking, onPress }: {
       style={BUTTON_BASE}
     >
       <Icon id="pw-region-frame" size={16} />
+      {name.bubble}
     </ActionButton>
   );
 }
@@ -100,6 +104,8 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
   onClear(): void;
 }) {
   const t = useT();
+  const clearName = useNameReveal(t('agent.region_detach'));
+  const markName = useNameReveal(t('agent.region_remark'));
   return (
     <motion.span
       data-testid="composer-region-chip"
@@ -121,7 +127,7 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
       <ActionButton
         data-testid="region-chip-body"
         interaction="tile"
-        title={t('agent.region_remark')}
+        {...markName.bind}
         aria-label={t('agent.region_remark')}
         onClick={onMark}
         style={{ display: 'inline-flex', border: 'none', background: 'none', padding: 0, borderRadius: radii.chip, boxShadow: 'none' }}
@@ -137,20 +143,22 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
             <Icon id="pw-region-frame" size={14} />
           </span>
         )}
+        {markName.bubble}
       </ActionButton>
       <ActionButton
         data-testid="region-chip-clear"
         interaction="badge"
-        title={t('agent.region_detach')}
         aria-label={t('agent.region_detach')}
+        {...clearName.bind}
         onClick={onClear}
         style={{
-          width: 18, height: 18, borderRadius: '50%', border: 'none', padding: 0,
+          position: 'relative', width: 18, height: 18, borderRadius: '50%', border: 'none', padding: 0,
           background: rgbaOf(INK, 0.1), color: INK, flex: '0 0 auto',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'none',
         }}
       >
         <Icon id="pw-cross" size={10} />
+        {clearName.bubble}
       </ActionButton>
     </motion.span>
   );

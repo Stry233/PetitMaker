@@ -63,6 +63,8 @@ describe('describeToolCall (human-readable approvals)', () => {
     expect(paint([{ x: 1, y: 1 }, { x: 2, y: 2 }])).toContain('2 cells');
     expect(describeToolCall({ name: 'set_annotation', input: { kind: 'zone', cells: [{ x: 1, y: 1 }] } }, en)).toContain('1 cell');
     expect(describeToolCall({ name: 'set_annotation', input: { kind: 'zone', cells: [{ x: 1, y: 1 }] } }, en)).not.toContain('1 cells');
+    expect(describeToolCall({ name: 'set_annotation', input: { tag: 'homes', shapes: [{ type: 'rect', x1: 1, y1: 1, x2: 4, y2: 4 }] } }, en)).toContain(en('annot.tag_homes'));
+    expect(describeToolCall({ name: 'set_annotation', input: { customTag: 'Tide Library', shapes: [{ type: 'rect', x1: 1, y1: 1, x2: 4, y2: 4 }] } }, en)).toContain('Tide Library');
   });
 
   it('renders the common write tools without raw JSON', () => {

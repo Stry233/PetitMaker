@@ -1,10 +1,5 @@
 // @vitest-environment jsdom
-/**
- * The composer: four routes in one well, suggestions as ghosts.
- *
- * Renders through `I18nProvider` (matches `gates.test.tsx`'s own wrapper) with a stubbed
- * `localStorage` the store's persisted locale pref can read/write safely in jsdom.
- */
+/** The composer: four routes in one well, suggestions as ghosts. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { I18nProvider, translate } from '../../../../i18n/context';
@@ -32,16 +27,14 @@ function renderWithI18n(node: React.ReactElement) {
 
 function noop() {}
 
-/** Pushes a colour through the same DOM round-trip on both sides of a comparison, since jsdom's
- *  cssstyle can normalize a hex differently from a var()-free literal though the two agree in
- *  meaning (matches `trouble.test.tsx`'s own `asBackground`). */
+/** A colour as jsdom's cssstyle normalises it, so both sides of a comparison match. */
 function asBackground(value: string): string {
   const probe = document.createElement('span');
   probe.style.background = value;
   return probe.style.background;
 }
 
-/** jsdom has no layout, so tests supply the textarea's measured height through a temporary getter. */
+/** jsdom has no layout, so tests supply the textarea's measured height. */
 let measured = 0;
 const ownScrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
 function measureField(px: number): void {
@@ -56,8 +49,7 @@ afterEach(() => {
   measured = 0;
 });
 
-/** The field's own line box in px, read off the element the component drew rather than restated: the
- *  cap the door and the clamp are both arithmetic over is `FIELD_MAX_LINES` of exactly this. */
+/** The field's line box in px, read off the rendered element; the cap is `FIELD_MAX_LINES` of it. */
 function lineBox(field: HTMLElement): number {
   return Number.parseFloat(field.style.fontSize) * Number(field.style.lineHeight);
 }
@@ -87,7 +79,7 @@ describe('Composer: placeholder per route', () => {
       .toBe('Answer, or a new order');
     answering.unmount();
 
-    // The other three already name what they carry, so the flag does not reach them.
+    // The other routes' placeholders already name what they carry.
     const steering = renderWithI18n(
       <Composer route="steer" answering running onSend={noop} onStop={noop} onDropSuggestion={noop} />,
     );
@@ -120,7 +112,6 @@ describe('Composer: an empty submit on the resume route continues the job', () =
     expect(onResume).not.toHaveBeenCalled();
   });
 
-  /** Every other route's empty submit is still a no-op: only a paused job has something to carry on. */
   it('does nothing on the other three routes', () => {
     for (const route of ['order', 'steer', 'gate-words'] as ComposerRoute[]) {
       const onSend = vi.fn();
@@ -233,9 +224,7 @@ describe('Composer: the stop square, geometry held stable', () => {
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
-  /** The well never goes dead as a group: the field is what an off state turns off, and every other
-   *  control in it answers a press. A running job's stop is genuinely pressable while the map holds
-   *  the pencil, which is the state that turns the field off without ending the run. */
+  /** Marking turns the field off without ending the run, so the stop stays pressable. */
   it('keeps the stop live while the map holds the pencil', () => {
     const onStop = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -292,26 +281,18 @@ describe('Composer: the suggestion ghost', () => {
   });
 
   /**
-   * The one clip in the panel has a way to be read, and its budget is true.
-   *
-   * The ghost is `nowrap` + `overflow: hidden` + ellipsis, so unlike the says line (which expands on
-   * a tap) and a stage label (which wraps) a suggestion past the field's width is lost. The tool
-   * licensed 60 characters into a field that holds about 30 in a Latin script and about 15 in CJK,
-   * and it was also the one model-authored string with no state in the fidelity matrix and a
-   * 19-character fixture standing in for its own bound. Fixture at the bound here, and the whole
-   * sentence reachable from the field's own title.
+   * The ghost is one clipped line, about 30 Latin or 15 CJK characters wide, so the fixture sits at
+   * that bound and the whole sentence stays readable in the field's title.
    */
   it('carries the whole suggestion in the field s title, however much of it fits', () => {
-    // A reply at the real bound: what a compliant model writes for a "shall I add a pier?" close.
     const AT_BOUND = 'Yes, add a pier on the south end';
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} suggestion={AT_BOUND} onSend={noop} onStop={noop} onDropSuggestion={noop} />,
     );
     const ghost = getByTestId('composer-ghost');
     expect(ghost.textContent).toBe(AT_BOUND);
-    // The clip is real, so the reading has to come from somewhere. The title is on the field's own
-    // wrapper, not the ghost: the ghost takes no pointer events, and a tooltip resolves against the
-    // nearest ancestor carrying one.
+    // The title sits on the field's wrapper: the ghost takes no pointer events, and a tooltip
+    // resolves against the nearest ancestor carrying one.
     expect(ghost.style.textOverflow).toBe('ellipsis');
     expect(ghost.style.pointerEvents).toBe('none');
     expect(ghost.parentElement!.getAttribute('title')).toBe(AT_BOUND);
@@ -382,7 +363,7 @@ describe('Composer: off', () => {
     expect(getByTestId('composer').style.pointerEvents).toBe('');
   });
 
-  /** The disabled state stays legible because its placeholder explains why input is unavailable. */
+  /** The off state shows in the track colour, not in faded opacity. */
   it('says the refusal in the tokens, and leaves the words readable', async () => {
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} marking onSend={noop} onStop={noop} onDropSuggestion={noop} />,
@@ -396,9 +377,6 @@ describe('Composer: off', () => {
     expect(getByTestId('composer-send').style.background).toBe(asBackground(TRACK));
   });
 
-  /** Why the field is off is not one state, so it is not one sentence: an unrepaired fault says its
-   *  own repair where the invitation would be. There is no state where a field with nowhere to send
-   *  stands at all — the setup family draws no composer (`PanelShell`). */
   it('says the fault\'s own repair rather than the route\'s invitation', () => {
     const { getByTestId } = renderWithI18n(
       <Composer
@@ -412,8 +390,6 @@ describe('Composer: off', () => {
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(true);
   });
 
-  /** The map holding the pencil keeps its own sentence, and the well stays live for the one control
-   *  that can end the marking. */
   it('names the pencil, and keeps the well reachable while it is held', () => {
     const { getByTestId } = renderWithI18n(
       <Composer route="order" running={false} marking onSend={noop} onStop={noop} onDropSuggestion={noop} />,
@@ -424,11 +400,7 @@ describe('Composer: off', () => {
   });
 });
 
-/**
- * The ghost and the placeholder paint in the same box, and only one of them may hold it: both show
- * only on an empty field, the ghost as an overlay over the input's own placeholder, so a standing
- * suggestion and an invitation to write one landed one on top of the other and neither could be read.
- */
+/** The ghost overlays the input's placeholder, so only one of them may show. */
 describe('Composer: the suggestion ghost and the placeholder', () => {
   it('gives the line to the ghost while one stands, and takes it back when it goes', () => {
     const { getByTestId, queryByTestId, rerender } = renderWithI18n(
@@ -461,8 +433,6 @@ describe('Composer: the suggestion ghost and the placeholder', () => {
     const field = getByTestId('composer-input') as HTMLInputElement;
     fireEvent.change(field, { target: { value: 'a' } });
     expect(queryByTestId('composer-ghost')).toBeNull();
-    // A field with words in it shows no placeholder either way; what matters is that the invitation
-    // is back the moment the field is empty again.
     fireEvent.change(field, { target: { value: '' } });
     expect(field.placeholder).toBe('');
     expect(queryByTestId('composer-ghost')).not.toBeNull();
@@ -470,13 +440,8 @@ describe('Composer: the suggestion ghost and the placeholder', () => {
 });
 
 /**
- * An order is as long as it needs to be, and one field carries it: the well's field grows to a
- * bounded number of lines and then hands its own box to a floating card, which is the same field at
- * the size a paragraph needs rather than a second one.
- *
- * jsdom lays nothing out, so the reading the growth depends on is supplied (`measureField`); what the
- * numbers then pin is the arithmetic over it, which is where the row count and the door both come
- * from.
+ * The well's field grows to a bounded number of lines, then hands its box to a floating card that
+ * is the same field at paragraph size. Heights come from `measureField`.
  */
 describe('Composer: long text', () => {
   const PARAGRAPH = 'Build a fishing village along the south shore, with a jetty at the river mouth, '
@@ -489,20 +454,16 @@ describe('Composer: long text', () => {
     const field = getByTestId('composer-input') as HTMLTextAreaElement;
     expect(field.tagName).toBe('TEXTAREA');
     expect(field.rows).toBe(1);
-    // Its own scroller once there is something in it to scroll, and never the corner grabber: the
-    // well is a pill of a fixed shape and a hand-dragged field would tear straight out of it.
+    // No resize grabber: a hand-dragged field would tear out of the fixed pill.
     measureField(lineBox(field) * (FIELD_MAX_LINES + 1));
     fireEvent.change(field, { target: { value: PARAGRAPH } });
     expect(field.style.overflowY).toBe('auto');
     expect(field.style.resize).toBe('none');
-    // The cap is arithmetic over a declared line box, or it would be a different number of lines on
-    // every platform.
+    // A declared line height keeps the cap the same number of lines on every platform.
     expect(field.style.lineHeight).toBeTruthy();
     expect(FIELD_MAX_LINES).toBeGreaterThan(1);
   });
 
-  /** Enter sends and a modifier breaks the line. Enter is the send key everywhere in the app, so the
-   *  newline is what the modifier buys rather than the other way round. */
   it('sends on Enter and writes a newline on Shift+Enter', () => {
     const onSend = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -534,9 +495,6 @@ describe('Composer: long text', () => {
       return { ...view, onSend };
     }
 
-    /** One value, one field at a time: the card opens with what the well held, and the well is a seat
-     *  while it stands — so there is no second copy of the text and no direction for a sync to drift
-     *  in, because there is no second field to sync with. */
     it('opens with what the well already holds, and hands edits back to it on the way home', async () => {
       const { getByTestId, queryByTestId } = open();
       const big = getByTestId('composer-expanded-input') as HTMLTextAreaElement;
@@ -550,34 +508,25 @@ describe('Composer: long text', () => {
         .toBe(`${PARAGRAPH} And a bench.`);
     });
 
-    /**
-     * Expanded and docked never co-exist. The card is the docked field at another size, so while it
-     * stands the well is an empty seat: no field in it, and the box it held kept, since the card
-     * morphs out of that box and has to morph back into it.
-     */
+    /** The well keeps its box while empty, since the card morphs out of it and back. */
     it('leaves the well standing as an empty seat, holding the box it had', () => {
       const { getByTestId, queryAllByTestId } = open();
       const well = getByTestId('composer-well');
       expect(well.dataset.seat).toBe('1');
       expect(well.childElementCount).toBe(0);
       expect(well.style.height).not.toBe('');
-      // One field in the document, and it is the card's.
       expect(queryAllByTestId('composer-input')).toHaveLength(0);
       expect(queryAllByTestId('composer-expanded-input')).toHaveLength(1);
     });
 
-    /** The morph runs both ways off one declaration, and reads its own numbers from the registry. */
     it('morphs from the seat s own box and back into it, on a declared motion', async () => {
       const { getByTestId, queryByTestId } = open();
       expect(MOTIONS['panel.composer.unfold'].tier).toBe('inform');
       const card = getByTestId('composer-expanded');
-      // Both boxes are the same two style objects the morph tweens between: a fixed card whose
-      // corner, box and radius are animated values rather than a class swap.
       expect(card.style.position).toBe('fixed');
 
       fireEvent.click(getByTestId('composer-expanded-done'));
-      // The card is still there the frame after the press: it is folding back into the well rather
-      // than being taken away, which is the whole of what the collapse has to say.
+      // Still present the frame after the press, folding back into the well.
       expect(queryByTestId('composer-expanded')).not.toBeNull();
       await waitFor(() => expect(queryByTestId('composer-expanded')).toBeNull());
     });
@@ -587,11 +536,10 @@ describe('Composer: long text', () => {
       const card = getByTestId('composer-expanded');
       expect(card.style.position).toBe('fixed');
       expect(card.style.zIndex).toBe(String(z.popover));
-      // Writing an order does not disable the record it is about, so there is no dimming plane.
+      // The record stays usable, so nothing dims it.
       expect(document.querySelectorAll('[data-testid="modal-backdrop"]')).toHaveLength(0);
     });
 
-    /** It is a view, not a dialog. Closing it keeps what is written, whichever way it is closed. */
     it.each([
       ['its own Done', (el: HTMLElement) => fireEvent.click(el)],
       ['Escape', () => fireEvent.keyDown(window, { key: 'Escape' })],
@@ -623,8 +571,7 @@ describe('Composer: long text', () => {
       expect(onSend).toHaveBeenCalledWith(PARAGRAPH);
     });
 
-    /** The door stands whatever the well is doing, once there is text it cannot hold: an order too
-     *  long for the pill is exactly the one a blocked or marking well still has in it. */
+    /** A blocked or marking well can still hold a long order. */
     it.each([
       ['marking', { marking: true }],
       ['blocked', { blocked: { key: 'agent.composer_blocked_provider', off: true } }],
@@ -640,11 +587,7 @@ describe('Composer: long text', () => {
   });
 });
 
-/**
- * The door shows when it is of use and not before: the well holds `FIELD_MAX_LINES` of text, and a
- * second surface is only the better surface once the text has outgrown that. On a short order the
- * button is a control with nothing behind it, sitting between the region frame and the send.
- */
+/** The door shows only once the text outgrows the well's `FIELD_MAX_LINES`. */
 describe('Composer: when the door to the bigger field appears', () => {
   function fieldOf(view: ReturnType<typeof renderWithI18n>): HTMLElement {
     return view.getByTestId('composer-input');
@@ -678,8 +621,7 @@ describe('Composer: when the door to the bigger field appears', () => {
     fireEvent.change(field, { target: { value: 'a paragraph' } });
     expect(view.queryByTestId('composer-expand')).not.toBeNull();
 
-    // Deleted back down to what the well holds: the door folds away with the overflow that
-    // justified it, so it is still there the frame after and gone once the fold has run.
+    // Back within the well, the door folds away once its motion has run.
     measureField(line);
     fireEvent.change(field, { target: { value: 'short again' } });
     await waitFor(() => expect(view.queryByTestId('composer-expand')).toBeNull());
@@ -687,13 +629,8 @@ describe('Composer: when the door to the bigger field appears', () => {
 });
 
 /**
- * The grey text never decides the row count.
- *
- * A placeholder and a ghost are both drawn in the field's own box, and a wrapped one takes THREE
- * lines of it at the docked width — which the field then grows to hold, so a field standing empty
- * was two or three rows tall and snapped back to one the moment a character was typed into it. The
- * field's height is arithmetic over the value: an empty field is one row, whatever grey line is
- * standing in it, and the grey line is clamped to that row rather than the row grown to the line.
+ * The grey text never decides the row count: a wrapped placeholder or ghost would otherwise grow an
+ * empty field to three rows that snap to one at the first keystroke.
  */
 describe('Composer: the field s own line rules', () => {
   it('stands one row tall while it is empty, however much grey text it is showing', () => {
@@ -708,12 +645,10 @@ describe('Composer: the field s own line rules', () => {
       />,
     );
     const field = view.getByTestId('composer-input') as HTMLTextAreaElement;
-    // Three rows' worth of grey line, measured: the row count does not read it.
     measureField(lineBox(field) * 3);
     fireEvent.change(field, { target: { value: '' } });
     expect(field.style.height).toBe(`${Math.ceil(lineBox(field))}px`);
     expect(field.rows).toBe(1);
-    // And nothing scrolls in a field with nothing in it, so no scrollbar rides the grey line.
     expect(field.style.overflowY).toBe('hidden');
   });
 
@@ -729,15 +664,13 @@ describe('Composer: the field s own line rules', () => {
     expect(field.style.height).toBe(`${Math.ceil(line * 2)}px`);
     expect(field.style.overflowY).toBe('hidden');
 
-    // Past the cap the height stops and the field's own scroller takes over.
     measureField(line * (FIELD_MAX_LINES + 3));
     fireEvent.change(field, { target: { value: 'a paragraph of order' } });
     expect(field.style.height).toBe(`${Math.ceil(line * FIELD_MAX_LINES)}px`);
     expect(field.style.overflowY).toBe('auto');
   });
 
-  /** The growth is a tween and the number is the panel's own: the well's foot and the panel's box are
-   *  one movement, so the field travels on the same declaration the panel's height does. */
+  /** The field and the panel's box move together, so they share one motion. */
   it('animates the growth on the panel s own declared height motion', () => {
     const view = renderWithI18n(
       <Composer route="order" running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} />,
@@ -748,12 +681,7 @@ describe('Composer: the field s own line rules', () => {
   });
 });
 
-/**
- * The send cluster is centred in the well and stays in it, at every height the field reaches.
- *
- * jsdom lays nothing out, so the contract is pinned by the style facts that produce the centring: the
- * well centres its row, and nothing in it overrides that.
- */
+/** The send cluster stays centred at every field height; jsdom has no layout, so the styles are read. */
 describe('Composer: the well s layout contract', () => {
   function well() {
     const view = renderWithI18n(
@@ -765,8 +693,6 @@ describe('Composer: the well s layout contract', () => {
   it('centres its row, and nothing inside it asks to sit anywhere else', () => {
     const { view, box } = well();
     expect(box.style.alignItems).toBe('center');
-    // A padding under the field is exactly the offset that pushed the cluster off the middle when
-    // the row was seated on its last line instead of centred.
     expect(view.getByTestId('composer-input').parentElement!.style.paddingBottom).toBe('');
     for (const id of ['composer-stop', 'composer-send']) {
       expect(view.getByTestId(id).style.alignSelf).toBe('');

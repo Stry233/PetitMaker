@@ -1,8 +1,6 @@
 /**
- * The macro contract, and the one property the shell's proposal flow is built on: a macro is
- * exactly one undo entry. Rerolling a proposal is `undo()` then applying the next seed, so a macro
- * that landed as two entries would leave half of itself on the map and every later reroll would
- * stack on that half. Each test below applies, undoes once, and demands the grid back byte for byte.
+ * The macro contract. A macro is exactly one undo entry, since rerolling a proposal is `undo()`
+ * then the next seed; the undo tests demand the grid back byte for byte.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
@@ -44,10 +42,8 @@ function seaBorder(state: GridState, margin = 3): void {
   }
 }
 
-/** The same picture with object IDS left out, for comparing two runs that minted their own. Ids
- *  appear twice in a `gridSnapshot` — as the Map key and as the object's own field — so a text
- *  substitution over the id field alone leaves the keys, and a comparison built on it can only pass
- *  while the runs place nothing at all. */
+/** The same picture without object ids, which differ between runs; both the Map keys and the
+ *  objects' own `id` fields are left out. */
 function shapeSnapshot(state: GridState): string {
   const withoutId = [...state.objects.values()].map(({ id: _id, ...rest }) => rest);
   return JSON.stringify({ cells: state.cells, objects: withoutId });
@@ -65,7 +61,7 @@ function raisedCells(state: GridState): number {
 
 type Rect = { x: number; y: number; w: number; h: number };
 
-/** The cells of the ring one step outside a footprint — where a road serving it can lie. */
+/** The cells of the ring one step outside a footprint: where a road serving it can lie. */
 function doorRing(rect: Rect): MacroCoord[] {
   const out: MacroCoord[] = [];
   for (let y = Math.floor(rect.y) - 1; y <= rect.y + rect.h; y++) {
@@ -127,10 +123,8 @@ describe('applyMacro', () => {
     expect([...state.objects.values()].some((o) => categoryOf(o) === ItemCategory.Road)).toBe(true);
   });
 
-  // Relief in the middle of the map is the hard shape: the open ground wrapping a hill is
-  // a ring, whose centroid sits on the hilltop rather than in it. The router seeds its whole network
-  // on the hub node, so a hub left on that summit strands every route on a cell nothing can reach and
-  // the run lays nothing at all — on the one macro the shell offers a reroll for.
+  // Open ground around a central hill is a ring whose centroid sits on the hilltop; the router seeds
+  // its network at the hub, so a hub left there would strand every route.
   it('connects buildings around relief in the middle of the map', () => {
     const { kit, state } = setup(40, 40);
     applyMacro(kit, 'raise', { seed: 1, at: { x: 20, y: 20 }, radius: 7, stage: 3 });
@@ -142,7 +136,7 @@ describe('applyMacro', () => {
     expect(outcome.reason).toBeUndefined();
     expect(outcome.changes).toBeGreaterThan(0);
 
-    // One pavement, not two stubs: the roads reachable from one doorstep have to reach the other's.
+    // One pavement, not two stubs.
     expect(touchesRect(roadsFrom(state, a!), b!)).toBe(true);
   });
 
@@ -169,9 +163,8 @@ describe('applyMacro', () => {
     expect(shape(a.state)).toBe(shape(b.state));
   });
 
-  // `commitStroke` auto-reverts only until the state is legal, so a post-stroke violation can stop
-  // mid-revert and leave part of the run standing under one undo entry. `changes` has to report
-  // what survived: a shell told "nothing happened" has no reason to undo before its next apply.
+  // `commitStroke` reverts only until the state is legal, so part of a run can stand under one undo
+  // entry, and `changes` counts that part so the shell knows to undo it.
   it('reports what survived a partial post-stroke revert', () => {
     const { kit, exec, state, registry } = setup();
     const cap: PostStrokeRule = {
@@ -190,13 +183,11 @@ describe('applyMacro', () => {
     expect(outcome.changes).toBe(5);
     expect(outcome.reason).toEqual(expect.any(String));
 
-    // Still exactly one entry, so the caller's undo takes the residue back whole.
     exec.undo();
     expect(state.objects.size).toBe(0);
   });
 
-  // A macro is the generator's machinery invoked at a point, so Clear has to take it back the same
-  // way it takes back a run, while a hand placement inside the same ground survives.
+  // A hand placement in the same ground survives the Clear.
   it('[GEN-10] attributes what it laid to the generator, and Clear takes it back', () => {
     const { kit, state } = setup();
     place(kit, 'building-myhouse', 2, 2);
@@ -224,9 +215,8 @@ describe('applyMacro', () => {
     expect(exec.historyDepth()).toBe(depth);
   });
 
-  // A rise is nested terraces: one flat top over the whole footprint, and a core one tier higher for
-  // each rung above it. So a ray from the summit falls to the rim without ever climbing back, and the
-  // flat top is the widest level on the map, every terrace above it standing inside that one.
+  // A rise is nested terraces over one flat top: a ray from the summit never climbs, and every level
+  // above the flat top is narrower than it.
   it('raises a terraced mound that steps down to its rim', () => {
     const { kit, state } = setup();
     const outcome = applyMacro(kit, 'raise', { seed: 1, at: { x: 16, y: 16 }, radius: 7, stage: 5, steepness: 'steep' });
@@ -269,7 +259,7 @@ describe('applyMacro', () => {
     for (const row of state.cells) for (const cell of row) cell.zone = CellZone.Void;
     const depth = exec.historyDepth();
 
-    // A rise over ground that refuses it still reports the tier that ground carries, which is none.
+    // A rise over ground that refuses it reports a peak of 0.
     expect(applyMacro(kit, 'raise', { seed: 1, at: { x: 16, y: 16 }, radius: 6 }))
       .toEqual({ changes: 0, reason: expect.any(String), peak: 0 });
     expect(applyMacro(kit, 'raise', { seed: 1, at: { x: 999, y: 999 }, radius: 6 })).toEqual({ changes: 0, reason: expect.any(String) });
@@ -277,10 +267,8 @@ describe('applyMacro', () => {
     expect(exec.historyDepth()).toBe(depth);
   });
 
-  // `roads` is the macro the shell rerolls, so it is the one whose seed most needs pinning. The
-  // fixture is shared, so it has to be one all four can work in: relief off to one side (the
-  // router lays nothing when the map's largest open region has a hill sitting in the middle of it)
-  // with two buildings on the flat, and the aim point on the hill for the three that take one.
+  // One fixture for all four: relief to one side, two buildings on the flat, and the aim point on
+  // the hill for the three that take one.
   it.each(['raise', 'patch-tree', 'patch-flora', 'roads'] as const)('builds the same %s twice at one seed', (id) => {
     const run = (): { grid: string; changes: number } => {
       const { kit, state } = setup(40, 40);
@@ -292,7 +280,7 @@ describe('applyMacro', () => {
       return { grid: shapeSnapshot(state), changes };
     };
     const a = run(), b = run();
-    expect(a.changes).toBeGreaterThan(0);   // else two empty runs would compare equal
+    expect(a.changes).toBeGreaterThan(0); // else two empty runs would compare equal
     expect(a.grid).toBe(b.grid);
     expect(b.changes).toBe(a.changes);
   });

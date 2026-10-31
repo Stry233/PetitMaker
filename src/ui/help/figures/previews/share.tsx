@@ -3,6 +3,7 @@
  * checklist panels, the layer stack, a row of generate candidates and a row of search results,
  * each mounted live inside `PreviewFrame` rather than drawn as a picture of itself.
  */
+import { useReducedMotionConfig } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import type { GridState, MapNotes } from '../../../../core/model/types';
@@ -16,7 +17,6 @@ import { figureCaption } from '../caption';
 import { DEFAULT_EXPORT_OPTIONS as DEFAULT_OPTIONS, DEFAULT_FOOTER, formatFooterDate, isImportable, type ExportOptions } from '../../../../io/export/facts';
 import { buildChecklist } from '../../../../state/build-checklist';
 import { useEditorStore } from '../../../../state/store';
-import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { useLocale, useT } from '../../../../i18n/context';
 import { searchExamples } from '../../search-examples';
 import { cozyPanel, windowCard } from '../../../design/window-skin';
@@ -301,12 +301,12 @@ export function SearchPreview() {
     const idx = steps.findIndex((s) => s.captionKey === 'help.search.typo_t');
     return idx === -1 ? 0 : idx;
   }, [steps]);
-  const still = useRef(isMotionReduced());
-  const [step, setStep] = useState(() => (still.current ? frozenStep : 0));
-  const [typed, setTyped] = useState(() => (still.current ? [...steps[frozenStep]!.query].length : 0));
+  const still = useReducedMotionConfig() === true;
+  const [step, setStep] = useState(() => (still ? frozenStep : 0));
+  const [typed, setTyped] = useState(() => (still ? [...steps[frozenStep]!.query].length : 0));
 
   useEffect(() => {
-    if (still.current) return undefined;
+    if (still) return undefined;
     const length = [...steps[step % steps.length]!.query].length;
     const timer = setTimeout(() => {
       if (typed < length) { setTyped(typed + 1); return; }
@@ -314,7 +314,7 @@ export function SearchPreview() {
       setTyped(0);
     }, typed < length ? TYPE_MS : HOLD_MS);
     return () => clearTimeout(timer);
-  }, [step, typed, steps]);
+  }, [step, typed, steps, still]);
 
   const active = steps[step % steps.length]!;
   const query = [...active.query].slice(0, typed).join('');

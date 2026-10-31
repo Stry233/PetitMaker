@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
-import { useChromeScale, useTouchPrimary, useWeightVars } from '../../design/scale';
+import { TOUCH_TARGET } from '../../design/scale';
+import { ChromeLifted } from '../../primitives/ChromeLifted';
 import { getActiveView } from '../../../view/active-view';
 import { AnimatePresence, type MotionStyle } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
@@ -41,11 +42,6 @@ export function DeleteConfirmFace({ title, onCancel, onConfirm, style, anchor, t
 }
 
 export function DeletePopover() {
-  // A fingertip gets the card at its designed size at least, so its answers stay easy to tap.
-  const touch = useTouchPrimary();
-  const scale = useChromeScale();
-  const chrome = touch ? Math.max(scale, 1) : scale;
-  const weights = useWeightVars();
   const t = useT();
   const sel = useEditorStore((s) => s.deletePopover);
   const gridState = useEditorStore((s) => s.gridState);
@@ -120,15 +116,19 @@ export function DeletePopover() {
       anchor = { x: button.left + button.width / 2, y: growUp ? plate.top : plate.bottom };
     }
     if (confirm) {
+      // A fingertip gets the card at its designed size at least, so its answers stay easy to tap.
       content = (
-        <DeleteConfirmFace
-          key="popover"
-          title={title}
-          onCancel={dismiss}
-          onConfirm={confirm}
-          anchor={anchor} trigger={shown ? controlRef : undefined} prefer={shown && growUp ? 'above' : 'below'} zoom={chrome}
-          style={{ zoom: chrome, ...weights }}
-        />
+        <ChromeLifted key="popover" control={TOUCH_TARGET}>
+          {({ zoom: chrome, weights }) => (
+            <DeleteConfirmFace
+              title={title}
+              onCancel={dismiss}
+              onConfirm={confirm}
+              anchor={anchor} trigger={shown ? controlRef : undefined} prefer={shown && growUp ? 'above' : 'below'} zoom={chrome}
+              style={{ zoom: chrome, ...weights }}
+            />
+          )}
+        </ChromeLifted>
       );
     }
   }

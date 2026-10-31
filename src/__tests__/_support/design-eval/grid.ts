@@ -1,29 +1,24 @@
 /**
- * The road widths and the region symmetry the evaluation reads over the map's masks
- * (`tools/reading`). Symmetry is a same-species mirror match over a region's plants, the definition
- * the decoded expert maps were measured by.
+ * Road widths and region symmetry over the map's masks (`tools/reading`).
  *
- * Both road-width measures live here, and they answer different questions. The run measure is the one
- * the reference tables use (min of the horizontal and vertical paved run through a cell), which is what
- * makes the width mix comparable to them. The hard rule is judged on the opening measure instead — the
- * largest all-paved square a cell sits in — because that is the width a walker sees: a paved square
- * reads its whole extent under both, but a 1-cell staircase running diagonally reads 2 under the run
- * measure (two cells across in each axis) and 1 under the opening, which is what it draws as.
+ * Two width measures: the run measure matches the reference tables, so the width mix compares with
+ * them; the opening measure is the width a walker sees and judges the no-1-wide rule. A 1-cell diagonal
+ * staircase reads 2 under the run measure and 1 under the opening, which is what it draws as.
  */
 import type { MapMasks, Region } from '../../../tools/reading';
 import { cellKey } from '../../../core/grid/rect';
 
-/** The reference's symmetry-and-unity reading: regions of >= `REGION_MIN_CELLS` cells
- *  (`tools/reading/regions.ts`) holding >= 8 decor objects, mirror match >= 0.6 counts as symmetric,
- *  dominant colour family >= 60% counts as unified. */
+/** A region (of `REGION_MIN_CELLS` or more, `tools/reading/regions.ts`) is read for symmetry and unity
+ *  when it holds at least this many decor objects. */
 export const REGION_MIN_DECOR = 8;
 
+/** A mirror match at or above this counts as symmetric. */
 export const SYMMETRY_MATCH_MIN = 0.6;
 
+/** A dominant colour family holding this share or more counts as unified. */
 export const UNITY_SHARE_MIN = 0.6;
 
-/** Per-cell corridor width by the run definition: min(horizontal run, vertical run). 0 off the
- *  pavement. A wide street and a small square both read their extent under it. */
+/** Per-cell width by the run definition, min(horizontal run, vertical run); 0 off the pavement. */
 export function runWidths(paved: Uint8Array, W: number, H: number): Uint8Array {
   const out = new Uint8Array(W * H);
   const run = (x: number, y: number, horiz: boolean): number => {
@@ -48,9 +43,8 @@ export function runWidths(paved: Uint8Array, W: number, H: number): Uint8Array {
 }
 
 /** Per-cell width by morphological opening: the largest k for which the cell lies inside some
- *  all-paved k x k square. Parity-safe (a 2-wide street reads 2, unlike a distance transform) and
- *  strictly stricter than the run measure — every run-1 cell is opening-1, plus the diagonal
- *  staircases a run measure calls 2-wide. This is what the no-1-wide hard rule reads. */
+ *  all-paved k x k square. A 2-wide street reads 2, unlike under a distance transform. Never wider
+ *  than the run measure. */
 export function openingWidths(paved: Uint8Array, W: number, H: number, maxK = 12): Uint8Array {
   const out = new Uint8Array(W * H);
   // Integral image of the paved mask: rect sums in O(1).
@@ -62,8 +56,7 @@ export function openingWidths(paved: Uint8Array, W: number, H: number, maxK = 12
   const rect = (x: number, y: number, w: number, h: number): number =>
     sum[(y + h) * (W + 1) + (x + w)]! - sum[y * (W + 1) + (x + w)]! - sum[(y + h) * (W + 1) + x]! + sum[y * (W + 1) + x]!;
   for (let k = 1; k <= Math.min(maxK, W, H); k++) {
-    // Corners of every all-paved k x k square, then a second integral image so "is any such corner
-    // inside the k x k window ending at this cell" is O(1) too.
+    // Corners of every all-paved k x k square, integrated so the window test per cell is O(1) too.
     const corner = new Int32Array((W + 1) * (H + 1));
     let any = false;
     for (let y = 0; y + k <= H; y++) for (let x = 0; x + k <= W; x++) {
@@ -97,9 +90,8 @@ export function regionDecor(g: MapMasks, region: Region): RegionDecor[] {
   return out;
 }
 
-/** Best mirror-match score over the vertical and horizontal axes. The axis is scanned in half-cell
- *  steps but held to the middle third of the decor cloud, and a plant matches only the same
- *  catalogId at the mirrored cell, which is the definition the reference was read by. */
+/** Best mirror-match score over the vertical and horizontal axes: the axis moves in half-cell steps
+ *  within the middle third of the decor cloud, and a plant matches only its own catalogId mirrored. */
 export function mirrorScore(decor: RegionDecor[]): { v: number; h: number } {
   const at = new Map<string, string>();
   for (const d of decor) at.set(cellKey(d.x, d.y), d.id);

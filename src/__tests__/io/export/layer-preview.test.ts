@@ -4,8 +4,8 @@ import { TerrainType, type GridState, type MacroCell } from '../../../core/model
 import { CellZone } from '../../../core/game/zones';
 import { ELEVATION_MAX } from '../../../core/game/profile';
 
-/** Build a tiny GridState whose cells carry the given (type, elevation) so we can probe the
- *  construction-step derivation directly. `peaks` is a flat list painted onto a 4x3 grass grid. */
+/** A tiny GridState for probing the construction-step derivation directly: `peaks` is a flat list
+ *  of (type, elevation) painted onto a 4x3 grass grid. */
 function makeState(peaks: { type: TerrainType; elevation: number }[]): GridState {
   const width = 4, height = 3;
   const cells: MacroCell[][] = [];

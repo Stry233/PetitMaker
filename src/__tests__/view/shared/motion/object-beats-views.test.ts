@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The 2D sprite and the 3D instance sample the same placement plop and rotation curves at the same
- * progress, so the two views cannot drift apart again.
+ * progress, so the two views cannot drift apart.
  */
 import '../../../_support/pixi-env'; // object-animations reaches PIXI, which needs jsdom's missing 2D context
 import { afterEach, describe, expect, it, vi } from 'vitest';

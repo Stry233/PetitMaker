@@ -17,7 +17,7 @@ const FORBIDDEN = [
 
 /** The modules an operation must not load at runtime, src-relative without extension. */
 const FORBIDDEN_MODULES: readonly { test: (module: string) => boolean; why: string }[] = [
-  { test: (m) => m === 'platform/channels/toast-bus' || m === 'ui/chrome/floating/Toast', why: 'shows a toast' },
+  { test: (m) => m === 'platform/channels/toast-bus', why: 'shows a toast' },
   { test: (m) => m.startsWith('i18n/'), why: 'localizes its own message' },
   { test: (m) => m.startsWith('ui/'), why: 'reaches into the UI' },
 ];

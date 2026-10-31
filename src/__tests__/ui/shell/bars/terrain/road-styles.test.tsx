@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The road picker: the catalog's path art on its swatches, the hovered surface's name, and the two
- * soft edges — the strip's own, and the one inside a name too long for its bubble.
- *
- * jsdom lays nothing out, so every scroll metric it reports is zero and both of those resolve to
- * "nothing to fade". `stubMetrics` gives the whole document a box and a content width, which is what
- * puts the two measuring paths in the state a browser would.
+ * soft edges: the strip's own, and the one inside a name too long for its bubble.
+ * jsdom reports every scroll metric as zero, so `stubMetrics` supplies a box and a content width.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -29,8 +26,7 @@ function Providers({ children, reduced }: { children: React.ReactNode; reduced?:
   );
 }
 
-/** Every element is 100 wide and holds 300 of content, so anything that measures its own overrun
- *  finds one. Restored by `afterEach`. */
+/** Every element is 100 wide with 300 of content, so each measures an overrun. Returns the undo. */
 function stubMetrics(): () => void {
   const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
   const was = {
@@ -69,8 +65,6 @@ describe('the road picker', () => {
   });
 
   it('offers every road and a leading print switch', () => {
-    // The plain colour surfaces are retired, so a swatch with no art is a swatch
-    // for an item the catalog should not be holding.
     render(<Providers><RoadStyles /></Providers>);
     const swatches = screen.getAllByRole('button');
     expect(swatches).toHaveLength(getRoadMaterials().length + 1);
@@ -100,9 +94,9 @@ describe('the road picker', () => {
   it('reaches the bubble from the keyboard too, mirroring pointer hover', async () => {
     render(<Providers><RoadStyles /></Providers>);
     const cobble = screen.getByRole('button', { name: 'Cobblestone Path' });
-    fireEvent.focus(cobble);
+    act(() => { cobble.focus(); });
     expect((await screen.findByTestId('shell-card-name')).textContent).toBe('Cobblestone Path');
-    fireEvent.blur(cobble);
+    act(() => { cobble.blur(); });
     await waitFor(() => expect(screen.queryByTestId('shell-card-name')).toBeNull());
   });
 });
@@ -117,25 +111,21 @@ describe('the strip fades where it can still travel', () => {
     const row = screen.getByRole('group', { name: 'Road Surface' });
     fireEvent.scroll(row);
 
-    // The shade grows in over a few frames (`scroll-fade.ts` chases the measured width), so what is
-    // waited for is the settled width: a whole swatch, well past the shelf rows' default, so the
-    // shade begins earlier along the row.
+    // The shade grows over a few frames (`scroll-fade.ts` chases the measured width) to a whole
+    // swatch, wider than the shelf rows' default.
     const width = (): number => Number(
       /calc\(100% - ([0-9.]+)px\)/.exec(row.style.maskImage)?.[1],
     );
     await waitFor(() => expect(width()).toBeGreaterThan(SCROLL_FADE));
 
-    // At the left stop (scrollLeft 0) the first swatch and its grown plate meet the edge squarely.
+    // At scrollLeft 0 the left edge is not shaded.
     expect(row.style.maskImage).toContain('linear-gradient(to right,');
     expect(row.style.maskImage).not.toContain('transparent 0');
     expect(row.style.maskImage).toContain('transparent 100%');
   });
 });
 
-/**
- * A name longer than its bubble. The Russian names run past forty characters, and a bubble that grew
- * to hold one would reach across half the strip.
- */
+/** Russian names run past forty characters; a bubble grown to fit one would cross half the strip. */
 describe('the hovered name, when it does not fit', () => {
   let restore = () => {};
   afterEach(() => restore());
@@ -156,7 +146,7 @@ describe('the hovered name, when it does not fit', () => {
     expect(box.style.maskImage).toContain('transparent 0');
     expect(box.style.maskImage).toContain('transparent 100%');
     expect(text.style.whiteSpace).toBe('nowrap');
-    // Clipped, never shortened: what is on screen is the whole name, travelling.
+    // Clipped, never shortened.
     expect(text.textContent).toBe('Cobblestone Path');
   });
 
@@ -172,7 +162,6 @@ describe('the hovered name, when it does not fit', () => {
     expect(box.style.overflow).toBe('');
   });
 
-  /** A name that fits keeps exactly the bubble it always had: no window, no shade, no travel. */
   it('leaves a name that fits alone', async () => {
     render(<Providers><RoadStyles /></Providers>);
     hover();

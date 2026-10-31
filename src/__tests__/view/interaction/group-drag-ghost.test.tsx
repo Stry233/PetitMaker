@@ -22,9 +22,8 @@ import { createExecutor } from '../../../state/executor';
 import { editorToolWiring } from '../../../editor/session/tool-wiring';
 import { ItemCategory } from '../../../config/catalog/categories';
 
-// A plain 1x1 draggable item with no traits (a real catalog tree carries an exclusionRadius that
-// would refuse two of them sitting one cell apart, which is exactly the tight arrangement these
-// tests drag around — see group-move.test.ts's 'grp-hut' for the same convention).
+// A traitless 1x1 item: a real tree's exclusionRadius would refuse two one cell apart, as these tests
+// arrange them (the same convention as group-move.test.ts's 'grp-hut').
 const ITEM = 'ghost-test-hut';
 __setCatalogItem({
   id: ITEM, category: ItemCategory.Building, name: { en: 'Ghost Test Hut' },
@@ -104,7 +103,6 @@ afterEach(() => {
 
 describe('dragging a plural selection', () => {
   it('previews every member and covers all destination footprints', () => {
-    // a(5,5) b(6,5) c(7,5), all selected; drag anchored on 'a' by +1 in x.
     const { overlay } = setUp([tree('a', 5, 5), tree('b', 6, 5), tree('c', 7, 5)], ['a', 'b', 'c']);
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
@@ -116,13 +114,12 @@ describe('dragging a plural selection', () => {
     expect(members).toHaveLength(3);
     expect(members.map((m: { position: { x: number; y: number } }) => `${m.position.x},${m.position.y}`).sort()).toEqual(['6,5', '7,5', '8,5']);
 
-    // The cell wash is the union of every member's footprint, not just the dragged one.
     const cells = (overlay.showGhost.mock.calls[0]![0] as { cells: Array<{ x: number; y: number }> }).cells;
     expect(cells.map((c) => `${c.x},${c.y}`).sort()).toEqual(['6,5', '7,5', '8,5']);
   });
 
   it('tints the WHOLE group invalid when any one member would collide, even though the others alone would be fine', () => {
-    // Sliding the row by +2 lands 'c' on top of 'wall' (not part of the selection).
+    // Sliding the row by +2 lands 'c' on the unselected 'wall'.
     const { overlay } = setUp(
       [tree('a', 5, 5), tree('b', 6, 5), tree('c', 7, 5), tree('wall', 9, 5)],
       ['a', 'b', 'c'],
@@ -146,12 +143,10 @@ describe('dragging a plural selection', () => {
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 65, clientY: 55 })); // cell (6,5): 1st compute
     expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
 
-    // Two more samples that land on the same macro cell: no recompute.
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 66, clientY: 55 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 69, clientY: 56 }));
     expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
 
-    // A sample that crosses into a new macro cell recomputes.
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 75, clientY: 55 }));
     expect(overlay.showObjectMove).toHaveBeenCalledTimes(2);
   });
@@ -172,11 +167,9 @@ describe('dragging a plural selection', () => {
   });
 
   it('a halfStep member of a group reads its OWN planned elevation, not the ground under a half index', () => {
-    // The group ghost reaches the same trap as the solo one: an inline `gs.cells[y]?.[x]` with a
-    // fractional x is undefined, so the elevation reads 0.
-    // A mountain band at y <= 9, a shoulder at x = 7 and a water bank at x = 4 for y in [10, 14]
-    // leave a lane only the half anchor at x = 4.5 clears — a real ramp sitting there already
-    // (elevation 1, the mountain's own height) is what a group slide must keep reporting, not 0.
+    // `gs.cells[y]?.[x]` with a fractional x is undefined, so a ground read would give 0. The
+    // terrain leaves a lane at y 10 to 14 that only the half anchor x = 4.5 clears, and the ramp
+    // standing there at elevation 1 must keep it in the group ghost.
     const ramp: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 9 }, rotation: 0, elevation: 1 };
     const { overlay } = setUp([ramp, tree('h', 2, 2)], ['r', 'h']);
     for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if (y <= 9) setTerrain(gs, x, y, TerrainType.Mountain, 1);
@@ -185,11 +178,8 @@ describe('dragging a plural selection', () => {
       setTerrain(gs, 4, y, TerrainType.Water, 0);
     }
 
-    // Press on the ramp at macro cell (5, 9) (inside its footprint [4, 7) x [9, 13)); the mock
-    // group path reads whole placement cells, so its own whole-cell grab offset applies:
-    // grabOffset = (4.5 - 5, 9 - 9) = (-0.5, 0). Drag to macro (5, 10): dx = 5 - 0.5 - 4.5 = 0,
-    // dy = 10 - 9 = 1 — the ramp's candidate lands back at (4.5, 10), which the heightDrop trait
-    // re-detects to (4.5, 9), elevation 1 (the same lane, one row down from where it's probed).
+    // Press at macro (5, 9), inside the ramp, so grabOffset is (-0.5, 0); dragging to (5, 10) puts
+    // the candidate at (4.5, 10), which the heightDrop trait re-detects to (4.5, 9), elevation 1.
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 95 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 55, clientY: 105 }));
 

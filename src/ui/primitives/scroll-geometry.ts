@@ -10,7 +10,26 @@ export interface ScrollGeometry {
   insetLeft: number;
 }
 
-type ScrollChange = 'initial' | 'scroll' | 'content';
+/** Within this many px of a stop counts as at the stop. Under a CSS `zoom` the browser's real
+ *  maximum scroll offset can sit a couple of px short of `scrollWidth - clientWidth`, so a list
+ *  scrolled fully would otherwise still read as having more; the start takes the same tolerance. */
+const STOP_EPS = 3;
+
+/** Whether a scroll distance of `px` to a stop counts as standing at it. */
+export function withinStop(px: number): boolean {
+  return px <= STOP_EPS;
+}
+
+/** How far `g` can still scroll toward each end of `axis`, in local px, 0 within the stop tolerance.
+ *  `extent` is where the content ends when some of it is on its way out; the scroll length caps it. */
+export function scrollTravel(g: ScrollGeometry, axis: 'x' | 'y', extent?: number): { start: number; end: number } {
+  const pos = axis === 'x' ? g.left : g.top;
+  const length = axis === 'x' ? g.scrollWidth : g.scrollHeight;
+  const room = (extent === undefined ? length : Math.min(length, extent)) - (axis === 'x' ? g.width : g.height);
+  return { start: withinStop(pos) ? 0 : pos, end: withinStop(room - pos) ? 0 : room - pos };
+}
+
+export type ScrollChange = 'initial' | 'scroll' | 'content';
 type Listener = (geometry: ScrollGeometry, change: ScrollChange) => void;
 
 export function readScrollGeometry(el: HTMLElement): ScrollGeometry {
@@ -74,4 +93,15 @@ export function useScrollGeometry(ref: RefObject<HTMLElement | null>, listener: 
     binding.current = el ? { el, dispose: observeScrollGeometry(el, (geometry, change) => latest.current(geometry, change)) } : null;
   });
   useLayoutEffect(() => () => { binding.current?.dispose(); binding.current = null; }, []);
+}
+
+/** Whether `el` is a scroll container along `axis` with room to travel there: its overflow is `auto`,
+ *  `scroll` or `overlay` (never `hidden` or `clip`, which only cut) and its content outgrows its box.
+ *  The document's own scroller counts only under such an overflow, never through `visible`. */
+export function scrollsAlong(el: Element, axis: 'x' | 'y'): boolean {
+  const room = axis === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
+  if (room <= 1) return false;
+  const style = getComputedStyle(el);
+  const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+  return overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay';
 }

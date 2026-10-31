@@ -47,9 +47,9 @@ function makeState(peaks: { type: TerrainType; elevation: number }[]): GridState
 
 describe('paintLayer: object draw position', () => {
   it('draws a half-anchored object at its EXACT position, not the cell its rounded position lands on', () => {
-    // 4x3 map, rect matches the map aspect exactly so fit is the plain rect and cellW = cellH =
-    // At scale 100, a half-anchored deck at x = 2.5 must draw at fit.x + 250, not at
-    // Math.round(2.5) * 100 = 300 (the wrong neighbour cell).
+    // The 400x300 rect matches the 4x3 map aspect, so the fit is the plain rect and cells are 100 wide.
+    // A half-anchored deck at x = 2.5 must draw at fit.x + 250, not at Math.round(2.5) * 100 = 300
+    // (the wrong neighbour cell).
     const state = makeState([]);
     const deck: PlacedObject = { id: 'd', catalogId: 'nope', position: { x: 2.5, y: 1 }, width: 1, height: 1, rotation: 0, elevation: 0 };
     state.objects.set('d', deck);

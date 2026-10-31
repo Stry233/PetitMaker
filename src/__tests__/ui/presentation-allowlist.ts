@@ -1,6 +1,6 @@
 /**
  * The sites each presentation guard (`presentation-guard.test.ts`) still tolerates, per file or per
-folder (a key ending in `/` counts every file under it); each entry is a `motion` or `system` site
+ * folder (a key ending in `/` counts every file under it); each entry is a `motion` or `system` site
  * and says why. A count is a ceiling: the test fails when a path holds more sites than listed, or
  * none. Lower a count by hand when a change removes a site.
  */

@@ -111,8 +111,10 @@ export function NoteText({ text }: { text: string }) {
 }
 
 /** The two plates and the picture between them, filling whatever box the caller gives. */
-export function CardFace({ shot, waited, placeholder }: {
+export function CardFace({ shot, waited, placeholder, bare = false }: {
   shot: string | null | undefined;
+  /** The picture alone, filling the box with `radii.field` corners, without the two plates. */
+  bare?: boolean;
   /** Whether this card was drawn before its picture existed, which is what makes the arrival an
    *  arrival. A card that had its shot on mount has nothing to announce. */
   waited: boolean;
@@ -120,18 +122,21 @@ export function CardFace({ shot, waited, placeholder }: {
   placeholder?: ReactNode;
 }) {
   const shotMotion = useTransition('candidate.shot.arrive');
+  const frame: CSSProperties = bare
+    ? { position: 'absolute', inset: 0, borderRadius: radii.field, background: PLATE }
+    : { ...PICTURE, borderRadius: PICTURE_CORNER };
   return (
     <>
-      <Plate src={cardPlate} style={{ inset: 0, width: '100%', height: '100%' }} />
-      <Plate src={picturePlate} style={PICTURE} />
+      {bare ? null : <Plate src={cardPlate} style={{ inset: 0, width: '100%', height: '100%' }} />}
+      {bare ? null : <Plate src={picturePlate} style={PICTURE} />}
 
       {/* The picture is framed in sea to the plate's own shape before it gets here, so it fills the
           rect to its edges and the only thing left to do is turn its corners. */}
       <span
         style={{
-          ...PICTURE,
+          ...frame,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none', overflow: 'hidden', borderRadius: PICTURE_CORNER,
+          pointerEvents: 'none', overflow: 'hidden',
         }}
       >
         {shot ? (

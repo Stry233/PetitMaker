@@ -23,6 +23,7 @@ import { argError } from './feedback';
 import { int, num, obj, oneOf, req } from './schema';
 import { defineTool, type ToolOutcome } from './spec';
 import { runStrokeBody } from './stroke';
+import { zoneArea, zoneArg } from './zone-area';
 
 // Default seed for reproducible calls when the caller omits seed.
 const DEFAULT_SEED = 0x4d616d65;
@@ -51,15 +52,30 @@ function clampRect(
   return cells.length === 0 ? null : { cells, rx, ry, rw, rh, x2, y2 };
 }
 
+type AreaInput = { x?: number; y?: number; w?: number; h?: number; zone?: number };
+
+/** The cells a rect-or-zone call covers and how its result names them, or the argument error. */
+function areaOf(state: GridState, input: AreaInput): { cells: MacroCoord[]; where: string } | ToolOutcome {
+  const { x, y, w, h } = input;
+  const rect = [x, y, w, h].every((v) => typeof v === 'number') ? clampRect(state, { x: x!, y: y!, w: w!, h: h! }) : null;
+  if (input.zone !== undefined) {
+    const cells = zoneArea(state, input.zone, rect?.cells);
+    if (typeof cells === 'string') return argError(cells);
+    return { cells, where: `${cells.length} cells of zone #${input.zone}` };
+  }
+  if (!rect) return argError('give x, y, w, h inside the map, or a zone number.', 'x: 10, y: 10, w: 8, h: 6');
+  return { cells: rect.cells, where: `${rect.cells.length}-cell rect (${rect.rx},${rect.ry})+(${rect.rw}x${rect.rh})` };
+}
+
 /**
  * decorate_zone: the rect decorated as one themed room. One stroke group (one undo step);
  * rule-rejected placements are skipped.
  */
 const RECT_CALL = 'x: 10, y: 10, w: 8, h: 6';
-const rectFields = { x: req(int()), y: req(int()), w: req(int()), h: req(int()) };
+const rectFields = { x: int(), y: int(), w: int(), h: int(), ...zoneArg };
 
 export const decorateZoneTool = defineTool({
-  description: "Decorate a rect in a professional theme using the procedural populator's decorators: orchard (fruit grids), farm (crop rows), garden (flower beds), hamlet (homes + gardens), waterfront (promenade), peak (lookout ring). Places MANY objects in one validated stroke. Use it instead of placing objects one by one.",
+  description: "Decorate a rect or a planning zone (zone) in a professional theme using the procedural populator's decorators: orchard (fruit grids), farm (crop rows), garden (flower beds), hamlet (homes + gardens), waterfront (promenade), peak (lookout ring). Places MANY objects in one validated stroke. Use it instead of placing objects one by one.",
   input: obj({ ...rectFields, theme: req(oneOf([...ROOM_THEMES])), seed: int() }),
   access: 'write',
   example: `${RECT_CALL}, theme: "garden"`,
@@ -67,16 +83,14 @@ export const decorateZoneTool = defineTool({
 });
 
 async function decorateRect(
-  deps: AgentToolDeps, input: { x: number; y: number; w: number; h: number } & { theme: RoomTheme; seed?: number },
+  deps: AgentToolDeps, input: AreaInput & { theme: RoomTheme; seed?: number },
 ): Promise<ToolOutcome> {
   const { theme } = input;
   const state = deps.getState();
 
-  const clamped = clampRect(state, input);
-  if (!clamped) {
-    return argError('the rect is empty after clamping to the map, pass x, y, w, h inside it.', 'x: 10, y: 10, w: 8, h: 6');
-  }
-  const { cells: rectCells, rx, ry, rw, rh } = clamped;
+  const area = areaOf(state, input);
+  if (!('where' in area)) return area;
+  const { cells: rectCells, where } = area;
   const seed = input.seed ?? DEFAULT_SEED;
   const exec = deps.getExecutor();
   const kit: EditContext = { state, executor: exec, registry: exec.getRegistry() };
@@ -92,7 +106,7 @@ async function decorateRect(
 
   return {
     isError: false,
-    content: `Placed ${placed} object(s) with theme "${theme}" over ${rectCells.length}-cell rect (${rx},${ry})+(${rw}x${rh}). Rule-rejected placement spots were skipped.`,
+    content: `Placed ${placed} object(s) with theme "${theme}" over ${where}. Rule-rejected placement spots were skipped.`,
     detail,
   };
 }
@@ -103,7 +117,7 @@ async function decorateRect(
  * generator — which is why the stroke stays here and only the planting comes from `tools/macros`.
  */
 export const plantForestTool = defineTool({
-  description: `Plant a layered forest (stands with glades, flora drifts) across the rect in one validated stroke. Species follow the ground the way a Smart Build planting does: a dominant species chosen for the ground, with accents suited to wetter, higher or edge ground. A large rect is planted as patches about ${PATCH_SPAN} cells across, each led by its own species. density 0-1 controls tree/flora density.`,
+  description: `Plant a layered forest (stands with glades, flora drifts) across the rect or a planning zone (zone) in one validated stroke. Species follow the ground the way a Smart Build planting does: a dominant species chosen for the ground, with accents suited to wetter, higher or edge ground. A large rect is planted as patches about ${PATCH_SPAN} cells across, each led by its own species. density 0-1 controls tree/flora density.`,
   input: obj({
     ...rectFields,
     density: num({ min: 0, max: 1, description: `Vegetation density 0-1 (default ${DEFAULT_DENSITY}).` }),
@@ -115,15 +129,13 @@ export const plantForestTool = defineTool({
 });
 
 async function plantForest(
-  deps: AgentToolDeps, input: { x: number; y: number; w: number; h: number } & { density?: number; seed?: number },
+  deps: AgentToolDeps, input: AreaInput & { density?: number; seed?: number },
 ): Promise<ToolOutcome> {
   const state = deps.getState();
 
-  const clamped = clampRect(state, input);
-  if (!clamped) {
-    return argError('the rect is empty after clamping to the map, pass x, y, w, h inside it.', 'x: 10, y: 10, w: 8, h: 6');
-  }
-  const { cells: rectCells, rx, ry, rw, rh } = clamped;
+  const area = areaOf(state, input);
+  if (!('where' in area)) return area;
+  const { cells: rectCells, where } = area;
 
   const density = input.density ?? DEFAULT_DENSITY;
   const seed = input.seed ?? DEFAULT_SEED;
@@ -142,7 +154,7 @@ async function plantForest(
 
   return {
     isError: false,
-    content: `Planted ${placed} object(s) (trees + flora) over ${rectCells.length}-cell rect (${rx},${ry})+(${rw}x${rh}) at density ${density.toFixed(2)}. Rule-rejected placement spots were skipped.`,
+    content: `Planted ${placed} object(s) (trees + flora) over ${where} at density ${density.toFixed(2)}. Rule-rejected placement spots were skipped.`,
     detail,
   };
 }

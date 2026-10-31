@@ -1,122 +1,107 @@
 /**
  * The application-layer tween for `uiZoom`. The store's `uiZoom` is the persisted target, written once
- * per user action through `setUiZoom` (`state/store.ts`); every consumer that turns it into layout
- * (`scale.tsx:useChromeScale`, `shell/use-frame-zoom.ts:useFrameZoom`) reads the animated value from
- * here, so slider, keyboard and Ctrl+/- ease identically.
+ * per user action through `setUiZoom` (`state/store.ts`); renders read that settled target
+ * (`useSettledUiZoom`), and the per-frame writers (`scale.tsx:onLiveScale`) read the live value this
+ * module eases toward it, so slider, keyboard and Ctrl+/- ease identically.
  *
  * One rAF loop follows the target exponentially with the `ui.zoom.follow` time constant, measured in
  * elapsed time so it moves at one speed at any refresh rate. It always chases the current target from
  * the current value, so a retarget never restarts a front-loaded ease. Reduced motion snaps. The loop
  * stays unrounded: rounding the live value each frame would stall it short of the target.
  */
-import { useSyncExternalStore } from 'react';
+import { motionValue, type MotionValue } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
 import { useUiPreviewPose } from './preview';
 import { isMotionReduced } from '../../platform/channels/motion-state';
 import { createSignal } from '../../core/base/signal';
-import { seconds } from './motion';
+import { followToward, frameDt } from './motion';
 
 /** Below this distance from the target the follow lands on it. */
 const SETTLE_EPSILON = 0.005;
-/** The step a first frame (with no previous timestamp) and a long stall are counted as, in ms. */
-const NOMINAL_FRAME_MS = 1000 / 60;
-const MAX_FRAME_MS = 100;
 
-/** The follow's next value after `dtMs`: the time-constant form of an exponential ease. */
-function followToward(cur: number, target: number, dtMs: number): number {
-  const tauMs = seconds('ui.zoom.follow') * 1000;
-  return cur + (target - cur) * (1 - Math.exp(-dtMs / tauMs));
-}
+/** The live UI zoom, equal to the store's target at rest; written once per frame of the follow. */
+export const uiZoomLive: MotionValue<number> = motionValue(useEditorStore.getState().uiZoom);
 
-let live = useEditorStore.getState().uiZoom;
-let target = live;
+let target = uiZoomLive.get();
 let raf = 0;
 let lastFrameAt: number | undefined;
-/** True only while the tween is in flight; consumers gate layout animations
- *  and px rounding off during it (both jitter when the scale moves each frame). */
-let animating = false;
-const zoomFrame = createSignal();
-const zoomingChanged = createSignal();
+/** The follow in flight, from the value it last retargeted at to its target, or null at rest. */
+const follow = createSignal<{ from: number; to: number } | null>(null);
 
-function setAnimating(v: boolean): void {
-  if (v === animating) return;
-  animating = v;
-  zoomingChanged.emit();
+function settle(): void {
+  if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
+  lastFrameAt = undefined;
+  if (follow.get() !== null) follow.emit(null);
 }
 
 function tick(now: number): void {
-  const dt = lastFrameAt === undefined ? NOMINAL_FRAME_MS : Math.min(Math.max(now - lastFrameAt, 0), MAX_FRAME_MS);
+  const dt = frameDt(lastFrameAt, now);
   lastFrameAt = now;
-  live = followToward(live, target, dt);
-  if (Math.abs(target - live) < SETTLE_EPSILON) {
-    live = target;
+  const next = followToward(uiZoomLive.get(), target, dt, 'ui.zoom.follow');
+  if (Math.abs(target - next) < SETTLE_EPSILON) {
     raf = 0;
-    lastFrameAt = undefined;
-    setAnimating(false);
-    zoomFrame.emit();
+    uiZoomLive.set(target);
+    settle();
     return;
   }
-  zoomFrame.emit();
+  uiZoomLive.set(next);
   raf = requestAnimationFrame(tick);
-}
-
-function stop(): void {
-  if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
-  lastFrameAt = undefined;
-  setAnimating(false);
 }
 
 function retarget(next: number): void {
   target = next;
-  if (isMotionReduced()) {
-    live = target;
-    stop();
-    zoomFrame.emit();
+  if (isMotionReduced() || uiZoomLive.get() === target) {
+    uiZoomLive.set(target);
+    settle();
     return;
   }
-  if (raf === 0) { setAnimating(true); raf = requestAnimationFrame(tick); }
+  follow.emit({ from: uiZoomLive.get(), to: target });
+  if (raf === 0) raf = requestAnimationFrame(tick);
 }
 
 // The store's uiZoom is the only source of a new target, from any caller (slider release, keyboard,
-// reset, Ctrl+/-): one subscription drives every consumer in lockstep.
+// reset, Ctrl+/-): one subscription drives every consumer in lockstep. The scale an input-mode switch
+// or a turn of the screen brings does not glide: it lands with that commit (`landUiZoom`), which the
+// chrome's morph carries, so the live value stays where it stood until the commit has been measured.
 useEditorStore.subscribe((state, prev) => {
+  if (state.inputMode !== prev.inputMode || state.layoutShape !== prev.layoutShape) {
+    target = state.uiZoom;
+    if (raf !== 0) settle();
+    return;
+  }
   if (state.uiZoom !== prev.uiZoom) retarget(state.uiZoom);
 });
 
-function getSnapshot(): number {
-  return live;
+/** Lands the live UI zoom on the store's at once, in the commit that switches the input mode or the
+ *  arrangement (`input-mode.tsx`); a no-op when it already stands there. */
+export function landUiZoom(): void {
+  target = useEditorStore.getState().uiZoom;
+  if (uiZoomLive.get() !== target) uiZoomLive.jump(target);
+  settle();
 }
 
-function subscribe(cb: () => void): () => void {
-  return zoomFrame.subscribe(cb);
+/** The follow in flight, or null at rest. */
+export function uiZoomSpan(): { from: number; to: number } | null {
+  return follow.get();
 }
 
-/** The animated uiZoom — identical live value across every consumer this frame. A pictured
- *  shell holds 1 instead: a figure is laid out for its posed window, not for the reader's
- *  UI-scale setting, so its picture does not move when the live interface is rescaled. */
-export function useAnimatedUiZoom(): number {
-  const zoom = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+/** Calls `tell` when the follow starts, retargets or settles. */
+export function onUiZoomSpan(tell: () => void): () => void {
+  return follow.subscribe(() => tell());
+}
+
+/** The UI zoom a render lays out for: the store's target, never a frame of the follow. A pictured
+ *  shell holds 1 instead: a figure is laid out for its posed window, not for the reader's UI-scale
+ *  setting, so its picture does not move when the live interface is rescaled. */
+export function useSettledUiZoom(): number {
+  const zoom = useEditorStore((s) => s.uiZoom);
   return useUiPreviewPose() ? 1 : zoom;
-}
-
-function subscribeZoom(cb: () => void): () => void {
-  return zoomingChanged.subscribe(cb);
-}
-function getZoomingSnapshot(): boolean {
-  return animating;
-}
-
-/** True only while the UI-zoom tween is in flight. Elements gate their Framer
- *  `layout` animations and px rounding off during it, so nothing trails or
- *  jitters while the scale moves each frame. Flips at most twice per zoom. */
-export function useUiZooming(): boolean {
-  return useSyncExternalStore(subscribeZoom, getZoomingSnapshot, () => false);
 }
 
 /** Test-only: hard-reset the singleton to the store's current value with no
  *  in-flight animation (mirrors motion-state's `__resetMotionState`). */
 export function __resetUiZoomAnim(): void {
-  stop();
-  live = useEditorStore.getState().uiZoom;
-  target = live;
+  target = useEditorStore.getState().uiZoom;
+  uiZoomLive.jump(target);
+  settle();
 }

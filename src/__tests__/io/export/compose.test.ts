@@ -21,7 +21,6 @@ describe('computeComposition', () => {
     expect(c.map.y).toBe(0);
     expect(c.map.w).toBe(c.width);
     expect(Math.abs(c.map.h - c.width / 1.2)).toBeLessThanOrEqual(1);
-    // The maker band spans the full width right under the map and closes the canvas.
     expect(c.brand.x).toBe(0);
     expect(c.brand.w).toBe(c.width);
     expect(c.brand.y).toBe(c.map.h);
@@ -60,7 +59,6 @@ describe('computeComposition', () => {
     const o: ExportOptions = { ...base, title: 'Hexia', description: 'desc', showBadge: true, layerPreview: true, card3d: true, footer: true };
     const c = computeComposition(o, 1.2, [{ label: 'export.badge_ai', color: '#8E7BD6' }], { layerCount: 5 });
     for (const band of [c.header, c.card3d, c.footer] as (Rect | undefined)[]) if (band) expect(overlaps(c.map, band)).toBe(false);
-    // layerCol is to the right of map — not overlapping
     if (c.layerCol) expect(overlaps(c.map, c.layerCol)).toBe(false);
   });
   it('layer-preview / 3D / footer options each add their element', () => {
@@ -95,13 +93,10 @@ describe('computeComposition', () => {
     const c = computeComposition(o, 1.2, [], { layerCount: 4 });
     expect(c.layerCol).toBeDefined();
     expect(c.layerLabel).toBeDefined();
-    // Both sit to the right of the map.
     expect(c.layerLabel!.x).toBeGreaterThan(c.map.x + c.map.w - 1);
     expect(c.layerCol!.x).toBeGreaterThan(c.map.x + c.map.w - 1);
-    // label strip on top of the thumbnails, aligned to the map top.
     expect(c.layerLabel!.y).toBe(c.map.y);
     expect(c.layerCol!.y).toBeGreaterThan(c.layerLabel!.y);
-    // label + thumbnails together span the full map height, and share its bottom.
     expect(c.layerLabel!.h + c.layerCol!.h).toBe(c.map.h);
     expect(c.layerCol!.y + c.layerCol!.h).toBe(c.map.y + c.map.h);
   });
@@ -112,7 +107,6 @@ describe('computeComposition', () => {
     const on: ExportOptions = { ...base, preset: 'share', footer: true, resolution: 'high' };
     const c = computeComposition(on, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeDefined();
-    // In-bounds horizontally, and sits between the map and the footer.
     expect(c.codeBand!.x).toBeGreaterThanOrEqual(0);
     expect(c.codeBand!.x + c.codeBand!.w).toBeLessThanOrEqual(c.width);
     expect(c.codeBand!.y).toBeGreaterThan(c.map.y + c.map.h - 1);
@@ -123,7 +117,7 @@ describe('computeComposition', () => {
     const c = computeComposition({ ...base, preset: 'share', resolution: 'high' }, 1.2, [], { layerCount: 1 });
     expect(c.codeBand).toBeDefined();
     // High is 2400 wide; at `PAD`*S = 84 either side the band gets 2232, which holds GRID_COLS
-    // modules of 18px exactly — so the margin is the page's, and no module is resampled.
+    // modules of 18px exactly, so the margin is the page's, and no module is resampled.
     const mb = c.codeBand!.w / GRID_COLS;
     expect(Number.isInteger(mb) && mb % 6 === 0, `module base ${mb}`).toBe(true);
     expect(c.codeBand!.x).toBe(Math.round((c.width - c.codeBand!.w) / 2));
@@ -139,9 +133,8 @@ describe('computeComposition', () => {
     const o: ExportOptions = { ...base, footer: true, resolution: 'original' };
     const mapPx = { w: 8000, h: 6000 };
     const c = computeComposition(o, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx });
-    // Native width follows the map's native pixel width (so the image is full-resolution).
     expect(c.width).toBe(mapPx.w);
-    // The map is a proportional band (letterboxed), not the whole image — same ratio as presets.
+    // The map is a proportional band (letterboxed), not the whole image; same ratio as presets.
     const preset = computeComposition({ ...o, resolution: 'high' }, mapPx.w / mapPx.h, [], { layerCount: 1, mapPx });
     expect(c.map.h / c.height).toBeCloseTo(preset.map.h / preset.height, 2);
     expect(c.map.w / c.width).toBeCloseTo(preset.map.w / preset.width, 2);

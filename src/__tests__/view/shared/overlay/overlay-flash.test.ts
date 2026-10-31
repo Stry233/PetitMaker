@@ -1,8 +1,8 @@
 /**
  * The pure half of the flashes, shared by both views: what each one covers and on which grid.
- * An error resolves to cells on the grid it names, deduped so overlapping rules don't stack alpha — or, where the cause
- * is an object, to the exact body it accuses, which whole cells can only round out from. An
- * undo/redo resolves to everything the step changed, each part on its own grid.
+ * An error resolves to cells on the grid it names, deduped so overlapping rules don't stack alpha,
+ * or, where the cause is an object, to the exact body it accuses, which whole cells can only round
+ * out from. An undo/redo resolves to everything the step changed, each part on its own grid.
  */
 import { describe, it, expect } from 'vitest';
 import { FlashPolicy, resolveHistoryFlash } from '../../../../view/shared/overlay/error-flash';
@@ -58,7 +58,7 @@ describe('resolveErrorFlashCells', () => {
 describe('body evidence (ValidationError.rects)', () => {
   it('an error that names a body is drawn as the body, never as the cells it rounds out to', () => {
     const e = bodyErr([{ ...PLAZA_RECT }], 'object');
-    // The whole-cell evidence is still reported (non-drawing readers), but the flash takes the rect.
+    // The whole-cell evidence is still reported for non-drawing readers, but the flash takes the rect.
     expect(e.cells.length).toBe((PLAZA_RECT.w + 1) * (PLAZA_RECT.h + 1));
     expect(resolveErrorFlashCells([e])).toEqual([]);
     expect(resolveErrorFlashRects([e]))
@@ -87,11 +87,11 @@ describe('body evidence (ValidationError.rects)', () => {
 
   it('an empty body is dropped from BOTH halves, so it can never starve the cells', () => {
     // A rect with no extent cannot be drawn. `bodyEvidence` drops it where the pair is derived, so
-    // the cells it would have produced never exist either...
+    // the cells it would have produced never exist either, and
     const derived = bodyEvidence([{ x: 2, y: 2, w: 0, h: 3 }, { x: 5, y: 5, w: 2, h: 1 }]);
     expect(derived.rects).toEqual([{ x: 5, y: 5, w: 2, h: 1 }]);
     expect(derived.cells).toEqual([{ x: 5, y: 5 }, { x: 6, y: 5 }]);
-    // ...and a hand-written error whose only rects are empty still flashes its cells, rather than
+    // a hand-written error whose only rects are empty still flashes its cells, rather than
     // having them skipped in favour of a body with nothing to show.
     const starved: ValidationError = {
       ruleId: 'T', message: 'test', ...evidenceOn('object', [{ x: 9, y: 9 }]),
@@ -156,8 +156,8 @@ describe('resolveHistoryFlash (what an undo/redo acknowledges)', () => {
   });
 
   it('a MIXED step flashes both parts, each on its own grid', () => {
-    // A stroke whose road reconcile took a coating with it changes terrain and objects; flashing
-    // one of them leaves the other half of the undo unacknowledged.
+    // A stroke whose road reconcile took a coating with it changes terrain and objects; flashing one
+    // of them would leave the other half of the undo unacknowledged.
     expect(resolveHistoryFlash([cellSet('terrain', [{ x: 2, y: 3 }])], [obj('r', 7, 8)])).toEqual([
       cellSet('object', [{ x: 7, y: 8 }]),
       cellSet('terrain', [{ x: 2, y: 3 }]),

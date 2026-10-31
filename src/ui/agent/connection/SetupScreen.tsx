@@ -14,7 +14,7 @@ import { useUiPreview } from '../../design/preview';
 import { DANGER_INK } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';
 import { FloatMenu } from '../../primitives/FloatMenu';
-import { useFrameZoom, useZoomedLayoutTransform } from '../../shell/use-frame-zoom';
+import { useZoomedLayoutTransform } from '../../shell/use-frame-zoom';
 import { HelpLink } from '../parts/panel-parts';
 import { SetupKeyField, type Mark } from './SetupKeyField';
 import { SetupProviderFace } from './SetupProviderFace';
@@ -66,7 +66,6 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
   focusKey = false,
 }, ref) {
   const t = useT();
-  const zoom = useFrameZoom();
   const zoomedLayout = useZoomedLayoutTransform();
   const reduced = useReducedMotionConfig() === true;
   const pictured = useUiPreview();
@@ -151,7 +150,6 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
         r.pickProvider(id as ProviderId, region === '1' ? 1 : region === '0' ? 0 : undefined);
       }}
       {...(pinned ? { activeId: pinned } : {})}
-      zoom={zoom}
       items={rosterItems(t, shape, pinned !== null, regionProvider)}
       row={<SetupProviderFace row={row} mark={mark} />}
     />

@@ -16,4 +16,7 @@ export type EditorEvents = KernelEvents & {
   /** Fired after the viewport pan/zoom transform is applied, so screen-anchored
    *  React overlays (e.g. selection handles) can reposition. */
   'viewport-changed': { zoom: number };
+  /** The view was asked to fit the whole map (`editor/host/host.ts:host.camera.fit`), by Fit's
+   *  button or its key, whether or not the camera moved. */
+  'camera-fit': Record<string, never>;
 };

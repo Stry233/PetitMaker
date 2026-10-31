@@ -1,12 +1,7 @@
 /**
- * Where a Γ fillet may go.
- *
- * It rounds the concave corner of the mass that wraps it and adds no mass of its own, so it needs
- * two things that are easy to lose sight of: a notch to sit in (open on at least one side, the
- * ground inside continuing outside) and something to rest on (the notch floor, exactly one tier
- * down). Miss the first and the cell is a pit — it reads as terrain, holds no support, and refuses
- * the paint that would fill it. Miss the second and the fillet hangs in the air, which the 3D view
- * shows for what it is.
+ * Where a Γ fillet may go: it rounds the concave corner of the mass around it and adds no mass, so it
+ * needs a notch open on at least one side (a closed pit would read as terrain, hold no support and
+ * refuse the paint that fills it) and a floor below its tier to rest on.
  */
 import { describe, it, expect } from 'vitest';
 import { enclosedGap } from '../../../../core/domain/edge-cut/silhouette';
@@ -17,7 +12,7 @@ import { EdgeCutTool } from '../../../../tools/pointer/edge-cut/edge-cut-tool';
 import { makeToolCtx } from '../../../_support/tool-ctx';
 import { cell, point } from '../../../_support/grid';
 
-/** A plateau at `tier` covering the 3x3 around (10,10), with holes where told. */
+/** A plateau at `tier` covering the 5x5 around (10,10), with holes where told. */
 function plateau(tier: number, holes: MacroCoord[] = [], fill?: (s: GridState) => void): GridState {
   const state = makeState(24, 24);
   const hole = new Set(holes.map((h) => `${h.x},${h.y}`));
@@ -38,8 +33,7 @@ describe('enclosedGap', () => {
   });
 
   it('and for a pit in a SLOPE, where the surrounding heights differ', () => {
-    // The case from the reported map: the neighbours stand at 1, 2, 2 and 1, so nothing about them
-    // matches the fillet's own tier — but the cell is still a hole in the surface.
+    // Neighbours at 1, 2, 2 and 1 share no tier, but the cell is still a hole in the surface.
     const state = makeState(24, 24);
     setTerrain(state, 9, 10, TerrainType.Mountain, 1);
     setTerrain(state, 11, 10, TerrainType.Mountain, 2);
@@ -57,7 +51,7 @@ describe('enclosedGap', () => {
   });
 
   it('is false for a notch — the ground walks out of it', () => {
-    // Open to the east: the classic Γ corner the fillet exists for.
+    // Open to the east.
     const state = plateau(3, [{ x: 10, y: 10 }, { x: 11, y: 10 }]);
     expect(enclosedGap(state, 10, 10)).toBe(false);
   });
@@ -93,13 +87,12 @@ describe('the Γ corner test', () => {
   });
 
   it('a tall notch rounds as one grounded column, and never below or at its own floor', () => {
-    // A tier-3 mass around a notch floored at the ground: the fillet renders as a column walled
-    // from its tier down to the floor, so the notch of a tall wall is cuttable at the wall's tier.
+    // A tier-3 mass around a ground-floored notch: the fillet renders as a column walled down to the
+    // floor.
     const state = plateau(3, [{ x: 10, y: 10 }, { x: 11, y: 10 }]);
     const offeredTall = [0, 1, 2, 3].filter((i) => isInnerCorner(state, 10, 10, i, { type: TerrainType.Mountain, elevation: 3 }));
     expect(offeredTall.length).toBeGreaterThan(0);
-    // Floor the notch at 2 and the wall tier still rounds; the floor's own tier does not (a fillet
-    // at or below the surface it decorates would add nothing).
+    // Floored at 2, the wall tier still rounds; a fillet at the floor's own tier would add nothing.
     setTerrain(state, 10, 10, TerrainType.Mountain, 2);
     const offered = [0, 1, 2, 3].filter((i) => isInnerCorner(state, 10, 10, i, { type: TerrainType.Mountain, elevation: 3 }));
     expect(offered.length).toBeGreaterThan(0);
@@ -109,9 +102,8 @@ describe('the Γ corner test', () => {
 
 describe('the edge-cut tool on a pit', () => {
   it('leaves it alone, wherever in the cell you click', () => {
-    // The reported case: a bare cell in a slope, terrain at 1, 2, 2 and 1 around it. Filleting a
-    // corner there hangs a tier-2 scrap over bare ground — a cell that looks like terrain, holds no
-    // support, and refuses the paint that would fill it.
+    // A bare cell in a slope, terrain at 1, 2, 2 and 1 around it: a fillet here would hang a tier-2
+    // scrap over bare ground.
     const state = makeState(24, 24);
     setTerrain(state, 9, 10, TerrainType.Mountain, 1);
     setTerrain(state, 11, 10, TerrainType.Mountain, 2);
@@ -122,8 +114,8 @@ describe('the edge-cut tool on a pit', () => {
     const ctx = makeToolCtx(state, executor, 1, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);
-    // A click lands on an intersection and governs the four corners around it, so the four
-    // intersections of cell (10,10) are its four corners.
+    // A click governs the four corners around an intersection, so these four reach every corner of
+    // cell (10,10).
     for (const [ix, iy] of [[9, 9], [10, 9], [9, 10], [10, 10]] as [number, number][]) {
       tool.onPointerDown(cell({ x: ix, y: iy }), point({ x: ix, y: iy }), ctx);
       expect(state.cells[10]![10]!.terrain, `click at intersection ${ix},${iy}`).toBeNull();
@@ -139,7 +131,7 @@ describe('the edge-cut tool on a pit', () => {
     const ctx = makeToolCtx(state, executor, 1, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);
-    // Intersection (9,9) is the cell's top-left corner — the one the mass wraps.
+    // Intersection (9,9) is the cell's top-left corner, the one the mass wraps.
     tool.onPointerDown(cell({ x: 9, y: 9 }), point({ x: 9, y: 9 }), ctx);
     expect(state.cells[10]![10]!.terrain?.patchOnly, 'the Γ corner still rounds').toBe(true);
   });

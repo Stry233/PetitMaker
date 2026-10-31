@@ -94,7 +94,7 @@ describe('serializeWithSections', () => {
     expect(out.catalogInfo).toBeTypeOf('object');
   });
   it('includeProvenance:false strips provenance', () => {
-    // fresh makeState has no provenance; a deserialize round-trip creates it (markLegacyUnknown)
+    // A fresh makeState has no provenance; a deserialize round-trip creates it (markLegacyUnknown).
     const base = edited();
     const s = deserialize(serialize(base), base.template);
     expect(JSON.parse(serialize(s)).provenance).toBeDefined(); // fixture guard: there is something to strip

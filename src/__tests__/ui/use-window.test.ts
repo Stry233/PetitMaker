@@ -16,7 +16,7 @@ const STATE_DRIVEN: Readonly<Record<string, string>> = {
   'primitives/ConfirmationModal.tsx': 'the generic confirmation, opened from its caller\'s state',
   'chrome/modals/export/review/ExportNotice.tsx': 'the export it stands in front of, which awaits its decision',
   'chrome/modals/import/DropImportOverlay.tsx': 'a file dragged over the page',
-  'chrome/guards/PortraitGuard.tsx': 'the device held the wrong way',
+  'chrome/tour/TourDeck.tsx': 'the tour, open while a run stands on a card or its summary',
 };
 
 /** Store flags whose surface is not a `ModalShell` window, and what it is instead. */

@@ -1,12 +1,8 @@
 /**
- * The street network, read off a finished map: ramp discipline, straightness, and where a street
- * ends.
- *
- * The dead-end reading here is the one a person makes. The tip-cell measure the hard ledger also
- * carries (`scorecard.ts:connectivity`) counts paved cells with at most one paved neighbour, and on
- * a network built out of 2-cell-wide stamps it can only ever read zero: the two cells at the end of
- * a 2-wide street each have two paved neighbours, so a stub of street stopping in open grass is
- * invisible to it.
+ * The street network of a finished map: ramp discipline, straightness, street ends and bridge
+ * alignment. Street ends are read by their end face, since the tip-cell count in
+ * `scorecard.ts:connectivity` always reads zero on 2-wide streets (each end cell has two paved
+ * neighbours).
  */
 import { type GridState } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
@@ -16,13 +12,11 @@ import { isBridge, isRamp } from '../../../core/model/traits';
 import { cellCentre } from '../../../core/grid/grid-convert';
 import { eachTerminus, readMap, type MapMasks } from '../../../tools/reading';
 
-/** Map-level summary: "Bridges / ramps | 5 / 51" on the terraced reference, 9 / 0 on the garden town.
- *  A map may use no ramp at all; using more than the reference's own count is overuse. */
+/** The terraced reference's ramp count (the garden town has none); a map may use none, more is overuse. */
 export const RAMP_COUNT_MAX = 51;
 
-/** The share of a map's ramps that may stand on pavement. The terraced reference reads 2 of its 51
- *  that way, so the rule is "a ramp does not sit on the street" with the reference's own margin on
- *  it rather than a zero its own author did not keep. */
+/** The share of a map's ramps that may stand on pavement: the terraced reference has 2 of its 51
+ *  there, so the margin is the reference's own rather than zero. */
 export const RAMP_ON_PAVEMENT_MAX = 0.05;
 
 export interface RampDiscipline {
@@ -36,13 +30,11 @@ export interface RampDiscipline {
 }
 
 /**
- * Ramps as road furniture: catches ramps overused and laid over roads. A ramp stands at the step,
- * so no cell of its footprint may be pavement; the overlap rule allows it (a road is a coating), so
- * this measures it, against the reference's margin `RAMP_ON_PAVEMENT_MAX`.
+ * Ramps overused or laid over roads. A ramp belongs at the step, off the pavement; the overlap rule
+ * allows it (a road is a coating), so this reading holds it to `RAMP_ON_PAVEMENT_MAX`.
  *
- * Footprints are read by cell centres: a half-grid ramp covers only the cells whose centre lies
- * under it. The engine reads every touched cell, which would call every ramp beside a street a ramp
- * on it; the threshold is calibrated to this reading, so unifying the two moves it.
+ * Footprints are read by cell centres, unlike the engine's every-touched-cell reading, which would put
+ * every ramp beside a street on it; the threshold is calibrated to centres.
  */
 export function rampDiscipline(state: GridState, g = readMap(state)): RampDiscipline {
   let ramps = 0, onPavement = 0, overlapCells = 0;
@@ -67,15 +59,10 @@ export function rampDiscipline(state: GridState, g = readMap(state)): RampDiscip
 }
 
 /**
- * The share of pavement standing at a turn or a crossing on the two decoded references: 13.7% on the
- * terraced planet, 20.8% on the garden town.
- *
- * Retired as a target. Their figure is inflated by paved squares, where every cell of a plaza reads
- * as a turn, while a grid of literally straight lines reads 0 to 5% — so the band never separated a
- * straight network from a wandering one, and scoring against it would have asked this stage to bend
- * its streets. `meanRunLength` is the straightness reading that does separate them (the references
- * 38.0 and 35.6, a network routed per lot 26 to 34), and the turn share stays beside it as a reported
- * number.
+ * The share of pavement at a turn or crossing on the references: 13.7% terraced, 20.8% garden town.
+ * Reported, not scored: paved squares inflate it (every cell reads as a turn) while a grid of straight
+ * lines reads 0 to 5%. `meanRunLength` is what separates straight from wandering (references 38.0 and
+ * 35.6, a network routed per lot 26 to 34).
  */
 export const TURN_SHARE_REFERENCE = [0.137, 0.208] as const;
 
@@ -93,12 +80,9 @@ export interface StreetStraightness {
 }
 
 /**
- * Turns per unit street length: the failure this catches is streets that read as random.
- *
- * A cell is at a turn or a crossing when its paved run one way is not much longer than its run the
- * other way; everywhere else the cell is inside a straight street, and the longer run is how far
- * that street reads. Both references are grids of long straight streets, so the reading is banded
- * between them rather than minimized.
+ * Whether streets run straight or wander. A cell is at a turn or crossing when its paved run one way is
+ * under `STRAIGHT_RATIO` times its run the other way; elsewhere the longer run is how far the street
+ * reads, and the score holds the mean of it against the references'.
  */
 export function streetStraightness(state: GridState, g = readMap(state)): StreetStraightness {
   const { W, H } = g;
@@ -132,30 +116,17 @@ export function streetStraightness(state: GridState, g = readMap(state)): Street
   return {
     paved, turnCells, turnShare,
     meanRunLength: runMean,
-    // The run length carried against the references' own 35.6 to 38.0, which is what actually
-    // separates a straight network from a routed one.
+    // Held against the references' 35.6 to 38.0.
     score: paved ? Math.min(1, runMean / 36) : 0,
   };
 }
 
-/**
- * A dead end is a street that arrives at nothing. `connectivity`'s tip-cell count reads zero on a
- * network of 2-wide stamps, so this reads the end face instead.
- *
- * A terminus is a run of paved cells with nothing paved in front, street behind for
- * `TERMINUS_DEPTH`, and unpaved ground at both flanks; faces wider than `TERMINUS_WIDE` are squares
- * and are not read. It arrives when, within `ARRIVAL_REACH`, there stands the plaza, a crossing, a
- * building or facility, water or coast, or a composed place (`ARRIVAL_DECOR` planted cells).
- */
 export { ARRIVAL_REACH };
 
-/**
- * The share of termini a map may leave arriving at nothing: twice the worse of the two references,
- * read by this same code. A share alone is wrong on a small map, so a count floor at the style
- * target's own count stands beside it.
- */
+/** The share of termini a map may leave arriving at nothing: twice the worse reference's share. */
 export const ARRIVAL_DEAD_END_MAX = 0.15;
 
+/** Dead ends always allowed, the reference's own count, since a share alone fails small maps. */
 export const ARRIVAL_DEAD_END_FLOOR = 2;
 
 export interface StreetArrivals {
@@ -170,7 +141,11 @@ export interface StreetArrivals {
   where: { x: number; y: number }[];
 }
 
-/** Every street end on a finished map, and what each one arrives at. */
+/**
+ * Every street end on a finished map and what it arrives at. A terminus (`eachTerminus`) arrives when,
+ * within `ARRIVAL_REACH`, there stands the plaza, a crossing, a structure, water or coast, or a
+ * composed place of `ARRIVAL_DECOR` planted cells.
+ */
 export function streetArrivals(state: GridState, g = readMap(state)): StreetArrivals {
   let termini = 0, arrived = 0;
   const where: { x: number; y: number }[] = [];
@@ -192,16 +167,11 @@ const inside = (x: number, y: number, W: number, H: number): boolean =>
   x >= 0 && y >= 0 && x < W && y < H;
 
 /**
- * Whether anything stands at a terminus that a walker would call arriving.
+ * Whether a walker would call a terminus an arrival. Only the cells ahead are read: a street running
+ * along a lake and stopping in grass has water beside it but has arrived at nothing.
  *
- * Everything is read in the forward cone — the cells the street was heading for — and nothing behind
- * or beside the last paved cell. A street running along a lake and stopping in open grass has a lake
- * all round its end and has arrived at nothing; reading the water omnidirectionally called that an
- * arrival, which is the opposite of what a walker sees.
- *
- * The cone is wider for the things a street is built toward than for a composed place: a deck or a
- * doorway a step off the street's own line is still what the street was going to, while a garden the
- * street merely runs past is not what it ended at.
+ * Planting counts only within one cell of the street's line, the rest across the whole reach: a deck
+ * or a doorway a step aside is still the destination, a garden the street runs past is not.
  */
 function arrivesAt(g: MapMasks, face: readonly number[], dx: number, dy: number): boolean {
   const { W, H } = g;
@@ -211,7 +181,7 @@ function arrivesAt(g: MapMasks, face: readonly number[], dx: number, dy: number)
     for (let k = 1; k <= ARRIVAL_REACH; k++) {
       for (let across = -ARRIVAL_REACH; across <= ARRIVAL_REACH; across++) {
         const x = fx + dx * k + dy * across, y = fy + dy * k + dx * across;
-        // Off the map or off the planet: the street ran out at the coast, which is a place to stop.
+        // Off the map or off the planet: the coast is a place to stop.
         if (!inside(x, y, W, H)) return true;
         const j = y * W + x;
         if (!g.land[j] || g.water[j]) return true;
@@ -224,13 +194,9 @@ function arrivesAt(g: MapMasks, face: readonly number[], dx: number, dy: number)
 }
 
 /**
- * How far past a deck's end the reading looks for the pavement it lands on.
- *
- * It is not slack, it is the half grid: a bridge carries the `halfStep` trait, so its anchor and
- * therefore its footprint can sit half a cell off the macro grid, and the cell a deck actually lands
- * on is one or two past the rect its own footprint reports. Read at exactly one cell out, 41 of 48
- * decks come back touching no pavement at all on maps where every deck is joined to the network by
- * construction.
+ * How far past a deck's end the reading looks for the pavement it lands on. A bridge carries the
+ * `halfStep` trait, so its footprint can sit half a cell off the grid and the landing cell is one or
+ * two past the reported rect; at one cell out, 41 of 48 decks joined by construction touch no pavement.
  */
 const DECK_LANDING = 3;
 
@@ -238,11 +204,8 @@ const DECK_LANDING = 3;
 const DECK_RUN = 6;
 
 /**
- * How far the pavement must carry on away from a deck before it reads as a street the deck continues.
- *
- * Three, and the number is the street's own width plus one: every road this generator lays is two
- * cells wide, so a deck butted into the flank of a street finds exactly two cells along its own axis
- * and stops. A bar at two passes that; a bar at three asks the pavement to go somewhere.
+ * How far the pavement must carry on away from a deck to read as the street it continues: the
+ * generator's 2-wide street plus one, so a deck butted into a street's flank (two cells) falls short.
  */
 const DECK_CARRY = 3;
 
@@ -259,13 +222,12 @@ export interface BridgeAlignment {
 }
 
 /**
- * Does a deck continue the street it crosses for? Catches a bridge laid perpendicular to the road:
- * `bridge-span.ts` turns a deck to the water's narrow direction, so a street running along a paved
- * bank can get a deck laid into its side. Read on the pavement, so it holds whoever laid the deck.
+ * Whether each deck continues its street. `bridge-span.ts` turns a deck to the water's narrow
+ * direction, so a street along a paved bank can get a deck laid into its side; read on the pavement,
+ * this holds whoever laid the deck.
  *
- * Only `crossways` is a defect. `aligned` is a reading: a reference whose bridges cross between
- * banks with streets running along them reads few aligned decks, and a deck at a bend reads
- * unaligned at one end.
+ * Only `crossways` is a defect. `aligned` is a reading: a reference with streets along its banks reads
+ * few aligned decks, and a deck at a bend reads unaligned at one end.
  */
 export function bridgeAlignment(state: GridState, g = readMap(state)): BridgeAlignment {
   const { W, H } = g;
@@ -304,10 +266,8 @@ export function bridgeAlignment(state: GridState, g = readMap(state)): BridgeAli
         if (x >= 0 && y >= 0 && x < W && y < H && g.paved[y * W + x]) landing = { x, y };
       }
       if (!landing) continue;
-      // How far the pavement goes on away from the deck. Measured away only, because the other way is
-      // the gap the deck spans and would read as nothing whatever the street does; and against
-      // `DECK_CARRY` rather than against the across-run, because a deck landing at a T-junction has a
-      // long cross street beside a perfectly good continuation and is not the defect.
+      // Measured away from the deck only (the other way is the gap), and against `DECK_CARRY` rather
+      // than the across-run, so a deck landing at a T-junction with a good continuation still passes.
       const along = run(landing, step, [sign]);
       if (along >= DECK_CARRY) { ends++; continue; }
       if (run(landing, across, [-1, 1]) > 0) crossways++;

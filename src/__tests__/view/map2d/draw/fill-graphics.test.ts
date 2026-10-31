@@ -3,7 +3,7 @@
  * FillGraphics replays a fill-only Graphics itself on the Canvas2D fallback, to compute the
  * '#rrggbb' style once per colour instead of once per item. The promise is that the canvas sees
  * the same drawing calls with the same effective style state, so these tests render the same
- * content twice — once through pixi's own CanvasGraphicsRenderer, once through FillGraphics — into
+ * content twice (once through pixi's own CanvasGraphicsRenderer, once through FillGraphics) into
  * a recording context and compare the two op logs. The second half pins the gate: content the
  * replay does not recognise is handed back to pixi rather than approximated.
  */
@@ -55,7 +55,7 @@ function harness() {
   return { ops, fillWrites, renderer, plugin };
 }
 
-/** What pixi's own renderer makes of this content — the reference log. */
+/** What pixi's own renderer makes of this content: the reference log. */
 function reference(build: (g: PIXI.Graphics) => void, tint?: number): string[] {
   const { ops, plugin } = harness();
   const g = new PIXI.Graphics();

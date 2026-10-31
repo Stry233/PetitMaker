@@ -1,15 +1,8 @@
 /**
- * What a small box does differently, pinned on pictures whose right answer is arithmetic.
- *
- * The engine's small-box treatment (`tools/generation/stencil/stencil-small.ts`) is three levers over
- * one gate, and every case here is about one of them:
- *
- *  - the gate: full below `SMALL_BOX_FULL`, blended to nothing at `SMALL_BOX_OFF`, and a caller above
- *    it must produce exactly what it produced before there was a small-box path at all — the
- *    large-scale output of this generator is frozen by fingerprint, so "off" has to mean off.
- *  - the hue lift: a palette of one hue can only tell two areas apart by lightness, so hue is spent on
- *    lightness. Two areas of the same tone and different colour must arrive as different tiers.
- *  - the areas: what a small box has to spend its few palette entries on, and a speck is not one.
+ * The small-box treatment (`tools/generation/stencil/stencil-small.ts`) on pictures whose right answer
+ * is arithmetic: the gate (full up to `SMALL_BOX_FULL`, blended to nothing at `SMALL_BOX_OFF`, and off
+ * above it, where large-scale output is frozen by fingerprint), hue spent on tone, area and region
+ * reading, borrowed colour, and the outline's own tier.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
@@ -34,7 +27,7 @@ import { hexStringToNumber } from '../../../../core/base/color';
 import { ItemCategory } from '../../../../config/catalog/categories';
 
 const square = (side: number) => ({ width: side, height: side });
-/** The gate's edges as the weight reads them: the last side treated in full, and the first side left alone. */
+/** The last side treated in full, and the first side left alone. */
 const SIDES = Array.from({ length: 128 }, (_, side) => side);
 const SMALL_BOX_FULL = SIDES.filter((side) => smallBoxWeight(square(side)) === 1).at(-1)!;
 const SMALL_BOX_OFF = SIDES.find((side) => smallBoxWeight(square(side)) === 0)!;
@@ -43,11 +36,8 @@ const exec = (state: GridState): CommandExecutor =>
   makeExecutor(state);
 
 /**
- * A fully covered stencil whose colour each cell takes from `at`, read as a drawing.
- *
- * The nature is stated because these cases are about one lever each: a photographic reading diffuses
- * its quantisation error across the picture, and on a flat synthetic half that dither is most of what
- * a tier count would be measuring.
+ * A fully covered stencil whose colour each cell takes from `at`, read as a drawing: a photographic
+ * reading would dither a flat synthetic half, and a tier count would mostly measure the dither.
  */
 function paint(side: number, at: (x: number, y: number) => number): Stencil {
   const color = new Uint32Array(side * side);
@@ -58,8 +48,7 @@ function paint(side: number, at: (x: number, y: number) => number): Stencil {
   };
 }
 
-/** A colour of a given hue at a given tone: what the eye tells apart by colour alone. `luma`'s own
- *  weights, solved for the scale of a fixed direction, so the two halves of a case have one tone. */
+/** A colour along `dir` scaled to `luma` tone `tone`, so two hues can share one lightness. */
 function hueAtTone(dir: readonly [number, number, number], tone: number): number {
   const weight = 0.299 * dir[0] + 0.587 * dir[1] + 0.114 * dir[2];
   const k = Math.min(255, tone / weight);
@@ -67,12 +56,11 @@ function hueAtTone(dir: readonly [number, number, number], tone: number): number
   return ((at(0) << 16) | (at(1) << 8) | at(2)) >>> 0;
 }
 
-// Kept unsaturated enough that no channel clips on the way to the tone asked for: what these cases
-// need is two colours of one lightness, and a clipped channel is a different lightness.
 /** The terrain ramp's own tonal span, and the hue reach a full-weight small box takes out of it. */
 const RAMP = paletteToneRange(terrainPalette(8, false));
 const FULL_REACH = hueReach(1, RAMP);
 
+// Unsaturated enough that no channel clips on the way to a tone: a clipped channel changes lightness.
 const RED = [1, 0.45, 0.45] as const;
 const GREEN = [0.45, 1, 0.45] as const;
 const BLUE = [0.5, 0.5, 1] as const;
@@ -117,7 +105,6 @@ describe('the small-box gate', () => {
   });
 
   it('reads the SHORTER side, which is what a picture is fitted to', () => {
-    // A wide strip is a small box: the picture is contained, so its resolution is the short side's.
     expect(smallBoxWeight({ width: 200, height: 16 })).toBe(1);
     expect(smallBoxWeight({ width: 16, height: 200 })).toBe(1);
   });
@@ -125,8 +112,7 @@ describe('the small-box gate', () => {
 
 describe('hue is spent on tone where the palette has only tone', () => {
   it('turns a colour difference at one tone into a tier difference', () => {
-    // Two halves of one lightness, red and green: nothing about their tone separates them, so the
-    // green ramp answered with one tier for both and the picture arrived as a flat slab.
+    // Red and green at one lightness: without the hue lift the green ramp gives both one tier.
     const side = 16, mid = side / 2;
     const tone = 120;
     const stencil = paint(side, (x) => (x < mid ? hueAtTone(RED, tone) : hueAtTone(GREEN, tone)));
@@ -142,10 +128,8 @@ describe('hue is spent on tone where the palette has only tone', () => {
   });
 
   it('declines a picture whose colours are all one family', () => {
-    // One colour, and then one colour with its own shading: there is no second family to separate, so
-    // there is nothing to spend tone on. Declining matters as much as acting — every cell's turn from
-    // the dominant hue would be small and noisy, and moving each by its own small amount scrambles the
-    // shading that was carrying the subject.
+    // With one family, each cell's turn from the dominant hue is small noise, and moving cells by it
+    // would scramble the shading that carries the subject.
     expect(hueToneOffsets(paint(16, () => hueAtTone(RED, 120)), () => true, FULL_REACH)).toBeNull();
     const shaded = paint(16, (x, y) => hueAtTone(RED, 90 + ((x + y) % 4) * 12));
     expect(hueToneOffsets(shaded, () => true, FULL_REACH)).toBeNull();
@@ -157,8 +141,7 @@ describe('hue is spent on tone where the palette has only tone', () => {
   });
 
   it('measures every cell from the picture\'s own dominant hue', () => {
-    // Mostly red with a green corner: the red is the dominant hue and keeps its tone, the green is
-    // the one that moves. Which way it moves is the picture's business; that it moves is the lever.
+    // Mostly red with a green corner: the red keeps its tone and the green moves, either way.
     const side = 12;
     const stencil = paint(side, (x, y) => (x < 5 && y < 5 ? hueAtTone(GREEN, 120) : hueAtTone(RED, 120)));
     const offsets = hueToneOffsets(stencil, () => true, FULL_REACH)!;
@@ -170,8 +153,7 @@ describe('hue is spent on tone where the palette has only tone', () => {
   it('weighs a cell by its chroma, so a pastel moves less than a saturated colour', () => {
     const side = 8;
     const strong = paint(side, (x) => (x < 4 ? hueAtTone(RED, 120) : hueAtTone(BLUE, 120)));
-    // The same composition with the second half nearly grey: it is a different family, so the lever
-    // still acts, and its chroma is what decides how far.
+    // The second half nearly grey: still a different family, but low chroma.
     const pale = paint(side, (x) => (x < 4 ? hueAtTone(RED, 120) : 0x8f9ab4));
     const strongOffsets = hueToneOffsets(strong, () => true, FULL_REACH)!;
     const paleOffsets = hueToneOffsets(pale, () => true, FULL_REACH)!;
@@ -184,7 +166,7 @@ describe('hue is spent on tone where the palette has only tone', () => {
     const half = hueToneOffsets(stencil, () => true, hueReach(0.5, RAMP))!;
     expect(Math.abs(half[15]!)).toBeCloseTo(Math.abs(full[15]!) / 2, 4);
     expect(hueToneOffsets(stencil, () => true, hueReach(0, RAMP))).toBeNull();
-    // And the reach is a share of the palette's own range, so a narrower palette spends less tone.
+    // The reach is a share of the palette's range.
     expect(hueReach(1, { ...RAMP, hi: (RAMP.lo + RAMP.hi) / 2 })).toBeCloseTo(hueReach(1, RAMP) / 2, 5);
   });
 
@@ -226,8 +208,7 @@ describe('the areas a small box spends its palette on', () => {
   });
 
   it('coherentAreas counts two blocks touching only at a corner as two areas, the way the map does', () => {
-    // A diagonal touch is a point and nothing passes through a point, so this is two areas of four
-    // cells rather than one of eight — and both are big enough that the speck fold has no say in it.
+    // Both areas are big enough that the speck fold leaves them alone.
     const side = 8;
     const block = (x: number, y: number): boolean =>
       (x >= 1 && x < 3 && y >= 1 && y < 3) || (x >= 3 && x < 5 && y >= 3 && y < 5);
@@ -246,8 +227,8 @@ describe('the areas a small box spends its palette on', () => {
   });
 
   it('keeps a speck that is nothing like its neighbour, which is what saves an outline', () => {
-    // A one-cell dark rim is a chain of one- and two-cell pieces under 4-connectivity, so a fold that
-    // asked only about size swallowed a drawing's outline into the body it surrounds.
+    // Under 4-connectivity a one-cell rim breaks into tiny pieces, which a size-only fold would
+    // swallow into the body.
     const side = 7;
     const rim = (x: number, y: number): boolean => x === 0 || y === 0 || x === side - 1 || y === side - 1;
     const s = paint(side, (x, y) => (rim(x, y) ? 0x101010 : 0xf0f0f0));
@@ -296,13 +277,12 @@ describe('the areas a small box spends its palette on', () => {
 
 describe('which entry each area is told in', () => {
   const all = (): boolean => true;
-  /** Eight entries a tone apart, the shape of the terrain ramp: index 0 the darkest. */
+  /** Eight entries a tone apart, shaped like the terrain ramp: index 0 the darkest. */
   const TONES = [79, 94, 109, 124, 139, 154, 169, 184];
 
   it('spends the room it has on the areas: the darkest on the darkest entry, the lightest on the lightest', () => {
-    // The areas are spread across the entries available rather than each taking the one nearest its own
-    // tone: the entry an area wants is often the one a darker area's floor has already taken, and one
-    // step past it is all the contrast that would be left.
+    // Spread across the entries rather than each taking its nearest: the nearest is often taken by a
+    // darker area, leaving one step of contrast.
     const side = 8;
     const s = paint(side, (x) => (x < 4 ? 0x4a4a4a : 0xa0a0a0));
     const areas = coherentAreas(s, all, (i) => s.color[i] ?? 0);
@@ -325,15 +305,13 @@ describe('which entry each area is told in', () => {
   });
 
   it('never gives an area an entry darker than its own cells can stand at', () => {
-    // A thin rim and a body: the rim's shallowest cell is one step inside the figure, so the tiers only
-    // a deep cell could hold are refused it — and the body is carried up with it rather than left
-    // darker than its own outline.
+    // The rim's cells are shallow, so the darkest entries are refused it; the lighter body must rise
+    // with it rather than end darker than its outline.
     const side = 9;
     const rim = (x: number, y: number): boolean => x === 0 || y === 0 || x === side - 1 || y === side - 1;
     const s = paint(side, (x, y) => (rim(x, y) ? 0x101010 : 0xe0e0e0));
     const areas = coherentAreas(s, all, (i) => s.color[i] ?? 0);
     const read = areaSalience(s, areas);
-    // The rim may not go below the fourth entry; the body is lighter and must not overtake it.
     const minTone = read.depth.map((depth) => (depth <= 1 ? TONES[3]! : -Infinity));
     const slots = allocateEntries(areas, read, TONES, minTone);
     const dark = areas.map((_, id) => id).filter((id) => luma(areas[id]!.rgb) < 64);
@@ -352,7 +330,7 @@ describe('which entry each area is told in', () => {
 });
 
 describe('a pond wants a body', () => {
-  /** A stencil-shaped host for the water pass: every cell open, tones from `at`. */
+  /** A flat grey host for the water pass; each case supplies tones through `tone`. */
   const host = (side: number): Stencil => paint(side, () => 0x808080);
 
   it('returns a one-cell pond to land when there is nothing to grow into', () => {
@@ -360,7 +338,7 @@ describe('a pond wants a body', () => {
     const s = host(side);
     const isWater = new Uint8Array(side * side);
     isWater[2 * side + 2] = 1;
-    // Everything around it is far below the water's tone, so the speck has nowhere to grow.
+    // Every neighbour is far below the water cut.
     const moved = settleWaterBodies(s, isWater, 1, { tone: () => 10, cut: 200, step: 15 }, () => true);
     expect(moved).toBe(1);
     expect([...isWater].filter(Boolean)).toHaveLength(0);
@@ -409,13 +387,8 @@ describe('a pond wants a body', () => {
 });
 
 /**
- * The picture as a composition: a few spatial regions rather than a quantisation of every cell.
- *
- * Three things are pinned here, and each is a way the composition can be wrong rather than merely
- * different: the merge keeps a small high-contrast feature and spends its budget on the near-identical
- * neighbours instead; the outline survives as one region, which is what it never is when read as
- * coherent areas; and a region that is genuinely a gradient keeps its own shading rather than being
- * posterised to one entry.
+ * The picture as a few spatial regions rather than a quantisation of every cell: the merge keeps a
+ * small high-contrast feature, the outline becomes one region, and a gradient keeps its shading.
  */
 describe('a small box composes the picture in regions', () => {
   const all = (): boolean => true;
@@ -437,8 +410,6 @@ describe('a small box composes the picture in regions', () => {
     const s = paint(side, (x, y) => ((x + y) % 3) * 0x303030 + 0x202020);
     const areas = coherentAreas(s, all, colourOf(s));
     expect(areas.length).toBeGreaterThan(6);                   // more than the most regions any box asks for
-    // Half weight is halfway between the composition and the reading it was made from, so a region one
-    // cell wider cannot re-compose the picture.
     const half = regionTarget(s, areas, 0.5);
     expect(half).toBeGreaterThan(regionTarget(s, areas, 1));
     expect(half).toBeLessThan(regionTarget(s, areas, 0));
@@ -446,9 +417,7 @@ describe('a small box composes the picture in regions', () => {
   });
 
   it('merges the near-identical neighbours and keeps the small feature that is nothing like them', () => {
-    // A field of four near-identical shades with one 3-cell dark eye in it. Told in two regions, the
-    // right answer is the four shades as one and the eye on its own: the eye is what the picture is
-    // recognised by, and what a quantisation spends its entries on is the four shades.
+    // Four near-identical shades and a 3-cell dark eye: two regions are the shades and the eye.
     const side = 10;
     const shades = [0xb0b4b0, 0xb2b6b2, 0xb4b8b4, 0xb6bab6];
     const eye = new Set([4 * side + 4, 4 * side + 5, 5 * side + 4]);
@@ -482,9 +451,8 @@ describe('a small box composes the picture in regions', () => {
   });
 
   it('reads a drawing\'s outline as ONE region, which is what it never is on its own', () => {
-    // A diamond with a dark line round it. Under 4-connectivity a diagonal line is a chain of separate
-    // pieces — each step touches the next only at a corner — so no coherent area is the outline and it
-    // has to be constructed.
+    // Under 4-connectivity a diagonal line breaks into pieces touching only at corners, so the
+    // outline has to be fused.
     const side = 21, mid = 10, r = 9;
     const inside = (x: number, y: number): boolean => Math.abs(x - mid) + Math.abs(y - mid) <= r;
     const rim = (x: number, y: number): boolean => Math.abs(x - mid) + Math.abs(y - mid) === r;
@@ -518,8 +486,7 @@ describe('a small box composes the picture in regions', () => {
   });
 
   it('will not call the subject an outline, however dark its edge', () => {
-    // A dark mass filling the figure: its cells are at the edge and it is darker than the mean, and it
-    // is still the picture rather than a line round one.
+    // A dark mass touching the edge is the subject, not a line round it.
     const side = 8;
     const s = paint(side, (x, y) => (x === 0 || y === 0 ? 0xf0f0f0 : 0x201818));
     expect(figureRim(s, coherentAreas(s, all, colourOf(s)))).toEqual([]);
@@ -531,9 +498,7 @@ describe('a small box composes the picture in regions', () => {
     const flatArea = paint(side, () => 0x808080);
     expect(regionFlatness(flatArea, coherentAreas(flatArea, all, colourOf(flatArea)), colourOf(flatArea), step))
       .toEqual([1]);
-    // A ramp across the whole picture, composed as one region: a wide range in small steps, which is a
-    // gradient rather than a composition the merge had no budget to separate. (A gradient is never one
-    // coherent area — every bucket boundary cuts it — which is why the merge is what makes it a region.)
+    // Every bucket boundary cuts a gradient, so only the merge makes it one region.
     const ramp = paint(side, (x) => { const v = 0x50 + x * 8; return (v << 16) | (v << 8) | v; });
     const one = mergeToTarget(ramp, coherentAreas(ramp, all, colourOf(ramp)), 1).areas;
     expect(one).toHaveLength(1);
@@ -542,12 +507,9 @@ describe('a small box composes the picture in regions', () => {
 });
 
 /**
- * What a material lets a picture borrow, and the two promises that bound it: the map stays legal, and
- * the material a visitor asked for is the material they get.
- *
- * The green ramp is eight greens, so a warm or a grey region arrives as a tier of green and says nothing
- * about its own colour. The road surfaces carry real hues and are coatings, so a region told in one keeps
- * the terrain underneath it — which is what makes this a borrow rather than a substitution.
+ * The green ramp cannot say a warm region, so the mixed material paves it in a road surface, a coating
+ * that keeps the terrain beneath. Bounded by two promises: the map stays legal, and the mountain and
+ * water materials lay no road.
  */
 describe('a small box borrows a hue its own palette has none of', () => {
   const roads = declaredColorPalette('roads');
@@ -561,7 +523,6 @@ describe('a small box borrows a hue its own palette has none of', () => {
     const plan = planBorrow({ regions: [warm, green], rim: -1 }, own, ramp, roads, 'free');
     expect(plan.has(0)).toBe(true);
     expect(plan.has(1)).toBe(false);
-    // And what it borrows is a warm surface: the point is the hue, not merely a second material.
     const took = roads.find((entry) => entry.catalogId === plan.get(0))!;
     expect(hueOf(took.rgb).hue).toBeLessThan(60);
     expect(hueOf(took.rgb).chroma).toBeGreaterThan(HUE_CHROMA_MIN);
@@ -576,9 +537,7 @@ describe('a small box borrows a hue its own palette has none of', () => {
   });
 
   it('bounds an ACCENT to a third of the figure, and lets MIXED spend the lot', () => {
-    // Three warm regions, every one of them worth borrowing for: a bounded borrow may pave the smaller
-    // ones and not the mass, and a free one may pave all three. No material asks for `accent` today
-    // (`stencil-generator.ts:borrowPolicy`); this pins the bound the policy names.
+    // No material uses `accent` (`stencil-generator.ts:borrowPolicy`); this pins the bound it names.
     const big = region([...Array(60).keys()], 0xc06030);
     const mid = region([...Array(20).keys()].map((i) => 100 + i), 0xa04828);
     const small = region([...Array(10).keys()].map((i) => 200 + i), 0xd08050);
@@ -593,9 +552,7 @@ describe('a small box borrows a hue its own palette has none of', () => {
   });
 
   it('borrows NOTHING for a mountain or a water picture, whatever the colours are', () => {
-    // The maintainer's ruling of 2026-08-19: a mountain picture is mountain and a water picture is water
-    // and its banks, so neither lays a road. Three warm regions the ramp has no hue for and a rim, which
-    // is the case that paved most before it, and the answer is empty on both instruments.
+    // Warm regions and a rim, the case that would pave most, under the `none` policy those materials use.
     const regions = [
       region([...Array(6).keys()], 0x40201a),
       region([...Array(60).keys()].map((i) => 100 + i), 0xc06030),
@@ -614,8 +571,6 @@ describe('a small box borrows a hue its own palette has none of', () => {
   });
 
   it('lays the borrowed paving on the map, legally, and leaves the terrain under it', () => {
-    // A picture of two flat halves, one of them a warm colour the ramp has nothing for. The paved half
-    // must come back as coatings standing on the terrain the run built, with no rule broken.
     const side = 16;
     const stencil = paint(side, (x) => (x < side / 2 ? 0xc85a2a : hexStringToNumber(ELEVATION_COLORS[2]!)));
     const state = makeState(side + 8, side + 8);
@@ -628,15 +583,12 @@ describe('a small box borrows a hue its own palette has none of', () => {
     expect(paved.length).toBe(res.coated);
     for (const object of paved) {
       expect(getCatalogItem(object.catalogId)?.category).toBe(ItemCategory.Road);
-      // On the warm half, and standing on ground this run is responsible for.
       expect(object.position.x).toBeLessThan(4 + side / 2);
     }
   });
 
   it('lays no coating at all in the mountain or the water material, on the same picture', () => {
-    // The mode promise, end to end: the same warm half that the mixed material paves above arrives as
-    // terrain alone in the two materials that promise their own. Both borrowing instruments are behind
-    // that one policy, so this is the whole of what a picture may lay.
+    // The warm half the mixed material paves above arrives as terrain alone.
     const side = 16;
     const stencil = paint(side, (x) => (x < side / 2 ? 0xc85a2a : hexStringToNumber(ELEVATION_COLORS[2]!)));
     for (const water of ['none', 'primary'] as const) {
@@ -665,13 +617,9 @@ describe('a small box borrows a hue its own palette has none of', () => {
 });
 
 /**
- * A body the ground refused, and the bed of its own colour that says so.
- *
- * The borrow above pays for a region only where the paving can cover it, and the accent
- * (`stencil-feature.ts`) is refused a region that is the subject's own mass — so a body whose colour no
- * green approximates, standing on ground too broken to hold a paved region, would arrive entirely in
- * green. A bed is one block inside such a body: bounded so it cannot read as the region's surface, laid
- * only where the borrowed material says the region's own hue, and absent where nothing can say it.
+ * A body whose hue no green approximates, on ground too broken to pave, would arrive all green: the
+ * borrow declines it and the accent (`stencil-feature.ts`) refuses the subject's mass. A bed is one
+ * bounded block of a road surface matching its hue, laid inside it.
  */
 describe('a body no other instrument can say gets a bed of borrowed colour', () => {
   const roads = declaredColorPalette('roads');
@@ -689,14 +637,12 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     const green = body(60, hexStringToNumber(ELEVATION_COLORS[4]!), 1000);
     expect(planColorFill({ regions: [warm], rim: -1 }, own, ramp, roads, gate()).map((f) => f.region)).toEqual([0]);
     expect(planColorFill({ regions: [green], rim: -1 }, own, ramp, roads, gate())).toEqual([]);
-    // And the bed's own material carries the body's hue rather than merely a second colour.
     const took = roads.find((entry) => entry.catalogId === planColorFill({ regions: [warm], rim: -1 }, own, ramp, roads, gate())[0]!.catalogId)!;
     expect(Math.abs(signedTurn(hueOf(0xc0481b).hue, hueOf(took.rgb).hue))).toBeLessThanOrEqual(40);
   });
 
   it('says nothing for a body with no hue to say, however far off the ramp it is', () => {
-    // The judged round's own verdict: a scatter of grey over a plate the source draws in one flat colour
-    // reads as speckle. A grey is not a hue the ramp fails at, so no bed is worth laying.
+    // Far off the ramp, but a grey or near-black has no hue a bed could say.
     const grey = body(60, 0xcecece);
     const black = body(60, 0x1a1017);
     expect(nearestEntry(ramp, 0xcecece).off).toBeGreaterThan(0);
@@ -719,16 +665,14 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     const plan = planColorFill({ regions, rim: -1 }, own, ramp, roads, gate());
     expect(plan.length).toBe(2);
     expect(plan.reduce((sum, fill) => sum + fill.want, 0)).toBeLessThanOrEqual(Math.round(figure / 16));
-    // The ground is the other bound, and a body that can hold only one cell holds none.
+    // The ground bounds a bed too, and a one-cell bed is none.
     expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ ground: () => 3 }))
       .every((fill) => fill.want === 3)).toBe(true);
     expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ ground: () => 1 }))).toEqual([]);
   });
 
   it('reads the material through the SAME policy the paving does, and spends only what is left', () => {
-    // One instrument cannot promise what the other lays: a material that borrows nothing beds nothing,
-    // and a bounded one may take only what its own share has not already been paved with — a third of
-    // this 60-cell figure is 20 cells, so 17 already laid leaves 3 and 19 leaves too few for a bed.
+    // A third of this 60-cell figure is 20 cells: 17 already paved leaves 3, and 19 leaves too few.
     const regions = [body(60, 0xc0481b)];
     expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ policy: 'none' }))).toEqual([]);
     expect(planColorFill({ regions, rim: -1 }, own, ramp, roads, gate({ policy: 'accent', coated: 17 }))[0]!.want).toBe(3);
@@ -742,8 +686,7 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
   });
 
   it('gathers a bed around ONE seed out of the cells the ground holds', () => {
-    // A 6x6 body inside an 8x8 box, with the ground holding a patch on the left and one loose cell far
-    // to the right: a bed is the patch, and the loose cell is not part of it.
+    // A 6x6 body whose ground holds a 2x2 patch and one loose cell away from it.
     const side = 8;
     const stencil = paint(side, () => 0xc0481b);
     const cells: number[] = [];
@@ -754,11 +697,9 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
     const bed = bedCells(stencil, region(cells, 0xc0481b), open, 3);
     expect(bed.length).toBe(3);
     expect(bed.every((i) => patch.has(i))).toBe(true);        // the patch, never the loose cell first
-    // Asked for more than the patch holds it reaches the loose cell too, in the same order every time.
     const whole = bedCells(stencil, region(cells, 0xc0481b), open, 9);
     expect(whole.length).toBe(5);
     expect(whole.slice(0, 3)).toEqual(bed);
-    // Nothing to stand on is no bed at all.
     expect(bedCells(stencil, region(cells, 0xc0481b), () => false, 3)).toEqual([]);
   });
 
@@ -775,8 +716,8 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
   });
 
   it('lays a bed on the map legally, inside the body, and none above the gate', () => {
-    // A warm body on ground the paving cannot cover: light cells scattered through it become water in
-    // the mixed material, so the region's own cells mostly sit against a step and the borrow declines.
+    // Light cells scattered through the warm body become water, leaving most of it against a step
+    // where the borrow cannot pave.
     const side = 16;
     const warm = 0xc85a2a;
     const at = (x: number, y: number): number =>
@@ -793,8 +734,7 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
       expect(object.position.x).toBeLessThan(4 + side / 2);   // on the warm body, not the green half
       byMaterial.set(object.catalogId, (byMaterial.get(object.catalogId) ?? 0) + 1);
     }
-    // The bed's own signature beside the covered region's paving: a second material, and no more of it
-    // than the fill's budget — a block inside a body rather than a claim on the body's surface.
+    // The bed shows as a second material within the fill's budget.
     expect(byMaterial.size).toBeGreaterThan(1);
     expect(Math.min(...byMaterial.values())).toBeLessThanOrEqual(Math.round((side * side) / 16));
     const big = SMALL_BOX_OFF;
@@ -807,18 +747,15 @@ describe('a body no other instrument can say gets a bed of borrowed colour', () 
 });
 
 /**
- * The outline's own tier, and the amplitude it stops holding down.
- *
- * A thin dark line at a figure's edge can stand three layers above the ground beside it and no more, so
- * while the picture is kept in one order that cap is the whole picture's cap. Given its own tier, the
- * mass it encloses is free to use the ramp — at the price of the picture's own light and dark being
- * inverted across exactly that boundary, which is why it is only done where the outline is a line.
+ * A thin dark line at a figure's edge stands at most three layers high, which caps the whole picture
+ * while it is kept in one tonal order. Spent apart, the interior gets the ramp at the cost of inverting
+ * light and dark across that boundary, so only a line is spent apart.
  */
 describe('the outline is spent apart where it is a line', () => {
   const tones = terrainPalette(8, false).map((entry) => luma(entry.rgb));
   const darkest = Math.min(...tones), lightest = Math.max(...tones);
-  /** The tone floor a cell of this depth may be told in — the caller's own arithmetic (three layers per
-   *  step inward), as `layStencilColor` computes it. */
+  /** The tone floor for a cell of this depth, three layers per step inward, as `layStencilColor`
+   *  computes it. */
   const floorAt = (depth: number): number => {
     const cap = Math.max(1, Math.min(8, 3 * Math.max(1, depth)));
     return Math.min(...terrainPalette(8, false).filter((e) => e.elevation <= cap).map((e) => luma(e.rgb)));
@@ -834,22 +771,19 @@ describe('the outline is spent apart where it is a line', () => {
   });
 
   it('gives the interior room the outline would otherwise have held it to', () => {
-    // A thin dark outline (depth 1, so it may stand at three) round two interior regions that sit deep
-    // inside the figure. Kept in order, every one of them is squeezed into the three tiers above the
-    // outline's floor; spent apart, the interior has the ramp.
+    // An outline at depth 1 (capped at three layers) round two deeper interior regions.
     const { areas, read } = reading([12, 60, 20], [1, 3, 2]);
     const floors = read.depth.map(floorAt);
     const together = allocateEntries(areas, read, tones, floors, -1);
     const apart = allocateEntries(areas, read, tones, floors, 0);
     const span = (slots: number[]): number => Math.max(...slots.slice(1)) - Math.min(...slots.slice(1));
     expect(span(apart)).toBeGreaterThan(span(together));
-    // And the outline itself takes the darkest tier it can legally stand at, nothing about the rest.
+    // The outline takes the darkest tier it can stand at.
     expect(tones[apart[0]!]).toBeCloseTo(floors[0]!, 5);
   });
 
   it('keeps a picture in order where the outline is a SHARE of it rather than a line', () => {
-    // The same reading with the dark region a third of the figure: inverting a third of the picture
-    // costs more of its own order than the amplitude buys, so it is carried with the rest.
+    // The dark region is a third of the figure: inverting it costs more order than the range buys.
     const { areas, read } = reading([40, 60, 20], [1, 3, 2]);
     const floors = read.depth.map(floorAt);
     expect(allocateEntries(areas, read, tones, floors, 0))

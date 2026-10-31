@@ -2,8 +2,8 @@
 //
 // The reading has to separate three things a finished map presents: a street that stops at a set
 // piece, a court whose own paved border is the end of a branch, and a street that runs straight
-// Past one. The first two are arrivals and the third is not, and the second is the one `spurTips`
-// could never see — a two-cell border presents no terminus face at all.
+// past one. The first two are arrivals and the third is not, and the second is the one `spurTips`
+// cannot see: a two-cell border presents no terminus face at all.
 import { describe, it, expect } from 'vitest';
 import { createGrid } from '../../../core/model/grid-model';
 import { templateAnchor, templateLandmarkObjects } from '../../../core/model/landmarks';

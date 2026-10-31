@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The group-rotation animation must depict the operation that actually ran: One rigid body turning
- * about one point. Spinning every member in place while their positions jump to the new arrangement
- * depicts a different operation: each object turning on its own axis, which is not what ran.
- *
- * Two facts decide whether it reads as one body, and both are asserted on the tween's inputs rather
- * than on pixels: every member travels an arc about the centre (interpolating positions linearly
- * cuts the chord, so the arrangement contracts and re-expands mid-turn), and every member runs on
- * One clock (any per-member offset dissolves the illusion — this is the one animation in the app
- * where a stagger would be actively wrong).
+ * A group rotation animates as one rigid body turning about one point, asserted on the tween's
+ * inputs: every member travels an arc about the centre (a linear path would cut the chord and shrink
+ * the group mid-turn), and all members share one clock, with no stagger.
  */
 import '../../../_support/pixi-env'; // object-animations reaches PIXI, which needs jsdom's missing 2D context
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -36,10 +30,8 @@ function wrapper(x: number, y: number, withIcon: boolean): PIXI.Container {
 
 const iconOf = (c: PIXI.Container) => c.children.find((k) => k.name === OBJECT_CHILD.icon)!;
 
-/**
- * Run a tween with a controllable clock: returns a `step(ts)` that runs exactly the callbacks the
- * previous frame scheduled, plus the count of callbacks scheduled per frame (the one-rAF check).
- */
+/** Runs a tween on a controllable clock: `step(ts)` runs exactly the callbacks the previous frame
+ *  scheduled, and the per-frame callback count is kept. */
 function withFakeRaf(): { step: (ts: number) => void; scheduledPerFrame: number[]; restore: () => void } {
   let queue: FrameRequestCallback[] = [];
   let scheduled = 0;
@@ -147,7 +139,7 @@ describe('animateGroupRotation (2D)', () => {
     animateGroupRotation(map, turn, () => {});
     raf.step(0);
     raf.step(animConfig.groupRotation.durationMs * 0.5);
-    // One callback scheduled per frame regardless of the member count — 40 members cost one tick.
+    // One callback per frame whatever the member count.
     expect(raf.scheduledPerFrame).toEqual([1, 1]);
     raf.restore();
   });
@@ -161,7 +153,7 @@ describe('animateGroupRotation (2D)', () => {
     const raf = withFakeRaf();
     animateGroupRotation(map, turn, () => {});
     raf.step(0);
-    // Both were on the row y=4.5 before the turn (a at x=4.5, c at x=6.5) — centres, so anchors
+    // Both were on the row y=4.5 before the turn (a at x=4.5, c at x=6.5; centres), so anchors
     // sit half a tile up-left of them.
     expect(map.get('a')!.x + TILE_SIZE / 2).toBeCloseTo(4.5 * TILE_SIZE, 6);
     expect(map.get('a')!.y + TILE_SIZE / 2).toBeCloseTo(4.5 * TILE_SIZE, 6);
@@ -188,8 +180,7 @@ describe('animateGroupRotation (2D)', () => {
   });
 
   it('gives a CARRIED member no self-spin: it travels the arc without turning', () => {
-    // A non-rotatable 1x1 (a tree, a flower, a road tile) never turned, so animating a turn would
-    // show something that did not happen.
+    // A non-rotatable 1x1 (a tree, a flower, a road tile) never turned, so it shows no turn.
     const carried = wrapper(5, 5, true);            // an icon exists; it must not be touched
     const map = new Map<string, PIXI.Container>([['flower', carried]]);
     const turn = turnOf([{ id: 'flower', from: { x: 6.5, y: 4.5 }, spun: false }]);
@@ -257,8 +248,8 @@ describe('animateGroupRotation (2D)', () => {
 
 describe('the SINGLE-object spin is unchanged', () => {
   it('eases the icon alone: the wrapper never moves', () => {
-    // Rotating one object about its own centre genuinely is a spin in place, so that path keeps its
-    // own tuning (animConfig.rotation) and touches nothing but the icon.
+    // A single object's rotation is a spin in place, with its own tuning (`animConfig.rotation`), and
+    // touches only the icon.
     const w = wrapper(5, 3, true);
     const map = new Map<string, PIXI.Container>([['a', w]]);
     const raf = withFakeRaf();

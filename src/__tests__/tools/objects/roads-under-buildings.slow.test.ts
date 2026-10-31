@@ -4,7 +4,7 @@ import { placeTileCell } from '../../../tools/pointer/paint/tile-coating';
 import { CommandExecutor } from '../../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../../rules/index';
 import { getCatalogItem, getPlaceableByCategory, getPlaceableWhere, getRoadMaterials, landmarkItem } from '../../../state/catalog';
-import { getPlacedObjectSize, snapsOwnPlacement } from '../../../state/object-geometry';
+import { getPlacedObjectSize, placementGrab, snapsOwnPlacement } from '../../../state/object-geometry';
 import { hasTrait, isCoatingItem } from '../../../core/model/traits';
 import { getFootprint } from '../../../core/grid/footprint';
 import { isBuildableZone } from '../../../core/game/zones';
@@ -82,10 +82,17 @@ function paintRoad(s: Scene, material: string, cells: MacroCoord[]): void {
   expect(start.commit()).toEqual([]);
 }
 
+/** The cell the pointer holds for the placer to lay `itemId` with its top-left at `at`. */
+function heldAt(itemId: string, at: MacroCoord, rotation: Rotation): MacroCoord {
+  const grab = placementGrab(getCatalogItem(itemId)!, rotation);
+  return { x: at.x - grab.x, y: at.y - grab.y };
+}
+
 function placeBuilding(s: Scene, itemId: string, at: MacroCoord, rotation: Rotation): void {
   const ctx = makeToolCtx(s.state, s.ex, 1, 1, { armedItem: itemId, placementRotation: rotation });
   const start = s.ex.beginStroke();
-  new ObjectPlacerTool().onPointerDown(cell(at), point(at), ctx);
+  const held = heldAt(itemId, at, rotation);
+  new ObjectPlacerTool().onPointerDown(cell(held), point(held), ctx);
   expect(start.size, `${itemId} rotation ${rotation} placed`).toBe(1);
   expect(start.commit()).toEqual([]);
 }
@@ -170,7 +177,8 @@ describe('roads beneath supporting structures', () => {
           if (!fits) continue;
           const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: item.id, placementRotation: rotation });
           const before = ex.beginStroke();
-          new ObjectPlacerTool().onPointerDown(cell(at), point(at), ctx);
+          const held = heldAt(item.id, at, rotation);
+          new ObjectPlacerTool().onPointerDown(cell(held), point(held), ctx);
           if (before.size === 0) continue;
           before.commit();
           // The footprint plus a walkway along its lower edge, partly outside the building.
@@ -201,7 +209,7 @@ describe('roads beneath supporting structures', () => {
     const plaza = [...state.objects.values()].find(o => o.locked && o.catalogId === landmarkItem().id)!;
     const edge = { x: Math.floor(plaza.position.x + (plaza.width ?? 0)) - 1, y: Math.floor(plaza.position.y) + 4 };
     const house = supporters[0]!.id;
-    // A save from before the landmark grew: a house on its road reaching over the plaza's edge.
+    // A save written against a smaller landmark: a house on its road reaching over the plaza's edge.
     for (const c of footprintOf(house, edge, 0)) {
       state.objects.set(`old-road-${c.x}-${c.y}`, { id: `old-road-${c.x}-${c.y}`, catalogId: surfaces[0]!.id, position: c, rotation: 0, elevation: 0 });
     }

@@ -10,10 +10,15 @@
 // copy Vite writes to `dist/moderation/` into `dist/moderation/<content hash>/`. The folder name
 // changes exactly when a file in it does, so the host may cache every file under `/moderation/`
 // as immutable; `__PETIT_MODERATION_DIR__` carries the folder to the app.
+//
+// The size manifest: the splash weighs its progress by bytes, so the build lists every file it may
+// warm with its size once the output is final, and the development server answers the same path
+// from the source tree.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
+import { ASSET_SIZES_FILE, type AssetSizes } from '../src/platform/build/asset-sizes.ts';
 
 export const WORKER_FILES_TOKEN = '__PETIT_WORKER_FILES_TOKEN__';
 
@@ -87,6 +92,54 @@ export function moderationFingerprint(dir: string): Plugin {
       const to = join(from, folder);
       mkdirSync(to, { recursive: true });
       for (const name of readdirSync(from)) if (name !== folder) renameSync(join(from, name), join(to, name));
+    },
+  };
+}
+
+/** Every file under `dir` the page may warm, by its path relative to `dir`, with its size. Pages,
+ *  host rules and the manifest itself stay out: the page never warms them. */
+export function assetSizes(dir: string): AssetSizes {
+  const sizes: Record<string, number> = {};
+  for (const file of filesUnder(dir)) {
+    const path = relative(dir, file).replace(/\\/g, '/');
+    if (path === ASSET_SIZES_FILE || path.startsWith('_') || /\.(html|txt|xml)$/.test(path)) continue;
+    sizes[path] = statSync(file).size;
+  }
+  return Object.fromEntries(Object.entries(sizes).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/** Writes `ASSET_SIZES_FILE` over the final web build output and serves it in development, where
+ *  the paths are the source tree's (`src/assets/...`) and the public folder's. */
+export function assetSizeManifest(): Plugin {
+  let outDir = 'dist';
+  let root = process.cwd();
+  let publicDir = '';
+  return {
+    name: 'petit:asset-size-manifest',
+    configResolved(config: ResolvedConfig) {
+      root = config.root;
+      outDir = resolve(config.root, config.build.outDir);
+      publicDir = config.publicDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0]?.endsWith(`/${ASSET_SIZES_FILE}`) !== true) { next(); return; }
+        const sources = assetSizes(join(root, 'src/assets'));
+        const sizes = {
+          ...Object.fromEntries(Object.entries(sources).map(([path, size]) => [`src/assets/${path}`, size])),
+          ...(publicDir && existsSync(publicDir) ? assetSizes(publicDir) : {}),
+        };
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.end(JSON.stringify(sizes));
+      });
+    },
+    writeBundle: {
+      // After every other writer, the moderation folder's move included.
+      order: 'post',
+      handler() {
+        writeFileSync(join(outDir, ASSET_SIZES_FILE), JSON.stringify(assetSizes(outDir)));
+      },
     },
   };
 }

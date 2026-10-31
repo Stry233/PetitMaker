@@ -5,8 +5,8 @@ import {
   ROAD_TEXTURE_SIZE, roadTileCanvas, roadTileReady, __resetRoadTileCache,
 } from '../../../../view/shared/road/tile-texture';
 
-/** jsdom fetches nothing, so an Image there neither loads nor errors. Stand in for the browser's:
- *  every load is collected, and the test decides when (and how) it ends. */
+/** jsdom fetches nothing, so an Image there neither loads nor errors. This stand-in collects every load
+ *  and lets the test decide when (and how) it ends. */
 function stubImageLoads(): Array<{ onload?: () => void; onerror?: () => void }> {
   const loads: Array<{ onload?: () => void; onerror?: () => void }> = [];
   vi.stubGlobal('Image', class {
@@ -21,10 +21,9 @@ afterEach(() => { vi.unstubAllGlobals(); __resetRoadTileCache(); });
 
 describe('road tile texture', () => {
   it('crops the icon art\'s transparent margin away, at any icon resolution', () => {
-    // Bounds only: what the crop must actually clear is a per-file measurement over the shipped
-    // PNGs, which jsdom cannot make (it decodes no image). 15 was the smallest fully-opaque crop
-    // across the 25 shipped tiles (the worst, path-blue-board, carries 4 wholly transparent rows and
-    // a ~15px corner arc); past ~24 the crop magnifies the art enough to read as a different tile.
+    // Bounds only: the margin each shipped PNG needs cleared cannot be measured here (jsdom decodes no
+    // image). 15 is the smallest crop that leaves every shipped tile fully opaque; past ~24 the crop
+    // magnifies the art enough to read as a different tile.
     expect(ROAD_TEXTURE_SIZE).toBe(128); // power of two: repeat wrapping needs it on WebGL1
     const loads = stubImageLoads();
     const drawImage = vi.fn();
@@ -67,8 +66,8 @@ describe('road tile texture', () => {
     loads[0]!.onerror!();
     // A capture may end up drawing that road flat, but it must never be left waiting.
     await expect(ready).resolves.toBeUndefined();
-    // The redraw subscriber has nothing to redraw with, and asks again the moment it is told —
-    // running it here is what would spin a failing url once per frame for the rest of the session.
+    // The redraw subscriber has nothing to redraw with and would ask again the moment it is told, so
+    // calling it would spin a failing url once per frame for the rest of the session.
     expect(redraw).not.toHaveBeenCalled();
 
     // Nothing remembers the failure: a blocked request must not flatten that material for good.

@@ -2,10 +2,10 @@
  * The generate region's highlight follows the active view.
  *
  * The highlight is imperative: whoever edits the region tells the active overlay to show it. A 2D↔3D
- * swap registers a different overlay, so without a sync the region a person painted in one view is
- * simply absent from the other until something shows it again. These pin that the last shown region
- * moves with the registration, that a clear stays cleared, and that a region shown before any view
- * has registered lands on the first one that does.
+ * swap registers a different overlay, so without a sync the region painted in one view would be
+ * absent from the other until something shows it again. The last shown region moves with the
+ * registration, a clear stays cleared, and a region shown before any view registers lands on the
+ * first one that does.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActiveView } from '../../../../view/active-view';

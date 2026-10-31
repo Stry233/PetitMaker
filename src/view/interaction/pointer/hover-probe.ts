@@ -33,7 +33,7 @@ export function hoverInputs(
 ): HoverInputs {
   return [
     ...armingInputs(armingOf(s)),
-    s.selection, s.selectingRegion, s.viewMode, s.regionTool, s.regionBrushSize, s.regionDimensions,
+    s.selection, s.moveLatched, s.selectingRegion, s.viewMode, s.regionTool, s.regionBrushSize, s.regionDimensions,
     s.annotationsEpoch, s.locale,
     mapEpoch, toolEpoch, multiSelectHeld,
   ];
@@ -61,7 +61,8 @@ export function clearCursorFacts(): void {
 
 export class HoverProbe {
   /** What the pointer was over when the facts were last computed: placement cell, terrain cell,
-   *  hit object, the tool's own cell and the rendered-label hit. */
+   *  hit object, the tool's own cell and the rendered-label hit, and the pointer type, whose row
+   *  the facts read. */
   cell: string | null = null;
   /** The `hoverInputs` signature the current answer was computed from. */
   inputsKey: HoverInputs | null = null;
@@ -112,11 +113,11 @@ export class HoverProbe {
     // pointer is over, the multi-select key, and everything `hoverInputs` names.
     const inputs = this.inputs(probe.store);
     const { macro, target, toolCoord, ctx } = probe;
-    const over = [macro.x, macro.y, target.terrain.x, target.terrain.y, target.hit?.id, toolCoord.x, toolCoord.y, ctx?.annotationLabelHit].join(',');
+    const over = [macro.x, macro.y, target.terrain.x, target.terrain.y, target.hit?.id, toolCoord.x, toolCoord.y, ctx?.annotationLabelHit, e.pointerType].join(',');
     if (over !== this.cell || !sameHoverInputs(this.inputsKey, inputs)) {
       this.cell = over;
       this.inputsKey = inputs;
-      const f = pressFactsAt(PRIMARY_BUTTON, probe);
+      const f = pressFactsAt(PRIMARY_BUTTON, e.pointerType, probe);
       const c = cursorFactsFor(f);
       // The forbidden badge answers a question about the tool, not about the press: whether this
       // cell would be refused. `placementAllowed` is that same probe, run once for both.

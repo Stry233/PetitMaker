@@ -1,33 +1,10 @@
 import type { HelpPage } from '../help/page-schema';
 import type { ComponentType } from 'react';
 import type { helpProvider as webHelpProvider } from '../help/edition-help';
-import { FrameOverview, FrameCut, NotesEntryPreview } from '../help/figures/previews/frame-overview';
-import { LayersTour, NotesRowTour } from '../help/figures/previews/frame-tours';
-import { TourPreview } from '../help/figures/previews/tour';
-import { AutoTrimModesPreview, ObjectShelfPreview, TerrainToolsStrip } from '../help/figures/previews/strips';
-import { ContextMenuPreview, DeleteConfirmPreview } from '../help/figures/previews/floating';
-import { GenerateShelfIslandPreview, GenerateShelfMazePreview, IslandHeightPreview, IslandRichnessPreview } from '../help/figures/previews/generate';
+import { CORE_SURFACES } from '../help/figures/core-surfaces';
 
 export const helpProvider = (): ReturnType<typeof webHelpProvider> | undefined => undefined;
-export const HELP_SURFACES: Record<string, ComponentType> = {
-  'frame-overview': FrameOverview,
-  'frame-modes': () => <FrameCut corner="modes" />,
-  'frame-topright': () => <FrameCut corner="topright" />,
-  'frame-rail': () => <FrameCut corner="rail" />,
-  'frame-bar': () => <FrameCut corner="bar" fallback={<TerrainToolsStrip active="draw" />} />,
-  tour: TourPreview,
-  layers: LayersTour,
-  'notes-row': NotesRowTour,
-  'notes-entry': NotesEntryPreview,
-  'object-shelf': ObjectShelfPreview,
-  'autotrim-modes': AutoTrimModesPreview,
-  'context-menu': ContextMenuPreview,
-  'delete-confirm': DeleteConfirmPreview,
-  'generate-shelf': GenerateShelfMazePreview,
-  'generate-shelf-island': GenerateShelfIslandPreview,
-  'island-height': IslandHeightPreview,
-  'island-richness': IslandRichnessPreview,
-};
+export const HELP_SURFACES: Record<string, ComponentType> = CORE_SURFACES;
 
 export const PROVIDER_IDS: readonly never[] = [];
 export const providerBaseUrls = (): string[] => [];

@@ -26,8 +26,8 @@ describe('ImportModal', () => {
     setStoreModal('import');
     render(<ImportModal />, { wrapper: Wrapper });
     expect(screen.getByText('Drop a map image or .json file here, or click to choose')).toBeTruthy();
-    // v2: any raster (JPEG/screenshot) with an intact share-code band is importable, not just the
-    // original PNG — the copy should say so honestly.
+    // Any raster (JPEG, screenshot) with an intact share-code band imports, not only the original
+    // PNG, and the copy says so.
     expect(screen.getByText(/JPEG/i)).toBeTruthy();
     expect(screen.getAllByText(/\.json/i).length).toBeGreaterThan(0); // copy still mentions JSON too
   });
@@ -103,7 +103,7 @@ describe('ImportModal', () => {
     await waitFor(() => expect(createImageBitmapMock).toHaveBeenCalledWith(file));
     await waitFor(() => expect(getImageDataMock).toHaveBeenCalled());
     // A synthetic all-zero raster carries no real share code, so import fails honestly rather than
-    // crashing — the modal settles back to its idle state (busy → false) once decodeGlyph rejects it.
+    // crashing: the modal settles back to its idle state (busy → false) once decodeGlyph rejects it.
     await waitFor(() => expect(screen.getByText('Drop a map image or .json file here, or click to choose')).toBeTruthy());
 
     getContextSpy.mockRestore();

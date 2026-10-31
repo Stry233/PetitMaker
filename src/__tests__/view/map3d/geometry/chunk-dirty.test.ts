@@ -1,6 +1,6 @@
 /**
  * Which 3D chunks must remesh after an edit: the chunks holding the changed
- * cells plus any chunk whose cells neighbor them — exposed-face culling, cut
+ * cells plus any chunk whose cells neighbor them, since exposed-face culling, cut
  * backing, and silhouette reads cross one cell, so a border edit changes the
  * adjacent chunk's geometry too.
  */

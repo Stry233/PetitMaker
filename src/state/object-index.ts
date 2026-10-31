@@ -8,8 +8,8 @@
  * site (command-apply and the placer's temporary self-removal). The size check
  * is a backstop for a missed bump on an add/remove path.
  *
- * Incremental: when the mutation left an `objectsDelta` and this cache is one version behind it,
- * the changed entries are patched in. Anything unexpected (no delta, a skipped version, an
+ * Incremental: when every mutation since this cache's version left an `objectsDelta`, the changed
+ * entries are patched in, step by step. Anything unexpected (no delta, a step without one, an
  * unindexed removal, a post-patch count that disagrees with `state.objects`) falls back to a full
  * rebuild, so the index can be slow but never stale.
  *
@@ -22,6 +22,7 @@ import { bucketOf } from '../core/grid/buckets';
 import { TERRAIN_GRID_OFFSET } from '../core/grid/grid-convert';
 import { PLACEMENT_GRID } from '../core/game/profile';
 import type { GridState, MacroCoord, PlacedObject, CatalogItem } from '../core/model/types';
+import { objectDeltasSince } from '../core/model/grid-model';
 import type { RoadLookup } from '../core/model/road-lookup';
 import type { MapPoint } from '../core/grid/grids';
 import { getCatalogItem } from './catalog';
@@ -171,7 +172,7 @@ function buildIndex(state: GridState): ObjectIndex {
 }
 
 /**
- * Fold `state.objectsDelta` into an otherwise-current cache. Returns false when
+ * Fold the deltas since the cache's version into it. Returns false when
  * the delta cannot be trusted to describe the whole change, leaving the caller
  * to rebuild.
  *
@@ -180,15 +181,17 @@ function buildIndex(state: GridState): ObjectIndex {
  * corner edit does not silently reorder what consumers iterate.
  */
 function patchCached(state: GridState, cached: Cached, version: number): boolean {
-  const delta = state.objectsDelta;
-  if (!delta || delta.version !== version || cached.version !== version - 1) return false;
+  const deltas = objectDeltasSince(state, cached.version);
+  if (!deltas) return false;
   const { index } = cached;
-  for (const obj of delta.removed ?? []) {
-    if (dropEntry(index, obj.id) === undefined) return false;
-  }
-  for (const obj of delta.added ?? []) {
-    const reused = dropEntry(index, obj.id);
-    insertEntry(index, makeEntry(obj, reused ?? cached.nextOrd++));
+  for (const delta of deltas) {
+    for (const obj of delta.removed ?? []) {
+      if (dropEntry(index, obj.id) === undefined) return false;
+    }
+    for (const obj of delta.added ?? []) {
+      const reused = dropEntry(index, obj.id);
+      insertEntry(index, makeEntry(obj, reused ?? cached.nextOrd++));
+    }
   }
   if (index.entries.length !== state.objects.size) return false;
   cached.version = version;

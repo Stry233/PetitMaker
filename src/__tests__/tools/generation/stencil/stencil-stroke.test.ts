@@ -1,11 +1,8 @@
 /**
- * How thick a letter's strokes come out, which is what decides whether a small region can carry
- * text at all.
- *
- * Weight follows the room the glyph is given — thin in a small region, bold in a large one — and it is
- * the whole of the control. Drawn at one heavy weight, an E in a modest region arrives four cells thick
- * with both counters closed up; a quantised letter has one honest way to be lighter, and reshaping the
- * strokes afterwards costs more than it buys (`stencil-glyph.test.ts` measures that).
+ * How thick a letter's strokes come out, which decides whether a small region can carry text. Font
+ * weight, chosen from the room the glyph gets, is the only control: at one heavy weight an E in a
+ * modest region comes out four cells thick with both counters closed, and nothing reshapes the strokes
+ * afterwards (`stencil-glyph.test.ts` measures why).
  */
 import { describe, it, expect } from 'vitest';
 import type { Stencil } from '../../../../tools/generation/stencil/stencil';
@@ -43,24 +40,22 @@ describe('the room one glyph gets', () => {
 
 describe('stroke weight follows the room, thin to bold', () => {
   it('draws the one Latin instance the grid can hold, at every size a region is worth writing in', () => {
-    // The face ships two, and the heavier one is a slab on this grid: measured over the matrix it takes
-    // an M at eight cells from a readable letter to a solid block and puts half a large region under ink
-    // where the lighter one puts a third. So "bold in a large region" is as bold as this face goes.
+    // The face ships two instances and the heavier is a slab on this grid: it turns an eight-cell M into
+    // a solid block and inks half a large region where the lighter inks a third.
     for (const n of [8, 12, 20, 32, 56, 96]) expect(glyphWeight('E', box(n, n)), `${n} cells`).toBe(500);
   });
 
   it('reaches for the heavier instance only where the lighter draws under a cell', () => {
-    // Below the floor a region is refused, but the rule still has to hold there: at five cells the
-    // lighter instance draws 0.46 of a cell and an E arrives with no middle bar at all.
+    // Regions this small are refused, but the rule still holds: at five cells the lighter instance draws
+    // 0.46 of a cell and an E loses its middle bar.
     expect(glyphWeight('E', box(5, 5))).toBe(700);
     expect(glyphWeight('E', box(6, 6))).toBe(700);
     expect(glyphWeight('E', box(8, 8)), 'and stops as soon as three quarters of a cell is drawn').toBe(500);
   });
 
   it('only ever names a weight the shipped face actually draws', () => {
-    // The table is measured, not nominal (`--calibrate`), and the Latin face ships two instances:
-    // asking for anything between them draws one of the two anyway, so a derivation that believed in
-    // a ladder of nine was reading a number the face would not honour.
+    // The table is measured from the shipped face, and asking between its two Latin instances draws
+    // one of them anyway.
     for (const text of ['E', 'PETIT', '谷地']) {
       for (const n of [8, 12, 20, 32, 48, 96]) {
         expect(GLYPH_WEIGHTS).toContain(glyphWeight(text, box(n, n)));
@@ -78,12 +73,11 @@ describe('stroke weight follows the room, thin to bold', () => {
   });
 
   it('starts a dense script lighter than a Latin letter, where the room is tightest', () => {
-    // A dense Han glyph packs seven stroke rows into the square an E spends on three, so it needs its counters kept
-    // open far more than it needs weight — and the small end is where that decides anything.
+    // A Han glyph packs seven stroke rows into the square an E spends on three, so open counters
+    // matter more than weight, most of all at the small end.
     expect(strokeTarget('谷地', box(24, 12))).toBeLessThanOrEqual(strokeTarget('EF', box(24, 12)));
-    // At the large end the two curves are not ordered by script, and that is the Latin face's doing
-    // rather than a decision about ideographs: its curve tops out at the one instance the grid can hold,
-    // which is lighter than where the dense curve legitimately goes.
+    // At the large end the curves are not ordered by script: the Latin curve tops out at the one
+    // instance the grid can hold.
     expect(strokeTarget('E', box(56, 56)) / 55).toBeLessThanOrEqual(0.14);
     expect(strokeTarget('谷', box(56, 56)) / 55).toBeLessThanOrEqual(0.14);
   });

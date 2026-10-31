@@ -1,52 +1,34 @@
 /*
- * The figure for the first-launch tour: the real shell, pictured, under the tour's own
- * dim. The spotlight geometry is the overlay's (`spotlightRx`, `LIT_INSET`, the same overlay fill
- * and accent ring), cut around the box the 'modes' step measures on the pictured shell, and the
- * card is the real `TourBubble` in the overlay's own card chrome. `TourOverlay` itself is not
- * mounted — it drives the live tour; this shows what it draws without running one.
+ * The figure for the tour: the real shell, pictured, under the tour's own window standing on its
+ * second card, the reel resting on its poster as every pictured clip does. The window is the live
+ * `TourDeck` over a still controller; nothing runs.
  */
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { INERT } from './PreviewFrame';
-import { radii, z } from '../../../design/styles';
-import { ACCENT, OVERLAY_DIM } from '../../../design/tokens';
-import { BUBBLE_W, LIT_INSET, spotlightRx, tourCard, TourBubble } from '../../../chrome/tour/TourOverlay';
-import { SHELL_TOUR_STEPS } from '../../../shell/tour/tour-steps';
-import { tourTargetSelector } from '../../../chrome/tour/steps';
-import { PicturedShell, measureBox, useWindowSnapshot, type Box } from './frame-overview';
-
+import { radii } from '../../../design/styles';
+import { UiPreviewProvider } from '../../../design/preview';
+import { hasWebGL2 } from '../../../../platform/device/device-quality';
+import { tourCards } from '../../../chrome/tour/deck';
+import { TourDeck } from '../../../chrome/tour/TourDeck';
+import type { TourController } from '../../../chrome/tour/use-tour';
+import { PicturedShell, useWindowSnapshot } from './frame-overview';
 
 const noop = () => {};
-
-/** The spotlight-to-card gap, at the pictured shell's own scale. */
-const GAP = 18;
+/** The card pictured: the first one that teaches a gesture, so the reel and its bars show. */
+const PICTURED_CARD = 1;
 
 export function TourPreview() {
   const win = useWindowSnapshot();
   const width = 560;
   const scale = width / win.w;
-  const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const [box, setBox] = useState<Box | null>(null);
-  const step = SHELL_TOUR_STEPS.find((s) => s.id === 'modes');
-
-  useEffect(() => {
-    const target = step?.target;
-    if (!root || !target) return undefined;
-    const read = () => {
-      const b = measureBox(root, [tourTargetSelector(target)], win.w, LIT_INSET);
-      if (b) setBox(b);
-    };
-    // Twice: the pictured shell's own entrances can still be settling at the first read.
-    const timers = [setTimeout(read, 120), setTimeout(read, 900)];
-    return () => timers.forEach(clearTimeout);
-  }, [root, step, win.w]);
-
-  if (!step) return null;
-  const index = SHELL_TOUR_STEPS.indexOf(step);
-  const rx = box ? spotlightRx(box.w, box.h, 1) : 0;
-
+  const cards = useMemo(() => tourCards(hasWebGL2()), []);
+  const pose = useMemo(() => ({ viewport: win }), [win]);
+  const tour = useMemo<TourController>(() => ({
+    running: true, phase: { kind: 'deck', card: PICTURED_CARD }, cards,
+    go: noop, next: noop, back: noop, showMe: noop, stepOn: noop, backToTips: noop, finish: noop,
+  }), [cards]);
   return (
     <div
-      ref={setRoot}
       aria-hidden
       {...INERT}
       style={{
@@ -55,48 +37,8 @@ export function TourPreview() {
       }}
     >
       <PicturedShell win={win} zoom={scale}>
-        {/* The tour's dim, cut around the target's box exactly as TourDim cuts it. The cut is a
-            box-shadow spill off the lit hole rather than an SVG mask: Chromium drops a masked
-            SVG paint under an ancestor CSS zoom, which is the scale every figure rides. Before
-            the box lands the dim covers everything, the live overlay's own opening frame. */}
-        {box ? (
-          <div
-            data-testid="help-tour-dim"
-            style={{
-              position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h,
-              borderRadius: rx, boxSizing: 'border-box',
-              border: `3px solid ${ACCENT}`,
-              boxShadow: `0 0 0 ${Math.round(win.w + win.h)}px ${OVERLAY_DIM}`,
-              zIndex: z.unmissable, pointerEvents: 'none',
-            }}
-          />
-        ) : (
-          <div
-            data-testid="help-tour-dim"
-            style={{ position: 'absolute', inset: 0, background: OVERLAY_DIM, zIndex: z.unmissable, pointerEvents: 'none' }}
-          />
-        )}
-        {box && (
-          <div
-            style={{
-              position: 'absolute',
-              left: Math.max(12, Math.min(box.x, win.w - BUBBLE_W - 12)),
-              top: box.y + box.h + GAP,
-              ...tourCard,
-              zIndex: z.unmissable,
-              pointerEvents: 'none',
-            }}
-          >
-            <TourBubble
-              step={step}
-              index={index}
-              total={SHELL_TOUR_STEPS.length}
-              isLast={index === SHELL_TOUR_STEPS.length - 1}
-              onSkip={noop}
-              onNext={noop}
-            />
-          </div>
-        )}
+        {/* Posed like the shell under it, so the window draws in the figure rather than over the page. */}
+        <UiPreviewProvider pose={pose}><TourDeck tour={tour} open /></UiPreviewProvider>
       </PicturedShell>
     </div>
   );

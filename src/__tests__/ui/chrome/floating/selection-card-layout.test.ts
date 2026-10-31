@@ -1,6 +1,6 @@
 /** The selection card's header is placed where the opened card also fits, inside the viewport. */
 import { describe, it, expect } from 'vitest';
-import { cardBoxStyle, holdPlace, placeSelectionCard, tailStyle } from '../../../../ui/chrome/floating/selection-card-layout';
+import { cardBoxStyle, holdPlace, placeFittedCard, placeSelectionCard, tailStyle } from '../../../../ui/chrome/floating/selection-card-layout';
 
 /** The card's default gap from its anchor and its margin from the area's edges, in css px. */
 const CARD_GAP = 14;
@@ -75,6 +75,56 @@ describe('placeSelectionCard inside the clear map area', () => {
   it('keeps clear of the right-hand column', () => {
     const p = shown(placeSelectionCard({ x: 880, y: 300, w: 40, h: 40 }, SIZE, VIEWPORT, { area: AREA }));
     expect(p.left + SIZE.w).toBeLessThanOrEqual(AREA.right - CARD_MARGIN);
+  });
+});
+
+describe('placeSelectionCard in a short map area', () => {
+  // An upright phone with the object panel open: the map clear of the frame is a short band.
+  const PHONE = { width: 390, height: 844 };
+  const AREA = { left: 0, top: 70, right: 327, bottom: 365 };
+  const CARD = { w: 300, h: 52, body: 160 };
+  const overlaps = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; w: number; h: number }) =>
+    a.left < b.x + b.w && a.right > b.x && a.top < b.y + b.h && a.bottom > b.y;
+
+  it('[EDIT-47] keeps the header and its details clear of the selection where no side holds the opened card', () => {
+    for (const sel of [{ x: 140, y: 300, w: 30, h: 25 }, { x: 140, y: 150, w: 30, h: 25 }, { x: 20, y: 220, w: 40, h: 30 }]) {
+      const p = shown(placeSelectionCard(sel, CARD, PHONE, { area: AREA }));
+      const at = cardBoxStyle(p, CARD, PHONE, AREA, { zoom: 1, minRoom: 0 });
+      const details = Math.min(CARD.body, at.detailsMax);
+      const top = p.growUp ? p.top - details : p.top;
+      const box = { left: p.left, right: p.left + CARD.w, top, bottom: top + CARD.h + details };
+      expect(overlaps(box, sel), JSON.stringify({ sel, box })).toBe(false);
+      expect(box.top).toBeGreaterThanOrEqual(AREA.top + CARD_MARGIN);
+      expect(box.bottom).toBeLessThanOrEqual(AREA.bottom - CARD_MARGIN);
+      expect(box.right).toBeLessThanOrEqual(AREA.right - CARD_MARGIN);
+    }
+  });
+});
+
+describe('placeFittedCard', () => {
+  // A phone column whose wide label stands high up and whose buttons below are narrow.
+  const PHONE = { width: 390, height: 844 };
+  const FULL = { left: 0, top: 70, right: 240, bottom: 560 };
+  const areaAt = (rows?: { top: number; bottom: number }) => (rows && rows.top > 160 ? { ...FULL, right: 327 } : FULL);
+  const HEADER = { h: 52, body: 160 };
+  const OPTS = { areaAt, titleMin: 50, titleMax: 240 };
+
+  it('[EDIT-47] keeps the fitted header inside the columns level with it, and a re-read lands in the same place', () => {
+    for (let y = 120; y <= 520; y += 40) {
+      for (const title of [60, 140, 240]) {
+        const sel = { x: 140, y, w: 30, h: 25 };
+        const parts = { title, others: 150 };
+        const fit = placeFittedCard(sel, parts, HEADER, PHONE, OPTS);
+        const p = shown(fit.placement);
+        const level = areaAt({ top: p.top, bottom: p.top + HEADER.h });
+        expect(p.left + fit.size.w, JSON.stringify({ y, title })).toBeLessThanOrEqual(level.right - CARD_MARGIN + 1e-9);
+        // The fit resizes the header, which makes the card read itself again: with the name reset to
+        // its natural width and the side it took preferred. That re-read must not move or resize it.
+        const again = placeFittedCard(sel, parts, HEADER, PHONE, { ...OPTS, prefer: p.side });
+        expect(again.placement).toEqual(fit.placement);
+        expect(again.size).toEqual(fit.size);
+      }
+    }
   });
 });
 

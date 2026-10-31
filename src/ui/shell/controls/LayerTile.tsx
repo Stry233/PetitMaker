@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { ELEVATION_COLORS } from '../../../core/model/palette';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { iconUrl } from '../../primitives/icons';
+import { iconUrl } from '../../../assets/icon-urls';
 import { btnReset, cursors, radii } from '../../design/styles';
 import { type LayerMode } from '../frame';
 import { useTransition } from '../../design/motion/use-motion';
@@ -15,6 +15,8 @@ import { cssMotion } from '../../design/motion';
 import { frameZoomAttr } from '../../design/motion/zoom-corrected-radius';
 import { ERROR, INK, PLATE_INK, TRACK } from '../../design/tokens';
 import { TEXT } from '../units';
+import { useTouchMode } from '../../design/input-mode';
+import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 
 /** How strongly a locked tile is tinted while its paints are being refused. */
@@ -30,6 +32,7 @@ export function TileToggle({ icon, label, testId, size, onPress }: {
   size: number;
   onPress: () => void;
 }) {
+  const zoom = useFrameZoom();
   return (
     <ActionButton
       interaction="tile"
@@ -45,10 +48,11 @@ export function TileToggle({ icon, label, testId, size, onPress }: {
         // The tile's own press target is the plate underneath, which the content lets through; a
         // toggle is the exception that takes its own press back.
         pointerEvents: 'auto',
-        cursor: cursors.clickable, display: 'flex',
+        cursor: cursors.clickable, display: 'flex', position: 'relative',
       }}
     >
       <img src={iconUrl(icon)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      <TouchReach zoom={zoom} />
     </ActionButton>
   );
 }
@@ -76,7 +80,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
   const setLayerLocked = useEditorStore((s) => s.setLayerLocked);
   const band = ELEVATION_COLORS[row.elevation] ?? ELEVATION_COLORS[0]!;
   const ink = active ? INK : PLATE_INK;
-  const tile = tileOf(mode);
+  const tile = tileOf(mode, useTouchMode());
   const stacked = mode === 'grid';
   const behind: CSSProperties = { position: 'absolute', inset: 0, borderRadius: tile.radius };
   /** The props of every box on the tile whose shape changes with the size, the frame zoom included. */
@@ -90,7 +94,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
   const nameGroup = (
     <motion.div
       {...carried}
-      style={{ display: 'flex', alignItems: 'center', gap: tile.swatchGap, ...(stacked ? {} : { flex: 1 }) }}
+      style={{ display: 'flex', alignItems: 'center', gap: tile.swatchGap, minWidth: 0, ...(stacked ? {} : { flex: 1 }) }}
     >
       <span
         style={{
@@ -100,7 +104,15 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
           background: band, opacity: visible ? 1 : 0.35,
         }}
       />
-      <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink }}>{row.name}</span>
+      {/* The one part of a tile that gives way where its column is narrow (`layer-plate.ts:tileLeastWidth`). */}
+      <span
+        title={row.name}
+        style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, minWidth: 0, textOverflow: 'ellipsis',
+          // Clipped across only: the line is one em tall, and marks above or below it stay drawn.
+          overflowX: 'clip', overflowY: 'visible' }}
+      >
+        {row.name}
+      </span>
     </motion.div>
   );
   const countFigure = (

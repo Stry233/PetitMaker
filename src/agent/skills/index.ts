@@ -21,6 +21,8 @@ import type { SkillKind } from '../core/types';
 import type { SkillName } from './titles';
 import figureLandscape from './figure-landscape.md?raw';
 import siteAnalysis from './site-analysis.md?raw';
+import planOnMap from './plan-on-map.md?raw';
+import buildFromPlan from './build-from-plan.md?raw';
 import composition from './composition.md?raw';
 import designReview from './design-review.md?raw';
 import terrainShaping from './terrain-shaping.md?raw';
@@ -44,6 +46,18 @@ export const SKILLS: Record<string, AgentSkill> = {
     title: 'Site Analysis',
     description: 'Read the map before building: scale, plaza, anchors, levels; decide the subject, the back/front axis and the routes, then plan.',
     body: siteAnalysis,
+  },
+  'plan-on-map': {
+    kind: 'method',
+    title: 'Plan on the Map',
+    description: 'Plan a multi-area design as annotations: programme with instances and sizes, adjacency, paths first, blocks tiled into parcels, a self-check.',
+    body: planOnMap,
+  },
+  'build-from-plan': {
+    kind: 'method',
+    title: 'Build from the Plan',
+    description: 'Build what annotations describe, an approved plan or the user\'s drawing: read each zone, build it inside its cells, roads on paths, report gaps.',
+    body: buildFromPlan,
   },
   'composition': {
     kind: 'method',

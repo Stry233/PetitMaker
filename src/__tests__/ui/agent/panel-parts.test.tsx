@@ -1,13 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The panel's own atoms: the construction-tape progress bar, the dock's segment
- * countdown, an op's outcome tick, the window pill ported into the panel's paper, and a single-line
- * stamp.
- *
- * Colour assertions never compare a hex literal against a browser-normalized `style.color` /
- * `style.background` string directly (jsdom's cssstyle serializes a set value, and the two can
- * disagree in form though not in meaning): `asColor`/`asBackground` push both sides of a comparison
- * through the same DOM round-trip, so the assertion is meaning-for-meaning.
+ * The panel's own atoms: the tape progress bar, an op's outcome tick, the pill, the stamp and the
+ * count pill. jsdom serializes a set colour in its own form, so `asColor`/`asBackground` push both
+ * sides of a colour comparison through the same DOM round-trip.
  */
 import { Pill } from '../../../ui/primitives/Pill';
 import { describe, it, expect } from 'vitest';
@@ -71,8 +66,7 @@ describe('TapeBar', () => {
     expect(fillOf(container).style.width).toBe('50%');
   });
 
-  /** Unknown work is never a full bar: a short left-anchored pill (26% of the track) with its
-   *  stripes crawling is the one honest way to show progress nobody can measure. */
+  /** Unknown work is never a full bar. */
   it('indeterminate is a SHORT left-anchored pill, never the whole track, and crawls when motion is not reduced', () => {
     const { container } = render(<TapeBar mode="indeterminate" />);
     expect(fillOf(container).style.width).toBe('26%');
@@ -89,8 +83,7 @@ describe('TapeBar', () => {
     expect(stripesOf(container).className).not.toContain('pw-stripe-drift');
   });
 
-  /** A hold (pause, stop, retry) freezes the fill exactly where it stands and dims it: the crawl
-   *  stops even where motion is otherwise allowed, and the width it froze at is never touched. */
+  /** A hold (pause, stop, retry) freezes the fill where it stands and dims it. */
   it('held freezes an indeterminate pill: no crawl, dimmed, still the 26% pill', () => {
     const { container } = render(<TapeBar mode="indeterminate" held />);
     expect(fillOf(container).style.width).toBe('26%');
@@ -117,10 +110,8 @@ describe('TapeBar', () => {
     expect(['', 'none']).toContain(track.style.boxShadow);
   });
 
-  /** The crawl's length is declared in the motion registry; `.pw-stripe-drift` carries the keyframes
-   *  and the reduced-motion gate but its own duration belongs to the shell's other users of the
-   *  class, so the bar has to override it. A silent divergence here is a motion running at somebody
-   *  else's speed. */
+  /** `.pw-stripe-drift`'s own duration belongs to the shell's other users of the class, so the bar
+   *  overrides it with the registry's. */
   it('crawls for exactly as long as the registry declares', () => {
     const { container } = render(<TapeBar mode="indeterminate" />);
     expect(stripesOf(container).style.animationDuration).toBe(`${MOTIONS['panel.tape.crawl'].duration}s`);
@@ -131,20 +122,15 @@ describe('TapeBar', () => {
     expect(stripesOf(container).style.animationDuration).toBe('');
   });
 
-  /** The pattern repeats at one stripe period, so a cycle that travels any other distance jumps at
-   *  the seam. The assertion is against the drawing's own geometry (`design/tokens.ts:TAPE.stripeSize`),
-   *  which is where that number lives and what the crawl's declared amplitude is read from. */
+  /** A cycle that travels any other distance than one stripe period jumps at the seam. */
   it('travels one stripe period per cycle, the distance the pattern repeats at', () => {
     const { container } = render(<TapeBar mode="indeterminate" />);
     expect(stripesOf(container).style.getPropertyValue('--pw-stripe-travel')).toBe(`${TAPE.stripeSize}px`);
   });
 
   /**
-   * The crawl moves a layer, not a background. `background-position` is not a composited property:
-   * Blink repaints and pixel-snaps it, and one 11.31px period per 1.6s is a 0.06px step per frame,
-   * which stands still for a dozen frames and then jumps a whole device pixel. The stripes read as
-   * shaking. So the striped layer is its own absolutely-placed box, one period wider than the fill
-   * on the leading side, and the class that moves it moves a transform.
+   * The crawl moves a layer by transform, not a background: Blink pixel-snaps `background-position`,
+   * and a 0.06px step per frame stands still for a dozen frames and then jumps a device pixel.
    */
   it('crawls by travelling a layer that overhangs the fill by one whole period', () => {
     const { container } = render(<TapeBar mode="indeterminate" />);
@@ -152,15 +138,14 @@ describe('TapeBar', () => {
     expect(stripes.style.position).toBe('absolute');
     expect(stripes.style.left).toBe(`-${TAPE.stripeSize}px`);
     expect(stripes.style.right).toBe('0px');
-    // The fill clips it, which is what keeps the fill's own rounded cap.
+    // The fill clips it, keeping its own rounded cap.
     expect(fillOf(container).style.overflow).toBe('hidden');
-    // Nothing on either box animates a background.
     expect(stripes.className).not.toContain('pw-stripes');
   });
 });
 
-/** Every operation status and its rendered mark. `satisfies` validates the entries without
- * widening their literal types, which keeps the exhaustiveness assertion meaningful. */
+/** Every operation status and its rendered mark; `satisfies` keeps the literal types for the
+ *  exhaustiveness check below. */
 const END_MARKS = [
   ['ok', 'pw-check', tickInk.ok],
   ['run', 'spin', ''],
@@ -174,8 +159,7 @@ const END_MARKS = [
   ['words', 'pw-reply-bubble', MUTED],
   ['pending-gate', 'pw-reply-bubble', MUTED],
 ] as const satisfies ReadonlyArray<readonly [OpRow['status'], string, string]>;
-// A callable (not a bare type alias) so the constraint is actually checked by `tsc`: a status the
-// table above forgot makes `Exclude<...>` non-`never`, and the call below fails to typecheck.
+// A call rather than a type alias, so `tsc` checks it: a status the table forgot fails to typecheck.
 function assertExhaustive<T extends never>(): T[] {
   return [];
 }
@@ -186,8 +170,7 @@ describe('TickDot: the end-mark vocabulary', () => {
     it(`${status} draws ${mark}`, () => {
       const { container, getByTestId } = render(<TickDot status={status} />);
       if (mark === 'spin') {
-        // A call still running wears the house tight-space loader, not a mark of its own: which
-        // phase it is in belongs to the words on the row.
+        // A running call wears the house tight-space loader, not a mark of its own.
         expect(container.querySelector('use')).toBeNull();
         expect(container.querySelector('.pw-busy')).not.toBeNull();
         return;
@@ -197,8 +180,7 @@ describe('TickDot: the end-mark vocabulary', () => {
     });
   }
 
-  /** The ask paper is the dock's alone. A mark on its own coloured pill inside an op row reads
-   *  as a second card in the middle of the record. */
+  /** The ask paper is the dock's alone; a coloured pill in an op row would read as a second card. */
   it('no status paints a background of its own', () => {
     for (const [status] of END_MARKS) {
       const { getByTestId, unmount } = render(<TickDot status={status} />);
@@ -244,7 +226,6 @@ describe('Pill', () => {
     expect(['', 'none']).toContain(getByTestId('pill').style.boxShadow);
   });
 
-  /** Pills use the shared button feedback rather than relying on global button CSS. */
   it('takes the house press feedback', async () => {
     const { getByTestId } = render(
       <MotionConfig reducedMotion="never"><Pill>Label</Pill></MotionConfig>,
@@ -255,7 +236,6 @@ describe('Pill', () => {
     await waitFor(() => expect(pill.style.transform, 'the hover grows it').toContain('scale'));
   });
 
-  /** A control that refuses must not answer the pointer at all. */
   it('gives a disabled pill no press feedback', async () => {
     const { getByTestId } = render(
       <MotionConfig reducedMotion="never"><Pill disabled>Label</Pill></MotionConfig>,
@@ -266,8 +246,6 @@ describe('Pill', () => {
     expect(pill.style.transform).toBe('');
   });
 
-  /** A screen with several pills has to be able to name each one; without this a caller wraps every
-   *  pill in a labelled box just to select it, which moves the layout. */
   it('passes a test id through, and answers to the generic one otherwise', () => {
     const named = render(<Pill data-testid="setup-retry-list">Label</Pill>);
     expect(named.getByTestId('setup-retry-list')).toBeTruthy();
@@ -293,7 +271,6 @@ describe('Stamp', () => {
     expect(['', 'none']).toContain(getByTestId('stamp').style.boxShadow);
   });
 
-  /** A noted line may use a second line so the record preserves the user's text. */
   it('lets its text run to two lines rather than ellipsizing at one', () => {
     const { getByTestId } = render(<Stamp icon="pw-note">Noted: keep the shore clear of houses</Stamp>);
     const text = getByTestId('stamp-text');
@@ -311,13 +288,11 @@ describe('CountPill', () => {
     expect(some.getByTestId('ops-count-pill').textContent).toBe('9 steps, last 3');
   });
 
-  /** `shown` at or above the total has nothing behind it to name. */
   it('says only the total when the tail is the whole list', () => {
     const { getByTestId } = inI18n(<CountPill total={3} shown={3} />);
     expect(getByTestId('ops-count-pill').textContent).toBe('3 steps');
   });
 
-  /** The reachable n=1 case: a one-step job names it as one step, not one steps. */
   it('says one step, not one steps, at a job of exactly one', () => {
     const { getByTestId } = inI18n(<CountPill total={1} />);
     expect(getByTestId('ops-count-pill').textContent).toBe('1 step');
@@ -337,7 +312,6 @@ describe('ResultChip', () => {
     expect(plainInk).not.toBe(asColor(tickInk.revert));
   });
 
-  /** The chip is a short phrase beside a row, never a second line of prose: it ellipsizes. */
   it('stays on one line', () => {
     const { getByTestId } = render(<ResultChip>a long refusal phrase that will not fit</ResultChip>);
     const chip = getByTestId('op-chip');

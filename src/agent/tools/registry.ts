@@ -94,13 +94,14 @@ type FamilyWildcard<P extends string> = Extract<ToolName, `${P}_${string}`> exte
 
 /** The tools the loop's advice names, by what each offers. */
 const GUIDES = {
-  inspect: 'inspect_region', view: 'view_map', score: 'evaluate_map', skill: 'load_skill', search: 'find_*',
+  inspect: 'inspect_region', view: 'view_map', score: 'evaluate_map', skill: 'load_skill', search: 'find_*', sketch: 'get_annotations',
 } as const satisfies { [K in keyof GuideTools]: K extends 'search' ? FamilyWildcard<'find'> : ToolName };
 
 /** The registry as the harness reads it, without naming a tool. */
 export const TOOL_FACTS: ToolFacts = {
   access: (name) => toolSpec(name)?.access,
   verifies: (name) => toolSpec(name)?.verifies === true,
+  sketches: (name) => toolSpec(name)?.sketches === true,
   footprint: callFootprint,
   guides: GUIDES,
 };

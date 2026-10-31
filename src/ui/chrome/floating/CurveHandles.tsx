@@ -16,7 +16,7 @@
  * way of the next click, and there is nothing to tune until there is a curve. They arrive one after
  * another when it finishes, and fade out together when it is dismissed.
  */
-import { interactionProfiles, cursors, shadows, z } from '../../design/styles';
+import { cursors, shadows, z } from '../../design/styles';
 import { framerMotion, NO_MOTION, staggerDelay } from '../../design/motion';
 import { helpTargetAttr } from '../../session/help-targets';
 import { clientPoint } from '../../../platform/device/viewport-space';
@@ -36,6 +36,7 @@ import { cellAtPoint, halfPoint } from '../../../core/grid/pointer';
 import { gridCellCentre, cellSet } from '../../../core/grid/grids';
 import { GRIDS } from '../../../core/game/profile';
 import { FRAME_INK, ACTIVE, PLATE } from '../../design/tokens';
+import { useInteractionProfiles } from '../../design/input-mode';
 
 /**
  * Anchor grab and tangent knob at full map zoom, in css px — around the size of the selection's
@@ -109,6 +110,7 @@ export const face = (size: number, fill: string): CSSProperties => ({
 
 export function CurveHandles() {
   const t = useT();
+  const profiles = useInteractionProfiles();
   const chrome = useChromeScale();
   const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
@@ -286,7 +288,7 @@ export function CurveHandles() {
                 <motion.button
                   type="button" aria-label={t('a11y.curve_anchor', { n: i + 1 })}
                   onPointerDown={start(i, 'anchor')}
-                  whileHover={interactionProfiles.curveVertex.whileHover}
+                  whileHover={profiles.curveVertex.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(0)}
                   style={{ ...hitBox(grabPx), left: s.x, top: s.y }}
                 >
@@ -295,7 +297,7 @@ export function CurveHandles() {
                 {session?.tangents && <><motion.button
                   type="button" aria-label={t('a11y.curve_out', { n: i + 1 })}
                   onPointerDown={start(i, 'out')}
-                  whileHover={interactionProfiles.curveHandle.whileHover}
+                  whileHover={profiles.curveHandle.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.out.x, top: s.out.y }}
                 >
@@ -304,7 +306,7 @@ export function CurveHandles() {
                 <motion.button
                   type="button" aria-label={t('a11y.curve_in', { n: i + 1 })}
                   onPointerDown={start(i, 'into')}
-                  whileHover={interactionProfiles.curveHandle.whileHover}
+                  whileHover={profiles.curveHandle.whileHover}
                   initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
                   style={{ ...hitBox(knobPx), left: s.into.x, top: s.into.y }}
                 >

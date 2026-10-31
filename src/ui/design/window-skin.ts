@@ -21,7 +21,7 @@ import { cursors, font, radii, UNAVAILABLE } from './styles';
 import { roleFont } from './text-weight';
 import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK, FRAME_INK, MUTED, DANGER_SURFACE, DANGER_INK } from './tokens';
 
-/** The modal card: the cream plate a `ModalShell` (and the portrait guard) is drawn on. */
+/** The modal card: the cream plate a `ModalShell` is drawn on. */
 export const cozyPanel: CSSProperties = {
   background: PLATE,
   borderRadius: radii.panel,
@@ -124,11 +124,14 @@ export function windowChip(on: WindowSurface = 'plate'): CSSProperties {
   };
 }
 
+/** The diameter of a window header's icon controls, in css px. */
+export const WINDOW_ICON_BUTTON = 34;
+
 /** A round icon control in a window header (Back): an inset disc with the glyph in ink. Pair with
- *  `interactionProfiles.tile` on the element. */
+ *  the `tile` interaction profile (`input-mode.tsx:useInteractionProfiles`) on the element. */
 export const windowIconButton: CSSProperties = {
-  width: 34,
-  height: 34,
+  width: WINDOW_ICON_BUTTON,
+  height: WINDOW_ICON_BUTTON,
   flex: 'none',
   padding: 0,
   border: 'none',

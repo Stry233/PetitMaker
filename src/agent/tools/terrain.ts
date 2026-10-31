@@ -17,6 +17,7 @@ import { cellsOrRect, smoothEdges, PAINT_TERRAINS, TRIM_STYLES } from './geometr
 import { bool, int, obj, oneOf, req } from './schema';
 import { defineTool } from './spec';
 import { runStroke } from './stroke';
+import { zoneArea, zoneArg } from './zone-area';
 import { BUILDABLE_ZONES, lockedNote } from './game-terms';
 
 const RECT_CALL = 'shape: "rect", x1: 10, y1: 10, x2: 20, y2: 18';
@@ -25,6 +26,7 @@ export const paintTerrainTool = defineTool({
   description: `Paint mountain or water using shape + flat coordinates (e.g. shape "rect" with x1,y1,x2,y2). For a pond on flat ${BUILDABLE_ZONES}, paint water at elevation 0 only: surrounding ${BUILDABLE_ZONES} contains it; no mountain rim is needed. Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; mountain elevation ${CLEARING_ELEVATION} clears terrain). Elevated water needs supporting terrain and enclosing banks before this call finishes. Read partial results before continuing.`,
   input: obj({
     ...cellsOrRect,
+    ...zoneArg,
     terrain: req(oneOf([...PAINT_TERRAINS])),
     elevation: req(int({ min: 0, max: ELEVATION_MAX, description: 'The final elevation; the game numbers this layer elevation + 1.' })),
     smooth: smoothEdges('Auto-trim the painted edges (rounded chamfer / 45-degree bevel) — use for natural-looking cliffs and banks.'),
@@ -32,7 +34,10 @@ export const paintTerrainTool = defineTool({
   access: 'write',
   example: `${RECT_CALL}, terrain: "mountain", elevation: 1`,
   run(deps, input) {
-    const resolved = resolveCells(input, deps.getState());
+    const drawn = resolveCells(input, deps.getState());
+    const zoned = input.zone !== undefined ? zoneArea(deps.getState(), input.zone, drawn.length ? drawn : undefined) : null;
+    if (typeof zoned === 'string') return argError(zoned);
+    const resolved = zoned ?? drawn;
     if (resolved.length === 0) return geometryError(input, 'area');
     if (resolved.length > 4000) return argError('too many cells in one call (max 4000), split the edit into smaller areas.');
     const { elevation } = input;

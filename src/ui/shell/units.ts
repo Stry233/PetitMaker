@@ -26,7 +26,7 @@ const MODE_SIZE = Math.round(BLOCK_W * MODE_SCALE);
 export const MODE_PLATE_W = 265;
 
 /** How far the splat reaches past its block, one side, in css px. */
-const PLATE_OVERHANG = (MODE_PLATE_W * MODE_SCALE - MODE_SIZE) / 2;
+export const PLATE_OVERHANG = (MODE_PLATE_W * MODE_SCALE - MODE_SIZE) / 2;
 
 /**
  * The bottom shelves' art scale: pictures read bigger than plates, so cards draw under the frame's
@@ -38,6 +38,15 @@ export const LOADING_DOT = 15;
 
 /** The air an edge-anchored cluster keeps from the window's bottom, and the unit the bottom bars are spaced by. */
 export const EDGE = 16;
+
+/**
+ * The upright arrangement's one vertical spacing scale, in frame px, for every mode's panel on the bar:
+ * `pad` above a panel's first row, `row` from one row's lowest mark (its caption where it has one) to
+ * the next row's controls, `tiles` from a panel's lowest mark to the box of the mode tiles under it,
+ * and `band`, the bar's own air above the tiles and under the selected tile's name, which `tiles`
+ * includes.
+ */
+export const UPRIGHT_SPACE = { pad: EDGE, row: EDGE, tiles: 12, band: EDGE / 2 } as const;
 
 /** The left gutter in css px, the bottom shelf's own, so one gutter runs down the whole interface. */
 const FRAME_MARGIN = 74;
@@ -52,9 +61,20 @@ export const EDGE_RIGHT = FRAME_MARGIN - PLATE_OVERHANG;
  */
 export const EDGE_TOP = 28;
 
-/** The transform for a caption centred under a control at `centre` px from the frame's left, held inside the margin. */
-export function captionShift(centre: number): string {
-  return `translateX(max(-50%, ${EDGE_LEFT - centre}px))`;
+/**
+ * The upright arrangement's own margins in touch mode, in frame px, so a hand-held screen gives the map
+ * the room: one side margin on both sides, and a top set by eye a little above `EDGE`, both chosen
+ * rather than derived. A mouse keeps the wide gutters upright too.
+ */
+export const UPRIGHT_TOUCH_EDGE = { side: 24, top: 18 } as const;
+
+/**
+ * The transform for a caption centred under a control at `centre` px from the frame's left, held inside
+ * the left margin, or inside `span` at both ends where one is given.
+ */
+export function captionShift(centre: number, span?: { left: number; right: number }): string {
+  if (!span) return `translateX(max(-50%, ${EDGE_LEFT - centre}px))`;
+  return `translateX(min(max(-50%, ${span.left - centre}px), calc(${span.right - centre}px - 100%)))`;
 }
 
 /** The mode row: five blocks on one baseline, top-left. */

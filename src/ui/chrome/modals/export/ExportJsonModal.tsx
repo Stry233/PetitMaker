@@ -16,18 +16,14 @@ import {
   effectiveSections, estimatedTotal, initialSections, jsonReviewParts, measureJsonSections, RECENT_HISTORY_STEPS, sectionsReducer,
   writeJsonExport, type HistoryDepth,
 } from '../../../../editor/export/json-export';
-import { useCursorCss } from '../../../design/cursors/cursor-vars';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { Expand } from '../../../primitives/Expand';
-import { LoadingDots } from '../../../primitives/LoadingDots';
-import { ScrollArea } from '../../../primitives/ScrollArea';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { Spinner } from '../../../primitives/Spinner';
 import { Switch } from '../../../primitives/Switch';
-import { CONTROL_CLEARANCE } from '../../../primitives/use-scroll-row';
-import { WindowFooter } from '../../../primitives/Window';
+import { WindowBody, WindowFooter } from '../../../primitives/Window';
 import { HelpBubble } from './HelpBubble';
 import { useAttribution } from './use-attribution';
 import { MapReviewStatus } from './review/MapReviewStatus';
@@ -38,6 +34,10 @@ import { REVIEW_FIELD_LABEL } from './review/review-fields';
 import { AnimatedTotal, NotesFields, notesByteLen, rowDesc, SectionRow } from './json/JsonParts';
 import type { I18nKey } from '../../../../i18n/keys';
 import { useSettledValue } from '../../../primitives/use-settled-value';
+
+/** The gap between the save options, and the room between the scroller and the rule over the footer, in css px. */
+const ROW_GAP = 14;
+const TOTAL_RULE_GAP = 16;
 
 interface RowSpec { key: SectionKey; desc: I18nKey; hint?: I18nKey }
 
@@ -55,7 +55,6 @@ const LATE_ROWS: readonly RowSpec[] = [
 /** The save-file panel. Expensive section measurement runs only while open. */
 export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () => void }) {
   const t = useT();
-  const busy = useCursorCss('busy');
   const gridState = useEditorStore((s) => s.gridState);
   const commandExecutor = useEditorStore((s) => s.commandExecutor);
   const available = { generation: !!gridState?.generation, provenance: !!gridState?.provenance };
@@ -143,10 +142,12 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   );
 
   return (
+    // One scroller holds the save options and the map check; the pretty-print and total row and the
+    // buttons stand after it at the window's foot, on one line where the width allows, so the window
+    // never scrolls as a whole and a short window keeps its room for the scroller.
     <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
       {notice.notice}
-      <ScrollArea gutter="stable" style={{ flex: '1 1 auto' }}
-        contentStyle={{ display: 'flex', flexDirection: 'column', gap: 14, padding: CONTROL_CLEARANCE }}>
+      <WindowBody contentStyle={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP }}>
         <SectionRow name={t('export.json_core')} desc={t('export.json_core_desc')} checked disabled onToggle={() => {}} bytes={shown?.core} />
         {row({ key: 'annotations', desc: 'export.json_annotations_desc' })}
         {/* The expanding fields share the row's flex item, so a collapsed editor adds no gap. */}
@@ -175,30 +176,29 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
           </Expand>
         </div>
         {LATE_ROWS.map(row)}
-      </ScrollArea>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16, paddingTop: 12, borderTop: `1.5px solid ${skin.line}`, flex: '0 0 auto' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ ...roleFont('caption'), color: skin.ink }}>{t('export.json_pretty')}</span>
-          <HelpBubble text={t('export.json_pretty_help')} />
-        </span>
-        <Switch on={sections.pretty} onClick={() => dispatch({ type: 'toggle', key: 'pretty' })} label={t('export.json_pretty')} />
-        <span style={{ flex: 1 }} />
-        {total == null
-          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ ...roleFont('small'), color: skin.plateInk }}>{t('export.json_total')}:</span>
-              <Spinner size={13} />
+        <MapReviewStatus result={mapReview.result} pending={mapReview.pending} onRetry={() => { mapReview.retry(); }} />
+      </WindowBody>
+      <WindowFooter style={{ marginTop: TOTAL_RULE_GAP, paddingTop: 12, borderTop: `1.5px solid ${skin.line}`, rowGap: 12 }}
+        tertiary={(
+          <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ ...roleFont('caption'), color: skin.ink, whiteSpace: 'nowrap' }}>{t('export.json_pretty')}</span>
+              <HelpBubble text={t('export.json_pretty_help')} />
             </span>
-          : <AnimatedTotal bytes={total} label={t('export.json_total')} />}
-      </div>
-
-      <MapReviewStatus result={mapReview.result} pending={mapReview.pending} onRetry={() => { mapReview.retry(); }} />
-      <WindowFooter style={{ marginTop: 14, flex: '0 0 auto' }}
+            <Switch on={sections.pretty} onClick={() => dispatch({ type: 'toggle', key: 'pretty' })} label={t('export.json_pretty')} />
+            {total == null
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ ...roleFont('small'), color: skin.plateInk }}>{t('export.json_total')}:</span>
+                  <Spinner size={13} />
+                </span>
+              : <AnimatedTotal bytes={total} label={t('export.json_total')} />}
+          </span>
+        )}
         cancel={<ActionButton appearance="secondary" onClick={() => { exportRevision.current++; cancelExportPaint.current(); textReview.cancel(); onDone(); }}>{t('export.json_btn_cancel')}</ActionButton>}
         primary={(
-          <ActionButton appearance="primary" onClick={handleExportClick} disabled={exportDisabled && !exporting} aria-busy={exporting}
-            style={exporting ? { cursor: busy, pointerEvents: 'none' } : undefined}>
-            {exporting ? <span style={{ display: 'inline-flex', height: 15, alignItems: 'center' }}><LoadingDots color={skin.plate} /></span> : t('export.json_btn_export')}
+          <ActionButton appearance="primary" onClick={handleExportClick} disabled={exportDisabled} busy={exporting}>
+            {t('export.json_btn_export')}
           </ActionButton>
         )}
       />

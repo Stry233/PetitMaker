@@ -1,12 +1,16 @@
 /*
  * One item in the object shelf's row: a picture and a count, as the game's cards are. Footprint and turning
- * are the ghost's to show; the name comes up on hover, drawn by the shelf outside the clipping row; the
+ * are the ghost's to show; the name comes up when the card is reached for (`useReveal`), drawn by the shelf
+ * outside the clipping row, and in touch mode stands over the selected card instead; the
  * count comes from the map. A click arms the item and a click on the armed one puts it away; a held
  * press, or a mouse press that moves, carries it onto the map instead (`use-card-carry.ts`).
  */
+import { tourTargetAttr } from '../../../chrome/tour/steps';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { motion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
+import type { RevealBind } from '../../../primitives/use-reveal';
+import { useTileReach } from '../CardNameBubble';
 import { iconUrl } from '../../../../assets/icon-urls';
 import type { CatalogItem } from '../../../../core/model/types';
 import { offerSmartBuild } from '../../../../editor/commands/smart-build';
@@ -25,22 +29,38 @@ import badgePlate from '../../../../assets/shell/shelf-mountain/tools/roundrect-
 import { useTransition } from '../../../design/motion/use-motion';
 import { MOTIONS } from '../../../design/motion/registry';
 import { useCardCarry } from './use-card-carry';
+import { useMorphPresence } from '../../../primitives/morph';
 
 /** How much a carried card grows as it rises off the row: the registry's own amplitude. */
 const LIFT_SCALE = 1 + MOTIONS['item.carry.lift'].amplitude;
+
+type Reach = (at: { name: string; centre: number } | null) => void;
 
 interface Props {
   item: CatalogItem;
   placed: number;
   selected: boolean;
-  onToggle: () => void;
+  /** A click: `multi` when Ctrl or Cmd was held, which adds the card to the armed ones (EDIT-70). */
+  onToggle: (multi: boolean) => void;
   /** The card the pointer or keyboard is on and its centre in the row's scroll coordinates, or `null` on leave. */
-  onReach: (at: { name: string; centre: number } | null) => void;
+  onReach: Reach;
   /** Whether a press can carry the item onto the map; a chooser's cards only answer clicks. */
   carries: boolean;
+  /** The way the cards around it scroll under a finger: along the row, or down the upright grid. */
+  pan?: 'x' | 'y';
+  /** Told when the card leaves the row in the hand (true) and when that carry is over (false). */
+  onCarry?: (carried: boolean) => void;
 }
 
-export function ItemCard({ item, placed, selected, onToggle, onReach, carries }: Props) {
+/** Reports the card's name while it is reached for. `holds` false leaves a held press to the card
+ *  (a touch carry), so in touch mode the shelf names the selected card instead; a key press would
+ *  have switched to PC mode, so focus there is a tap's. */
+function useCardName(name: string, ref: RefObject<HTMLElement | null>, onReach: Reach, holds: boolean): Partial<RevealBind> {
+  const { touch, bind } = useTileReach(ref, (el) => onReach(el ? { name, centre: el.offsetLeft + el.offsetWidth / 2 } : null));
+  return holds || !touch ? bind : {};
+}
+
+export function ItemCard({ item, placed, selected, onToggle, onReach, carries, pan = 'x', onCarry }: Props) {
   const armedMotion = useTransition('item.armed');
   const liftMotion = useTransition('item.carry.lift');
   const { px } = usePx();
@@ -51,32 +71,37 @@ export function ItemCard({ item, placed, selected, onToggle, onReach, carries }:
   const icon = item.icon ? iconUrl(item.icon) : undefined;
 
   // The name above the card stays behind on the row while the card is carried off it.
-  const carry = useCardCarry(item.id, ref, { enabled: carries, onLift: () => onReach(null) });
-
-  const reach = () => {
-    const el = ref.current;
-    if (el) onReach({ name, centre: el.offsetLeft + el.offsetWidth / 2 });
-  };
+  const carry = useCardCarry(item.id, ref, {
+    enabled: carries,
+    onLift: () => { onReach(null); onCarry?.(true); },
+    onLand: () => onCarry?.(false),
+  });
+  const reveal = useCardName(name, ref, onReach, !carries);
+  // A card a re-arranged row brings into view, or puts out of it, fades in or out as the row travels.
+  const presence = useMorphPresence(`card-${item.id}`);
 
   return (
     <ActionButton
       ref={ref}
       data-catalog-id={item.id}
+      {...tourTargetAttr('shelf-card')}
+      {...presence}
       interaction="action"
       aria-label={name}
       aria-pressed={selected}
-      onClick={() => { if (!carry.takesClick()) onToggle(); }}
+      onClick={(e) => { if (!carry.takesClick()) onToggle(e.ctrlKey || e.metaKey); }}
+      {...reveal}
       {...carry.handlers}
-      onPointerEnter={reach}
-      onPointerLeave={() => onReach(null)}
-      onFocus={reach}
-      onBlur={() => onReach(null)}
+      // Both hear the press: the carry for a lift, the reveal for a chooser card's held name.
+      onPointerDown={(e) => { reveal.onPointerDown?.(); carry.handlers.onPointerDown(e); }}
+      onPointerUp={(e) => { reveal.onPointerUp?.(); carry.handlers.onPointerUp(e); }}
+      onPointerCancel={(e) => { reveal.onPointerCancel?.(); carry.handlers.onPointerCancel(e); }}
       style={{
         ...btnReset, position: 'relative', flex: 'none',
         width: px(ROW.card), height: px(ROW.card),
         cursor: cursors.clickable, pointerEvents: 'auto',
-        // The row scrolls sideways under a finger; a held finger carries the card instead.
-        touchAction: 'pan-x',
+        // The cards scroll under a finger; a lifted card keeps every finger move for the carry.
+        touchAction: carry.lifted ? 'none' : pan === 'x' ? 'pan-x' : 'pan-y',
       }}
     >
       <motion.span
@@ -143,7 +168,7 @@ export function ItemCard({ item, placed, selected, onToggle, onReach, carries }:
 export function SmartCard({ selected, onToggle, onReach }: {
   selected: boolean;
   onToggle: () => void;
-  onReach: (at: { name: string; centre: number } | null) => void;
+  onReach: Reach;
 }) {
   const armedMotion = useTransition('item.armed');
   const { px } = usePx();
@@ -154,11 +179,7 @@ export function SmartCard({ selected, onToggle, onReach }: {
   // The smart-build key arms this card while the shelf is up, the same press the terrain pills
   // answer on their surfaces.
   useEffect(() => offerSmartBuild(onToggle), [onToggle]);
-
-  const reach = () => {
-    const el = ref.current;
-    if (el) onReach({ name, centre: el.offsetLeft + el.offsetWidth / 2 });
-  };
+  const reveal = useCardName(name, ref, onReach, true);
 
   return (
     <ActionButton
@@ -168,10 +189,7 @@ export function SmartCard({ selected, onToggle, onReach }: {
       aria-pressed={selected}
       data-testid="shell-smart-card"
       onClick={onToggle}
-      onPointerEnter={reach}
-      onPointerLeave={() => onReach(null)}
-      onFocus={reach}
-      onBlur={() => onReach(null)}
+      {...reveal}
       style={{
         ...btnReset, position: 'relative', flex: 'none',
         width: px(ROW.card), height: px(ROW.card),

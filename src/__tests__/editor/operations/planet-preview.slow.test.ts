@@ -1,9 +1,7 @@
 /**
- * Carrying a build onto a custom planet, and the detached preview of that carry.
- *
- * The planet's own mountains arrive with it, the build wins wherever the two overlap, and the
- * preview is the same transfer run on a detached map: it reports what the real one drops, in the
- * destination's coordinates, and leaves the live editor untouched.
+ * Carrying a build onto a custom planet: the planet's mountains arrive with it and the build wins
+ * where they overlap. The preview runs the same transfer on a detached map, reports what the real
+ * one drops in destination coordinates, and leaves the live editor untouched.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { generateMap, newMap, requestTransferPreview, transferMap } from '../../../editor/operations';
@@ -331,15 +329,14 @@ describe('a build laid over the planet\'s own mountains', () => {
     const target = customPlanet('deck-ridge', 40, (x, y) => (y >= 3 && y <= 8 && x >= 4 && x <= 16 ? 1 : 0));
     const offset = anchorOffset(kit.state.template, target);
     const spot = sourceCellLanding(kit.state, offset, (d) => d.y === 5 && d.x === 8);
-    // Laid straight into the map: a bridge needs water to stand, and only its footprint is at issue.
+    // Set directly, bypassing placement: a bridge needs water to stand and only its footprint matters.
     kit.state.objects.set('deck', {
       id: 'deck', catalogId: 'bridge-plank', position: { x: spot.x + 0.5, y: spot.y + 0.5 },
       rotation: 0, spanLength: 3, elevation: 0,
     });
 
     const preview = transferPreviewOf(kit.state, target);
-    // x from 8.5 to 11.5 and y from 5.5 to 6.5 rest on terrain columns 9 to 11 of row 6, which
-    // spans y 5.5 to 6.5 on the terrain grid.
+    // The deck spans x 8.5 to 11.5 and y 5.5 to 6.5, which rests on terrain columns 9 to 11 of row 6.
     for (let x = 9; x <= 11; x++) expect(getCell(preview.state.cells, x, 6)?.terrain ?? null, `${x},6`).toBeNull();
     for (const [x, y] of [[8, 6], [12, 6], [10, 5], [10, 7]] as const) {
       expect(getCell(preview.state.cells, x, y)?.terrain?.elevation, `${x},${y}`).toBe(1);

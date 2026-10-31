@@ -14,7 +14,7 @@ describe('repairPlan (RuleRegistry oracle)', () => {
   it('repairs a 3x3-base violation (lone tall spike) to a rule-clean plan', () => {
     const state = makeState(12, 12);
     const plan = emptyPlan(12, 12);
-    plan.tier[6 * 12 + 6] = 8; // lone elevation-8 spike → violates V-MTN-03
+    plan.tier[6 * 12 + 6] = 8; // lone elevation-8 spike, violates V-MTN-03
     const reg = createDefaultRegistry();
     const fixed = repairPlan(plan, state.template, reg);
     const scratch = applyPlanToScratch(fixed, state.template);
@@ -24,7 +24,7 @@ describe('repairPlan (RuleRegistry oracle)', () => {
   it('repairs an open-faced water cell (containment violation) to clean', () => {
     const state = makeState(12, 12);
     const plan = emptyPlan(12, 12);
-    plan.water[5 * 12 + 5] = 2; // water with no caps → V-WTR-02
+    plan.water[5 * 12 + 5] = 2; // water with no caps, violates V-WTR-02
     const reg = createDefaultRegistry();
     const fixed = repairPlan(plan, state.template, reg);
     const scratch = applyPlanToScratch(fixed, state.template);
@@ -59,7 +59,7 @@ describe('repairPlan (RuleRegistry oracle)', () => {
 
   it('levels the block beside a flagged cell that has nothing of its own to give', () => {
     // The waterfall's downstream row (V-WTR-03) flags the cells that are out of line with the first
-    // one, which are the bare ones — the block sticking up among them is what has to come down.
+    // one, which are the bare ones; the block sticking up among them is what has to come down.
     const state = makeState(12, 12);
     const plan = emptyPlan(12, 12);
     const beside = 4 * 12 + 5;
@@ -113,7 +113,7 @@ describe('repairPlan (RuleRegistry oracle)', () => {
 
   it('leaves an already-legal plan unchanged', () => {
     const state = makeState(12, 12);
-    const plan = emptyPlan(12, 12); // all ground = trivially legal
+    const plan = emptyPlan(12, 12); // all ground, trivially legal
     const reg = createDefaultRegistry();
     const fixed = repairPlan(plan, state.template, reg);
     expect(Array.from(fixed.tier)).toEqual(Array.from(plan.tier));

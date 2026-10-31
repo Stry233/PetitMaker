@@ -48,7 +48,7 @@ function request(model: string): AdapterRequest {
     system: 'Answer in one short sentence.',
     messages: [{ role: 'user', text: 'Say hello.' }],
     // One tool, because a function tool on this wire requires a description and an empty offer
-    // tells us nothing. The order does not ask for it; a model that calls it anyway still settles.
+    // proves nothing. The order does not ask for it; a model that calls it anyway still settles.
     tools: [{
       name: 'note',
       description: 'Records a short note.',

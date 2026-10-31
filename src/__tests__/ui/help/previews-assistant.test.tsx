@@ -1,22 +1,21 @@
 // @vitest-environment jsdom
 /**
- * The Help Center's assistant figures mount the real `PanelShell` with fixture projections, so this
- * pins the mounts themselves plus the one way a figure can break the app: reaching outside its
- * frame. `PreviewFrame` marks its whole subtree `aria-hidden`, which only the `*ByRole` queries
- * filter on by default; the test-id and text queries here see the subtree either way.
- *
- * Wrapper matches `panel-shell.test.tsx`: `MotionConfig reducedMotion="always"`, so the character
- * mounts without jsdom's missing Web Animations API.
+ * The Help Center's assistant figures mount the real `PanelShell` with fixture projections; a figure
+ * must never reach outside its frame. `PreviewFrame` marks its subtree `aria-hidden`, which only the
+ * `*ByRole` queries filter on, so the test-id and text queries see it. Reduced motion lets the
+ * character mount without jsdom's missing Web Animations API.
  */
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { act, render, renderHook, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { en } from '../../../i18n/locales/en';
 import { HELP_TABLES, installHelpTables } from '../../_support/locale-tables';
 import { setStoreState } from '../../_support/store';
+import { onCharacterCue, useCharacterChannel, useCharacterIntent, type CharacterCue } from '../../../ui/agent/character/intent';
+import { spec } from '../../_support/spec';
 import {
-  AgentOversightPreview, AgentPlanPreview, AgentRegionPreview, AgentSetupDetectPreview, AgentSetupPreview, AgentSteerPreview,
+  AgentDreamPreview, AgentOversightPreview, AgentPlanPreview, AgentRegionPreview, AgentSetupDetectPreview, AgentSetupPreview, AgentSteerPreview,
   AgentUndoPreview,
 } from '../../../ui/help/figures/previews/assistant';
 import { TourPreview } from '../../../ui/help/figures/previews/tour';
@@ -35,17 +34,15 @@ function mount(node: React.ReactElement) {
   );
 }
 
-/** `FloatMenu`'s dismissal layer: a full-viewport fixed div that answers the pointer. A figure must
- *  never stand one at the body, where it would absorb every click over the live app. */
+/** `FloatMenu`'s dismissal layer, a full-viewport fixed div that answers the pointer; one at the body
+ *  would absorb every click over the live app. */
 function bodyClickCatchers(): HTMLElement[] {
   return [...document.body.querySelectorAll('div')].filter((el) => (
     el.style.position === 'fixed' && el.style.inset === '0px' && el.style.pointerEvents === 'auto'
   ));
 }
 
-// The Help Center's own tables arrive as a lazy overlay (`i18n/locales/help`), registered only once
-// the help chunk loads; a preview rendered outside that chunk needs the same registration a test
-// gives it explicitly.
+// The Help Center's tables are a lazy overlay registered when the help chunk loads.
 beforeAll(() => {
   installHelpTables();
 });
@@ -55,11 +52,30 @@ afterEach(() => {
 });
 
 describe('assistant previews', () => {
+  spec('UI-38', 'a pictured panel leaves the live character\'s pose and dream alone, mounted and closed', () => {
+    setStoreState({ locale: 'en' });
+    const live = renderHook(useCharacterChannel).result.current;
+    const intent = renderHook(useCharacterIntent);
+    const cues: CharacterCue[] = [];
+    const off = onCharacterCue((cue) => cues.push(cue));
+    act(() => live.setPose('trouble'));
+    try {
+      const figure = mount(<AgentDreamPreview />);
+      expect(figure.getByTestId('dream-office')).toBeTruthy();
+      expect(intent.result.current).toEqual({ pose: 'trouble', dream: 'off' });
+      figure.unmount();
+      expect(intent.result.current).toEqual({ pose: 'trouble', dream: 'off' });
+      expect(cues).toEqual([]);
+    } finally {
+      off();
+      act(() => live.setPose(null));
+    }
+  });
+
   it('mounts AgentSetupPreview as the whole connect screen, with no network asked', () => {
     setStoreState({ locale: 'en' });
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     mount(<AgentSetupPreview />);
-    // The real screen's own key field stands, at the empty key step.
     expect(screen.getByTestId('setup-key-input')).toBeTruthy();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
@@ -120,7 +136,7 @@ describe('assistant previews', () => {
     const panel = screen.getByTestId('panel-shell');
     const rows = screen.getAllByTestId('history-item');
     expect(rows).toHaveLength(2);
-    // The open list stands inside the pictured panel, never portalled past its frame.
+    // Never portalled past the frame.
     for (const row of rows) expect(panel.contains(row)).toBe(true);
     expect(rows.some((row) => row.getAttribute('data-rolled-back') === 'true')).toBe(true);
   });
@@ -137,13 +153,12 @@ describe('assistant previews', () => {
     expect(outer).toHaveBeenCalledTimes(1);
   });
 
-  it('mounts TourPreview as the pictured shell under the tour dim', () => {
+  it('mounts TourPreview as the pictured shell under the tips\' window, its reel resting on its poster', () => {
     setStoreState({ locale: 'en' });
     const { container } = mount(<TourPreview />);
-    // The dim is up from the first frame; the bubble waits on a measured target box, which a DOM
-    // environment (zero-size rects) never delivers — the pictured shell and its target are the
-    // mount this test can pin.
-    expect(container.querySelector('[data-testid="help-tour-dim"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="tour-deck"]')).toBeTruthy();
     expect(container.querySelector('[data-tour-target="modes"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="tour-reel-clip-poster"]')).toBeTruthy();
+    expect(container.querySelector('video')).toBeNull();
   });
 });

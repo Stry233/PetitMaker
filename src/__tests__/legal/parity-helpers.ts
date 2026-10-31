@@ -14,7 +14,7 @@ import { PROVIDER_IDS } from '../../agent/providers/defaults';
  * match. No English-only disclosure is allowed.
  */
 
-/** Count of `##` (h2) headings — the material-section skeleton. */
+/** Count of `##` (h2) headings, the material-section skeleton. */
 export function h2Count(body: string): number {
   return (body.match(/^##\s+\S/gm) ?? []).length;
 }

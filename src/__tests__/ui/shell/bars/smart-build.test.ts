@@ -29,17 +29,13 @@ describe('smart construction', () => {
   });
 
   /**
-   * Being in this table is not the same as being reachable: an entry under a surface with no bar
-   * mounting the control is offered by the table and drawn by nobody. The surfaces offering macros
-   * are the ones whose bars render it, which `terrain-bar.slow.test.tsx` (the pill on each terrain bar)
-   * and `object-shelf.test.tsx` (the planting card) press.
+   * An entry under a surface whose bar has no control would be drawn by nobody. The controls are
+   * pressed in `terrain-bar.slow.test.tsx` and `object-shelf.test.tsx`.
    */
   it('offers macros only on the surfaces whose bars draw the control', () => {
     expect(Object.keys(SMART_MENU).sort()).toEqual(['mountain', 'object', 'road', 'water']);
   });
 
-  /** Each macro is offered once. Two surfaces claiming the same one would make which surface you
-   *  were on decide which of two identical entries you got. */
   it('offers each of them exactly once', () => {
     const seen = offered();
     expect(new Set(seen).size).toBe(seen.length);
@@ -53,12 +49,7 @@ describe('smart construction', () => {
     }
   });
 
-  /**
-   * Every action names itself in every locale, and the two empty reports exist there too — the
-   * one case a macro toasts. A landing macro says nothing: what it built is on the map, which is
-   * the feedback every other stroke has, and a toast per press is the noise the toast standard
-   * exists to prevent.
-   */
+  /** A macro toasts only an empty report; what a landing macro built is on the map. */
   it('names every action, and the empty reports, in all seven locales', () => {
     for (const [locale, table] of Object.entries(translations)) {
       for (const action of Object.values(SMART_MENU).flat()) {
@@ -91,16 +82,13 @@ describe('smart construction', () => {
     const ctx = { state, executor: exec, registry: exec.getRegistry() };
     const config: GenerateConfig = defaultConfig('designed', { maxElevation: 8, seed: 7 });
     generateWith(state, exec, config);
-    // Terrain only: the island generator furnishes what it builds, and this case plants its own two
-    // houses below to say what "already connected" means. The plaza is locked and stays.
+    // Terrain only: the test plants its own two houses below. The locked plaza stays.
     clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
     const raised = state.cells.flat().filter((c) => (c.terrain?.elevation ?? 0) > 0).length;
     expect(raised, 'the fixture has to have relief for this test to mean anything').toBeGreaterThan(1000);
 
-    // Two houses on level, open patches the analysis itself found, both in the hub's own region, so
-    // both are genuinely servable and "already connected" is the truth to report. Found at runtime
-    // rather than written down: the spots belong to the generator's output, and a hardcoded pair
-    // would quietly land in the sea the day that output moves.
+    // Two houses on level open ground in the hub's region, so both are servable. The spots are found
+    // at runtime because they depend on the generator's output.
     const a = analyzeTerrain(state, null);
     const W = a.width;
     const hubRegion = a.rankedRegions[0]!;
@@ -116,8 +104,7 @@ describe('smart construction', () => {
         if ((a.region[y * W + x] ?? -1) !== hubRegion) continue;
         const elevation = level(x, y);
         let open = elevation >= 0;
-        // The house plus the flat trait's own +1 right/bottom margin and a cell to spare, all at one
-        // level: the trait refuses a footprint whose cells step.
+        // The house plus the flat trait's +1 right/bottom margin and a spare cell, all at one level.
         for (let dy = 0; dy < house.height + 2; dy++) for (let dx = 0; dx < house.width + 2; dx++) {
           if (a.open[(y + dy) * W + (x + dx)] !== 1 || level(x + dx, y + dy) !== elevation) open = false;
         }
@@ -144,13 +131,11 @@ describe('smart construction', () => {
       expect(again.changes, `press at seed ${seed} laid ${again.changes}`).toBe(0);
       expect(again.code).toBe('already-connected');
     }
-    // Honest: a report that changed nothing changed nothing — no pavement, and no crossing either.
+    // No pavement and no crossing was added.
     expect(count(ItemCategory.Road)).toBe(roadsBefore);
     expect(count(ItemCategory.Bridge) + count(ItemCategory.Ramp)).toBe(crossingsBefore);
 
-    // And nothing the press built stands alone: every crossing on the map has pavement within reach
-    // of one of its ends — an orphan ramp in bare grass is what repeated presses would otherwise
-    // accumulate.
+    // Every crossing has pavement within reach of one end, so presses leave no orphan ramps.
     const { roadByCell } = getObjectIndex(state);
     for (const o of state.objects.values()) {
       const cat = categoryOf(o);

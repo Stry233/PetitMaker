@@ -13,6 +13,8 @@
  * click. A panel that could cover it would hide which build this is.
  */
 import { useState } from 'react';
+import { useReveal } from '../../primitives/use-reveal';
+import { useLayoutShape } from '../../design/input-mode';
 import type { CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
@@ -20,22 +22,35 @@ import { timedHint } from '../timed-hint';
 import { APP_VERSION, IS_DEV_BUILD } from '../../../platform/build/build-info';
 import { LEGAL } from '../../../legal/config';
 import { TimedButton } from '../../primitives/TimedButton';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useGlidingChromeScale } from '../../design/scale';
 import { font, z } from '../../design/styles';
 import { roleWeight, roleFont } from '../../design/text-weight';
-import { NoticeBar, noticeActionStyle } from '../../primitives/NoticeBar';
+import { NoticeBar, noticeActionStyle, useNoticeZoom } from '../../primitives/NoticeBar';
 import { useChromeLayer } from '../../primitives/chrome-layer';
 import { MAP_LABEL, FRAME_INK } from '../../design/tokens';
-import { ARRIVAL_ROW, TOAST_BAND_ROW, TOAST_BAND_TOP, bandTop } from '../floating/toast-band';
+import { ARRIVAL_ROW, arrivalRow, arrivalTop, fromChromePx, toastRow, uprightArrivalTop } from '../floating/toast-band';
+import { useMorph } from '../../primitives/morph';
 
 /**
  * How far down the notice hangs: the toast band's third row, below the refusal toasts and the
  * arrival greeting, which appear at the same boot moment top-centre (`floating/toast-band` keeps
- * the three stacked). In chrome-zoom px like the other two tenants, so the ledger's 12px of air
- * between the greeting's foot (187) and this (199) scales with them and never closes.
+ * the three stacked). In chrome-zoom px like the other two tenants, so the air under the greeting's
+ * foot scales with them and never closes. The greeting's
+ * row is the one it measures (`toast-band.ts:arrivalRow`), larger when touch mode lifts its zoom or
+ * its answers wrap; `row` stands in until it does. `refusals` is the refusals' row in chrome px.
  */
-const NOTICE_TOP = TOAST_BAND_TOP + TOAST_BAND_ROW + ARRIVAL_ROW;
+function noticeTop(row: number, refusals: number): string {
+  return `calc(${arrivalTop(refusals)} + ${arrivalRow(row)})`;
+}
+
+/** Upright, the greeting stands under the frame's top row, and the notice one row under it. */
+function uprightNoticeTop(row: number, refusals: number): string {
+  return `calc(${uprightArrivalTop(refusals)} + ${arrivalRow(row)})`;
+}
 
 const linkStyle: CSSProperties = {
+  position: 'relative',
   color: FRAME_INK,
   fontWeight: roleWeight('small'),
   textDecoration: 'underline',
@@ -72,48 +87,68 @@ const watermarkStyle: CSSProperties = {
 export function DevBuildNotice() {
   const t = useT();
   const layer = useChromeLayer();
+  const watermark = useMorph('dev-watermark');
   const [dismissed, setDismissed] = useState(false);
-  const [reading, setReading] = useState(false);
 
   if (!IS_DEV_BUILD) return null;
 
   return (
     <>
       <AnimatePresence>
-        {!dismissed && (
-          <NoticeBar
-            role="status"
-            data-testid="dev-notice"
-            edge="top"
-            offset={bandTop(NOTICE_TOP)}
-            stripe
-            travel={12}
-            onPointerEnter={() => setReading(true)}
-            onPointerLeave={() => setReading(false)}
-          >
-            <span>
-              {t('dev.notice')}{' '}
-              <a style={linkStyle} href={LEGAL.canonicalOrigin} target="_blank" rel="noopener noreferrer">
-                {t('dev.notice_cta')} ↗
-              </a>
-            </span>
-            <TimedButton
-              after={NOTICE_SECONDS}
-              hint={timedHint(t, NOTICE_SECONDS)}
-              paused={reading}
-              style={noticeActionStyle}
-              onPress={() => setDismissed(true)}
-              aria-label={t('dev.notice_dismiss')}
-              data-testid="dev-notice-dismiss"
-            >
-              {t('dev.notice_dismiss')}
-            </TimedButton>
-          </NoticeBar>
-        )}
+        {!dismissed && <DevNotice key="notice" onDismiss={() => setDismissed(true)} />}
       </AnimatePresence>
-      <div style={{ ...layer, ...watermarkStyle }} data-testid="dev-watermark" aria-hidden>
+      <div style={{ ...layer, ...watermarkStyle }} data-testid="dev-watermark" {...watermark} aria-hidden>
         {t('dev.watermark')} {APP_VERSION}
       </div>
     </>
+  );
+}
+
+/** The notice itself, mounted only while it stands, so a dismissed one hears no scale change. */
+function DevNotice({ onDismiss }: { onDismiss: () => void }) {
+  const t = useT();
+  const morph = useMorph('dev-notice');
+  const chrome = useGlidingChromeScale();
+  // The notice draws at its card's zoom, which touch mode can raise past the chrome's; its place is
+  // worked out in chrome px and converted to its own.
+  const zoom = useNoticeZoom();
+  const ratio = chrome / zoom;
+  const row = ARRIVAL_ROW / ratio;
+  const refusals = toastRow(ratio);
+  const upright = useLayoutShape() === 'portrait';
+  // A hold pauses the countdown; the press still lands.
+  const { shown: reading, bind: readingBind } = useReveal({ keepsClick: true });
+
+  return (
+    <NoticeBar
+      role="status"
+      data-testid="dev-notice"
+      {...morph}
+      edge="top"
+      offset={fromChromePx(upright ? uprightNoticeTop(row, refusals) : noticeTop(row, refusals), ratio)}
+      stripe
+      travel={12}
+      {...readingBind}
+    >
+      <span>
+        {t('dev.notice')}{' '}
+        <a style={linkStyle} href={LEGAL.canonicalOrigin} target="_blank" rel="noopener noreferrer">
+          {t('dev.notice_cta')} ↗
+          <TouchReach zoom={zoom} />
+        </a>
+      </span>
+      <TimedButton
+        after={NOTICE_SECONDS}
+        hint={timedHint(t, NOTICE_SECONDS)}
+        paused={reading}
+        style={noticeActionStyle}
+        onPress={onDismiss}
+        aria-label={t('dev.notice_dismiss')}
+        data-testid="dev-notice-dismiss"
+      >
+        {t('dev.notice_dismiss')}
+        <TouchReach zoom={zoom} />
+      </TimedButton>
+    </NoticeBar>
   );
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { hasHalfStep, resolveAnchor, buildObjectOccupancy, snapsOwnPlacement } from '../../state/object-geometry';
+import { hasHalfStep, resolveAnchor, buildObjectOccupancy, placementGrab, snapsOwnPlacement } from '../../state/object-geometry';
 import { isSelfSnappingTrait } from '../../core/model/traits';
-import { coveredCells } from '../../core/grid/footprint';
+import { coveredCells, getFootprint, getRotatedSize } from '../../core/grid/footprint';
 import { getAllItems, getCatalogItem } from '../../state/catalog';
 import type { CatalogItem } from '../../core/model/types';
 import { makeState } from '../_support/map-state';
@@ -80,14 +80,35 @@ describe('buildObjectOccupancy: a half anchor aligns exactly with the terrain gr
   it('occupies exactly the terrain cells under a half-anchored footprint, none beyond it', () => {
     const state = makeState();
     state.objects.set('slab', {
-      // Self-described footprint (width/height) — occupancy reads the rect, not any trait.
+      // Self-described footprint (width/height): occupancy reads the rect, not any trait.
       id: 'slab', catalogId: 'path-overgrown-dirt',
       position: { x: 7.5, y: 5 }, width: 2, height: 1, rotation: 0, elevation: 0,
     });
     const occ = buildObjectOccupancy(state);
     expect(occ.has('8,5')).toBe(true);
     expect(occ.has('9,5')).toBe(true);
-    expect(occ.has('7,5')).toBe(false); // half-anchor lines up on the terrain boundary — no bleed
+    expect(occ.has('7,5')).toBe(false); // half-anchor lines up on the terrain boundary, no bleed
     expect(occ.has('10,5')).toBe(false);
+  });
+});
+
+describe('placementGrab', () => {
+  it('puts the pointer cell on the footprint centre cell (left of and above the middle on an even side), turned with the item', () => {
+    const plain = getAllItems().filter((i) => !snapsOwnPlacement(i) && !hasHalfStep(i));
+    for (const item of plain) for (const rotation of [0, 90] as const) {
+      const at = { x: 40, y: 40 };
+      const anchor = resolveAnchor(item, at, undefined, placementGrab(item, rotation));
+      const { w, h } = getRotatedSize(item, rotation);
+      const cells = getFootprint(anchor.x, anchor.y, w, h);
+      expect(cells, item.id).toContainEqual(at);
+      // As many cells on the far side of the pointer as on the near side, or one more.
+      const left = at.x - anchor.x, right = anchor.x + w - 1 - at.x;
+      const up = at.y - anchor.y, down = anchor.y + h - 1 - at.y;
+      expect([right - left, down - up].every((d) => d === 0 || d === 1), `${item.id} at ${rotation}`).toBe(true);
+    }
+  });
+
+  it('is nothing for a bridge or ramp, which aims by the gap or cliff under the pointer', () => {
+    for (const item of getAllItems().filter(snapsOwnPlacement)) expect(placementGrab(item, 0), item.id).toEqual({ x: 0, y: 0 });
   });
 });

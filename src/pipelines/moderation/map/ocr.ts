@@ -16,12 +16,15 @@ async function confirmed(evaluate: () => Provisional<boolean>): Promise<boolean>
 /** `unavailable` when the close-reading budget runs out before every line is read. */
 export type LetterCheck = 'blocked' | 'clear' | 'unavailable';
 
-export async function checkLetters(views: OffscreenCanvas[], assetBase: string): Promise<LetterCheck> {
+/** `progress` is called whenever the OCR engine reports progress, so the caller can tell a slow
+ *  check from a stalled one. */
+export async function checkLetters(views: OffscreenCanvas[], assetBase: string, progress: () => void = () => {}): Promise<LetterCheck> {
   const worker = await createWorker(OCR_LANGUAGES.join('+'), OEM.LSTM_ONLY, {
     workerPath: OCR_WORKER_URL, workerBlobURL: false,
     corePath: ocrCoreUrl(await simd()),
     langPath: new URL('ocr/', assetBase).href,
     cacheMethod: 'none',
+    logger: progress,
     errorHandler: () => {},
   });
   try {

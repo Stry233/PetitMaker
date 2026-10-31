@@ -338,3 +338,10 @@ export function poseForPhase(phase: SessionPhase, opts: { connected: boolean }):
     }
   }
 }
+
+/** The pose she wears: a celebration outranks the standing surface's pose, which outranks the session phase. */
+export function characterPose(o: {
+  celebrate: PoseName | undefined; surface: PoseName | null; phase: SessionPhase; connected: boolean;
+}): PoseName {
+  return o.celebrate ?? o.surface ?? poseForPhase(o.phase, { connected: o.connected });
+}

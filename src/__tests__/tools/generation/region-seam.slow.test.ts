@@ -1,19 +1,8 @@
 /**
- * A run confined to a region, and the ground around it.
- *
- * The reported symptom: build a picture over the whole planet, paint a region across part of it,
- * generate into the region — and nothing happens, however many times it is pressed.
- *
- * The cause is at the seam. The terrain outside the region leans on the cells inside it: a mountain
- * one cell beyond the boundary at layer 6 wants a full 3x3 of mass at layer 3 under it, and some of
- * those nine cells are inside; an elevated pond is capped by mountain at exactly its own layer, and a
- * cap can be inside. The run's own clearing takes them, so the map is illegal at a cell the run never
- * touched — a post-stroke violation, which unwinds the stroke until the state is clean, which means
- * unwinding the clearing itself. The whole run is handed back, and the map is exactly as it was.
- *
- * `terrain-plan/seam.ts` settles that before the commit by giving the outside its ground back, so these tests
- * hold two things at once: the run lands (the region changed), and the map around it is untouched and
- * legal.
+ * A region run over ground the outside leans on: a mountain's 3x3 base or an elevated pond's cap can
+ * stand inside the region, and clearing it would leave the outside illegal and revert the whole run.
+ * `terrain-plan/seam.ts` gives that ground back before the commit, so the run lands while the map
+ * around it stays untouched and legal.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -46,8 +35,8 @@ function ctxOf(state: GridState): EditContext {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** A picture the size of the map: diagonal bands of tone, so the colour read lands a range of tiers
- *  (which is what puts tall mass on both sides of any boundary a region is painted along). */
+/** A map-sized picture of diagonal tone bands, so the colour read puts a range of tiers, tall mass
+ *  included, on both sides of any region boundary. */
 function bandStencil(w: number, h: number): Stencil {
   const coverage = new Uint8Array(w * h).fill(255);
   const color = new Uint32Array(w * h);
@@ -117,7 +106,6 @@ describe('a region run over ground the outside leans on', () => {
     expect(terrainOf(state, (x, y) => inside.has(`${x},${y}`))).not.toBe(before.in);
     expect(terrainOf(state, (x, y) => !inside.has(`${x},${y}`))).toBe(before.out);
     expect(ctx.registry.validatePostStroke(state)).toEqual([]);
-    // A run that built its planet has nothing to explain.
     expect(outcome.scopeEmpty).toBeUndefined();
   }, 240000);
 
@@ -178,27 +166,20 @@ describe('a region run over ground the outside leans on', () => {
     const outcome = clearGenerated(ctx, { region });
     expect(outcome.violations).toEqual([]);
     expect(outcome.removedCells).toBeGreaterThan(0);
-    // Most of the region is gone; what stands is the seam the ground outside needs.
+    // What stands in the region is the seam the ground outside needs.
     expect(terrainOf(state, (x, y) => inside.has(`${x},${y}`))).not.toBe(before);
     expect(ctx.registry.validatePostStroke(state)).toEqual([]);
   }, 240000);
 });
 
 /**
- * A scoped run that builds nothing says why.
- *
- * Two presses look identical on screen and mean different things. A region painted deep inside a tall
- * massif is ground the terrain around it stands on: the seam claims every cell of it, hands it back,
- * and the run has nowhere to build, which no seed and no recipe changes. A region over ground the run
- * was free to build on, where the design happened to put nothing, is the quiet case it always was.
- * `Outcome.scopeEmpty` names which, and only the first reaches the user as a notice.
- *
- * The recipe here is the picture path because the classification is the seam's reading, not any one
- * generator's: what it needs is a run that clears its scope and tries.
+ * A scoped run that builds nothing says why: `'reclaimed'` when the seam claimed the whole region
+ * for the ground around it (reported to the user), `'empty'` when the design put nothing on free
+ * ground. The classification is the seam's, so the picture recipe stands in for any generator.
  */
 describe('what a region run reports when it built nothing', () => {
-  /** A plateau legal on its own: a tier-8 core, then one ring at 5 and one at 2, which is the most
-   *  V-MTN-03 allows a step to be (a cell at N wants its 3x3 at N-3). */
+  /** A legal plateau: a tier-8 core in rings at 5 and 2, the steepest V-MTN-03 allows (a cell at N
+   *  wants its 3x3 at N-3). */
   function plateau(state: GridState, x1: number, y1: number, x2: number, y2: number): void {
     for (const [pad, tier] of [[2, 2], [1, 5], [0, 8]] as const) {
       for (let y = y1 - pad; y <= y2 + pad; y++) {
@@ -236,8 +217,7 @@ describe('what a region run reports when it built nothing', () => {
     expect(outcome.violations).toEqual([]);
     expect(ctx.registry.validatePostStroke(state)).toEqual([]);
 
-    // The same recipe on ground nothing leans on builds, and says nothing: what the massif changed is
-    // the ground, not the press.
+    // The same recipe on ground nothing leans on builds and reports nothing.
     __resetCandidateCache();
     const free = makeState(30, 30);
     const freeCtx = ctxOf(free);
@@ -247,10 +227,8 @@ describe('what a region run reports when it built nothing', () => {
   }, 60000);
 
   it('ties the notice to what stands, on a real planet run inside a massif', async () => {
-    // The massif is not the test: what a designed run manages on ground like this is the generator's
-    // business and may change (today it terraces the top down and puts a pond on it, which is
-    // something built). What must hold either way is that the notice follows the map — silent while
-    // anything of the run stands in the region, and the ground's own reason when nothing does.
+    // What the designed run builds here may change; the notice must stay silent while anything of the
+    // run stands in the region and read 'reclaimed' when nothing does.
     __resetCandidateCache();
     const state = realState();
     const ctx = ctxOf(state);
@@ -274,7 +252,7 @@ describe('what a region run reports when it built nothing', () => {
       const t = getCell(state.cells, c.x, c.y)?.terrain;
       return [`${c.x},${c.y}`, t ? `${t.type}:${t.elevation}` : '-'] as const;
     }));
-    // A cap below the support the plateau's top needs, so the outside wants all of the region.
+    // An elevation cap below what the plateau's top needs, so the outside claims the whole region.
     const outcome = await generateMap(ctx, {
       config: defaultConfig('designed', { maxElevation: 4, richness: 0.7, seed: 42, region }),
       region,
@@ -308,7 +286,7 @@ describe('what a region run reports when it built nothing', () => {
 describe('repairRegionSeam', () => {
   const reg = createDefaultRegistry();
 
-  /** A run's clearing, as the operations do it: erase the terrain in scope. */
+  /** Erases the terrain in scope, as a run's clearing does. */
   function clearRegion(state: GridState, region: MacroCoord[]): void {
     const exec = makeExecutor(state, reg);
     clearAllTerrain({ state, execute: (cmd) => exec.execute(cmd) }, { region });
@@ -319,8 +297,7 @@ describe('repairRegionSeam', () => {
   }
 
   it('gives back the 3x3 base of a mountain standing just outside the region', () => {
-    // A tier-6 block at (10,10) on a plateau of tier 3: legal, and its base reaches into the region
-    // painted over the right-hand half of the map.
+    // A tier-6 cell at (10,10) on a tier-3 plateau; its base reaches into the region (x >= 11).
     const state = makeState(20, 20);
     for (let y = 8; y <= 12; y++) for (let x = 8; x <= 12; x++) setTerrain(state, x, y, TerrainType.Mountain, 3);
     setTerrain(state, 10, 10, TerrainType.Mountain, 6);
@@ -334,7 +311,7 @@ describe('repairRegionSeam', () => {
 
     const out = repairRegionSeam({ state, execute: (c) => executorOf(state).execute(c), reg }, base);
     expect(out.violations).toEqual([]);
-    // Exactly the base cells inside the region came back, and nothing beyond the 3x3 did.
+    // The base cells inside the region came back, and nothing beyond the 3x3.
     for (const [x, y] of [[11, 9], [11, 10], [11, 11]]) {
       expect(getCell(state.cells, x!, y!)?.terrain?.elevation, `${x},${y}`).toBe(3);
     }
@@ -343,10 +320,8 @@ describe('repairRegionSeam', () => {
   });
 
   it('gives back the cap an elevated channel outside the region stands behind', () => {
-    // A channel of water at tier 2 running east across a tier-2 plateau, with the ground north of it
-    // one tier lower: every water cell faces that drop, so the rule wants a mountain at exactly tier 2
-    // at each end of the channel (the perpendicular axis). The region is painted over the east end,
-    // which is where the cap stands.
+    // Tier-2 water running east across a tier-2 plateau, ground north of it one tier lower: facing that
+    // drop, the channel needs a tier-2 mountain cap at each end. The region covers the east cap.
     const state = makeState(20, 20);
     for (let y = 7; y <= 12; y++) for (let x = 6; x <= 13; x++) setTerrain(state, x, y, TerrainType.Mountain, 2);
     for (let x = 6; x <= 13; x++) setTerrain(state, x, 8, TerrainType.Mountain, 1);
@@ -361,14 +336,12 @@ describe('repairRegionSeam', () => {
 
     const out = repairRegionSeam({ state, execute: (c) => executorOf(state).execute(c), reg }, base);
     expect(out.violations).toEqual([]);
-    // The channel reaches its cap again: water back at (11,9), mountain at exactly tier 2 at (12,9).
     expect(getCell(state.cells, 11, 9)?.terrain).toMatchObject({ type: TerrainType.Water, elevation: 2 });
     expect(getCell(state.cells, 12, 9)?.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 2 });
   });
 
   it('edits nothing outside the region, even when the region has nothing to give', () => {
-    // A lone tier-8 spike outside the region is illegal on its own, and no ground inside the region
-    // can support it. The repair must leave it alone rather than reach across the boundary.
+    // A tier-8 block outside the region is illegal on its own and nothing inside can support it.
     const state = makeState(20, 20);
     for (let y = 1; y <= 3; y++) for (let x = 1; x <= 3; x++) setTerrain(state, x, y, TerrainType.Mountain, 8);
     const outsideBefore = terrainOf(state, (x) => x < 10);
@@ -378,7 +351,7 @@ describe('repairRegionSeam', () => {
     const base = readRegionBase(state, region);
     const out = repairRegionSeam({ state, execute: (c) => executorOf(state).execute(c), reg }, base);
 
-    expect(out.violations.length).toBeGreaterThan(0);   // honestly unrepairable, and reported as such
+    expect(out.violations.length).toBeGreaterThan(0);
     expect(terrainOf(state, (x) => x < 10)).toBe(outsideBefore);
   });
 

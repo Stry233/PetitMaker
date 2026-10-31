@@ -1,14 +1,5 @@
-// The fountain court: the grammar first, then what it puts on the ground.
-//
-// The grammar claims are the ones that make a court read as artificial rather than as a pond: a
-// regular outline, bands that alternate wet and dry from the outside in, a figure the innermost water
-// encloses, and mirror symmetry about both axes whatever the seed drew. They are read off the pure
-// spec and cell functions.
-//
-// The ground claims are read off a synthetic flat terrace with a street beside it: the court stands
-// on one tier, keeps its dry court, is composed against pavement, and commits through the live rules
-// with no violation — the figure is a mountain standing in water, and that is a claim about a
-// finished map.
+// The fountain court. The grammar (regular outline, alternating bands, an enclosed figure, mirror
+// symmetry) is read off the pure spec; the ground claims are read off a flat map with a street.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { flatIndex } from '../../../../../core/grid/rect';
@@ -45,7 +36,7 @@ function plan(template: MapTemplate, regions: RegionPlan[]): DesignPlan {
   };
 }
 
-/** Flat map, one street running down the middle of it: the ground a court is composed on. */
+/** A flat map with one street down the middle. */
 function flatGround(template: MapTemplate): {
   t: TerrainPlan; grass: Uint8Array; flat: Uint8Array; paved: Uint8Array;
 } {
@@ -83,7 +74,6 @@ describe('the fountain grammar', () => {
   it('draws a regular outline: every cell at one distance from the centre is in one band', () => {
     for (const outline of OUTLINES) {
       for (let r = 2; r <= 7; r++) {
-        // A level set of the metric is a closed ring: the four axis cells at distance r all exist.
         for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]] as const) {
           expect(outlineMetric(outline, dx, dy), `${outline} r${r}`).toBe(r);
         }
@@ -101,12 +91,10 @@ describe('the fountain grammar', () => {
           expect(band.water, `seed ${seed} r${r} band ${k}`).toBe(k % 2 === 0);
           expect(band.width).toBeGreaterThan(0);
         }
-        // The bands cover the levels the figure does not: it takes 0 to `figure` and they take the
-        // rest out to the radius.
+        // The figure takes levels 0 to `figure`; the bands take the rest out to the radius.
         expect(spec.bands.reduce((a, b) => a + b.width, 0)).toBe(r - spec.figure);
-        // No water band is one level deep. A one-level ring of these metrics meets itself only at its
-        // diagonals, so a 4-connected decomposition — which is what every reading downstream takes —
-        // sees fragments rather than a moat.
+        // A one-level water ring joins only at diagonals, so the 4-connected readings downstream would
+        // see fragments rather than a moat.
         for (const band of spec.bands) if (band.water) expect(band.width, `seed ${seed} r${r}`).toBeGreaterThanOrEqual(2);
       }
     }
@@ -127,10 +115,7 @@ describe('the fountain grammar', () => {
   });
 
   it('stands a centre figure at every nesting depth, and the water encloses it', () => {
-    // The figure is the innermost thing, so a nesting of even depth stands it on its platform rather
-    // than coming back with nothing in the middle. What the water ledger asks of it is not that the
-    // figure's own neighbours are wet but that the figure cannot reach the composition's edge without
-    // crossing water: that is the hole test, and it is what makes the court read as a court.
+    // The figure need not touch water, but it cannot reach the composition's edge without crossing it.
     for (const seed of SEEDS) {
       for (let r = 2; r <= 7; r++) {
         const spec = fountainSpec(seed, 2, r);
@@ -155,8 +140,7 @@ describe('the fountain grammar', () => {
   });
 
   it('draws the cross with arms: axial out to its span, cut back off the axes', () => {
-    // What separates a cruciform basin from the other three: at the same distance from the centre, an
-    // axial cell is inside the composition and a diagonal one is outside it.
+    // At the same distance from the centre, an axial cell is inside the cross and a diagonal one is not.
     for (let r = 4; r <= 7; r++) {
       expect(outlineMetric('cross', r, 0), `axial r${r}`).toBe(r);
       expect(outlineMetric('cross', r, r), `diagonal r${r}`).toBeGreaterThan(r);
@@ -169,18 +153,15 @@ describe('the fountain grammar', () => {
   });
 
   it('keeps every band of a cross 4-CONNECTED, so a reading can see the court (I5.3)', () => {
-    // `waterBodies` decomposes 4-connected, so a band that skips a rung as it turns the corner between
-    // two arms shatters into four annuli, each thinner than the accent floor — which leaves three of
-    // the eighteen gate maps carrying a large court invisible to `isCourt`, to the
-    // one-main-fountain rule and to the arrival reading. The flare is what governs it.
+    // `waterBodies` decomposes 4-connected, so a band that skips a rung turning between two arms
+    // breaks into four arcs, each below the accent floor and invisible to `isCourt` and the readings.
     for (let r = 5; r <= 9; r++) {
       for (const seed of SEEDS) {
         const spec = fountainSpec(seed, 4, r);
         const cross = { ...spec, outline: 'cross' as const };
         const { water } = fountainCells(cross, { x: 40, y: 40 });
         if (water.length === 0) continue;
-        // One piece per water band is the claim: a court of two moats is two bodies by design, and the
-        // failure mode is each of them falling into the four arcs between the cross's arms.
+        // At most one piece per water band: two moats are two bodies by design.
         const own = new Set(water.map((c) => `${c.x},${c.y}`));
         const seen = new Set<string>();
         let pieces = 0;
@@ -272,25 +253,22 @@ describe('the courts on the ground', () => {
             && c.y >= court.rect.y && c.y < court.rect.y + court.rect.h, `${key} inside the court`).toBe(true);
           expect(t.tier[flatIndex(c.x, c.y, t.width)], `${key} tier`).toBe(court.tier);
         }
-        // A border, not a scatter: the band is one piece, so paving it draws a ring rather than
-        // dropping pavement at four corners of the composition.
+        // One piece, so paving it draws a ring rather than four corner patches.
         expect(arcCount(court.frame), `seed ${seed} ${court.regionId} frame pieces`).toBe(1);
       }
     }
   });
 
   it('offers the large court to a place where the plaza cannot stand it, and not to every planet', () => {
-    // Two claims. With the plaza's own ground taken the court moves to a place rather than the planet
-    // losing it — and a planet is offered a large court only on a seeded roll, because a form met on
-    // every map reads as predefined however well it is composed. So the claim is that the offer lands
-    // wherever it is made, not that it is made every time.
+    // With the plaza's ground taken the large court moves to a place; it is offered only on a seeded
+    // roll, since a form met on every map reads as predefined.
     let offered = 0;
     for (const seed of SEEDS) {
       const { t, grass, flat, paved } = flatGround(HEXIA);
       for (let y = 20; y < 105; y++) {
         for (let x = 45; x < 120; x++) flat[flatIndex(x, y, HEXIA.width)] = 1;
       }
-      // A street beside the far place, so the court there has something to be composed against.
+      // A street beside the far place for the court to face.
       for (let y = 106; y < 130; y++) {
         const i = flatIndex(44, y, HEXIA.width);
         if (grass[i]) { paved[i] = 1; flat[i] = 1; }
@@ -304,9 +282,7 @@ describe('the courts on the ground', () => {
       expect(large, `seed ${seed}`).toBeLessThanOrEqual(1);
       offered += large;
     }
-    // Measured over the sixty-run gate: 50% to 70% of full-richness seeds carry one, and the roll is
-    // deliberately higher at the quiet end, where a court is the only thing on a garden town built to
-    // be arrived at.
+    // At full richness half to 70% of seeds carry one (`LARGE_COURT_CHANCE`); the chance rises at the quiet end.
     expect(offered, `${offered} of ${SEEDS.length} seeds stood one`).toBeGreaterThan(0);
     expect(offered, `${offered} of ${SEEDS.length} seeds stood one`).toBeLessThan(SEEDS.length);
   });
@@ -333,8 +309,8 @@ describe('the courts on the ground', () => {
       quiet += carve(seed, 0.2).courts.length;
       rich += carve(seed, 1).courts.length;
     }
-    // The budget rises with richness, but three places asked for water here and the spacing rule
-    // holds the count down before the budget does: what richness may never do is take a court away.
+    // The spacing rule caps three places before the budget does, so the claim is only that richness
+    // never takes a court away.
     expect(rich, `${rich} at full richness against ${quiet} at the quiet end`)
       .toBeGreaterThanOrEqual(quiet);
     expect(rich).toBeGreaterThan(0);

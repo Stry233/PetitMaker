@@ -23,6 +23,9 @@ interface CommandRowShape {
   /** Answered by an always-live listener that keeps working behind an open modal, so it has no
    *  Run body and the discrete engine leaves its combo alone. */
   listener?: boolean;
+  /** The browser's own clipboard event still follows the key: the engine runs the body without
+   *  taking the key's default, so the `copy`, `cut` or `paste` event can carry the clipboard. */
+  native?: boolean;
 }
 
 /** A registry row: `lite: false` keeps the command out of the offline edition. */
@@ -80,6 +83,9 @@ const ALL_COMMAND_META = [
   // discrete engine skips it. Declared here to be listed in the keyboard modal and rebindable.
   { id: 'selection.multi', category: 'selection', labelKey: 'shortcut.multi_select', defaultCombo: 'ctrl', continuous: true },
   { id: 'selection.all',   category: 'selection', labelKey: 'shortcut.select_all',   defaultCombo: 'ctrl+a' },
+  { id: 'selection.copy',  category: 'selection', labelKey: 'shortcut.copy',  defaultCombo: 'ctrl+c', native: true },
+  { id: 'selection.cut',   category: 'selection', labelKey: 'shortcut.cut',   defaultCombo: 'ctrl+x', native: true },
+  { id: 'selection.paste', category: 'selection', labelKey: 'shortcut.paste', defaultCombo: 'ctrl+v', native: true },
 
   // Camera / view
   { id: 'camera.zoom_in',  category: 'camera', labelKey: 'shortcut.zoom_in',  defaultCombo: null },

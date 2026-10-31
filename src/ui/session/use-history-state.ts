@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../state/store';
 
-/** Whether the map's history has a step to undo and one to redo, as each history change reports it. */
+/** Whether the map's history has a step to undo and one to redo, read from the live executor and
+ *  re-read on each history change and each store update, since whether a selection step would show
+ *  anything follows the selection and the tool up. */
 export function useHistoryState(): { canUndo: boolean; canRedo: boolean } {
+  const executor = useEditorStore((s) => s.commandExecutor);
   const eventBus = useEditorStore((s) => s.eventBus);
-  const [history, setHistory] = useState({ canUndo: false, canRedo: false });
-  useEffect(() => {
-    const onHistory = (e: { canUndo: boolean; canRedo: boolean }) => setHistory({ canUndo: e.canUndo, canRedo: e.canRedo });
-    eventBus.on('history-changed', onHistory);
-    return () => eventBus.off('history-changed', onHistory);
+  const subscribe = useCallback((onChange: () => void) => {
+    eventBus.on('history-changed', onChange);
+    const offStore = useEditorStore.subscribe(onChange);
+    return () => { eventBus.off('history-changed', onChange); offStore(); };
   }, [eventBus]);
-  return history;
+  const canUndo = useSyncExternalStore(subscribe, () => executor?.canUndo() ?? false);
+  const canRedo = useSyncExternalStore(subscribe, () => executor?.canRedo() ?? false);
+  return { canUndo, canRedo };
 }

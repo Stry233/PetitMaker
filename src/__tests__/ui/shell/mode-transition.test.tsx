@@ -1,15 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The plate is one element that moves, not five that appear.
- *
- * The shell is a single frame with swappable contents, so a mode switch should read as the shell
- * reconfiguring itself rather than as one panel replaced by another. A shared `layoutId` is what
- * makes Framer animate the same node between two parents; five conditionally-rendered images cannot
- * travel however they are tweened.
- *
- * jsdom lays nothing out, so what a DOM test can hold is the structure the travel needs: one plate
- * in the row at a time, carrying the id both blocks name it by. That the travel then reads as a
- * slide is a visual claim, checked in a browser.
+ * A mode switch as one choreographed score: the mode plate is remade for the chosen block, the bottom
+ * bar is handed over, and every beat is registered and played. How it looks is checked in a browser.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -44,14 +36,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the mode transition', () => {
-  /**
-   * The plate is made and destroyed, not carried.
-   *
-   * A plate that travelled would read as one splat sliding along the row, a claim about the row
-   * rather than about the block. What the mark means is "this is the one", and the block that was it
-   * no longer is, so the old plate is destroyed and a new one made. The element identity is the
-   * assertion: a carried plate is the same node at a new place.
-   */
+  /** The plate marks "this is the one", so it is remade rather than slid along the row. */
   it('makes a new plate for the block chosen and destroys the old one', async () => {
     mount();
     expect(plates(), 'nothing is selected, so the row has no plate').toHaveLength(0);
@@ -61,14 +46,12 @@ describe('the mode transition', () => {
     expect(first).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Water' }));
-    // The old one is still leaving while the new one arrives, which is the crossing both plate
-    // beats describe, so what settles is waited for rather than read.
+    // The old plate is still leaving as the new one arrives, so the count is awaited.
     await waitFor(() => expect(plates()).toHaveLength(1));
     expect(plates()[0], 'a carried plate would be the same node').not.toBe(first);
   });
 
-  /** The assistant is a block of the same family but it is not a mode, so its own plate is not part
-   *  of the row's switch: it neither arrives with one nor leaves with one. */
+  /** The assistant is not a mode, so its plate is its own and not part of the row's switch. */
   it('leaves the assistant out of the plate the row shares', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Mountains' }));
@@ -76,13 +59,8 @@ describe('the mode transition', () => {
     expect(plates(), 'the assistant marks itself with a plate of its own').toHaveLength(1);
   });
 
-  /**
-   * The bar belongs to the mode, so a switch takes one off and puts the next on.
-   *
-   * The one leaving is still there the moment the next arrives: that overlap is the handover the two
-   * bar beats describe, and it is why the count has to be waited for rather than read. The editing
-   * toolbars are one bar for this purpose: between them the host stays and morphs its controls.
-   */
+  /** The leaving bar overlaps the arriving one during the handover; the terrain modes share one bar
+   *  that morphs its controls instead. */
   it('hands the bottom bar from the mode being left to the one arriving', async () => {
     mount();
     const bars = () => document.querySelector('[data-testid="shell-mode-bar"]')!.children;
@@ -109,8 +87,7 @@ describe('the mode switch is one score', () => {
       expect(MOTIONS[beat.motion], `${beat.target} names an unregistered motion`).toBeDefined();
       expect(beat.at, `${beat.target} starts before the anchor`).toBeGreaterThanOrEqual(0);
     }
-    // The plate is still the anchor, now as a pair: the old ground goes as the new arrives, both
-    // at zero, and everything else in the switch is timed against them.
+    // The plate pair is the anchor: leave and arrive both at zero, everything else timed against them.
     expect(beats.find((b) => b.motion === 'mode.plate.arrive')?.at).toBe(0);
     expect(beats.find((b) => b.motion === 'mode.plate.leave')?.at).toBe(0);
   });
@@ -119,8 +96,7 @@ describe('the mode switch is one score', () => {
     for (const [id, score] of Object.entries(SCORES)) expect(score.beats.length, id).toBeGreaterThan(0);
   });
 
-  /** A beat is only worth declaring if something plays it: an unplayed one is the half-rolled-out
-   *  rollout this system exists to stop. Every target is named at the site that moves it. */
+  /** Every beat's target is named at the site that moves it. */
   it('is played in full by the shell', () => {
     const shell = ['Shell.tsx', 'controls/ModeRow.tsx', 'controls/ModeBar.tsx'].map((f) => readFileSync(`src/ui/shell/${f}`, 'utf8')).join('\n');
     for (const beat of SCORES['mode.switch'].beats) {
@@ -129,7 +105,7 @@ describe('the mode switch is one score', () => {
   });
 });
 
-/** `reducedMotion` is how the preference reaches Framer, which is what App does with `motionPref`. */
+/** Hands the motion preference to Framer as App does with `motionPref`. */
 const motionAs = (reducedMotion: 'always' | 'never') => (
   ({ children }: { children: React.ReactNode }) => (
     <MotionConfig reducedMotion={reducedMotion}>{children}</MotionConfig>
@@ -142,8 +118,7 @@ describe('a beat waits its turn', () => {
     expect(result.current.delay).toBe(beatOf('mode.switch', 'bar.arriving').at / 1000);
   });
 
-  /** The wait goes with the travel. An element that still waited its turn before arriving instantly
-   *  would leave a hole where it is simply missing, which is not what reduced motion asks for. */
+  /** An instant arrival that still waited its turn would leave a hole meanwhile. */
   it('drops the wait under reduced motion', () => {
     const { result } = renderHook(() => useBeat('mode.switch', 'bar.arriving'), { wrapper: motionAs('always') });
     expect(result.current.delay, 'a withheld motion must not also be a late one').toBeUndefined();

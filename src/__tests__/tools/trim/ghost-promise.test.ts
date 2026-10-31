@@ -1,9 +1,6 @@
 /**
- * The ghost's promise, against what the click actually leaves.
- *
- * Not a comparison of two derivations — the same anchors are previewed and then committed, and the
- * map is read back. Anything the commit does that the preview does not shows up here, which is the
- * only way to be sure there is one procedure and not two.
+ * The trim ghost's promise against what the click leaves: the same anchors are previewed, committed
+ * and read back off the map, so any step the commit takes that the preview does not shows up.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { DrawingTool } from '../../../tools/pointer/paint/drawing-tool';
@@ -23,7 +20,7 @@ const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 /** How many straight steps `trimmedOutline` draws a quarter circle with. */
 const ARC_STEPS = 6;
 
-/** A world with a layer-1 plain already laid and trimmed, as the user's test had it. */
+/** A world with a layer-1 plain already laid and trimmed. */
 function world(elevation: number, brush = 3, autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(50, 50);
   const executor = makeExecutor(state);
@@ -67,7 +64,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
     const click = (c: MacroCoord) => { w.tool.onPointerDown(cell(c), point(MICRO), w.ctx); w.tool.onPointerUp(cell(c), point(MICRO), w.ctx); };
     const anchors = [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }];
     click(anchors[0]!); click(anchors[1]!);
-    // Hovering the last anchor: the ghost now shows the curve the next click will lay.
+    // Hovering the last anchor shows the curve the next click will lay.
     w.ghost.length = 0;
     w.tool.onPointerMove(cell(anchors[2]!), point(MICRO), w.ctx);
     const promised = w.ghost[w.ghost.length - 1]!;
@@ -83,9 +80,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
       const promise = said.get(`${c.x},${c.y}`) ?? SQUARE.join('|');
       if (actual !== 'none' && actual !== promise) wrong.push(`${c.x},${c.y}: promised ${promise}, got ${actual}`);
     }
-    // And what the outline makes of that data: every rounded corner it was told about has to reach
-    // the drawing. An outline that drops cuts it judges to be inside the shape promises square
-    // steps for exactly this curve while the map comes out scalloped.
+    // Every rounded corner in the trim data must reach the drawn outline as one arc.
     const edges = trimmedOutline(promised.cells, promised.trim);
     const arcSteps = edges.filter((e) => Math.abs(e.ax - e.bx) > 1e-9 && Math.abs(e.ay - e.by) > 1e-9).length;
     const rounded = promised.trim.reduce((n, t) => n + t.corners.filter((k) => k === 'fan').length, 0);
@@ -99,8 +94,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
     for (const a of [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }]) click(a);
     click({ x: 26, y: 14 });
 
-    // Tweak an anchor: the ghost is issued on the drag, the map on the release, from the same
-    // anchors — so the two are directly comparable.
+    // The ghost comes from the drag and the map from the release, both from the same anchors.
     w.ghost.length = 0;
     moveCurveAnchor(1, 19, 26, false);
     const promised = w.ghost[w.ghost.length - 1]!;
@@ -116,8 +110,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
   });
 
   it('and promises a shape for every cell that ends up with one', () => {
-    // The other direction: a cut the click makes inside the ghost's own footprint that the ghost
-    // never mentioned would read as a square in the preview and a rounded block on the map.
+    // The other direction: no cut on the map that the ghost showed as square.
     const w = world(2, 3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(cell(c), point(MICRO), w.ctx); w.tool.onPointerUp(cell(c), point(MICRO), w.ctx); };
     for (const a of [{ x: 12, y: 16 }, { x: 20, y: 20 }, { x: 27, y: 16 }]) click(a);

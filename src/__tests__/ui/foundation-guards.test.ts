@@ -12,11 +12,9 @@ import ts from 'typescript';
  *
  * A drawing zone (`DRAWING_ZONES`) holds illustrations drawn to their own scale: its shadows,
  * stacking, corners, observers, motion and spacing are the drawing's, while its colours still come
- * from the tokens or `design/drawing-palette.ts`. `ui-guard-allowlist.ts:GUARD_EXEMPT` names the files
- * a guard does not read for what they are, each with its reason. A file that still writes a literal or
- * mechanism outside those is listed in `GUARD_ALLOWLIST` with its count, and the entry shrinks as the surface
- * adopts the foundations. A count above its entry fails, and so does one below it, so the list stays
- * exact.
+ * from the tokens or `design/drawing-palette.ts`. `ui-guard-allowlist.ts:GUARD_EXEMPT` names files a
+ * guard skips, each with its reason; any other file still writing a literal is in `GUARD_ALLOWLIST`
+ * with its exact count, and a count above or below its entry fails.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -30,8 +28,8 @@ function sources(dir: string): { path: string; text: string }[] {
 
 const DESIGN = 'src/ui/design/';
 
-/** Folders of drawn art: Help's figures, the sketchbook's pencil and the tour's gesture diagrams. */
-const DRAWING_ZONES = ['src/ui/help/figures/', 'src/ui/agent/sketchbook/', 'src/ui/shell/tour/diagrams/'] as const;
+/** Folders of drawn art: Help's figures and the sketchbook's pencil. */
+const DRAWING_ZONES = ['src/ui/help/figures/', 'src/ui/agent/sketchbook/'] as const;
 /** What a drawing draws for itself; the colour guards apply in a drawing zone too. */
 const DRAWN: ReadonlySet<GuardId> = new Set(['shadow', 'zIndex', 'radius', 'resizeObserver', 'motion', 'spacing']);
 

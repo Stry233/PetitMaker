@@ -96,7 +96,7 @@ describe('a refused water stroke names the one layer that would hold it', () => 
   });
 
   // The brush lays each cell at its own height, so a stroke that crossed a step has no single layer
-  // to name — and the no-floating rule refuses every uniform one, so the answer costs no sweep.
+  // to name, and the no-floating rule refuses every uniform one, so the answer costs no sweep.
   it('names nothing for a stroke spanning two steps', () => {
     const state = mesa();
     setTerrain(state, 8, 9, TerrainType.Mountain, 1);

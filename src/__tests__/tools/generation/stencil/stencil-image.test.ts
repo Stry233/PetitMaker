@@ -1,21 +1,14 @@
 /**
- * A picture built small has to still be the picture (#28).
+ * A picture built small is still the picture.
  *
- * Two pieces of pastel art pasted into a twenty-cell region came back as a square of one tier with six
- * specks in it, and as the subject's silhouette rendered as one featureless slab. Two faults, both of
- * which this file pins against:
+ *  1. The terrain ramp runs from luma 184 at layer 1 to 79 at layer 8 and pastel art lives above 200,
+ *     so matched raw it would all take layer 1. The picture's tonal range is fitted onto the palette's
+ *     before matching.
+ *  2. A JPEG has no alpha, so a white backdrop would match a colour and pave the region over the
+ *     silhouette. A flat backdrop is keyed out at source resolution.
  *
- *  1. A palette that cannot reach the picture. The terrain ramp runs from luma 184 at layer 1 down to
- *     79 at layer 8, and pastel art lives above 200 almost everywhere, so matched raw every cell of it
- *     takes layer 1 and the result is flat by arithmetic. So the picture's own tonal range is fitted
- *     onto the palette's before anything is matched.
- *  2. A backdrop treated as part of the picture. A JPEG has no alpha, so a wall of white matches to
- *     the nearest colour and paves the whole region, burying the silhouette that is the only thing a
- *     twenty-cell picture really has. So a flat backdrop is keyed out at source resolution.
- *
- * The kind of picture matters too: a drawing's colours are already a palette, so a cell takes the
- * colour most of it is rather than the average of what it covers, and its exact edges are not diffused
- * into speckle.
+ * A drawing's colours are already a palette, so its cells take their majority colour rather than an
+ * average, and its edges are not diffused into speckle.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -39,8 +32,8 @@ const buildingCrop = (src: SourcePixels, box: { width: number; height: number },
   sampleStencil(src, box, opts)?.trim ?? null;
 
 
-/** A palette with a real spread of hues, standing in for the item catalogue — which runs from white
- *  to near-black, and is therefore the case where a picture needs no fitting at all. */
+/** A palette with a spread of hues from white to near-black, like the item catalogue, so a picture
+ *  needs no tone fitting against it. */
 const ITEMS = [
   0xffffff, 0xdcd7c9, 0xa8a29a, 0x555049, 0x201c18,
   0xd44a5a, 0xf2a0b4, 0x8d2a3a, 0xf5c542, 0xe08a2c,
@@ -64,8 +57,7 @@ describe('what kind of picture this is', () => {
   });
 
   it('judges only the pixels the picture draws, so a transparent field cannot vote', () => {
-    // `HEART` is a shape on transparent ground. Padding it with more transparency must not move the
-    // answer at all — an alpha-blind count would drift toward "one colour everywhere".
+    // `HEART` is a shape on transparent ground; an alpha-blind count would drift toward one colour.
     const small = pixels(HEART, 4);
     const padded: SourcePixels = { data: new Uint8Array(200 * 200 * 4), width: 200, height: 200 };
     for (let y = 0; y < small.height; y++) {
@@ -85,8 +77,7 @@ describe('what kind of picture this is', () => {
 
 describe('a drawing is read by majority, a photograph by area', () => {
   it('gives a cell one of the picture\'s own colours rather than a blend of two', () => {
-    // `LETTER` is four colours exactly. Every cell of a majority reading has to be one of them; an
-    // area reading over its edges invents shades between them.
+    // `LETTER` is exactly four colours; an area reading invents shades between them at its edges.
     const src = pixels(LETTER, 6);
     const own = new Set(Object.values(LETTER.key));
     const majority = claimed(stencilFromPixels(src, { width: 20, height: 20 }, { background: false })!);
@@ -97,16 +88,9 @@ describe('a drawing is read by majority, a photograph by area', () => {
   });
 
   it('gives one flat colour one entry, whichever kind of picture it is called', () => {
-    // A field of one colour no palette entry sits on — a grey, so no green is near it and the error is
-    // large. It must come back as one entry, or a face drawn in one skin tone arrives dithered.
-    //
-    // The label does not decide it: a small box asks the question per region (`stencil-small.ts:
-    // regionFlatness`) — a flat area is told in one entry and a true gradient keeps its own shading — so
-    // a flat field is one entry whatever the picture is called, which is the better answer to this
-    // picture (per-picture diffusion would come back as a mix of entries here). The
-    // majority/area switch itself is pinned by the case above (a majority reading invents no colour the
-    // picture does not hold) and by the photograph case below, which fails outright if a gradient is
-    // posterised.
+    // A grey far from every palette entry still comes back as one entry, or a face in one skin tone
+    // would arrive dithered. A small box judges flatness per region (`stencil-areas.ts:regionFlatness`),
+    // not by the picture's label.
     const side = 96;
     const flat: SourcePixels = { data: new Uint8Array(side * side * 4), width: side, height: side };
     for (let i = 0; i < side * side; i++) {
@@ -119,8 +103,7 @@ describe('a drawing is read by majority, a photograph by area', () => {
   });
 });
 
-/** An opaque square of one colour with a second colour wherever `ink` says — the shape of a path
- *  tile, which is a field with a pattern in it and no transparency anywhere. */
+/** An opaque square of one colour with a second wherever `ink` says, like a path tile. */
 function field(side: number, background: number, ink: (x: number, y: number) => boolean, inkColor = 0): SourcePixels {
   const data = new Uint8Array(side * side * 4);
   for (let y = 0; y < side; y++) {
@@ -135,9 +118,8 @@ function field(side: number, background: number, ink: (x: number, y: number) => 
 
 describe('a flat backdrop is not part of the picture', () => {
   it('keys out an opaque field and keeps a subject drawn in the same colour', () => {
-    // White ring of backdrop, a black outline, white inside it. The inside is the same colour as the
-    // backdrop and separated from it only by the outline: keying at cell resolution loses it, since
-    // a one-cell outline does not seal.
+    // A white backdrop, a black outline, white inside it. Keying at cell resolution would lose the
+    // inside, since a one-cell outline does not seal.
     const side = 120;
     const src: SourcePixels = { data: new Uint8Array(side * side * 4), width: side, height: side };
     const put = (x: number, y: number, v: number): void => {
@@ -153,12 +135,11 @@ describe('a flat backdrop is not part of the picture', () => {
     }
     const mask = backgroundMask(src)!;
     expect(mask).not.toBeNull();
-    expect(mask[0]).toBe(1);                                   // the corner is backdrop
-    expect(mask[(60 * side) + 60]).toBe(0);                    // the subject's own white core is not
-    expect(mask[(60 * side) + 32]).toBe(0);                    // nor is its outline
+    expect(mask[0]).toBe(1);                                   // the corner
+    expect(mask[(60 * side) + 60]).toBe(0);                    // the white core
+    expect(mask[(60 * side) + 32]).toBe(0);                    // the outline
 
-    // Read without the auto-trim, which is a question about fitting rather than about keying: with it
-    // the keyed field is dropped from the frame entirely and the corner cell is the ring itself.
+    // Without the auto-trim, which would drop the keyed field and put the ring in the corner cell.
     const stencil = stencilFromPixels(src, { width: 24, height: 24 }, { trim: false })!;
     expect(stencil.coverage[0]).toBe(0);
     expect(stencil.coverage[12 * 24 + 12]).toBeGreaterThanOrEqual(128);
@@ -170,8 +151,8 @@ describe('a flat backdrop is not part of the picture', () => {
   });
 
   it('does not mistake a drawn RIM for one', () => {
-    // `FACE` is ringed in its own orange. That ring is one colour, touches every edge and is a sixth
-    // of the picture; what it is not is deep.
+    // `FACE` is ringed in one orange that touches every edge and is a sixth of the picture, but is
+    // not deep.
     expect(backgroundMask(pixels(FACE, 6))).toBeNull();
     const built = runImage(pixels(FACE, 6), { side: 24 });
     const rim = built.stencil;
@@ -181,18 +162,14 @@ describe('a flat backdrop is not part of the picture', () => {
   });
 
   it('is not a backdrop when it leaves no subject', () => {
-    // A flat tile: one colour edge to edge, which is what a path surface is. The border is that
-    // colour, the flood reaches every pixel of the picture and it is as deep as anything could ask —
-    // so all three gates on the field pass, and the mask keyed the picture out of existence. Six of
-    // the dataset's path tiles built nothing at all at every size and material for exactly this.
+    // A flat tile, one colour edge to edge like a path surface, passes every field gate; keying it
+    // would leave nothing.
     expect(backgroundMask(field(128, 0xd9c9a8, () => false))).toBeNull();
 
-    // The same tile with mortar lines in it: the lines are not the field's colour, so they survive
-    // the flood as a hairline. A hairline is not a subject either.
+    // Mortar lines survive the flood as hairlines, which are not a subject either.
     const lines = (x: number, y: number): boolean => x % 16 === 0 || y % 16 === 0;
     expect(backgroundMask(field(128, 0xd9c9a8, lines, 0x6b4a2a))).toBeNull();
 
-    // And both of them build, which is the point of the gate rather than the gate itself.
     for (const tile of [field(128, 0xd9c9a8, () => false), field(128, 0xd9c9a8, lines, 0x6b4a2a)]) {
       const stencil = stencilFromPixels(tile, { width: 24, height: 24 })!;
       expect([...stencil.coverage].filter((c) => c >= 128).length).toBeGreaterThan(500);
@@ -200,8 +177,7 @@ describe('a flat backdrop is not part of the picture', () => {
   });
 
   it('still keys a field that has a subject standing in it', () => {
-    // The control: the same flat field, with something in the middle thick enough to survive the
-    // erosion. The field goes and the subject stays, which is what the pass is for.
+    // The control: a subject thick enough to survive the erosion.
     const block = (x: number, y: number): boolean => x >= 44 && x < 84 && y >= 44 && y < 84;
     const mask = backgroundMask(field(128, 0xd9c9a8, block, 0x304050));
     expect(mask).not.toBeNull();
@@ -210,23 +186,16 @@ describe('a flat backdrop is not part of the picture', () => {
   });
 
   it('wants depth, and says so in the same units at any resolution', () => {
-    // The same drawing at two scales must be judged the same way, which is what a share of the side
-    // buys over a count of pixels.
+    // Depth is a share of the side, so two scales of one drawing are judged alike.
     expect(backgroundMask(pixels(FACE, 3))).toBeNull();
     expect(backgroundMask(pixels(FACE, 12))).toBeNull();
   });
 });
 
-/**
- * The region is spent on what the picture builds.
- *
- * A sticker photographed on a sheet of white is mostly white, and that white is keyed to nothing: the
- * subject took a third of the painted region and the rest of it went on cells that lay nothing at all.
- * So the border rows and columns that build nothing are dropped and what is left is fitted again.
- */
+/** Border rows and columns that build nothing (a keyed white sheet around a sticker) are dropped and
+ *  the rest is fitted again, so the region is spent on what the picture builds. */
 describe('a picture is fitted by what it builds', () => {
-  /** A grey square on a transparent field: `inset` pixels of nothing around a subject that is all
-   *  ink, which is the shape of the problem with none of a real picture's noise. */
+  /** A solid square inset `inset` pixels in a transparent field. */
   const inField = (px: number, inset: number): SourcePixels => {
     const data = new Uint8Array(px * px * 4);
     for (let y = inset; y < px - inset; y++) {
@@ -245,14 +214,13 @@ describe('a picture is fitted by what it builds', () => {
     const src = inField(100, 30);
     const box = { width: 20, height: 20 };
     expect(buildingCrop(src, box, {})).toEqual({ x: 30, y: 30, width: 40, height: 40 });
-    // The subject was a sixth of the region and is now the whole of it.
+    // Untrimmed, the subject is a sixth of the region; trimmed, all of it.
     expect(claimedCells(stencilFromPixels(src, box, { trim: false })!)).toBeLessThan(80);
     expect(claimedCells(stencilFromPixels(src, box, {})!)).toBe(400);
   });
 
   it('never reaches into the picture, however little of the middle builds', () => {
-    // A thick ring: its inside builds nothing at all, and it is not a border. The crop is the ring's
-    // own bounds and the hole is still a hole afterwards.
+    // A thick ring's empty inside is not a border, so the crop stops at the ring's bounds.
     const px = 100;
     const data = new Uint8Array(px * px * 4);
     for (let y = 0; y < px; y++) {
@@ -267,21 +235,19 @@ describe('a picture is fitted by what it builds', () => {
     const box = { width: 24, height: 24 };
     expect(buildingCrop(src, box, {})).toEqual({ x: 20, y: 20, width: 60, height: 60 });
     const stencil = stencilFromPixels(src, box, {})!;
-    expect(stencil.coverage[12 * 24 + 12]).toBeLessThan(128);     // the hole survives the trim
-    expect(stencil.coverage[0]).toBeGreaterThanOrEqual(128);      // and the ring reaches the frame
+    expect(stencil.coverage[12 * 24 + 12]).toBeLessThan(128);     // the hole
+    expect(stencil.coverage[0]).toBeGreaterThanOrEqual(128);      // the ring reaches the frame
   });
 
   it('leaves a picture that builds nothing exactly as it was', () => {
-    // Nothing to fit to. The run lays nothing and says so in its own words, which is the message this
-    // must not take away by cropping to an empty rectangle.
+    // The run reports that it lays nothing; cropping to an empty rectangle would hide that.
     const empty: SourcePixels = { data: new Uint8Array(64 * 64 * 4), width: 64, height: 64 };
     expect(buildingCrop(empty, { width: 20, height: 20 }, {})).toBeNull();
     expect(claimedCells(stencilFromPixels(empty, { width: 20, height: 20 }, {})!)).toBe(0);
   });
 
   it('trims nothing from a picture that fills its own frame', () => {
-    // A photograph has no keyed backdrop and no transparency, so every border cell builds and there
-    // is nothing to drop. Cell for cell the same map as before there was a trim at all.
+    // A photograph has no keyed backdrop and no transparency, so every border cell builds.
     expect(buildingCrop(photograph(128), { width: 24, height: 24 }, {})).toBeNull();
     const run = runImage(photograph(128), { side: 24 });
     expect(run.trimmed).toBe(0);
@@ -289,8 +255,7 @@ describe('a picture is fitted by what it builds', () => {
   });
 
   it('takes a rim only when the subject comes out meaningfully bigger', () => {
-    // Two pixels of nothing around a hundred is a fortieth of the picture: re-fitting moves every
-    // cell's phase against it and buys a subject nobody can see grow, so the rim is left alone.
+    // Two pixels around a hundred: re-fitting would shift every cell's phase for no visible gain.
     expect(buildingCrop(inField(100, 2), { width: 20, height: 20 }, {})).toBeNull();
   });
 
@@ -299,16 +264,13 @@ describe('a picture is fitted by what it builds', () => {
     const box = { width: 20, height: 20 };
     const once = stencilFromPixels(src, box, {})!;
     expect([...once.coverage]).toEqual([...stencilFromPixels(src, box, {})!.coverage]);
-    // Idempotent: the crop is a fixed point after one pass, so a plan cannot drift by being read
-    // again — what the preview was fitted to is what the build is fitted to.
+    // The crop is a fixed point after one pass, so the preview and the build fit the same frame.
     const crop = buildingCrop(src, box, {})!;
     expect(buildingCrop(cropPixels(src, crop), box, {})).toBeNull();
   });
 
   it('asks the same question in every material, since a covered cell builds in all of them', () => {
-    // The palettes a picture can be told in have no entry that lays nothing: a covered cell is a
-    // green, the blue, or an item, whichever material was asked for. So one trim serves them all and
-    // the material cannot move the frame.
+    // No palette has an entry that lays nothing, so one trim serves every material.
     const src = inField(100, 30);
     const box = { width: 20, height: 20 };
     const mountain = runImage(src, { side: 20 });
@@ -330,8 +292,7 @@ describe('the picture is fitted to what the palette can draw', () => {
   });
 
   it('moves one it cannot into reach, keeping the picture\'s own span', () => {
-    // Pastel art: the whole of it is brighter than the brightest green, which is the flat-result case
-    // exactly. It comes down to the top of the ramp and keeps the range it had.
+    // Pastel art, brighter than the brightest green, comes down to the top of the ramp.
     const ramp = paletteToneRange(RAMP.map((rgb) => ({ rgb })));
     const moved = fitTarget({ lo: 200, hi: 255 }, ramp);
     expect(moved.hi).toBeCloseTo(ramp.hi, 5);
@@ -341,8 +302,7 @@ describe('the picture is fitted to what the palette can draw', () => {
   it('squeezes one that is wider than the palette, and never magnifies a narrow one', () => {
     const ramp = paletteToneRange(RAMP.map((rgb) => ({ rgb })));
     expect(fitTarget({ lo: 0, hi: 255 }, ramp)).toEqual(ramp);
-    // A single colour has no range at all: it lands where its own tone is, not in the middle of a
-    // ramp it was never asked about.
+    // A single colour has no range, so it lands nearest its own tone, not mid-ramp.
     const one = fitTarget({ lo: 20, hi: 20 }, ramp);
     expect(one.lo).toBeCloseTo(ramp.lo, 5);
     expect(one.hi).toBeCloseTo(ramp.lo, 5);
@@ -360,19 +320,16 @@ describe('the picture is fitted to what the palette can draw', () => {
   it('keeps the hue while it fits, and gives up only what it must', () => {
     const fit = toneFit({ lo: 0, hi: 255 }, { lo: 0, hi: 255 });
     const red = fit(0xd44a5a);
-    expect((red >> 16) & 0xff).toBeGreaterThan((red >> 8) & 0xff);          // still redder than green
-    // Pushed to the top of a range, a saturated colour cannot keep its full chroma and no channel
-    // may be clipped on its own: what comes back is paler, not a different hue.
+    expect((red >> 16) & 0xff).toBeGreaterThan((red >> 8) & 0xff);
+    // Pushed to the top of a range, a saturated colour comes back paler, not clipped to another hue.
     const pale = toneFit({ lo: 0, hi: 255 }, { lo: 250, hi: 250 })(0xd44a5a);
     expect((pale >> 16) & 0xff).toBeGreaterThanOrEqual((pale >> 8) & 0xff);
     expect(luma(pale)).toBeCloseTo(250, 0);
   });
 
   it('is a no-op, byte for byte, when the palette already covers the picture', () => {
-    // Not merely "the same range in, the same range out". Mapping a range onto itself still clamps
-    // every cell outside the measured percentiles — 4% of the picture by construction — and rounds
-    // each channel through the arithmetic. An outlier has to come back untouched, which is what the
-    // colours below are: one far above the range and one far below it.
+    // Mapping a range onto itself would still clamp outliers beyond the measured percentiles and round
+    // each channel, so the colours below include extremes far outside the range.
     const same = { lo: 60, hi: 200 };
     const fit = toneFit(same, same);
     for (const rgb of [0x000000, 0xffffff, 0xd44a5a, 0x2f7d55, 0x010203]) expect(fit(rgb)).toBe(rgb);
@@ -426,10 +383,7 @@ describe('a picture built small carries the picture', () => {
   });
 
   it('builds a picture the palette covers exactly as it did before there was a fit', () => {
-    // The object catalogue runs from white to near-black, so a picture matched against it is
-    // already in reach and the fit must be a no-op — not "almost", since the percentile clip would
-    // otherwise move the brightest and darkest cells of every picture that round-trips.
-    // `fitTones: false` is the un-fitted reading, and the two have to agree cell for cell.
+    // A catalogue from white to near-black already covers the picture, so the fit is an exact no-op.
     for (const [name, art] of cases) {
       for (const side of SIZES) {
         const src = pixels(art, 6);
@@ -442,23 +396,15 @@ describe('a picture built small carries the picture', () => {
 });
 
 /**
- * The material asked for is the material built, and the region around it is not.
- *
- * Two failures, opposite ends of the same knob. A picture asked for in water came back with next to
- * no water in it: the blue was one entry among eight greens, so only a genuinely blue area ever won
- * it. The answer to that was to give the material the whole painted region — which flooded it, and
- * is the second failure: the picture stands in terrain and water is what fills its inside, so a cell
- * the picture does not cover stays the ground it was, exactly as under every other material.
+ * With the blue as one entry among eight greens a water picture gets almost no water; giving water
+ * the whole region floods it. The picture stands in terrain with water inside it, and a cell it does
+ * not cover stays the ground it was.
  */
 describe('the material a picture is asked for is the material it gets', () => {
   const cases = [['heart', HEART], ['face', FACE], ['letter', LETTER]] as const;
 
-  /**
-   * What stands on the picture's cells, on its silhouette, and on the region around it, once the run
-   * has committed.
-   *
-   * `outsideBuilt` counts writes to region cells outside the picture's coverage.
-   */
+  /** What stands on the picture's cells, its silhouette and the region around it after the run.
+   *  `outsideBuilt` counts writes to region cells outside the picture's coverage. */
   function built(src: SourcePixels, side: number, water: StencilWaterRole): {
     covered: number; water: number; mountain: number;
     interior: number; interiorWater: number; edge: number; edgeWater: number;
@@ -477,8 +423,8 @@ describe('the material a picture is asked for is the material it gets', () => {
           continue;
         }
         count++;
-        // The picture's inside: covered, with every edge neighbour covered too. A cell off the box
-        // reads as covered, the way the engine's own silhouette test does.
+        // Inside means every edge neighbour is covered; a cell off the box counts as covered, as in
+        // the engine's silhouette test.
         const onEdge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
           const nx = x + dx!, ny = y + dy!;
           return nx >= 0 && ny >= 0 && nx < side && ny < side && !shown(nx, ny);
@@ -498,37 +444,27 @@ describe('the material a picture is asked for is the material it gets', () => {
     };
   }
 
-  /**
-   * The water is in the picture, and the picture is where the picture is.
-   *
-   * The share is measured over the figure because that is what the material builds; the region is
-   * measured for zero, because the flood is the failure this pins. Our own art is a drawing with
-   * light areas in it, so every case here has real ponds and a real figure standing around them.
-   */
+  /** The art has light areas, so every case has real ponds with a figure standing around them. */
   it('sinks the picture\'s light and leaves the region around it as it was', () => {
     for (const [name, art] of cases) {
       for (const side of SIZES) {
         const b = built(pixels(art, 6), side, 'primary');
         expect(b.violations, `${name}@${side}`).toBe(0);
-        expect(b.outsideBuilt, `${name}@${side}`).toBe(0);       // the flood, if it ever returns
-        // Both materials, on every one of them: the water is the light the ramp cannot say, so a
-        // figure has some and is never only that — how much is the picture's own business.
+        expect(b.outsideBuilt, `${name}@${side}`).toBe(0);       // no flood
+        // The water is the light the ramp cannot say, so every figure has some and is never only water.
         expect(b.water, `${name}@${side}`).toBeGreaterThan(0);
         expect(b.mountain, `${name}@${side}`).toBeGreaterThan(0);
         expect(b.water + b.mountain, `${name}@${side}`).toBe(b.covered);
       }
     }
-    // A photograph too: it has blues of its own, and the material still has to be the material.
+    // A photograph, with blues of its own.
     const photo = built(photograph(128), 24, 'primary');
     expect(photo.water).toBeGreaterThan(0);
     expect(photo.outsideBuilt).toBe(0);
   });
 
-  /**
-   * And the silhouette is the bank. A pond that reaches the picture's own edge is a hole where the
-   * shape should be: what says "this is a figure with water in it" rather than "this is a puddle" is
-   * that the outline stands in terrain the whole way round, whatever the tone there.
-   */
+  /** The silhouette is the bank: the outline stands in terrain all the way round, whatever its tone,
+   *  or a pond reaching the edge would leave a hole where the shape should be. */
   it('never sinks the picture\'s own silhouette', () => {
     for (const [name, art] of cases) {
       for (const side of SIZES) {
@@ -540,13 +476,7 @@ describe('the material a picture is asked for is the material it gets', () => {
     }
   });
 
-  /**
-   * A picture that is all edge has no inside, so it is built in terrain and nothing is sunk.
-   *
-   * A comb of one-cell stripes is every cell a silhouette cell. There is nowhere a pond could go that
-   * would not be the shape itself, and the honest answer is a figure with no water in it rather than
-   * a stripe of blue where the drawing was.
-   */
+  /** A comb of one-cell stripes is all silhouette, so nowhere is left for a pond. */
   it('builds a picture that is nothing but silhouette in terrain alone', () => {
     const comb = (px: number, period: number): SourcePixels => {
       const data = new Uint8Array(px * px * 4);
@@ -572,13 +502,8 @@ describe('the material a picture is asked for is the material it gets', () => {
     expect(bare.mountain).toBe(bare.covered);
   });
 
-  /**
-   * The edge stands even where it is the brightest part of the picture — otherwise the bank could be
-   * a consequence of outlines usually being dark, and every other case here would pass unchanged.
-   *
-   * The subject below is brightest at its edge and dark in the middle, so a tone reading alone would
-   * sink its border and raise its centre. The border is the shape.
-   */
+  /** Outlines are usually dark, so this subject is brightest at its edge: a tone reading alone would
+   *  sink its border, and the bank has to come from the silhouette instead. */
   it('draws the silhouette even where the edge is the brightest part of the picture', () => {
     const px = 32, lo = 8, hi = 24;
     const data = new Uint8Array(px * px * 4);
@@ -586,21 +511,19 @@ describe('the material a picture is asked for is the material it gets', () => {
       for (let x = 0; x < px; x++) {
         const i = y * px + x;
         const inside = x >= lo && x < hi && y >= lo && y < hi;
-        // Bright at the rim, dark at the core.
         const toEdge = Math.min(x - lo, hi - 1 - x, y - lo, hi - 1 - y);
         const v = inside ? Math.max(40, 240 - toEdge * 28) : 0;
         data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v;
         data[i * 4 + 3] = inside ? 255 : 0;
       }
     }
-    // The file's frame, not the trimmed one: this is about what the composition does with an edge,
-    // and a trimmed subject fills the box, where the only edge is the region's own.
+    // Untrimmed, since a trimmed subject fills the box and its only edge would be the region's.
     const run = runImage({ data, width: px, height: px }, { side: 24, water: 'primary', sample: { trim: false } });
     const at = (x: number, y: number): number | undefined =>
       run.state.cells[run.origin.y + y]?.[run.origin.x + x]?.terrain?.elevation;
     const isWater = (x: number, y: number): boolean =>
       run.state.cells[run.origin.y + y]?.[run.origin.x + x]?.terrain?.type === TerrainType.Water;
-    // Walk the subject's own border row and find its first covered cell; it must be raised, not water.
+    // Every covered border cell is raised, not water.
     let border = 0, raised = 0;
     for (let y = 0; y < 24; y++) {
       for (let x = 0; x < 24; x++) {
@@ -619,11 +542,6 @@ describe('the material a picture is asked for is the material it gets', () => {
     expect(raised).toBe(border);
   });
 
-  /**
-   * A region is not its bounding box. Every other case here fits a picture to a rectangle, where the
-   * two agree and a bug in the scope cannot show; this one paints a diagonal half, which no bounding
-   * rectangle can stand in for.
-   */
   it('writes nothing outside a non-rectangular region, ground included', () => {
     const side = 24;
     // A diagonal half of the box, which no bounding rectangle can stand in for.
@@ -643,9 +561,7 @@ describe('the material a picture is asked for is the material it gets', () => {
   });
 
   it('builds a picture of ONE colour as a lake inside its own bank', () => {
-    // A subject with no tones has no light to sink and no shade to raise, so a tone reading finds
-    // either all of it or none of it. The material it was asked for decides: the inside is the lake
-    // and the silhouette is the bank that holds it.
+    // A subject with no tones gives a tone reading nothing to split, so the material decides.
     const flatArt: SourcePixels = { data: new Uint8Array(32 * 32 * 4), width: 32, height: 32 };
     for (let y = 0; y < 32; y++) {
       for (let x = 0; x < 32; x++) {
@@ -674,14 +590,8 @@ describe('the material a picture is asked for is the material it gets', () => {
   });
 });
 
-/**
- * The salient-crop experiment, and the two things a test can say about it: it is off unless asked for,
- * and asked for it takes the part of the subject that carries it.
- *
- * Whether building a part of a picture is a picture the visitor asked for is a judgement, not a
- * measurement, so nothing here asserts that the crop is better. What it asserts is that the default path
- * cannot reach it and that the choice it makes is the one it claims to make.
- */
+/** The salient crop is an experiment: off unless asked for, and when asked it takes the part of the
+ *  subject that carries it. Whether the crop is better is a judgement these tests do not make. */
 describe('the salient crop is an experiment, and it is off', () => {
   it('changes nothing unless it is asked for', () => {
     const src = pixels(FACE, 6);
@@ -693,14 +603,13 @@ describe('the salient crop is an experiment, and it is off', () => {
 
   it('is absent above the size it exists for, asked or not', () => {
     const src = pixels(FACE, 6);
-    const big = { width: 24, height: 24 };          // the crop is for boxes of twenty cells and under
+    const big = { width: 24, height: 24 };          // the crop is for boxes of twenty cells or fewer
     expect([...stencilFromPixels(src, big, { crop: true })!.color])
       .toEqual([...stencilFromPixels(src, big)!.color]);
   });
 
   it('takes the part of the subject the picture changes fastest over', () => {
-    // A field of one colour with a marked patch in one corner: the patch is the only thing in the
-    // picture that identifies it, and the window has to land on it.
+    // A plain field with a marked patch in one corner.
     const side = 96;
     const src: SourcePixels = { data: new Uint8Array(side * side * 4), width: side, height: side };
     for (let y = 0; y < side; y++) {
@@ -720,7 +629,7 @@ describe('the salient crop is an experiment, and it is off', () => {
   });
 
   it('declines a picture whose detail is spread evenly, rather than guessing', () => {
-    // A checker over the whole subject: no part of it says more than all of it.
+    // A checker over the whole subject.
     const side = 96;
     const even: SourcePixels = { data: new Uint8Array(side * side * 4), width: side, height: side };
     for (let y = 0; y < side; y++) {
@@ -734,7 +643,7 @@ describe('the salient crop is an experiment, and it is off', () => {
   });
 });
 
-/** One pixel written as one grey, alpha opaque — the loops above want it and nothing else does. */
+/** Writes one opaque grey pixel. */
 function src(data: Uint8Array | Uint8ClampedArray, at: number, grey: number): void {
   data[at] = grey; data[at + 1] = grey; data[at + 2] = grey; data[at + 3] = 255;
 }

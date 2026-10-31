@@ -18,7 +18,7 @@ export function LayerRowPlate({ selected, style, ...props }: { selected: boolean
       fill={selected ? ACTIVE : AT_REST}
       fillTransition={fade}
       hoverFill={selected ? undefined : INSET}
-      style={{ ...btnReset, position: 'absolute', inset: 0, cursor: cursors.clickable, ...style }}
+      style={{ ...btnReset, position: 'absolute', inset: 0, cursor: props.unavailable ? cursors.blocked : cursors.clickable, ...style }}
     />
   );
 }

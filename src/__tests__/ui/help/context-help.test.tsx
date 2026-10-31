@@ -18,7 +18,7 @@ function Harness() {
 const helpKey = () => fireEvent.keyDown(document.activeElement ?? window, { key: 'H', code: 'KeyH', shiftKey: true });
 beforeEach(() => {
   useKeybinds.getState().resetAll();
-  setStoreState({ whatsThis: false, helpTarget: null, tourRunning: false, portraitBlocked: false,
+  setStoreState({ whatsThis: false, helpTarget: null, tourRunning: false,
     modals: { ...useEditorStore.getState().modals, help: false, settings: true } });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); useKeybinds.getState().resetAll(); });

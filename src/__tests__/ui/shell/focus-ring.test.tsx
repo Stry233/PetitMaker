@@ -1,15 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The ring a control wears while the keyboard is on it. An outline follows the element's own
- * radius, so a control whose shape is art inside a bare button box declares the shape its ring takes;
- * jsdom lays nothing out, so a missing radius is invisible to every other test.
- *
- * The colour arrives as a custom property the shell writes, and every ring declaration keeps a
- * literal fallback: an unresolved `var()` without one invalidates the declaration and leaves the
- * browser's black outline.
- *
- * The ring is two tones because a control can stand on cream, on the chosen yellow, or on bare
- * island from sand to a layer-8 mountain; the contrast test fails a single ink.
+ * The keyboard focus ring. An outline follows the element's radius, so every control declares one.
+ * The colour is a shell-written custom property with a literal fallback, since an unresolved `var()`
+ * would leave the browser's black outline. Two tones, because controls stand on cream, the chosen
+ * yellow, and island ground from sand to a layer-8 mountain.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, cleanup } from '@testing-library/react';
@@ -60,9 +54,8 @@ afterEach(cleanup);
 
 describe('the focus ring', () => {
   it('is a custom property, and every declaration of it carries the literal fallback', () => {
-    // The control's own ring, and the one a text field moves up to its wrapper. The field's reads a
-    // variable of its own first, so that question can be answered separately, and falls through to
-    // the same two.
+    // The control's ring and the one a text field moves to its wrapper, which reads
+    // `--focus-ring-field` first.
     const rings = css.match(/outline: var\(--focus-width\) solid [^;]+;/g) ?? [];
     expect(rings.length).toBeGreaterThanOrEqual(2);
     for (const ring of rings) {
@@ -70,8 +63,7 @@ describe('the focus ring', () => {
         new RegExp(`^outline: var\\(--focus-width\\) solid (var\\(--focus-ring-field, )?var\\(--focus-ring, ${RING_FALLBACK}\\)\\)?;$`),
       );
     }
-    // The halo is the one that falls back to nothing: a second ring is this frame's own idea, and
-    // `transparent` is a valid colour, so the declaration still parses where none is named.
+    // The halo falls back to `transparent`, a valid colour, so the declaration still parses.
     expect(css).toMatch(/box-shadow: 0 0 0 var\(--control-clearance\) var\(--focus-halo, transparent\);/);
   });
 
@@ -82,20 +74,14 @@ describe('the focus ring', () => {
     for (const [name, value] of Object.entries(vars)) expect(root.style.getPropertyValue(name), name).toBe(value);
     shell.unmount();
     for (const name of Object.keys(vars)) expect(root.style.getPropertyValue(name), `${name} after unmount`).toBe('');
-    // Not the yellow that marks a choice: a control can be focused while it is chosen, and the two
-    // have to stay separate facts.
+    // Distinct from the chosen yellow, since a chosen control can be focused, and from the ink.
     expect(FOCUS_RING).not.toBe(ACTIVE);
-    // Not the ink either, which is the interface's black-reading brown.
     expect(FOCUS_RING).not.toBe(INK);
   });
 
   /**
-   * What the two tones are each for. 3:1 is the ratio a graphical indicator is read at.
-   *
-   * The rust holds everything pale — every plate, the yellow that marks a chosen control, and the
-   * ground the island is drawn on. The halo holds everything dark: the dark plate and the top of
-   * the mountain ramp. Between them lie the middle greens, where neither clears 3 and no colour
-   * would; there the ring is read against itself, which is the next test.
+   * 3:1 is the WCAG ratio for a graphical indicator. The rust covers the pale surfaces, the halo the
+   * dark ones; on the middle greens no colour clears 3, so the ring reads against its halo (next test).
    */
   it('is a rust for the pale surfaces and a cream for the dark ones', () => {
     const pale = { plate: PLATE, inset: INSET, chosen: ACTIVE, ...ZONE_COLORS, ground: ELEVATION_COLORS[0]! };
@@ -111,19 +97,16 @@ describe('the focus ring', () => {
 
   it('reads against itself, which is what carries it over the greens in between', () => {
     expect(contrast(FOCUS_RING, FOCUS_HALO)).toBeGreaterThanOrEqual(3);
-    // And why one tone will never do: the ink clears the plate yet is lost on the tallest
-    // mountain — the pair of numbers below.
+    // One tone fails: the ink clears the plate but not the tallest mountain.
     expect(contrast(INK, PLATE)).toBeGreaterThanOrEqual(3);
     expect(contrast(INK, ELEVATION_COLORS[8]!)).toBeLessThan(3);
   });
 });
 
 /**
- * The ring is drawn only where the keyboard put the focus. A browser matches `:focus-visible` on an
- * already focused element as soon as any key goes down, and a clicked control stays focused, so
- * Enter or a shortcut would ring a control the yellow plate already marks. jsdom neither lays out
- * nor matches `:focus-visible`: the sequence below is the module's behaviour, and the stylesheet
- * assertion keeps a rule that reads its stamp.
+ * A browser matches `:focus-visible` on a clicked, still-focused control once any key goes down, so
+ * the ring follows a stamp of what placed the focus. jsdom matches no `:focus-visible`, so the stamps
+ * are checked here and the stylesheet must read them.
  */
 describe('a ring is what the keyboard leaves behind, not what a key press summons', () => {
   const root = document.documentElement;
@@ -141,32 +124,27 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
 
-    // The trap: Enter at a standing pointer-placed focus. The stamp must not move, because the
-    // focus did not.
+    // Enter at a pointer-placed focus does not move the stamp.
     press('keydown');
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
 
-    // A Tab moves the focus itself, so the next one is the keyboard's and wears its ring.
+    // A Tab moves the focus, so the new focus is the keyboard's.
     press('keydown');
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('keyboard');
 
-    // And back: a pointer press before the next focus hands it over again.
     press('pointerdown');
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('pointer');
   });
 
   it('a focus that no input put there is the page\'s own, and wears no ring', () => {
-    // The first-launch tour card (and every modal) takes focus on mount, before any pointer or key
-    // event exists to arm a source. That focus was moved by the page itself: 'program', which the
-    // stylesheet suppresses like a pointer's. A key pressed at that standing focus restamps
-    // nothing, exactly as at a pointer-placed one.
+    // The tour card and modals take focus on mount, before any input: 'program', suppressed like a
+    // pointer's, and a key pressed there restamps nothing.
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('program');
     press('keydown');
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('program');
-    // A Tab after it is still the keyboard's.
     focus();
     expect(root.getAttribute(FOCUS_SOURCE_ATTR)).toBe('keyboard');
   });
@@ -177,8 +155,7 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     stop();
     stop = () => {};
     expect(root.hasAttribute(FOCUS_SOURCE_ATTR)).toBe(false);
-    // The listeners are gone with it: a stamp after the stop would mean a second shell's tracking
-    // outliving the first.
+    // The listeners leave with it.
     press('keydown');
     focus();
     expect(root.hasAttribute(FOCUS_SOURCE_ATTR)).toBe(false);
@@ -267,8 +244,7 @@ describe('a ring is what the keyboard leaves behind, not what a key press summon
     for (const source of ['pointer', 'program']) {
       const rule = css.match(new RegExp(`\\[data-focus-source='${source}'\\][^{]*\\{([^}]*)\\}`));
       expect(rule, `animations.css must suppress the ring for a ${source}-placed focus`).not.toBeNull();
-      // Both halves of the ring: the outline, whose own declaration is `!important` against the
-      // controls' inline styles, and the halo outside it.
+      // The outline (`!important` against the controls' inline styles) and the halo.
       expect(rule![1]).toMatch(/outline:\s*none\s*!important;/);
       expect(rule![1]).toMatch(/box-shadow:\s*none;/);
     }

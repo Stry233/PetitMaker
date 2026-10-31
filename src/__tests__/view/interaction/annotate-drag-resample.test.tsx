@@ -2,8 +2,8 @@
 /**
  * A notes drag writes the store on every move (the draft, or the moved note), and those writes are
  * inputs the pointer machine's resampler watches. The resampler must not feed the tool again from
- * inside its own re-sample: that recursed until the stack overflowed, and the overflow cut the store's
- * listener list short, so the views' redraw never heard the move until the next press.
+ * inside its own re-sample: that would recurse until the stack overflows, cutting the store's
+ * listener list short so the views' redraw never hears the move until the next press.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -33,8 +33,9 @@ function makeView(): ActiveView {
   };
   return {
     projection: {
+      // A cell is 10 css px on screen, both ways.
       screenToPoint: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
-      cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
+      cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 10 }),
     },
     overlay,
     camera: { pan: vi.fn(), zoomStep: vi.fn(), zoomBy: vi.fn() },

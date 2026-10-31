@@ -3,11 +3,11 @@
  * the pulse that says "the pictured cursor pressed here". Both are built from the shared design
  * tokens rather than redrawn per figure, so every figure's plate and pulse are the same ink.
  */
+import { useReducedMotionConfig } from 'framer-motion';
 import type { CSSProperties } from 'react';
 import { FOCUS_RING, PLATE, PLATE_INK, rgbaOf } from '../../design/tokens';
 import { radii, shadows } from '../../design/styles';
 import { roleFont, type TextRole } from '../../design/text-weight';
-import { isMotionReduced } from '../../../platform/channels/motion-state';
 
 /** A figure's own plated label: the house plate, at whatever role and padding the figure needs.
  *  `alpha` under 1 lets a narration caption sit translucent over the picture it annotates;
@@ -60,8 +60,9 @@ export function firePressPulse(el: HTMLElement, opts?: { repeat?: boolean }): vo
  *  with `repeat`. Reduced motion drops the play but leaves the ring undrawn (opacity starts at 0
  *  and nothing ever raises it), which is a cut rather than a stray static ring. */
 export function PressPulse({ x, y, repeat }: { x: number; y: number; repeat?: boolean }) {
+  const reduced = useReducedMotionConfig() === true;
   const bloom = (el: HTMLSpanElement | null) => {
-    if (!el || isMotionReduced()) return;
+    if (!el || reduced) return;
     firePressPulse(el, { repeat });
   };
   return <span ref={bloom} style={{ position: 'absolute', left: x, top: y, ...pressPulseFace }} />;

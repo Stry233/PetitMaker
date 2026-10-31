@@ -10,6 +10,7 @@ import { ObjectShelf } from '../../../shell/bars/objects/ObjectShelf';
 import { ShelfBand } from '../../../shell/bars/ShelfBand';
 import { AutoTrim } from '../../../shell/bars/terrain/AutoTrim';
 import { TerrainRow } from '../../../shell/bars/terrain/TerrainBar';
+import { BrushSizeControl } from '../../../shell/bars/BrushSizeControl';
 import { TOOL_CELLS } from '../../../shell/bars/terrain-cells';
 import type { ContentType } from '../../../../state/editing/edit-mode';
 import { ItemCard, SmartCard } from '../../../shell/bars/objects/ItemCard';
@@ -49,8 +50,7 @@ export function TerrainToolsStrip({ active, surface = 'mountain', size }: { acti
         activeTool={posed.tool}
         activeShape={posed.shape ?? 'free'}
         eraserShape={eraserShape}
-        brushSize={size ?? 3}
-        onBrushSize={noop}
+        sizeControl={<BrushSizeControl value={size ?? 3} onChange={noop}/>}
         onSelect={noop}
       />
     </div>

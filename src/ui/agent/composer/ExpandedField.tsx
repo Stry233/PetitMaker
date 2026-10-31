@@ -12,6 +12,7 @@ import { visualRect } from '../../design/visual-rect';
 import { routeSurfaceKeyDown, useSurfaceScope } from '../../primitives/surface-scope';
 import { roleFont } from '../../design/text-weight';
 import { FIELD_LINE, PILL_RADIUS } from './metrics';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 
 /** The well's box as the card reads it, in screen px. */
 export interface SeatRect { left: number; top: number; width: number; height: number }
@@ -40,6 +41,7 @@ export function ExpandedField({
   onClose(): void;
 }) {
   const t = useT();
+  const collapseName = useNameReveal(t('agent.composer_collapse'));
   const [from, setFrom] = useState<SeatRect | null>(seat?.rect ?? null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -123,11 +125,12 @@ export function ExpandedField({
               <ActionButton
                 appearance="secondary"
                 data-testid="composer-expanded-done"
-                title={t('agent.composer_collapse')}
+                {...collapseName.bind}
                 aria-label={t('agent.composer_collapse')}
                 onClick={close}
               >
                 <Icon id="pw-compress" size={14} />
+                {collapseName.bubble}
               </ActionButton>
               <ActionButton appearance="primary" data-testid="composer-expanded-send" disabled={disabled} onClick={onSend}>
                 {t('agent.action_send')}

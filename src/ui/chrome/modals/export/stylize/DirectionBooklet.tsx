@@ -96,22 +96,27 @@ function useNeuralOffered(): boolean {
   return offered;
 }
 
-export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
+export function DirectionBooklet({ value, onPick, enterIndex = 0, scrolls = true }: {
   value: StylizeDirection;
   onPick: (id: StylizeDirection) => void;
   /** Where the booklet stands in its page's arrival order. */
   enterIndex?: number;
+  /** False where the page around it scrolls instead (one column): the list then stands at its full
+   *  height with no scroller, gutter or fade of its own. */
+  scrolls?: boolean;
 }) {
   const reduced = useReducedMotionConfig() === true;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fade = useScrollFade(scrollRef, 'y');
+  const fade = useScrollFade(scrollRef, 'y', { on: scrolls });
   const neuralOffered = useNeuralOffered();
   const rows = neuralOffered ? DIRECTIONS : DIRECTIONS.filter((d) => !d.proc?.neural);
   const local = rows.filter((d) => d.kind === 'proc');
   const online = rows.filter((d) => d.kind === 'model');
 
-  // Bring the persisted initial selection into view when the booklet opens.
+  // Bring the persisted initial selection into view when the booklet opens; a booklet without its
+  // own scroller leaves the page where it opened, picture first.
   const showSelection = useEffectEvent(() => {
+    if (!scrolls) return;
     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-direction="${value}"]`);
     if (typeof el?.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
@@ -125,7 +130,7 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0 }: {
       {...entering(enterIndex)}
       ref={scrollRef}
       data-testid="stylize-direction-scroll"
-      style={{ ...scrollStyle, ...fade }}
+      style={scrolls ? { ...scrollStyle, ...fade } : { ...scrollStyle, overflowY: 'visible', overflowX: 'visible', scrollbarGutter: 'auto' }}
    >
       <GroupLabel textKey="stylize.group_local" count={local.length} />
       {local.map((row) => (

@@ -210,8 +210,9 @@ export class SceneCamera {
         zoomStepAnimated: (dir) => this.animateDolly(ZOOM_STEP.button ** -dir), // toolkit button: glide
         orbit: (dx, dy) => this.dragCamera('orbit', dx, dy),
         // Twist arrives in radians, not screen px, so it is applied raw: feeding it to the inertia
-        // would mix units into one velocity.
-        orbitTwist: (dRad) => this.orbitBy(-dRad, 0),
+        // would mix units into one velocity. A positive yaw turns the ground counter-clockwise on
+        // screen, the way a positive twist turned the fingers.
+        orbitTwist: (dRad) => this.orbitBy(dRad, 0),
         tilt: (v) => this.animateTilt(v),      // toolkit tilt steppers: glide
         fitToMap: () => this.animateFit(),     // toolkit fit: glide
         endGesture: () => {

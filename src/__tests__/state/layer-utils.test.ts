@@ -6,7 +6,7 @@ import { makeState, setTerrain } from '../_support/map-state';
 describe('layerRows', () => {
   it('layer 1 count stays when fully covered by layer 2', () => {
     const state = makeState(10, 10);
-    // 3x3 at elevation 2 — each cell occupies layers 1 and 2
+    // 3x3 at elevation 2: each cell occupies layers 1 and 2
     for (let y = 4; y <= 6; y++)
       for (let x = 4; x <= 6; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
@@ -35,7 +35,7 @@ describe('layerRows', () => {
   });
 
   // Adding an empty layer (selecting a layer above any terrain) must not drop the
-  // empty intermediate layers — the list is contiguous Ground..top.
+  // empty intermediate layers: the list is contiguous Ground..top.
   it('keeps empty intermediate layers when a higher layer is active', () => {
     const state = makeState(10, 10); // no terrain at all
     const layers = layerRows(state, 3); // active layer 3 (e.g. after +,+,+)

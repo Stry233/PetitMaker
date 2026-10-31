@@ -10,17 +10,22 @@
  */
 import type { WarmTier } from '../../../platform/device/device-quality';
 import { SUPPORTS_VIDEO_IMPORT } from '../../../platform/build/edition';
+import { playsVideo } from '../../../platform/device/video-format';
 import { MAP_CHECK_DATA, mapCheckAssetBase, mapCheckRuntimeUrls } from '../../../pipelines/moderation/map-facts';
 import { PROC_PACK_META } from '../../../pipelines/stylize/facts';
 import { MODEL_URLS, ORT_FILES } from '../../../pipelines/stylize/file-facts';
 import { allStyleSampleUrls } from '../../chrome/modals/export/stylize/sample-assets';
 import { SCAN_EXAMPLE } from '../../chrome/modals/planet/scan-example';
 import { EDITION_WARM_FILES } from '../edition-surfaces';
+import { tourWarmFiles } from '../../chrome/tour/use-tour';
 
 interface WorkerFiles { chunks: string[]; assets: string[] }
 
 /** The on-device illustration worker: fetched on the full tier only, in the background. */
 const NEURAL_WORKER = 'pipelines/stylize/neural/neural.worker.ts';
+/** The content check's workers: with its runtime binaries and data they are fetched in the
+ *  background, since no surface of the editor's first screen runs a check. */
+const CONTENT_CHECK_WORKERS = ['pipelines/moderation/map/review.worker.ts', 'pipelines/moderation/text/review.worker.ts'];
 /** The planet video import's workers, fetched only where the edition can import a video. */
 const VIDEO_WORKERS = ['pipelines/planet-scan/scan.worker.ts', 'pipelines/planet-scan/media/decode.worker.ts'];
 
@@ -37,14 +42,13 @@ async function hasSimd(): Promise<boolean> {
   try { return await (await import('wasm-feature-detect')).simd(); } catch { return false; }
 }
 
-function playsWebm(): boolean {
-  try { return typeof document !== 'undefined' && document.createElement('video').canPlayType('video/webm') !== ''; } catch { return false; }
-}
+const playsWebm = (): boolean => playsVideo('video/webm');
 
 export interface WarmFiles {
   /** Fetched with the schedule's counted items (inside the cold splash). */
   counted: string[];
-  /** Fetched after them, never holding the splash: the illustration runtime and its default weights. */
+  /** Fetched after them, one at a time, never holding the splash: the content check's code, runtime
+   *  and data, then the illustration runtime and its default weights. */
   background: string[];
 }
 
@@ -55,15 +59,20 @@ export async function warmFiles(tier: WarmTier): Promise<WarmFiles> {
   const base = mapCheckAssetBase();
   const counted = [
     ...Object.entries(workers)
-      .filter(([entry]) => entry !== NEURAL_WORKER && (SUPPORTS_VIDEO_IMPORT || !VIDEO_WORKERS.includes(entry)))
+      .filter(([entry]) => entry !== NEURAL_WORKER && !CONTENT_CHECK_WORKERS.includes(entry)
+        && (SUPPORTS_VIDEO_IMPORT || !VIDEO_WORKERS.includes(entry)))
       .flatMap(([, files]) => files.chunks.map(siteUrl)),
-    ...mapCheckRuntimeUrls(simd),
-    ...MAP_CHECK_DATA.map((file) => new URL(file, base).href),
     ...allStyleSampleUrls(),
     ...EDITION_WARM_FILES,
+    // The tour opens as the loading screen lifts, so its opening card arrives whole with the editor.
+    ...tourWarmFiles(),
     ...(SUPPORTS_VIDEO_IMPORT ? [SCAN_EXAMPLE.poster, playsWebm() ? SCAN_EXAMPLE.webm : SCAN_EXAMPLE.mp4] : []),
   ];
-  const background: string[] = [];
+  const background = [
+    ...CONTENT_CHECK_WORKERS.flatMap((entry) => workers[entry]?.chunks.map(siteUrl) ?? []),
+    ...mapCheckRuntimeUrls(simd),
+    ...MAP_CHECK_DATA.map((file) => new URL(file, base).href),
+  ];
   if (tier === 'full' && simd) {
     const backend = typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm';
     const style = PROC_PACK_META.find((pack) => pack.neural)?.neural;
@@ -74,5 +83,7 @@ export async function warmFiles(tier: WarmTier): Promise<WarmFiles> {
     );
   }
   const unique = (urls: string[]) => [...new Set(urls)].filter((url) => !url.startsWith('data:'));
-  return { counted: unique(counted), background: unique(background) };
+  const countedUrls = unique(counted);
+  // A chunk the counted workers share is fetched once, with them.
+  return { counted: countedUrls, background: unique(background).filter((url) => !countedUrls.includes(url)) };
 }

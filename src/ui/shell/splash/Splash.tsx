@@ -5,14 +5,14 @@
  * `transform: none`. The brand is the deployment's readme masthead.
  */
 import { useEffect, useState } from 'react';
-import { motion, useReducedMotionConfig } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { font, z, radii } from '../../design/styles';
+import { z, radii } from '../../design/styles';
+import { DEVICE_FONT_FAMILY } from '../../../assets/fonts/family';
 import { FRAME_INK, HAIRLINE, MUTED, PLATE, SLIDER_YELLOW, inkTint } from '../../design/tokens';
 import { roleWeight, roleFont } from '../../design/text-weight';
-import { MOTIONS } from '../../design/motion/registry';
 import { useTransition, useMotionAllowed } from '../../design/motion/use-motion';
-import { cssMotion } from '../../design/motion';
+import { amplitude, cssMotion } from '../../design/motion';
 import { activeTarget } from '../../../platform/build/deploy-targets';
 import { preloadAssets } from './preload';
 import { markSplashDone } from '../../../io/storage/splash-facts';
@@ -58,7 +58,7 @@ const TILE_PX = 32;
 const TILE_GAP = 3;
 /** The floor on the splash's visible time: below it the build reads as a flicker, not a build. */
 const MIN_SHOW_MS = 1200;
-/** The pause between the map completing and the hand-off. */
+/** The pause between the map completing and the hand-off, long enough for the pill's fill to land. */
 const DONE_BEAT_MS = 550;
 /** The column's height with breathing room; shorter windows zoom the column down to fit. */
 const SPLASH_ROOM = 420;
@@ -83,7 +83,6 @@ interface SplashProps {
 
 export function Splash({ onHandoff, onDone }: SplashProps) {
   const t = useT();
-  const reduced = useReducedMotionConfig();
   const plopTransition = useTransition('splash.tile.plop');
   const handoffTransition = useTransition('splash.handoff');
   const [progress, setProgress] = useState(0); // 0..1, fetch-true
@@ -95,22 +94,16 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
   const travelTransition = useTransition('splash.logo.travel');
   const fit = splashFit(useViewportSize().h);
 
-  useEffect(() => {
-    if (!arriveAllowed) { setPhase('ready'); return; }
-    const id = setTimeout(() => setPhase('ready'), MOTIONS['splash.logo.travel'].duration! * 1000);
-    return () => clearTimeout(id);
-  }, [arriveAllowed]);
+  const landed = phase === 'ready' || !arriveAllowed;
 
   /** The fade the map, the pill and the banner share once the logo has landed. */
   const contentStyle = {
-    opacity: phase === 'ready' ? 1 : 0,
+    opacity: landed ? 1 : 0,
     transition: cssMotion('splash.content.fade', ['opacity']),
   } as const;
 
   // The preload runs once for the component's life; the handoff and the motion setting are read as it lands.
   const handOff = useEffectEvent(() => onHandoff());
-  const finish = useEffectEvent(() => onDone());
-  const handoffMs = useEffectEvent(() => (reduced ? 0 : MOTIONS['splash.handoff'].duration! * 1000));
   useEffect(() => {
     // No once-only ref: StrictMode's remount runs its own chain, and the preload itself is multiplexed.
     const begun = performance.now();
@@ -123,12 +116,14 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
       if (cancelled) return;
       const wait = (ms: number) => new Promise((r) => { setTimeout(r, ms); });
       await wait(Math.max(0, MIN_SHOW_MS - (performance.now() - begun)));
+      if (cancelled) return;
+      // A run the deadline released fills the bar and the map during the beat instead of leaving them
+      // where they stood; the fill and the tiles move on their declared motions.
+      setProgress(1);
       await wait(DONE_BEAT_MS);
       if (cancelled) return;
       setLeaving(true);
       handOff();
-      await wait(handoffMs());
-      if (!cancelled) finish();
     });
     return () => { cancelled = true; subscription.abort(); };
   }, []);
@@ -142,11 +137,15 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
       initial={false}
       animate={leaving ? { y: '-104%' } : { y: 0 }}
       transition={handoffTransition}
+      // The overlay unmounts once the slide has played; under reduced motion it completes at once.
+      onAnimationComplete={() => { if (leaving) onDone(); }}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: z.splash,
-        fontFamily: font.family,
+        // A cold visit registers the shipped faces while the splash stands, so its words keep the
+        // device's face throughout rather than swapping mid-screen.
+        fontFamily: DEVICE_FONT_FAMILY,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -166,6 +165,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
         initial={arriveAllowed ? { y: bannerTravel(fit) } : false}
         animate={{ y: 0 }}
         transition={travelTransition}
+        onAnimationComplete={() => setPhase('ready')}
         // The box is reserved before the file arrives (the masthead is 796x228): without it the
         // img starts 0-high and the whole centred column jumps down when the art loads.
         style={{ width: 300, maxWidth: '70vw', aspectRatio: '796 / 228', display: 'block' }}
@@ -186,7 +186,7 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
             initial={false}
             animate={tile.order < shown
               ? { opacity: 1, scale: 1, y: 0 }
-              : { opacity: 0, scale: 0.2, y: -MOTIONS['splash.tile.plop'].amplitude! }}
+              : { opacity: 0, scale: 0.2, y: -amplitude('splash.tile.plop') }}
             transition={plopTransition}
             style={{
               gridColumn: tile.x + 1,
@@ -206,7 +206,10 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
       <div
         style={{
           position: 'relative',
-          width: 236,
+          // The pill fits its words: the longest locale's wording stands whole, never clipped.
+          width: 'max-content',
+          minWidth: 236,
+          maxWidth: 'calc(100vw - 32px)',
           height: 42,
           borderRadius: radii.pill,
           background: PLATE,
@@ -228,17 +231,20 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
         />
         <div
           style={{
-            position: 'absolute',
-            inset: 0,
+            position: 'relative',
+            height: '100%',
+            boxSizing: 'border-box',
+            padding: '0 18px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
+            whiteSpace: 'nowrap',
             color: FRAME_INK,
             ...roleFont('head'),
           }}
         >
-          <span>{t('splash.preparing')}</span>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('splash.preparing')}</span>
           {/* A fixed slot sized for 100% with centred digits, so the count never moves the pill's ink. */}
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: roleWeight('small'), color: MUTED, minWidth: '2.9em', textAlign: 'center' }}>
             {pct}%

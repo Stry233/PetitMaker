@@ -27,7 +27,7 @@ describe('cornerWrappedAt — Γ notch of the layer-e silhouette', () => {
   it('a LOWER same-type diagonal does NOT enclose — a base under a diagonal pinch leaves it open', () => {
     // Edges of (6,5).BL are W(5,5) + S(6,6); the diagonal is SW(5,6). This is the diagonal-pinch-on-a-base
     // case: two tier-2 blocks meet at the point, the cell between them is a tier-1 base. The base does not
-    // reach the wrapping tier, so the corner is still open (filling it would bridge the pinch) — exactly as
+    // reach the wrapping tier, so the corner is still open (filling it would bridge the pinch), exactly as
     // when the cell between is empty ground. This is what makes edge-cutting elevation-independent.
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, M, 2);

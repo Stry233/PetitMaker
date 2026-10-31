@@ -101,7 +101,7 @@ export const undoTool = defineTool({
     // Undo reaches only the entries this job pushed; everything below the floor is the user's own.
     const room = Math.max(0, exec.historyDepth() - (deps.undoFloor?.() ?? 0));
     let n = 0;
-    for (let i = 0; i < Math.min(steps, room); i++) if (exec.undo()) n++;
+    for (let i = 0; i < Math.min(steps, room); i++) if (exec.undoEdit()) n++;
     return { isError: false, content: `Undid ${n} step(s).` };
   },
 });
@@ -114,7 +114,7 @@ export const redoTool = defineTool({
     const steps = input.steps ?? TOOL_DEFAULTS.historySteps;
     const exec = deps.getExecutor();
     let n = 0;
-    for (let i = 0; i < steps; i++) { if (!exec.canRedo()) break; exec.redo(); n++; }
+    for (let i = 0; i < steps; i++) { if (!exec.redoEdit()) break; n++; }
     return { isError: false, content: `Redid ${n} step(s).` };
   },
 });

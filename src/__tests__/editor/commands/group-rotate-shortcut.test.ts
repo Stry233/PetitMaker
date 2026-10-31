@@ -1,8 +1,8 @@
 /**
  * The rotate shortcut on a plural selection: routing it through `singleSelection`, which returns null
  * for a group, makes the shortcut silently do nothing. It must instead run the exact call path the
- * SelectionCard rotate button uses (`editor/editing/group-edit.ts:rotateGroupAction`)
- * — same rigid-body turn, same refusal register — so the keyboard and the button can never diverge.
+ * SelectionCard rotate button uses (`editor/editing/group-edit.ts:rotateGroupAction`), with the
+ * same rigid-body turn and the same refusal register, so the keyboard and the button can never diverge.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { COMMAND_BY_ID } from '../../../editor/commands/commands';
@@ -69,7 +69,7 @@ describe('selection.rotate_cw / selection.rotate_ccw on a plural selection', () 
       selection: ['a', 'b', 'c'].map((id) => ({ kind: 'object', id }) as const),
     });
     COMMAND_BY_ID.get('selection.rotate_cw')!.run(noopCtx);
-    // The row (constant y) became a column (constant x) — the same rigid-body turn `rotateGroup`
+    // The row (constant y) became a column (constant x): the same rigid-body turn `rotateGroup`
     // produces directly (see tools/objects/group-rotate.test.ts).
     const xs = ['a', 'b', 'c'].map((id) => gs.objects.get(id)!.position.x);
     const ys = ['a', 'b', 'c'].map((id) => gs.objects.get(id)!.position.y);
@@ -111,7 +111,7 @@ describe('selection.rotate_cw / selection.rotate_ccw on a plural selection', () 
     const before = snap(gs, ['a', 'b']);
     COMMAND_BY_ID.get('selection.rotate_ccw')!.run(noopCtx);
     COMMAND_BY_ID.get('selection.rotate_cw')!.run(noopCtx);
-    // A ccw turn undone by a cw turn is the identity — proves ccw actually ran the opposite way,
+    // A ccw turn undone by a cw turn is the identity, which proves ccw actually ran the opposite way,
     // not just "did nothing".
     expect(snap(gs, ['a', 'b'])).toEqual(before);
   });

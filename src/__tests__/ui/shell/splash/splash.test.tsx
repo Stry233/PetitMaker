@@ -4,19 +4,17 @@
  * tolerates failures, and hands off cleanly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { cleanup, render, screen, act } from '@testing-library/react';
 import { useState } from 'react';
 import { writePref } from '../../../../platform/storage/prefs';
 import { preloadAssets, probeWarmCache, __resetPreload } from '../../../../ui/shell/splash/preload';
 import { markSplashDone, shouldShowSplash } from '../../../../io/storage/splash-facts';
 import { splashAssetUrls } from '../../../../ui/shell/splash/asset-list';
-import { MOTIONS } from '../../../../ui/design/motion/registry';
+import { seconds } from '../../../../ui/design/motion';
 import { I18nProvider, translate } from '../../../../i18n/context';
 import { decodeImage } from '../../../../platform/async/http-cache';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
-const fontCss = readFileSync(resolve(__dirname, '../../../../assets/fonts/fonts.css'), 'utf8') as string;
+import { FONT_FILES, __resetFontFaces } from '../../../../assets/fonts/faces';
+import { INTERFACE_FACE } from '../../../../assets/fonts/family';
 
 vi.mock('../../../../platform/async/http-cache', async (actual) => ({ ...await actual<object>(), decodeImage: vi.fn(async () => true) }));
 const imageFormat = vi.hoisted(() => ({ supportsLosslessWebp: false }));
@@ -24,17 +22,18 @@ vi.mock('../../../../assets/image-format', () => imageFormat);
 
 /** A warm schedule run the test drives: `items` counted items, each settled by `settleOne`. */
 const warm = vi.hoisted(() => {
-  const state = { items: 0, done: 0, listeners: new Set<() => void>(), finish: () => {} };
+  const state = { items: 0, done: 0, listeners: new Set<(item: object) => void>(), finish: () => {} };
   const run = () => ({
-    total: () => state.items,
-    done: () => state.done,
+    items: () => Array.from({ length: state.items }, () => ({})),
+    settledItems: () => Array.from({ length: state.done }, () => ({})),
     planned: Promise.resolve(),
     settled: state.items === 0 ? Promise.resolve() : new Promise<void>((resolve) => { state.finish = resolve; }),
-    subscribe: (listener: () => void) => { state.listeners.add(listener); return () => state.listeners.delete(listener); },
+    subscribe: (listener: (item: object) => void) => { state.listeners.add(listener); return () => state.listeners.delete(listener); },
+    rush: () => () => {},
   });
   const settleOne = () => {
     state.done++;
-    for (const listener of state.listeners) listener();
+    for (const listener of state.listeners) listener({});
     if (state.done === state.items) state.finish();
   };
   return { state, run, settleOne };
@@ -79,35 +78,10 @@ describe('the preload', () => {
     expect(shouldShowSplash()).toBe(true);
   });
 
-  it('starts all declared font weights while image bodies are still loading', async () => {
-    const original = Object.getOwnPropertyDescriptor(document, 'fonts');
-    const load = vi.fn(async (_face: string) => []);
-    Object.defineProperty(document, 'fonts', { configurable: true, value: { load } });
-    let release!: () => void;
-    const body = new Promise<void>(resolve => { release = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: () => body })));
-    try {
-      const work = preloadAssets(vi.fn());
-      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(6));
-      const declared = [...fontCss.matchAll(/@font-face\s*\{([^}]+)\}/g)].map(([, block]) => {
-        const family = /font-family:\s*'([^']+)'/.exec(block!)![1];
-        const weight = /font-weight:\s*(\d+)/.exec(block!)![1];
-        return `${weight} 16px "${family}"`;
-      });
-      expect(load.mock.calls.map(call => call[0]).sort()).toEqual(declared.sort());
-      release();
-      expect(await work).toBe(true);
-    } finally {
-      release();
-      if (original) Object.defineProperty(document, 'fonts', original);
-      else delete (document as unknown as { fonts?: unknown }).fonts;
-    }
-  });
-
   it('waits for response bodies and releases an unmounted subscriber', async () => {
     let release!: () => void;
     const body = new Promise<void>(resolve => { release = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: () => body })));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: () => body.then(() => new Blob()) })));
     const progress = vi.fn();
     const subscription = new AbortController();
     const run = preloadAssets(progress, subscription.signal);
@@ -162,6 +136,40 @@ describe('the preload', () => {
     const work = preloadAssets(vi.fn());
     await vi.advanceTimersByTimeAsync(30_000);
     expect(await work).toBe(true);
+  });
+
+  it('keeps a font download running past the deadline and registers its face once the file is whole', async () => {
+    const [face] = FONT_FILES.filter(({ family }) => family === INTERFACE_FACE);
+    const registered: string[] = [];
+    vi.stubGlobal('FontFace', class {
+      constructor(_family: string, source: string) { registered.push(source); }
+      load(): Promise<this> { return Promise.resolve(this); }
+    });
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { add: () => {} } });
+    try {
+      vi.useFakeTimers();
+      let release!: () => void;
+      const signals: (AbortSignal | undefined)[] = [];
+      vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+        if (url !== face!.url) return Promise.resolve(new Response());
+        signals.push(init?.signal ?? undefined);
+        return new Promise((resolve) => { release = () => resolve(new Response('font')); });
+      }));
+      const work = preloadAssets(vi.fn());
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await work).toBe(false);
+      expect(signals).toHaveLength(1);
+      expect(signals[0]?.aborted ?? false, 'the download is not cancelled').toBe(false);
+      const isFace = (source: string): boolean => source.includes(face!.url);
+      expect(registered.some(isFace), 'not registered over a partial file').toBe(false);
+      expect(registered.length).toBe(FONT_FILES.length - 1);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(registered.filter(isFace)).toHaveLength(1);
+    } finally {
+      __resetFontFaces();
+      delete (document as unknown as { fonts?: unknown }).fonts;
+    }
   });
 
   it('reports monotone progress and never rejects, failures included', async () => {
@@ -223,6 +231,13 @@ describe('the skip', () => {
 });
 
 describe('the component', () => {
+  // Framer's frame loop waits on the animation frame it last asked for; letting the fake clock run
+  // past it after unmounting keeps that request from being lost when the real timers return.
+  afterEach(async () => {
+    cleanup();
+    if (vi.isFakeTimers()) await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+  });
+
   it('shows the pill, finishes on real completion, and fires the two hand-off callbacks in order', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response())));
     const { Splash } = await import('../../../../ui/shell/splash/Splash');
@@ -234,8 +249,8 @@ describe('the component', () => {
       </I18nProvider>,
     );
     expect(screen.getByTestId('boot-splash')).toBeTruthy();
-    // The floor + beat + hand-off all run on timers once the (instant, mocked) fetches settle.
-    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    // The floor and the beat run on timers once the (instant, mocked) fetches settle; the slide on frames.
+    for (let i = 0; i < 500 && events.length < 2; i++) await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(events).toEqual(['handoff', 'done']);
     expect(shouldShowSplash(), 'a completed pass records the build').toBe(false);
   });
@@ -243,7 +258,7 @@ describe('the component', () => {
   it('the hand-off waits out the declared motion, so the overlay cannot vanish mid-slide', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response())));
     const { Splash } = await import('../../../../ui/shell/splash/Splash');
-    const slideMs = MOTIONS['splash.handoff'].duration! * 1000;
+    const slideMs = seconds('splash.handoff') * 1000;
     let handedOff = false;
     /** The editor's own use: the splash stands until it reports done. */
     function Host() {
@@ -257,7 +272,8 @@ describe('the component', () => {
     // The hand-off landed within the last 10 ms step, so this stops short of the slide's end.
     await act(async () => { await vi.advanceTimersByTimeAsync(slideMs - 20); });
     expect(screen.queryByTestId('boot-splash'), 'still sliding away').not.toBeNull();
-    await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+    // The slide ends on an animation frame, so the overlay goes within a few frames of its duration.
+    for (let i = 0; i < 10 && screen.queryByTestId('boot-splash'); i++) await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(screen.queryByTestId('boot-splash'), 'gone once the slide has played').toBeNull();
   });
 });

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createCameraGestures, pinchZoom, type GestureCamera } from '../../../view/interaction/camera-gestures';
-import { DRAG_THRESHOLD } from '../../../view/interaction/press/travel';
+import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 import type { DragKind } from '../../../view/interaction/cursor-controller';
 
 interface Call { verb: string; args: number[] }
@@ -101,7 +101,7 @@ describe('tap versus drag', () => {
     const { cam } = fakeCamera();
     const g = make(cam);
     g.navDown(ptr({ button: 2, clientX: 100, clientY: 100 }));
-    g.navMove(ptr({ clientX: 100 + DRAG_THRESHOLD, clientY: 100 }));
+    g.navMove(ptr({ clientX: 100 + GESTURE_TIMING.pc.dragThreshold, clientY: 100 }));
     expect(g.navUp().moved).toBe(false);
   });
 
@@ -109,7 +109,7 @@ describe('tap versus drag', () => {
     const { cam } = fakeCamera();
     const g = make(cam);
     g.navDown(ptr({ button: 2, clientX: 100, clientY: 100 }));
-    g.navMove(ptr({ clientX: 100 + DRAG_THRESHOLD + 1, clientY: 100 }));
+    g.navMove(ptr({ clientX: 100 + GESTURE_TIMING.pc.dragThreshold + 1, clientY: 100 }));
     expect(g.navUp().moved).toBe(true);
   });
 });

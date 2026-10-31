@@ -21,6 +21,7 @@ import type { GroupRotation } from './group-rotation';
 import { removeObject } from './actions';
 import { PLACEMENT_GRID } from '../../core/game/profile';
 import { evidenceOn } from '../../core/grid/grids';
+import { turnCorners } from '../../core/model/corners';
 
 interface GroupOpResult {
   /** Members re-placed. Zero on a refusal: a geometric group operation is all-or-nothing. */
@@ -153,6 +154,13 @@ function spanRefusal(obj: PlacedObject): ValidationError {
   };
 }
 
+/** Whether `obj` refuses to turn with a group: it cannot turn on its own and its footprint is not
+ *  square, so carrying it round would change the group's shape (a bridge, a ramp). */
+function cannotTurnWithGroup(obj: PlacedObject): boolean {
+  const rect = objectRect(obj);
+  return !getCatalogItem(obj.catalogId)?.rotatable && rect.w !== rect.h;
+}
+
 /**
  * Visual hook for a group rotation, invoked once with the whole turn after every member has landed
  * — not per member like `GroupPlaceHook`. A rigid rotation is one body turning about one point, so
@@ -182,10 +190,7 @@ export function rotateGroup(
 ): GroupOpResult {
   const members = groupMembers(state, ids);
   if (members.length === 0) return NOTHING;
-  const span = members.find((obj) => {
-    const rect = objectRect(obj);
-    return !getCatalogItem(obj.catalogId)?.rotatable && rect.w !== rect.h;
-  });
+  const span = members.find(cannotTurnWithGroup);
   if (span) {
     return { moved: 0, blockedBy: span.id, refusal: { cmd: removeObjectCommand(span), errors: [spanRefusal(span)] } };
   }
@@ -196,6 +201,8 @@ export function rotateGroup(
     return {
       ...movedObject(state, obj, x, y),
       rotation: turns ? turnRotation(obj.rotation, quarterTurns) : obj.rotation,
+      // A tile's corner cuts turn with its cell, as the map under it would.
+      ...(obj.corners ? { corners: turnCorners(obj.corners, quarterTurns) } : null),
     };
   });
   // The turn as one animation spec, handed over once the whole body has landed. `members` still

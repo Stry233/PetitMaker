@@ -1,16 +1,7 @@
 // @vitest-environment jsdom
-// ModalShell — the shared cozy-modal boilerplate used by all 7 modals
-// (About/Settings/Help/NewProject/Export/ExportJson/Import). It carries the
-// accessibility floor every consumer inherits for free: Escape-to-close, a
-// minimal sentinel-div focus trap, and focus restoration to the "opener" (the
-// element that had focus at the moment the modal mounted/opened) on close.
-//
-// "Opener" in this file's harness = the real DOM button the test focuses
-// before opening the modal, mirroring how App.tsx mounts a modal
-// (`{showX && <XModal onClose={...} />}`) right after a menu button's
-// onClick — the button is still focused (native post-click behavior) when
-// the modal mounts, so ModalShell's own effect is the only thing that can
-// send focus back to it later.
+// ModalShell's accessibility floor, inherited by every modal: Escape closes the topmost shell, a
+// sentinel focus trap wraps Tab, and focus returns on close to the element focused at mount. The
+// harness opener is a real button focused before the modal opens, so only ModalShell can refocus it.
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { useState } from 'react';
@@ -81,7 +72,7 @@ describe('ModalShell — stacked Escape', () => {
       </div>,
     );
 
-    // First Escape: only the topmost (last-mounted) shell closes.
+    // Only the topmost (last-mounted) shell closes.
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCloseUpper).toHaveBeenCalledTimes(1);
     expect(onCloseLower).not.toHaveBeenCalled();
@@ -106,10 +97,8 @@ describe('ModalShell — stacked Escape', () => {
     }
     render(<Stacked />);
 
-    // Close the top layer first.
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCloseLower).not.toHaveBeenCalled();
-    // Now the lower shell is top; the next Escape reaches it.
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCloseLower).toHaveBeenCalledTimes(1);
   });
@@ -148,10 +137,7 @@ describe('ModalShell — focus trap', () => {
     const second = screen.getByRole('button', { name: 'Second' });
     second.focus();
     expect(document.activeElement).toBe(second);
-    // Simulate the browser's own Tab-forward wrap: after the last real
-    // element, a native Tab press would land on the sentinel that follows the
-    // content (jsdom does not run native Tab traversal, so the trap is driven
-    // directly off the `focus` event a real Tab press would produce).
+    // jsdom has no native Tab traversal, so focus the end sentinel a Tab past the last element would.
     const endSentinel = screen.getByTestId('modal-trap-end');
     endSentinel.focus();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'First' }));
@@ -181,12 +167,9 @@ describe('ModalShell — focus trap', () => {
   });
 });
 
-// A `motionSize` morph (ShareWindow's mode switch, among others) travels up to +420px of card
-// width/height. A fixed-damping spring's overshoot scales with travel, so a spring imperceptible on a
-// small control visibly pumps over that distance; the default morph transition is a tween, which has
-// no overshoot term to scale.
+// A `motionSize` morph travels up to 420px of card width or height, and a spring's overshoot scales
+// with travel, so the morph's registry motion is a tween.
 describe('ModalShell — the default size-morph transition does not spring', () => {
-  /** The motion the shell morphs its card on, as the registry declares it. */
   const resize = framerMotion('modal.resize') as Record<string, unknown>;
 
   it('is a tween, not a spring', () => {
@@ -208,7 +191,6 @@ describe('ModalShell — focus restoration to the opener', () => {
     expect(document.activeElement).toBe(opener);
 
     fireEvent.click(opener);
-    // The modal is open; move focus somewhere inside it, then close via Escape.
     const first = screen.getByRole('button', { name: 'First' });
     first.focus();
     expect(document.activeElement).toBe(first);

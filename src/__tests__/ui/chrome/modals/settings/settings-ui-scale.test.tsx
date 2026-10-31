@@ -1,10 +1,5 @@
 // @vitest-environment jsdom
-// SettingsModal — UI-scale slider (mirrors the Ctrl+(+/−) uiZoom shortcut).
-//
-// The slider is bound directly to the store's uiZoom / setUiZoom (the same
-// single persistence path the keyboard shortcut uses), so these tests drive the
-// real store and assert both the store field and the slider's aria state. Plain
-// DOM checks (getAttribute / toBe) match sibling UI tests — no jest-dom.
+// The Settings UI-scale slider, bound to the store's uiZoom like the Ctrl+/- shortcut.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SettingsModal } from '../../../../../ui/chrome/modals/settings/SettingsModal';
@@ -12,7 +7,8 @@ import { I18nProvider } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { setStoreState } from '../../../../_support/store';
 import { poseLegacyZoom } from '../../../../_support/legacy-zoom';
-import { reachableUiZoom } from '../../../../../ui/design/scale';
+import { NO_DOCK, reachOf } from '../../../../../ui/design/scale';
+import { spec } from '../../../../_support/spec';
 
 function renderModal() {
   return render(
@@ -28,6 +24,21 @@ beforeEach(() => {
 });
 
 describe('SettingsModal — UI-scale slider', () => {
+  spec('UI-34', 'the reset button stands at the default, unavailable, and restores the default after a change', () => {
+    renderModal();
+    const reset = () => screen.getByRole('button', { name: 'UI scale 100%' });
+    expect(reset().getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(reset());
+    expect(useEditorStore.getState().uiZoom).toBe(1);
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'UI scale' }), { key: 'ArrowRight' });
+    expect(useEditorStore.getState().uiZoom).toBe(1.05);
+    expect(reset().getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(reset());
+    expect(useEditorStore.getState().uiZoom).toBe(1);
+    expect(reset().getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('renders a labelled role=slider with the i18n label and 60/180 aria bounds', () => {
     renderModal();
     const slider = screen.getByRole('slider', { name: 'UI scale' });
@@ -55,24 +66,22 @@ describe('SettingsModal — UI-scale slider', () => {
     expect(screen.getByText('115%')).toBeTruthy();
   });
 
-  it('arrow keys step uiZoom by 0.1 within the store clamps', () => {
+  it('arrow keys step uiZoom by 0.05 within the store clamps', () => {
     renderModal();
     const slider = screen.getByRole('slider', { name: 'UI scale' });
 
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
-    expect(useEditorStore.getState().uiZoom).toBe(1.1);
+    expect(useEditorStore.getState().uiZoom).toBe(1.05);
 
     fireEvent.keyDown(slider, { key: 'ArrowLeft' });
     fireEvent.keyDown(slider, { key: 'ArrowLeft' });
-    expect(useEditorStore.getState().uiZoom).toBe(0.9);
+    expect(useEditorStore.getState().uiZoom).toBe(0.95);
 
-    // Clamp floor at 0.6 — Home jumps to the minimum, further Left is a no-op.
     fireEvent.keyDown(slider, { key: 'Home' });
     expect(useEditorStore.getState().uiZoom).toBe(0.6);
     fireEvent.keyDown(slider, { key: 'ArrowLeft' });
     expect(useEditorStore.getState().uiZoom).toBe(0.6);
 
-    // Clamp ceiling at 1.8 — End jumps to the maximum, further Right is a no-op.
     fireEvent.keyDown(slider, { key: 'End' });
     expect(useEditorStore.getState().uiZoom).toBe(1.8);
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
@@ -83,13 +92,12 @@ describe('SettingsModal — UI-scale slider', () => {
     renderModal();
     const slider = screen.getByRole('slider', { name: 'UI scale' });
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
-    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuenow')).toBe('110');
-    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuetext')).toBe('110%');
+    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuenow')).toBe('105');
+    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuetext')).toBe('105%');
   });
 
-  // jsdom has no real PointerEvent, so fireEvent.pointer* drops clientX; dispatch a
-  // MouseEvent of the pointer type instead — React's pointer handlers catch it and it
-  // carries clientX. Track a 200px-wide slider at a fixed origin.
+  // jsdom has no PointerEvent, so fireEvent.pointer* drops clientX; a MouseEvent of the pointer type
+  // carries it and React's pointer handlers still catch it.
   const mockRect = (el: Element) => {
     el.getBoundingClientRect = () =>
       ({ left: 0, top: 0, right: 200, bottom: 24, width: 200, height: 24, x: 0, y: 0, toJSON() {} }) as DOMRect;
@@ -97,24 +105,23 @@ describe('SettingsModal — UI-scale slider', () => {
   const ptr = (el: Element, type: string, init: MouseEventInit) =>
     fireEvent(el, new MouseEvent(type, { bubbles: true, ...init }));
 
-  // Apply-on-release: a pointer drag must not write the store until release, so the
-  // chrome CSS-zoom feedback loop can't rescale the slider mid-drag. The knob still
-  // tracks the pointer live via aria-valuenow (local drag state).
+  // A drag writes the store only on release, so the chrome's CSS zoom cannot rescale the slider
+  // mid-drag.
   it('pointer drag updates only local visuals; the store commits on pointer release', () => {
     renderModal();
     const slider = screen.getByRole('slider', { name: 'UI scale' });
     mockRect(slider);
 
     ptr(slider, 'pointerdown', { clientX: 100 });
-    expect(useEditorStore.getState().uiZoom).toBe(1); // no commit on press
+    expect(useEditorStore.getState().uiZoom).toBe(1);
 
-    // clientX 150 of width 200 → frac 0.75 → 0.6 + 0.75*1.2 = 1.5.
+    // 150 of 200 is 0.75 of the track: 0.6 + 0.75 * 1.2 = 1.5.
     ptr(slider, 'pointermove', { clientX: 150, buttons: 1 });
-    expect(useEditorStore.getState().uiZoom).toBe(1); // still no commit while dragging
-    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuenow')).toBe('150'); // knob tracks live
+    expect(useEditorStore.getState().uiZoom).toBe(1);
+    expect(screen.getByRole('slider', { name: 'UI scale' }).getAttribute('aria-valuenow')).toBe('150');
 
     ptr(slider, 'pointerup', { clientX: 150 });
-    expect(useEditorStore.getState().uiZoom).toBe(1.5); // commit on release
+    expect(useEditorStore.getState().uiZoom).toBe(1.5);
   });
 
   it('a cancelled pointer drag still commits the pending value', () => {
@@ -123,7 +130,7 @@ describe('SettingsModal — UI-scale slider', () => {
     mockRect(slider);
 
     ptr(slider, 'pointerdown', { clientX: 50 });
-    ptr(slider, 'pointermove', { clientX: 50, buttons: 1 }); // frac 0.25 → 0.6+0.3 = 0.9
+    ptr(slider, 'pointermove', { clientX: 50, buttons: 1 }); // 0.6 + 0.25 * 1.2 = 0.9
     expect(useEditorStore.getState().uiZoom).toBe(1);
     ptr(slider, 'pointercancel', {});
     expect(useEditorStore.getState().uiZoom).toBe(0.9);
@@ -152,7 +159,7 @@ describe('SettingsModal — UI-scale slider', () => {
     try {
       renderModal();
       const slider = screen.getByRole('slider', { name: 'UI scale' });
-      const reach = reachableUiZoom(window.innerWidth, 500);
+      const reach = reachOf({ vw: window.innerWidth, vh: 500, dock: NO_DOCK, touch: false, upright: false, uiZoom: 1, room: null });
       const max = Math.floor(reach * 10 + 1e-6) / 10;
       expect(max).toBeLessThan(1.8);
       expect(slider.getAttribute('aria-valuemax')).toBe(String(Math.round(max * 100)));
@@ -182,24 +189,10 @@ describe('SettingsModal — UI-scale slider', () => {
     expect(useEditorStore.getState().uiZoom).toBe(1);
   });
 
-  it('shows a reset pill only when off-default; clicking it returns to 100%', () => {
-    // Default (100%) — no reset affordance.
-    const { unmount } = renderModal();
-    expect(screen.queryByRole('button', { name: /UI scale 100%/ })).toBeNull();
-    unmount();
-
-    // Off-default — the reset pill appears and resets on click.
-    setStoreState({ uiZoom: 1.3 });
-    renderModal();
-    const reset = screen.getByRole('button', { name: /UI scale 100%/ });
-    fireEvent.click(reset);
-    expect(useEditorStore.getState().uiZoom).toBe(1);
-  });
-
   it('persists via the same key as the Ctrl± shortcut (petit-planet-ui-zoom)', () => {
     renderModal();
     const slider = screen.getByRole('slider', { name: 'UI scale' });
     fireEvent.keyDown(slider, { key: 'ArrowRight' });
-    expect(localStorage.getItem('petit-planet-ui-zoom')).toBe('1.1');
+    expect(localStorage.getItem('petit-planet-ui-zoom')).toBe('1.05');
   });
 });

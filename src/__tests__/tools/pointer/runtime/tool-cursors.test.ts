@@ -20,10 +20,7 @@ import { editorToolWiring } from '../../../../editor/session/tool-wiring';
 
 beforeEach(resetStore);
 
-// registerDefaultTools() (tool-manager.ts) wires up exactly these 6; Scatter/RoadBrush are
-// ToolType members with no tool class anywhere in src/ — setActiveTool no-ops for them, so
-// looping Object.values(ToolType) through the manager would silently re-assert whatever tool
-// was already active for those two, which is not "covering" them.
+// The tool types `tool-set.ts:createTools` registers; a test below holds this list to the whole enum.
 const REGISTERED_TOOL_TYPES: ToolType[] = [
   ToolType.Hand, ToolType.TerrainBrush, ToolType.Eraser, ToolType.ObjectPlacer, ToolType.EdgeCut,
   ToolType.Macro, ToolType.Annotate,
@@ -42,8 +39,7 @@ describe('every registered tool names a cursor from the catalogue', () => {
   });
 
   it('accounts for every ToolType member: registered above, or asserted unregistered here', () => {
-    // Every ToolType names a tool the manager registers, so the cursor check above covers the
-    // whole vocabulary. Adding a ToolType means adding it to REGISTERED_TOOL_TYPES too.
+    // A new ToolType goes into REGISTERED_TOOL_TYPES, so the cursor check above covers it.
     const accounted = new Set<ToolType>(REGISTERED_TOOL_TYPES);
     for (const type of Object.values(ToolType)) {
       expect(accounted.has(type), `${type} is not registered — add its tool, or drop the ToolType`).toBe(true);
@@ -76,8 +72,7 @@ describe('the build brush names its material', () => {
   });
 
   it('asks about WATER, not mountain, for the water brush (a rule that genuinely tells them apart)', () => {
-    // V-PLACE-BLOCK exempts a road tile only for a mountain paint (mountain may rise over a
-    // road); water painted on the same cell is not exempted, so it stays blocked by the object.
+    // V-PLACE-BLOCK lets a mountain paint rise over a road tile but not a water paint.
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     const roadItem = getCatalogItem('path-overgrown-dirt')!;
@@ -109,19 +104,16 @@ describe('the build brush names its material', () => {
   });
 
   it('reports FRESH GROUND as actionable under a build floor of 2 or 3, because the click WALKS up', () => {
-    // paintCells raises a cell one level at a time (one PaintTerrain per level, 1..target) so
-    // every step satisfies V-MTN-02. The probe must therefore ask about the first command the
-    // click issues (from + 1), not the final target: the floating-block rule rejects "set elevation 2
-    // on a surface of 0", which puts the refusal badge over every fresh cell the click would succeed
-    // on. Floor 1 hides that (there from+1 == target), which is why these floors are 2 and 3.
+    // paintCells raises a cell one level per PaintTerrain so each step satisfies V-MTN-02, so the probe
+    // asks about the first command (from + 1), not the final target, which V-MTN-02 refuses on bare
+    // ground. At floor 1 the two coincide, hence floors 2 and 3.
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     const tool = new DrawingTool();
     for (const floor of [2, 3]) {
       const ctx = makeToolCtx(state, exec, 1, floor, { contentType: 'mountain' });
       expect(tool.canActAt!({ x: 3, y: 3 }, ctx), `build floor ${floor}`).toBe(true);
-      // …and the final target really is rejected on its own, which is the question a probe must not ask:
-      // proof that the two differ, not that the rule stopped firing.
+      // The final target alone is refused, so the two questions really differ.
       expect(exec.getRegistry().validatePreCommand({
         type: CommandType.PaintTerrain,         cells: [{ x: 3, y: 3 }], terrainType: TerrainType.Mountain, elevation: floor,
       }, state).length, `final target ${floor}`).toBeGreaterThan(0);
@@ -129,7 +121,7 @@ describe('the build brush names its material', () => {
   });
 
   it('reports a capped cell as actionable, since the click issues no command there at all', () => {
-    // from >= target: a no-op is not a refusal (the same reading that keeps `select` unbadged).
+    // from >= target: a no-op is not a refusal.
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, ELEVATION_MAX);
     const exec = makeExecutor(state);
@@ -150,12 +142,8 @@ describe('the build brush names its material', () => {
   });
 
   it('says re-coating an already-tiled cell is legal, matching the click (which strips the old coating first)', () => {
-    // Empirical check: the real click (placeTileCell) calls removeOverlappingCoatings before
-    // validating, so re-painting a cell that already carries a road tile is legal. This probe
-    // does not strip anything first — it just validates a fresh PlaceObject at that cell. If
-    // V-PLACE-OVERLAP did not exempt overlapping an existing coating, this would wrongly read
-    // false (stricter than the click). It does exempt it (see placement-overlap.ts: `if
-    // (e.coating) continue;`), so the two agree without any extra tile-branch code.
+    // The click (placeTileCell) strips overlapping coatings before it places, so the probe must not
+    // refuse a cell that already carries a road tile.
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     const roadItem = getCatalogItem('path-overgrown-dirt')!;
@@ -174,8 +162,7 @@ describe('the build brush names its material', () => {
 
 describe('the move tool does not track its own grip', () => {
   it('keeps one cursor, leaving any drag reading to the controller\'s drag state', () => {
-    // Two owners of "am I panning" drift. The pointer machine reports the pan; the tool only
-    // names the mode, and this one holds `move` whether or not a pan is live.
+    // The pointer machine owns the pan state; the tool only names the mode.
     const tool = new HandTool();
     expect(tool.cursor()).toBe('move');
     tool.onPointerDown();
@@ -242,11 +229,8 @@ describe('the placer names what the click will do', () => {
   });
 
   it('stays SELECT with an object selected: `move` is positional, not a mode', () => {
-    // Drag-to-move arms only on a press over the already-selected object; a drag anywhere else
-    // pans the camera. A store-driven getter cannot know where the pointer is, so answering
-    // `move` here turned the whole map into a four-arrow cursor after one click. The upgrade
-    // now happens in the controller, from the pointer machine's hover state — this only pins that
-    // an idle placer answers `select`.
+    // Drag-to-move arms only on a press over the selected object, and the getter cannot know where the
+    // pointer is; the controller upgrades the cursor from the pointer machine's hover state.
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     const tool = new ObjectPlacerTool();
@@ -255,12 +239,10 @@ describe('the placer names what the click will do', () => {
   });
 
   it('answers with the SAME computation that tints the ghost, cell by cell', () => {
-    // One function (planPlacementGhost) feeds both, so this asserts they cannot disagree: the
-    // ghost colour and the probe are read for the same cells and must line up everywhere.
+    // planPlacementGhost feeds both the ghost colour and the probe.
     const state = makeState(20, 20);
     const exec = makeExecutor(state);
-    // A repeatable item (the stall), so the only thing that can refuse it is the overlap at the
-    // occupied cell — a maxCount-1 cabin would read false everywhere and prove nothing.
+    // A repeatable item, so only the overlap at the occupied cell can refuse it.
     const stall = getCatalogItem('building-stall')!;
     exec.execute({
       type: CommandType.PlaceObject,       object: {
@@ -281,8 +263,7 @@ describe('the placer names what the click will do', () => {
       const ghostSaysValid = (lastPaint as GhostPaint | null)?.valid === true;
       expect(tool.canActAt!(coord, ctx), `(${coord.x},${coord.y})`).toBe(ghostSaysValid);
     }
-    // …and the two ends of that loop are genuinely different answers, so the agreement is not
-    // vacuous: the occupied cell is refused, open ground is not.
+    // The loop covers both answers, so the agreement is not vacuous.
     expect(tool.canActAt!({ x: 4, y: 4 }, ctx)).toBe(false);
     expect(tool.canActAt!({ x: 12, y: 12 }, ctx)).toBe(true);
   });
@@ -293,7 +274,7 @@ describe('the placer names what the click will do', () => {
     const item = getCatalogItem('bridge-plank')!;
     const ctx = makeToolCtx(state, exec, 1, 1, { armedItem: item.id });
     const tool = new ObjectPlacerTool();
-    // Flat grass, no gap to span: detectBridgeSpan finds nothing, so the click would be refused.
+    // Flat grass has no gap to span.
     expect(tool.canActAt!({ x: 5, y: 5 }, ctx)).toBe(false);
   });
 
@@ -307,14 +288,9 @@ describe('the placer names what the click will do', () => {
 
 describe('tools read from the context, not the store', () => {
   it('the eraser ACTS from the context surface, not the store — the click itself proves it', () => {
-    // A canActAt probe cannot discriminate the two readings here: a water cell reads `true` from
-    // Both a mountain surface (nothing to erase, a no-op) and a water surface (erasable, and
-    // legal) — so a probe-only pin would pass against a store-reading eraser too. Driving
-    // the real click is what tells them apart: an `erasesHere` reading
-    // `useEditorStore.getState().contentType` ('mountain' here) skips a water cell outright
-    // (erasesHere(Water, 'mountain') is false), leaving the water standing. Reading ctx.arming.contentType
-    // ('water') instead means erasesHere(Water, 'water') is true, so the click acts: the water
-    // converts to this layer's mountain (see terrain-peel.ts — water converts, it is not dug out).
+    // canActAt reads `true` for both readings here, so only the click tells them apart: with the
+    // store's 'mountain' the eraser skips the water cell; with the context's 'water' it acts, and the
+    // water converts to this layer's mountain (`terrain-peel.ts`).
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     setTerrain(state, 3, 3, TerrainType.Water, 1);
@@ -361,8 +337,7 @@ describe('ToolContext carries the arming', () => {
     setStoreState(armedEditMode({ tool: ToolType.ObjectPlacer, item: 'tree-apple' }));
     expect(manager.getContext().arming.armedItem).toBe('tree-apple');
     expect(ctx.macroContext.state).toBe(state);
-    // Whether a hand chose the build floor is the water brush's per-cell question, so it has to
-    // ride the same mirror rather than be read out of the store from inside a tool.
+    // The water brush asks per cell whether a hand chose the build floor.
     expect(ctx.arming.layerPinned).toBe(true);
 
     setStoreState({
@@ -373,11 +348,8 @@ describe('ToolContext carries the arming', () => {
   });
 
   it('getContext() refreshes on its own: a caller with no pointer event (a touch tap) must not see a stale mirror', () => {
-    // `usePointerInteraction`'s press path builds `PressFacts` from `ToolManager.getContext()`, and for
-    // a touch tap `onPointerDown` never sets `pointerKnown` — no move ever precedes it, so nothing else
-    // resamples the ctx before the press decides `placementAllowed`. This pins the seam directly:
-    // `setActiveTool` is the only refresh here, and nothing runs between the store change and
-    // `getContext()` that would paper over a plain getter.
+    // A touch tap's press builds `PressFacts` from `getContext()` with no move before it, so nothing
+    // else resamples the context; here nothing runs between the store change and `getContext()`.
     const state = makeState(10, 10);
     const exec = makeExecutor(state);
     const manager = new ToolManager(makeStubView(), exec, state, editorToolWiring());
@@ -417,8 +389,7 @@ describe('FORBIDDABLE declares exactly the badges the tools can produce', () => 
     for (const id of FORBIDDABLE) {
       expect(withProbe.has(id), `${id} is declared badgeable but no probing tool shows it`).toBe(true);
     }
-    // And the other direction: a cursor whose tool cannot answer must not claim it can be
-    // refused (this is what excludes edge-cut).
+    // A cursor whose tool has no probe must not be badgeable (this excludes edge-cut).
     for (const id of withoutProbe) {
       expect(FORBIDDABLE.has(id), `${id} has no probe, so its badge is unreachable`).toBe(false);
     }

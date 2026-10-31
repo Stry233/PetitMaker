@@ -2,7 +2,7 @@
 /**
  * The plan-notes layer in 3D, headless: every note kind builds its draped geometry, billboards
  * stand as sprites, the eye hides the group, and a refresh re-drapes the same ask over ground
- * that moved — heights are baked into the vertices, so this is what keeps a note on a hill that
+ * that moved: heights are baked into the vertices, so this is what keeps a note on a hill that
  * just grew under it.
  */
 import '../../../_support/pixi-env';

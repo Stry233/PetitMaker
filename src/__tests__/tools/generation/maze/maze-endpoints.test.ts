@@ -1,16 +1,11 @@
 /*
- * The maze's two ends: what they promise, and the one thing they do not.
+ * The maze's two ends. The carve is a spanning tree, so one route joins any two corridors; the probe
+ * below asks whether a walker can also leave by one end, stay outside the maze, and reach the other.
  *
- * The carve is a spanning tree, so exactly one route runs between any two corridors. That says nothing
- * about the ground the maze is standing on. The probe below asks the only question that settles it: can
- * a walker leave by one end, stay out of the maze, and arrive at the other?
- *
- * The guarantee is made for the default ends, which put the exit inside the maze: the panel's default
- * pair (`defaultMazeGates`, in from the west edge and out at the middle) and the generator's own (in
- * from the edge, out at the plaza). Arriving at an end inside means entering, so no route skips the
- * maze. Two ends a user places on the rim carry no such guarantee: the border ring walls the maze so the
- * gates are its only ways in, but two holes in the boundary of one simply-connected shape are two doors
- * onto the same outside, and a walker steps out of one, round the rectangle, and into the other.
+ * The default ends put the exit inside the maze (the panel's `defaultMazeGates`, in from the west edge
+ * and out at the middle; the generator's own, in from the edge and out at the plaza), so arriving means
+ * entering and no route skips the maze. Two ends a user places on the rim carry no such guarantee: they
+ * are two doors onto the same outside.
  */
 import { describe, it, expect } from 'vitest';
 import { defaultEnds, resolveEnd, routeBetween, type MazeEnd, type MazeField } from '../../../../tools/generation/maze/maze-endpoints';
@@ -38,11 +33,10 @@ function islandState(file = 'hexia.json'): GridState {
 }
 
 /**
- * The surface a person could stand on here, or null for somewhere they could not be. Taken from the
- * engine rather than invented: `agent/tools/quality.ts` and `placement/analysis.ts` both walk the same
- * ground, which is `isBuildableZone` (grass, so not the sand rim and not the sea) with no water on it.
- * `realSurface` is the only correct read of the height — a Γ patch is cosmetic above its base, so a raw
- * `terrain.elevation` would see a fillet as a full block and call walkable ground a wall.
+ * The surface a person could stand on here, or null. The ground is what `agent/tools/quality.ts` and
+ * `tools/placement/analysis.ts` walk: a buildable zone with no water. The height comes through
+ * `realSurface` because a Γ patch is cosmetic above its base; a raw `terrain.elevation` would read a
+ * fillet as a wall.
  */
 function standing(state: GridState, x: number, y: number): number | null {
   const cell = getCell(state.cells, x, y);
@@ -54,11 +48,8 @@ function standing(state: GridState, x: number, y: number): number | null {
 const STEPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 /**
- * A route from `from` to `to` that never sets foot inside the maze's rectangle, or null if none exists.
- * A step needs both cells standing at the same elevation, which is what makes a raised wall a wall: there
- * is no ramp in a maze, so a walk that starts on the ground stays on it. Both gates sit on the rectangle,
- * so they are the two cells of it the walk may use: it has to step straight out of `from` and back into
- * `to`, and everything else within the rectangle is the maze.
+ * A route from `from` to `to` that never enters the maze's rectangle except at those two gates, or null.
+ * A step needs both cells at the same elevation; a maze has no ramps, so a raised wall is a wall.
  */
 function routeAroundOutside(
   state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } }, from: MacroCoord, to: MacroCoord,
@@ -91,14 +82,14 @@ function routeAroundOutside(
   return null;
 }
 
-/** A square of grass clear of the plaza, which is how the feature is used: a maze painted into a region. */
+/** A square of grass clear of the plaza. */
 function regionCells(x0 = 30, y0 = 20, x1 = 70, y1 = 60): MacroCoord[] {
   const cells: MacroCoord[] = [];
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) cells.push({ x, y });
   return cells;
 }
 
-/** Lay a maze on the map through the live rule registry, one stroke group, at the panel's default ends. */
+/** Lays a maze through the live rule registry in one stroke, at the panel's default ends. */
 function mazeOnIsland(seed: number, region: MacroCoord[] | null) {
   const state = islandState();
   const exec = makeExecutor(state);
@@ -161,8 +152,7 @@ describe('Maze endpoints: no walk-around', () => {
     }
   });
 
-  // Why the guarantee holds: the border ring seals the maze, so the only cell of it a walker outside can
-  // step into is the way in.
+  // The guarantee rests on this: the border ring seals the maze except at the way in.
   it('is entered only at its way in', () => {
     const { state, fp, gates } = mazeOnIsland(1, regionCells());
     const { origin: o, dims: d } = fp;
@@ -177,8 +167,7 @@ describe('Maze endpoints: no walk-around', () => {
   });
 });
 
-/** The field as the finished map shows it, which is the view the interface takes: a walker's ground
- *  rather than the generator's own lattice. Both go through `maze-endpoints`, which is the point. */
+/** The field as the finished map shows it: a walker's ground rather than the generator's lattice. */
 function fieldOf(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number; mazeH: number } }): MazeField {
   return {
     origin: fp.origin,
@@ -200,7 +189,6 @@ function graph(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number
     if (inSet.has(`${c.x + 1},${c.y}`)) edges++;
     if (inSet.has(`${c.x},${c.y + 1}`)) edges++;
   }
-  // Connectivity, from any one of them.
   const seen = new Set([`${cells[0]!.x},${cells[0]!.y}`]);
   const queue = [cells[0]!];
   for (let head = 0; head < queue.length; head++) {
@@ -217,10 +205,8 @@ function graph(state: GridState, fp: { origin: MacroCoord; dims: { mazeW: number
 
 describe('Maze endpoints', () => {
   /**
-   * The guarantee, and it is the one the default relies on: with an end inside the maze, entering is
-   * the only way to arrive, and the carve's spanning tree makes that route unique. A tree is exactly
-   * "one route between any two of its cells", so what is asserted is that the maze plus its one hole
-   * is one — connected, with a vertex more than it has edges.
+   * With an end inside the maze, entering is the only way to arrive, and the route is unique when the
+   * maze plus its one hole is a tree: connected, with one vertex more than it has edges.
    */
   it('[GEN-07] leaves exactly one route from the way in to a destination inside', () => {
     const state = islandState();
@@ -242,17 +228,12 @@ describe('Maze endpoints', () => {
 
     const g = graph(state, fp);
     expect(g.connected).toBe(true);
-    // A connected graph with V-1 edges is a tree: one route, and no second one.
     expect(g.edges).toBe(g.vertices - 1);
   });
 
   /**
-   * The answer is always there to show. The carve is a spanning tree, so the route between the two
-   * ends is unique and does not have to be searched for — and it exists at every corridor width,
-   * one-wide included, which is why the answer is a drape rather than a road: a road's flat trait
-   * refuses a corridor cell with wall below or right of it, which in a maze is most of them, and
-   * on the default one-wide maze it paved nothing at all. A route that is drawn has to be the
-   * route, so this holds it against the walk the readout reports rather than against itself.
+   * The answer route exists at every corridor width, one-wide included. It is drawn as a drape, not a
+   * road, because a road's flat trait refuses a corridor cell with wall below or right of it.
    */
   it('finds the one route, at a wide corridor and at the one-wide default alike', () => {
     for (const cw of [1, 3]) {
@@ -285,10 +266,7 @@ describe('Maze endpoints', () => {
     }
   });
 
-  /**
-   * The ends are recipe inputs: the carve grows out from the entrance, so asking for a different
-   * way in at the same seed answers with a different maze, not the same corridors with a new hole.
-   */
+  /** The carve grows out from the entrance, so a different way in at the same seed gives a different maze. */
   it('reshapes the maze when the entrance moves, at the same seed', () => {
     const carve = (entrance: MacroCoord): string => {
       const state = makeState(28, 28);
@@ -308,10 +286,6 @@ describe('Maze endpoints', () => {
     expect(a).not.toBe(b);
   });
 
-  /**
-   * The default is the longest walk, where there is no plaza to head for. Checked against every
-   * other pair of ways in the maze offers, which is what "longest" has to mean.
-   */
   it('defaults to the longest walk the maze holds when nothing is there to reach', () => {
     const state = makeState(28, 28);
     const region: MacroCoord[] = [];
@@ -326,10 +300,8 @@ describe('Maze endpoints', () => {
     const chosen = walkLength(field, { cell: gates.entrance!, kind: 'hole' }, { cell: gates.exit!, kind: 'hole' })!;
     expect(chosen).toBeGreaterThan(0);
 
-    // Every other pair of places a hole could have been cut, measured the same way. The two that
-    // were chosen are already cut, so the field sees them as walkable and the rest as wall — which
-    // is exactly how a candidate pair is measured from a hole that is not cut yet.
-    // A ring cell a hole can be cut in is one a drop there resolves to itself.
+    // Every other pair of ring cells a hole could be cut in (a drop there resolves to itself),
+    // measured the same way.
     const { origin: o, dims: d } = field;
     const ring: MacroCoord[] = [];
     for (let x = o.x; x < o.x + d.mazeW; x++) ring.push({ x, y: o.y }, { x, y: o.y + d.mazeH - 1 });
@@ -348,16 +320,10 @@ describe('Maze endpoints', () => {
     }
   });
 
-  /**
-   * A destination is reached without being built on. The plaza is unbuildable, so the maze routes
-   * around it and the end is the corridor touching its edge — which is also why the plaza makes a
-   * better default than an edge: arriving somewhere means something.
-   */
   it('puts the destination on the corridor touching the plaza, and builds nothing on it', () => {
     const state = islandState();
-    // A region around the square itself, so the plaza is inside the maze's own rectangle. The
-    // square is an object on grass rather than a zone, so its
-    // footprint is what both this test and the generator read.
+    // The plaza is an object on grass, not a zone, so its footprint is what the test and the
+    // generator read.
     const plaza = plazaCells(state);
     expect(plaza.length).toBeGreaterThan(0);
     const square = new Set(plaza.map(c => `${c.x},${c.y}`));
@@ -373,7 +339,7 @@ describe('Maze endpoints', () => {
     const touchesSquare = STEPS.some(([dx, dy]) => square.has(`${exit.x + dx},${exit.y + dy}`));
     expect(touchesSquare).toBe(true);
     expect(square.has(`${exit.x},${exit.y}`)).toBe(false);
-    // And the way in is a hole in the boundary, not a second destination.
+    // The way in is a hole in the boundary, not a second destination.
     const fp = mazeFootprint(state, region, 1)!;
     const onRing = gates.entrance!.x === fp.origin.x || gates.entrance!.y === fp.origin.y
       || gates.entrance!.x === fp.origin.x + fp.dims.mazeW - 1
@@ -381,8 +347,7 @@ describe('Maze endpoints', () => {
     expect(onRing).toBe(true);
   });
 
-  /** Two ends dropped next to each other give a two-cell walk. It is a legal pair rather than a
-   *  refused one: a rule nobody was told about is worse than a readout they can see. */
+  /** Adjacent ends are a legal pair, not refused: the readout shows the short walk. */
   it('reads a two-cell walk for two ends dropped side by side', () => {
     const field: MazeField = {
       origin: { x: 0, y: 0 },
@@ -393,7 +358,6 @@ describe('Maze endpoints', () => {
     expect(walk).toBe(2);
   });
 
-  /** The plaza default needs a plaza; with none, `defaultEnds` gives two holes rather than nothing. */
   it('falls back to two ways in where nothing is there to reach', () => {
     const field: MazeField = {
       origin: { x: 0, y: 0 },
@@ -407,11 +371,8 @@ describe('Maze endpoints', () => {
   });
 
   /**
-   * The walk always exists. On the real map the maze's rectangle covers sea and sand, so the
-   * walkable cells are several disconnected patches, and an end dropped in an awkward place (a sea
-   * corner, over the rim) snapped to its nearest cell can land in a pocket no corridor joins. Both
-   * asked-for ends snap into the mainland (the largest component), so one spanning tree holds the pair
-   * and the walk between them exists by construction.
+   * On the real map the rectangle covers sea and sand, so the walkable cells form several patches. Both
+   * asked-for ends snap into the largest one, so one spanning tree holds the pair.
    */
   it('lands every asked-for pair where a walk exists between them, on the real map', () => {
     const askedPairs: Array<{ entrance: MacroCoord; exit: MacroCoord }> = [
@@ -439,10 +400,8 @@ describe('Maze endpoints', () => {
       const length = walkLength(field, kindOf(gates.entrance!), kindOf(gates.exit!));
       expect(length, `pair ${i}: a walk joins the pair`).not.toBeNull();
 
-      // The walk stays in the maze. The run's own reported walk runs through carved corridors and
-      // never skims the rim: on the map the coast refuses some walls, and a route over all open
-      // ground could slip through such a gap and skirt the rectangle's edge — cheating, since no
-      // corridor put it there. Gates are the only ring cells the walk may touch.
+      // The reported walk runs through carved corridors. The coast refuses some walls, so a route over
+      // open ground could skirt the rectangle's edge; gates are the only ring cells it may touch.
       expect(walk, `pair ${i}: the run reports its walk`).toBeTruthy();
       const gateCells = new Set([gates.entrance, gates.exit].filter(Boolean).map((g) => `${g!.x},${g!.y}`));
       for (const c of walk!) {

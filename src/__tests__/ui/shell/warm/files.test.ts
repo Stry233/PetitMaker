@@ -35,28 +35,33 @@ describe('the warm schedule\'s files', () => {
     expect(await warmFiles('none')).toEqual({ counted: [], background: [] });
   });
 
-  it('counts every worker\'s code but the illustration worker\'s, one variant of each map check runtime, its data and the sample pictures', async () => {
-    const { counted, background } = await warmFiles('core');
-    expect(counted).toEqual(expect.arrayContaining([
-      '/assets/review.worker-1.js', '/assets/image-1.js', '/assets/review.worker-2.js',
-      ...mapCheckRuntimeUrls(true),
-      ...MAP_CHECK_DATA.map((file) => `https://site.example/moderation/${file}`),
-      ...allStyleSampleUrls(), ...Object.values(DREAM_THUMBS), SCAN_EXAMPLE.poster,
-    ]));
+  it('counts every worker\'s code but the content check\'s and the illustration\'s, and the sample pictures', async () => {
+    const { counted } = await warmFiles('core');
+    expect(counted).toEqual(expect.arrayContaining([...allStyleSampleUrls(), ...Object.values(DREAM_THUMBS), SCAN_EXAMPLE.poster]));
     expect(counted).not.toContain('/assets/neural.worker-1.js');
     expect(counted).not.toContain('/assets/every-variant.wasm');
     expect(counted.filter((url) => url === SCAN_EXAMPLE.webm || url === SCAN_EXAMPLE.mp4)).toHaveLength(1);
-    expect(background).toEqual([]);
+  });
+
+  it('[UI-37] leaves the content check\'s code, one variant of its runtime and its data to the background', async () => {
+    const { counted, background } = await warmFiles('core');
+    const check = [
+      '/assets/review.worker-1.js', '/assets/image-1.js', '/assets/review.worker-2.js',
+      ...mapCheckRuntimeUrls(true),
+      ...MAP_CHECK_DATA.map((file) => `https://site.example/moderation/${file}`),
+    ];
+    expect(background).toEqual(check);
+    expect(counted.filter((url) => check.includes(url))).toEqual([]);
   });
 
   it('adds one illustration runtime and the default style\'s weights in the background on the full tier', async () => {
     const { background } = await warmFiles('full');
     const backend = 'gpu' in navigator ? 'webgpu' : 'wasm';
-    expect(background).toEqual(['/assets/neural.worker-1.js', ORT_FILES[backend].mjs, ORT_FILES[backend].wasm, MODEL_URLS.watercolor]);
+    expect(background.slice(-4)).toEqual(['/assets/neural.worker-1.js', ORT_FILES[backend].mjs, ORT_FILES[backend].wasm, MODEL_URLS.watercolor]);
   });
 
   it('leaves the illustration runtime out where the engine cannot run it', async () => {
     simd.value = false;
-    expect((await warmFiles('full')).background).toEqual([]);
+    expect((await warmFiles('full')).background).not.toContain('/assets/neural.worker-1.js');
   });
 });

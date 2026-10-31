@@ -4,9 +4,9 @@
  * so scenes can cross between map and shelf, converting through the live viewport when cell data is
  * needed. Pixi loads only when canvas exists. Reduced motion renders the settled end state once.
  */
+import { useReducedMotionConfig } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { TILE_SIZE } from '../../../view/map2d/geometry/world';
-import { isMotionReduced } from '../../../platform/channels/motion-state';
 import { useKeybinds } from '../../../state/keymap/store';
 import { useLocale, useT } from '../../../i18n/context';
 import { resolveTokenSpecs } from '../hints/catalogue';
@@ -36,6 +36,8 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
   tRef.current = t;
   const locale = useLocale();
   const overrides = useKeybinds((s) => s.overrides);
+  // The checklist dim is DOM motion; the demo's canvas keeps the canvas gate (`demo-player.ts`).
+  const reduced = useReducedMotionConfig() === true;
   const outerRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
@@ -170,7 +172,7 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <div
               ref={(el) => {
-                if (!el || typeof el.animate !== 'function' || isMotionReduced()) return;
+                if (!el || typeof el.animate !== 'function' || reduced) return;
                 el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
               }}
               style={{ position: 'absolute', inset: 0, background: OVERLAY_DIM }}

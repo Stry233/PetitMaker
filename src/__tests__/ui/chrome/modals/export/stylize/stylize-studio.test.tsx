@@ -114,10 +114,10 @@ describe('the stylize studio', () => {
     renderStudio(async () => ({ image: picture('x') }));
     const original = screen.getByRole('button', { name: 'Original' });
 
-    fireEvent.mouseEnter(original);
+    fireEvent.pointerEnter(original);
     expect(shown()).toBe('original');
     // Hover previews a version without changing the saved selection.
-    fireEvent.mouseLeave(original);
+    fireEvent.pointerLeave(original);
     expect(shown()).toBe('v1');
     expect(versionStore.getState().selectedId).toBe('v1');
 
@@ -237,11 +237,11 @@ describe('the stylize studio', () => {
     renderStudio(async () => ({ image: {} as HTMLImageElement }));
 
     const row = screen.getByTestId('stylize-shelf-scroll');
-    expect(row.style.overflowX).toBe('scroll');
-    expect(row.style.display).toBe('flex');
-    // Original plus all seven takes stand in the one row; nothing is dropped and no ghosts remain.
-    expect(within(row).getByLabelText('Original')).toBeTruthy();
-    for (let n = 1; n <= 7; n++) expect(within(row).getByLabelText(`Take ${n}`)).toBeTruthy();
+    // Original plus all seven takes stand side by side as slots of the one row; nothing is dropped
+    // and no ghosts remain.
+    const cards = [within(row).getByLabelText('Original'), ...Array.from({ length: 7 }, (_, i) => within(row).getByLabelText(`Take ${i + 1}`))];
+    for (const card of cards) expect(card.parentElement!.parentElement).toBe(row);
+    expect(row.children).toHaveLength(8);
   });
 
   it('a retake anchors on the kept take of the same direction, not on the pack sample', async () => {

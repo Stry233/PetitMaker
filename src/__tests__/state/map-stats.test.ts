@@ -72,7 +72,7 @@ describe('map stats', () => {
     add(state, locked);
     const stats = getMapStats(state);
     expect(stats.objectsByLayer[0]).toBe(0);
-    // A locked structure still occupies its chunk's capacity — only patchOnly is excluded there.
+    // A locked structure still occupies its chunk's capacity; only patchOnly is excluded there.
     expect(stats.chunks.get('0,0')?.objects).toBe(1);
 
     add(state, tree('a', 2, 2));
@@ -208,7 +208,7 @@ describe('map stats: incremental patching', () => {
 
   it('folds an in-place edit idempotently instead of double-counting it', () => {
     // command-apply.ts's road TrimCorners branch mutates the same PlacedObject in place
-    // (new corners/rotation/patchOnly, same id) and republishes it as `added` — a re-index
+    // (new corners/rotation/patchOnly, same id) and republishes it as `added`: a re-index
     // request, not a new object. Mirrors state/object-index's re-add-in-place contract.
     const state = makeState();
     const original = tree('r', 2, 2);
@@ -347,19 +347,18 @@ describe('map stats: falls back to a rebuild rather than serving a stale answer'
     expect(patched.objectsByLayer).toEqual(getMapStats(rebuilt).objectsByLayer);
   });
 
-  it('rebuilds when a version was skipped, even where the delta looks applicable', () => {
+  it('answers as a rebuild does when several steps passed since it was read', () => {
     const state = makeState();
     const a = tree('a', 1, 1);
     add(state, a);
-    const primed = getMapStats(state);
+    getMapStats(state);
 
     const b = tree('b', 4, 4);
-    add(state, b); // objectsVersion +1, delta describes this step, never read
+    add(state, b); // objectsVersion +1, never read
     const c = tree('c', 6, 6);
-    add(state, c); // objectsVersion +1 again — the cache is now two steps behind, not one
+    add(state, c); // objectsVersion +1 again; the cache is now two steps behind, not one
 
     const patched = getMapStats(state);
-    expect(patched).not.toBe(primed);
 
     const rebuilt = makeState();
     for (const o of [a, b, c]) rebuilt.objects.set(o.id, o);

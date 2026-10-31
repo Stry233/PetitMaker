@@ -63,6 +63,8 @@ interface EditModeState {
   designMode: DesignMode;
   contentType: ContentType;
   armedItem: string | null;
+  /** The armed items in the order they were picked (EDIT-70); absent with no item armed. */
+  picks?: readonly string[];
   armedMacro: string | null;
 }
 
@@ -109,10 +111,11 @@ export type ContentArming =
   | { kind: 'none' }
   | { kind: 'smart'; macro: string };
 
-/** What object mode has armed: an item card, a planting card or the eraser, one at a time. The shelf
- *  has no tool row, so there is no brush, trim or figure here. */
+/** What object mode has armed: an item card (or several, `picks`), a planting card or the eraser, one
+ *  at a time. The shelf has no tool row, so there is no brush, trim or figure here. */
 export type ObjectArming =
-  | { kind: 'item'; itemId: string }
+  /** `picks` holds two or more items in the order they were picked, `itemId` the first of them. */
+  | { kind: 'item'; itemId: string; picks?: readonly string[] }
   | { kind: 'macro'; macro: string }
   | { kind: 'erase' }
   | { kind: 'none' };
@@ -197,7 +200,10 @@ function objectState(arming: ObjectArming): EditModeState {
     // An armed placer has no DesignMode of its own (there is nothing to draw), so this one case
     // sits outside DESIGN_MODE_TOOL.
     case 'item':
-      return { toolType: ToolType.ObjectPlacer, designMode: 'none', contentType: 'mountain', armedItem: arming.itemId, armedMacro: null };
+      return {
+        toolType: ToolType.ObjectPlacer, designMode: 'none', contentType: 'mountain', armedItem: arming.itemId, armedMacro: null,
+        picks: arming.picks && arming.picks.length > 1 ? arming.picks : [arming.itemId],
+      };
     // Nothing picked: there is nothing to place, so the map rests rather than arming an empty placer.
     case 'none':
       return REST;
@@ -333,6 +339,9 @@ export const designModeOf = (s: { editMode: EditModeInputs }): DesignMode => res
 export const contentTypeOf = (s: { editMode: EditModeInputs }): ContentType => resolvedOf(s).contentType;
 /** The armed catalog item, or null with nothing armed. */
 export const armedItemOf = (s: { editMode: EditModeInputs }): string | null => resolvedOf(s).armedItem;
+const NO_PICKS: readonly string[] = [];
+/** The armed items in the order they were picked: one for a single card, none with nothing armed. */
+export const armedPicksOf = (s: { editMode: EditModeInputs }): readonly string[] => resolvedOf(s).picks ?? NO_PICKS;
 /** The armed macro's id, or null. */
 export const armedMacroOf = (s: { editMode: EditModeInputs }): string | null => resolvedOf(s).armedMacro;
 /** Whether the notes layer is being edited, however annotate was entered. */

@@ -14,8 +14,10 @@ import { MotionConfig } from 'framer-motion';
 import { ArrivalToast } from '../../../../ui/chrome/floating/ArrivalToast';
 import { __resetArrivals, announceArrival } from '../../../../ui/session/arrival-bus';
 import { __resetRestoreOffer, offerRestoreDismiss } from '../../../../ui/session/restore-offer';
-import { TOUR_SEEN_KEY } from '../../../../ui/chrome/tour/use-tour';
+import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../../_support/tour';
 import { I18nProvider } from '../../../../i18n/context';
+import { InputModeProvider } from '../../../../ui/design/input-mode';
+import { spec } from '../../../_support/spec';
 import { useEditorStore } from '../../../../state/store';
 import { getMapTemplate, MAP_LIST } from '../../../../config/maps';
 import { createGrid } from '../../../../core/model/grid-model';
@@ -38,14 +40,15 @@ function mapOn(template = HEXIA): GridState {
   return { template, cells: createGrid(template), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
-function mount(props: { splashActive?: boolean; reduced?: boolean } = {}) {
-  return render(
+function mount(props: { splashActive?: boolean; reduced?: boolean; upright?: boolean } = {}) {
+  const toast = (
     <MotionConfig reducedMotion={props.reduced ? 'always' : 'never'}>
       <I18nProvider>
         <ArrivalToast splashActive={props.splashActive ?? false} />
       </I18nProvider>
-    </MotionConfig>,
+    </MotionConfig>
   );
+  return render(props.upright ? <InputModeProvider inputMode="touch" shape="portrait">{toast}</InputModeProvider> : toast);
 }
 
 /** What the eyebrow is saying. The hidden strut beside it is a width and never a line, so it is
@@ -60,14 +63,14 @@ beforeEach(() => {
   vi.useFakeTimers();
   __resetArrivals();
   __resetRestoreOffer();
-  localStorage.setItem(TOUR_SEEN_KEY, '1');
+  localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   const st = useEditorStore.getState();
   useEditorStore.setState({
     gridState: mapOn(),
     locale: 'en',
     tourRunning: false,
-    portraitBlocked: false,
-    modals: { ...st.modals, tourDone: false, newProject: false },
+
+    modals: { ...st.modals, newProject: false },
   });
 });
 
@@ -83,6 +86,15 @@ describe('the arrival notice', () => {
     settle();
     expect(eyebrow()).toEqual(["You're at"]);
     expect(screen.getByText(HEXIA.name.en)).toBeTruthy();
+  });
+
+  it('stands centred over the work on its own width', () => {
+    mount();
+    act(() => announceArrival({ kind: 'boot' }));
+    settle();
+    const band = screen.getByTestId('arrival-toast').closest<HTMLElement>('[role="status"]')!;
+    expect(band.style.transform).toBe('translateX(-50%)');
+    expect(band.style.right).toBe('');
   });
 
   it('leaves a plain boot on its one line', () => {
@@ -108,7 +120,6 @@ describe('the arrival notice', () => {
     settle();
     expect(eyebrow()).toEqual(["You're at"]);
     wait(EYEBROW_SWAP_MS);
-    // A cut: one line, and it is the detail. Nothing of the phrase is left mid-fade.
     expect(eyebrow()).toEqual(['Your last progress is back']);
   });
 
@@ -128,9 +139,8 @@ describe('the arrival notice', () => {
     wait(EYEBROW_SWAP_MS);
     expect(eyebrow()).toEqual(['Your build came along']);
     wait(EYEBROW_SWAP_MS);
-    // Never chained into one row: the loss is its own line and does not repeat the claim above it.
+    // The loss is its own line, never chained onto the claim above it.
     expect(eyebrow()).toEqual(['Ground left behind: 174']);
-    // And the last line stays: there is nothing after it to cycle to.
     wait(EYEBROW_SWAP_MS * 2);
     expect(eyebrow()).toEqual(['Ground left behind: 174']);
   });
@@ -177,8 +187,7 @@ describe('the arrival notice', () => {
     mount();
     act(() => announceArrival({ kind: 'boot' }));
     settle();
-    // Both at once: the card at the foot of the map asks whether to pick the last map back up, this
-    // says which planet is under you. Neither answers the other by appearing.
+    // The restore card and the arrival notice stand together; neither answers the other by appearing.
     expect(screen.getByTestId('arrival-toast')).toBeTruthy();
     expect(eyebrow()).toEqual(["You're at"]);
     expect(decline).not.toHaveBeenCalled();
@@ -206,11 +215,8 @@ describe('the arrival notice', () => {
   });
 
   it('leaves the offer standing when the countdown presses its own OK', () => {
-    // The fuse runs on rAF, so this one test drives that clock too; jsdom lays nothing out, so the
-    // countdown's own drawing (gated on a measured width) needs one as well. That drawing is the
-    // evidence the clock actually ran out: empty means fired, an offset of 1 being the whole
-    // outline walked off its end. Nobody answered anything here, so the card at the foot of the map
-    // is still asking.
+    // The fuse runs on rAF, and its drawing needs a measured width that jsdom lacks. A dash offset
+    // of 1 shows the fuse burnt down; nobody answered, so the restore card still asks.
     vi.useRealTimers();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] });
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
@@ -238,22 +244,18 @@ describe('the arrival notice', () => {
     wait(EYEBROW_SWAP_MS);
     act(() => announceArrival({ kind: 'restored' }));
     settle();
-    // The same card, still standing: the words changed, the notice did not come in again.
     expect(screen.getByTestId('arrival-toast')).toBe(card);
-    // The eyebrow starts over, so the phrase is said again before the restored line takes the line.
+    // The eyebrow starts over.
     expect(eyebrow()).toEqual(["You're at"]);
     wait(EYEBROW_SWAP_MS);
     expect(eyebrow()).toEqual(['Your last progress is back']);
-    // And the countdown starts over with it: a fuse carried across the swap could be a second from
-    // the end, taking the notice away before its new line had been said.
+    // The countdown restarts too, or a nearly spent fuse could dismiss the new line unread.
     expect(screen.getByTestId('arrival-ok')).not.toBe(ok);
   });
 
   /*
-   * The box eases to the new words. jsdom lays nothing out, so the widths are stubbed and what is
-   * pinned is the decision: a swap that changes the card's size starts a glide (the card clips
-   * itself while its box travels, so nothing inside re-lays out), and reduced motion takes the new
-   * size outright. How the glide feels is carried by the comment on `useCardResize`.
+   * jsdom lays nothing out, so widths are stubbed and the decision is what is checked: a size change
+   * starts a glide, during which the card clips itself, and reduced motion takes the new size outright.
    */
   const withWidths = (run: (setWidth: (w: number) => void) => void) => {
     let width = 200;
@@ -273,10 +275,8 @@ describe('the arrival notice', () => {
       mount();
       act(() => announceArrival({ kind: 'boot' }));
       settle();
-      // An arrival flies in at its own size: there is nothing to glide from.
+      // An arrival flies in at its own size.
       expect(screen.getByTestId('arrival-row').style.overflow).toBe('');
-      // The restored session was on another planet, so the name, the picture and the words are all
-      // a different width.
       setWidth(320);
       act(() => announceArrival({ kind: 'restored' }));
       settle();
@@ -298,13 +298,8 @@ describe('the arrival notice', () => {
     });
   });
 
-  /**
-   * What the clip falls on. A box that is mid-travel is narrower or wider than what stands in it,
-   * so something is cut for those few hundred ms — and the only thing whose width a change of
-   * arrival changes is the words. With the two answers inside the clipped row they stood at its far
-   * end: a card growing 60 px held them that far past the moving edge, and the second button was
-   * drawn sliced down its right side. Outside it they are carried by the card's own edge.
-   */
+  /** Inside the clipped row the buttons would stand past a growing card's moving edge and be sliced;
+   *  outside it they ride the card's own edge. */
   it('carries the answers outside the box it clips, so a travelling card cannot cut one', () => {
     withWidths((setWidth) => {
       mount();
@@ -322,6 +317,37 @@ describe('the arrival notice', () => {
     });
   });
 
+  /** Every line on screen, the outgoing one included, is held to one line and cut with an ellipsis
+   *  that its title completes, so a swap can only change the notice's width. */
+  const oneLine = () => {
+    const lines = screen.getAllByTestId('arrival-eyebrow');
+    for (const line of lines) {
+      const style = getComputedStyle(line);
+      expect(style.whiteSpace, line.textContent!).toBe('nowrap');
+      expect(style.textOverflow, line.textContent!).toBe('ellipsis');
+      expect(line.title).toBe(line.textContent);
+    }
+    return lines.map((line) => line.textContent);
+  };
+
+  for (const reduced of [false, true]) {
+    spec('UI-28', `keeps the upright notice's words on one line while a resume swaps them${reduced ? ', under reduced motion too' : ''}`, () => {
+      withWidths((setWidth) => {
+        mount({ upright: true, reduced });
+        act(() => announceArrival({ kind: 'boot' }));
+        settle();
+        act(() => announceArrival({ kind: 'restored' }));
+        settle();
+        expect(oneLine()).toEqual(["You're at"]);
+        setWidth(320);
+        wait(EYEBROW_SWAP_MS);
+        expect(oneLine()).toContain('Your last progress is back');
+        // Full motion glides the width to the new line; reduced motion takes it at once.
+        expect(screen.getByTestId('arrival-row').style.overflow).toBe(reduced ? '' : 'hidden');
+      });
+    });
+  }
+
   it('takes the new size outright under reduced motion', () => {
     withWidths((setWidth) => {
       mount({ reduced: true });
@@ -331,7 +357,6 @@ describe('the arrival notice', () => {
       act(() => announceArrival({ kind: 'restored' }));
       settle();
       const el = screen.getByTestId('arrival-row');
-      // Nothing is travelling, so the row neither clips itself nor carries a width of its own.
       expect(el.style.overflow).toBe('');
       expect(el.style.width).toBe('');
     });

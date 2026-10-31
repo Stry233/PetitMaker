@@ -25,7 +25,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
   it('rot=0 (south): click on bottom mountain edge, ramp extends down', () => {
     const state = makeRampState();
     const registry = createDefaultRegistry();
-    // Click on mountain at (8, 14) — neighbor (8, 15) is ground
+    // Click on mountain at (8, 14); neighbor (8, 15) is ground
     // rot=0 includes high cell: position stays at highY=14
     const cmd = registry.resolve(placeRamp(8, 14), state);
     const errors = registry.validatePreCommand(cmd, state);
@@ -37,7 +37,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
   it('rot=180 (north): click on top mountain edge, ramp extends up', () => {
     const state = makeRampState();
     const registry = createDefaultRegistry();
-    // Click on mountain at (8, 5) — neighbor (8, 4) is ground
+    // Click on mountain at (8, 5); neighbor (8, 4) is ground
     const cmd = registry.resolve(placeRamp(8, 5), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
@@ -47,7 +47,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
   it('rot=90 (east): click on right mountain edge, ramp extends right', () => {
     const state = makeRampState();
     const registry = createDefaultRegistry();
-    // Click on mountain at (14, 8) — neighbor (15, 8) is ground
+    // Click on mountain at (14, 8); neighbor (15, 8) is ground
     const cmd = registry.resolve(placeRamp(14, 8), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
@@ -57,7 +57,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
   it('rot=270 (west): click on left mountain edge, ramp extends left', () => {
     const state = makeRampState();
     const registry = createDefaultRegistry();
-    // Click on mountain at (5, 8) — neighbor (4, 8) is ground
+    // Click on mountain at (5, 8); neighbor (4, 8) is ground
     const cmd = registry.resolve(placeRamp(5, 8), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors).toHaveLength(0);
@@ -68,7 +68,7 @@ describe('V-PLACE-TRAIT heightDrop: a ramp on each edge of a mountain block', ()
     const state = makeRampState();
     const registry = createDefaultRegistry();
     // rot=0 includes high cell: ramp at (14,14) has high cell at y=14, x=14,15.
-    // x=15 is ground — micro-block check reaches x=16 (off mountain) → rejects.
+    // x=15 is ground: the micro-block check reaches x=16 (off mountain) → rejects.
     const cmd = registry.resolve(placeRamp(14, 14), state);
     const errors = registry.validatePreCommand(cmd, state);
     expect(errors.length).toBeGreaterThan(0);

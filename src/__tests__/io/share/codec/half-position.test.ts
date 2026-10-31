@@ -50,7 +50,7 @@ describe('share codec: half positions are additive', () => {
   it('decodes the pinned pre-mask frame 4 bytes', async () => {
     const bytes = unhex('5032040001056865786961fd3134f1608676390b00010868616c662d70696e74cb594a33adc19c6f761a4551f77c4e5cd6f16ab700cf52a1e5405b5d1a920f0000000000000344927b32bc639534e56b6a2c4ab69c73f633d9fbdab19376000c66d4970d587d0f00000000000000011b7de923f0005597ce127d6bb1f38e7828b110f000000000');
     const decoded = await decodeMapPayload(bytes);
-    // Pinned before the mountain under the plaza was map terrain.
+    // The pinned frame predates the layer-1 mountain under the plaza, so that terrain is cleared before comparing.
     const then = wholeMap();
     then.cells.forEach((row, y) => row.forEach((cell, x) => { if (cell.terrain && holdsTemplateTerrain(then.template, x, y, cell)) cell.terrain = null; }));
     expect(canonicalBytes(decoded.canonical)).toEqual(canonicalBytes({ ...canonicalize(then), version: 1 }));

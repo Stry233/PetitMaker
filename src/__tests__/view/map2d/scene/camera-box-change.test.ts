@@ -5,10 +5,10 @@
  * The map canvas is a layer of the interface, not the page under it: the assistant's dock takes a
  * strip of the window, so the box's size and place change while the scene inside should keep reading
  * as the same scene. The camera therefore anchors the world point at the box's centre through every
- * resize — the 3D view's own behaviour, whose projection is about its box centre and takes only the
- * aspect from a resize. It is also what makes the dock choreography land silently: the slide carries
- * the drawing by half the dock's width, which is exactly the centre's travel, so the one resize at
- * each end of the slide moves nothing on screen.
+ * resize, which is the 3D view's own behaviour: its projection is about its box centre and takes
+ * only the aspect from a resize. It is also what makes the dock choreography land silently: the
+ * slide carries the drawing by half the dock's width, which is exactly the centre's travel, so the
+ * one resize at each end of the slide moves nothing on screen.
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect, afterEach } from 'vitest';

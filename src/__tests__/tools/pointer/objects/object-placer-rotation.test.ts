@@ -1,9 +1,5 @@
-// Rotating an armed item's ghost before placement (the rotate shortcuts turn the pending
-// placement, not the map): the ghost's footprint must swap extents with `getRotatedSize`, the
-// validity preview must follow, the eventual placement must land at the pending rotation, and the
-// rotation must survive across consecutive placements (fences at the same angle) while resetting
-// the moment the armed item changes. A non-rotatable item must ignore the shortcut with no state
-// change at all, and an existing selection always wins over the ghost.
+// The rotate shortcuts turn an armed item's pending placement: the ghost and its validity follow,
+// placements land at that rotation and keep it until the armed item changes, and a selection wins.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ObjectPlacerTool } from '../../../../tools/pointer/objects/object-placer';
 import { TerrainType, type MacroCoord } from '../../../../core/model/types';
@@ -22,8 +18,7 @@ const m = (x: number, y: number): MacroCoord => ({ x, y });
 const exec = (s: any) => makeExecutor(s);
 const noopCtx = { toggleMenu: () => {} };
 
-// Rotatable, plain 'flat' trait only, and at least two cells wider than deep, so a 90/270
-// rotation visibly swaps the footprint's width and height.
+// Rotatable, with the flat trait, and at least three cells wider than deep (the strip case needs it).
 const HOUSE = 'building-myhouse';
 const { width: W, height: H } = getCatalogItem(HOUSE)!;
 
@@ -58,7 +53,6 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       expect(after.rotation).toBe(90);
       const afterW = Math.max(...after.cells.map((c) => c.x)) - Math.min(...after.cells.map((c) => c.x)) + 1;
       const afterH = Math.max(...after.cells.map((c) => c.y)) - Math.min(...after.cells.map((c) => c.y)) + 1;
-      // The extents swap: W wide x H tall becomes H wide x W tall.
       expect([afterW, afterH]).toEqual([H, W]);
     } finally {
       reset();
@@ -68,21 +62,23 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
   it('a rotation that makes a placement illegal shows invalid before the click', () => {
     arm(HOUSE);
     try {
-      // Anchored at (10,10), the house's flat-trait sweep is dx:0..w, dy:0..h off the anchor
-      // (V-PLACE-TRAIT). Unrotated that sweep reaches y<=10+H; rotated 90 it reaches y<=10+W.
-      // A raised strip at y=10+H+3 therefore sits outside the unrotated sweep, and past the rise
-      // depth the door facing it keeps (V-PLACE-DOOR), but inside the rotated sweep, so rotating
-      // alone must flip this placement from legal to illegal.
+      // The flat-trait sweep (V-PLACE-TRAIT) reaches y = 10 + H unrotated and y = 10 + W rotated 90.
+      // A strip at y = 10 + H + 3 is outside the first, past the door's rise depth (V-PLACE-DOOR),
+      // and inside the second.
       const stripY = 10 + H + 3;
       expect(stripY).toBeLessThanOrEqual(10 + W);
       const state = makeState(30, 30);
       for (let x = 10; x <= 10 + H; x++) setTerrain(state, x, stripY, TerrainType.Mountain, 1);
       const ctx = makeToolCtx(state, exec(state));
 
-      const flat = placementHover(HOUSE, m(10, 10), ctx, 0)!;
+      // The pointer holds the footprint's centre cell (EDIT-51), so both footprints start at (10, 10).
+      const held = (w: number, h: number) => m(10 + Math.floor((w - 1) / 2), 10 + Math.floor((h - 1) / 2));
+      const flat = placementHover(HOUSE, held(W, H), ctx, 0)!;
+      expect(flat.cells[0]).toEqual(m(10, 10));
       expect(flat.valid, 'unrotated: the raised strip is outside the flat-check sweep').toBe(true);
 
-      const turned = placementHover(HOUSE, m(10, 10), ctx, 90)!;
+      const turned = placementHover(HOUSE, held(H, W), ctx, 90)!;
+      expect(turned.cells[0]).toEqual(m(10, 10));
       expect(turned.valid, 'rotated 90: the sweep now reaches the raised strip').toBe(false);
     } finally {
       reset();
@@ -107,8 +103,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
   });
 
   it('[EDIT-31] the rotation persists across consecutive placements, and resets when the armed item changes', () => {
-    // building-stall (unlike `HOUSE`) has no maxCount, so it can actually land twice — the point of
-    // the persistence check (placing several fences at the same angle).
+    // Unlike `HOUSE`, the stall has no `maxCount`, so it can land twice.
     const STALL = 'building-stall';
     arm(STALL);
     try {
@@ -118,7 +113,6 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: STALL, placementRotation: 90 });
 
       new ObjectPlacerTool().onPointerDown(cell(m(5, 5)), point(m(5, 5)), ctx);
-      // Rotation must still read 90 for the second placement — placing does not reset it.
       expect(useEditorStore.getState().placementRotation).toBe(90);
       new ObjectPlacerTool().onPointerDown(cell(m(25, 25)), point(m(25, 25)), ctx);
 
@@ -126,9 +120,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       expect(placed).toHaveLength(2);
       expect(placed.every((o) => o.rotation === 90)).toBe(true);
 
-      // Arming a different item starts fresh at its natural orientation. Through `setEditMode`
-      // itself, not the `arm()` fixture helper (which hardcodes 0 regardless) — this is the actual
-      // reset path a real re-pick exercises, keyed on the previous armed item (`STALL`) changing.
+      // Through `setEditMode`, the real re-pick path; `arm()` would set 0 regardless.
       useEditorStore.getState().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: HOUSE } });
       expect(useEditorStore.getState().placementRotation).toBe(0);
     } finally {
@@ -137,7 +129,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
   });
 
   it('a non-rotatable item ignores the shortcut entirely (no state change)', () => {
-    arm('tree-apple'); // catalog: rotatable false
+    arm('tree-apple'); // not rotatable
     try {
       COMMAND_BY_ID.get('selection.rotate_cw')!.run(noopCtx);
       expect(useEditorStore.getState().placementRotation).toBe(0);

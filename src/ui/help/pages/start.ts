@@ -99,6 +99,13 @@ export const START_PAGES: readonly HelpPage[] = [
       },
       { kind: 'prose', anchor: 'camera-wheel', titleKey: 'help.camera.wheel_t', bodyKeys: ['help.camera.wheel_b1', 'help.camera.wheel_b2', 'help.camera.touch_b1'] },
       {
+        kind: 'list', anchor: 'camera-touch', titleKey: 'help.camera.gestures_t',
+        items: [
+          { key: 'help.camera.g_tap' }, { key: 'help.camera.g_double' }, { key: 'help.camera.g_hold' }, { key: 'help.camera.g_multi' },
+          { key: 'help.camera.g_shelf' }, { key: 'help.camera.g_loupe' }, { key: 'help.camera.g_undo' },
+        ],
+      },
+      {
         kind: 'keys',
         anchor: 'camera-keys',
         titleKey: 'help.camera.keys_t',

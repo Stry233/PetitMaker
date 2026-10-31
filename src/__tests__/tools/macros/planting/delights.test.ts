@@ -1,10 +1,7 @@
 /**
- * Rare delights: the press that lays a set piece instead of a stand.
- *
- * Three things make a surprise a feature rather than a bug, and all three are pinned here: it is
- * Rare and it is the seed's (so the same press always answers the same way and the ghost can show
- * it), every piece is rule-legal on arrival, and it never overrides a composition the user asked
- * for — a press beside a house lays the house's bed, whatever the seed rolled.
+ * Rare delights: a press that lays a set piece instead of a stand. A delight is rare and fixed by the
+ * seed (so the ghost can show it), lands rule-legal, and never overrides a composition the user asked
+ * for, such as a house's bed.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
@@ -47,10 +44,10 @@ describe('how often a press is a delight', () => {
   it.each(CARDS)('%s rolls one on a few presses in a hundred, and can roll any of them', (_id, lead) => {
     const seeds = delightSeeds(lead, SWEEP);
     const rate = seeds.length / SWEEP;
-    // Wide on purpose: what is pinned is that it stays a surprise, not the third decimal place.
+    // Wide on purpose: it pins rarity, not the exact rate.
     expect(rate, `the rate came out at ${rate}`).toBeGreaterThan(0.01);
     expect(rate).toBeLessThan(0.06);
-    // Every authored piece is reachable — one the roll can never produce is one nobody will see.
+    // Every authored piece is reachable.
     const seen = new Set(seeds.map((seed) => delightRoll(seed, lead)));
     expect([...seen].sort()).toEqual(delightIds(lead).sort());
   });
@@ -83,8 +80,6 @@ describe('a set piece on the map', () => {
       applyMacro(kit, id as MacroId, { seed, at: AT, radius: RADIUS });
       const objects = [...kit.state.objects.values()];
       for (const o of objects) expect(roleOf(o), `seed ${seed}: ${o.catalogId} is not this card's`).toBe(lead);
-      // A stand is an ecology and reaches for a handful of species; a piece is a drawing in one or
-      // two colours.
       expect(new Set(objects.map((o) => o.catalogId)).size, `seed ${seed}: too many species for a set piece`).toBeLessThanOrEqual(2);
     }
   });
@@ -115,11 +110,8 @@ describe('a set piece on the map', () => {
   });
 });
 
-/**
- * The two gates, asked of `layDelight` itself rather than of a finished map: null is the answer that
- * hands the press back to the wild stand, and reading it directly is the only way to tell a gate
- * that closed from a piece the ground happened to refuse.
- */
+/** The two gates, asked of `layDelight` directly: null hands the press back to the stand, which a
+ *  finished map cannot tell apart from a piece the ground refused. */
 describe('a set piece needs room and level ground', () => {
   const seed = delightSeeds('canopy', 200)[0]!;
 
@@ -139,7 +131,7 @@ describe('a set piece needs room and level ground', () => {
 
   it('gives way to the stand on a terraced disc', () => {
     const state = makeState(SIZE, SIZE);
-    // A staircase across the aim point: four tiers under one disc.
+    // A staircase across the aim point: tiers 0 to 3 under one disc.
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const tier = Math.max(0, Math.min(3, Math.floor((x - AT.x + 6) / 4)));
@@ -164,8 +156,8 @@ describe('a delight never overrides what the user pointed at', () => {
     applyMacro(kit, 'patch-tree', { seed, at: AT, radius: RADIUS });
     const objects = [...kit.state.objects.values()].filter((o) => o.id !== cabin.id);
     expect(objects.length).toBeGreaterThan(0);
-    // Everything the press laid frames the house. The lone grand tree the roll called for would have
-    // stood at the aim point, eight cells from the nearest wall.
+    // Everything laid frames the house; the rolled lone grand tree would stand at the aim point, eight
+    // cells from the nearest wall.
     for (const o of objects) {
       const dx = Math.max(cabin.position.x - o.position.x, o.position.x - (cabin.position.x + 4), 0);
       const dy = Math.max(cabin.position.y - o.position.y, o.position.y - (cabin.position.y + 3), 0);

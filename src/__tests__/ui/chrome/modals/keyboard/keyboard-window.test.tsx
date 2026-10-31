@@ -1,12 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The keyboard window's own round trip: record a chord, export the keymap, throw the overrides
- * away, import the file back.
- *
- * The codec is covered on its own in `keybind-presets.test.ts`. This is the window: that the
- * recording listener writes an override, that Export hands the serializer's output to the download,
- * and that the file input feeds it back through the validating parser. A repaint has no business
- * touching any of that, which is exactly why it is worth pinning while one happens.
+ * The keyboard window's round trip: record a chord, export the keymap, reset, import the file back.
+ * The codec itself is covered in `state/keymap/presets.test.ts`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
@@ -17,8 +12,7 @@ vi.mock('../../../../../io/export/download', async (original) => ({
   downloadBlob: (blob: Blob) => { downloaded.push(blob); },
 }));
 
-// jsdom's Blob carries no `text()`, and both halves of the round trip go through it (Export hands
-// out a Blob, Import reads a File). Backed by FileReader, which jsdom does implement.
+// jsdom's Blob has no `text()`, which both Export and Import use; FileReader backs it here.
 if (typeof Blob.prototype.text !== 'function') {
   Object.defineProperty(Blob.prototype, 'text', {
     configurable: true,
@@ -122,18 +116,14 @@ describe('the keyboard window', () => {
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     fireEvent.change(input, { target: { files: [new File(['{nope'], 'x.json', { type: 'application/json' })] } });
 
-    // The parser reports one of its six refusals and the window applies nothing, so what the user
-    // already had survives a bad file.
     await waitFor(() => expect(useKeybinds.getState().overrides[COMMAND]).toBe(CHORD));
   });
 });
 
 /*
- * The board's own scroll region is the app's one both-axis scroller (`useScrollFadeBoth`), so this
- * window is the only place its branches can be covered: two intersected mask layers when both
- * axes overflow, one plain layer once only one still does, and no mask at all once it fits.
- * `useTravel`'s settle loop runs on requestAnimationFrame + performance.now(), pumped with the same
- * queue/clock stub `scroll-fade.test.ts` established.
+ * The board region is the app's only `useScrollFadeBoth` user, so its branches are covered here.
+ * `useTravel` settles on requestAnimationFrame and performance.now(), pumped by the same stub as
+ * `scroll-fade.test.ts`.
  */
 describe('the keyboard region fades on the axes it can still travel', () => {
   let queue: FrameRequestCallback[] = [];
@@ -172,11 +162,10 @@ describe('the keyboard region fades on the axes it can still travel', () => {
     fireEvent.scroll(region);
     pumpUntil(() => region.style.maskComposite === 'intersect');
     expect(region.style.maskImage.match(/linear-gradient/g)).toHaveLength(2);
-    // jsdom's CSSStyleDeclaration doesn't recognize the vendor-prefixed `-webkit-mask-composite`
-    // (unlike the now-standard `mask-composite`), so only the standard property is checkable here.
+    // jsdom drops `-webkit-mask-composite`, so only the standard property is checked.
     expect(region.style.maskComposite).toBe('intersect');
 
-    // The y axis now fits (a height squeeze absorbed, say); only x still has travel.
+    // The y axis fits; only x has travel.
     Object.defineProperty(region, 'scrollHeight', { value: 400, configurable: true });
     Object.defineProperty(region, 'scrollTop', { value: 0, configurable: true });
     fireEvent.scroll(region);
@@ -184,7 +173,7 @@ describe('the keyboard region fades on the axes it can still travel', () => {
     expect(region.style.maskImage).toContain('linear-gradient(to right,');
     expect(region.style.maskImage).not.toContain('linear-gradient(to bottom,');
 
-    // Both axes now fit: no mask at all.
+    // Both axes fit.
     Object.defineProperty(region, 'scrollWidth', { value: 1000, configurable: true });
     Object.defineProperty(region, 'scrollLeft', { value: 0, configurable: true });
     fireEvent.scroll(region);

@@ -46,7 +46,7 @@ export function setZone(state: GridState, x: number, y: number, zone: CellZone):
   if (cell) cell.zone = zone;
 }
 
-/** The core builders under the names the tests have always used. */
+/** The core builders under the short names the tests use. */
 export const paintCmd = (cells: MacroCoord[], terrainType: TerrainType, elevation: number): PaintTerrainCommand =>
   paintTerrainCommand(cells, terrainType, elevation);
 export const eraseCmd = (cells: MacroCoord[]): EraseTerrainCommand => eraseTerrainCommand(cells);

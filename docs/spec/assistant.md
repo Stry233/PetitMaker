@@ -14,7 +14,7 @@ This area covers the AI assistant that edits the open map on the user's instruct
 ## Undo and rollback
 
 - **ASST-07** Each edit the assistant makes is one undo step.
-- **ASST-08** The assistant's own undo never reaches below the point where its current job started, so it cannot take back work from before the job.
+- **ASST-08** The assistant's own undo never reaches below the point where its current job started, so it cannot take back work from before the job; each step it undoes is one map edit, taken back with any selection steps made after it.
 - **ASST-09** Rewinding a job asks first and says how many steps it will take back, including how many of them are the user's own later work.
 - **ASST-10** When map rules refuse part of an assistant edit, only as much is rolled back as the map needs to be legal again, and the panel says in the user's language what was refused and which changes stayed; an edit that fails partway is rolled back whole.
 
@@ -39,3 +39,11 @@ This area covers the AI assistant that edits the open map on the user's instruct
 ## How the assistant builds
 
 - **ASST-20** The assistant has no tool that runs the generator; it builds through its own editing tools, so every change is a step the user can see, approve and undo. Source: owner ruling 2026-08-27.
+
+## Plans on the map
+
+- **ASST-21** For a layout across several areas, a whole map, or an order that asks for a plan, the assistant lays its plan out as planning annotations before building: tagged and coloured zones for the spaces the order needs, sized in cells on the open buildable ground, entrance zones or routes for the way people move between them, and chips for focal points. It plans by a stated method: a programme with the instances and sizes each function needs, paths drawn first as a connected hierarchy reaching the plaza, the other fixed arrival points and every parcel, and parcels tiling the ground between the paths; its written plan is a short legend of those annotations. Under Strict and Checkpoint the plan's approval is asked with that layout standing on the map. Source: owner request 2026-10-29.
+- **ASST-22** Annotations already on the map reach the assistant with each order as requirements, with their number, tag, size and place; a zone the assistant draws by shape leaves the cells other zones hold to those zones unless it is told to overlap them, and the assistant changes or removes annotations it did not lay for the current order only when the user asks. Source: owner request 2026-10-29.
+- **ASST-23** The assistant's plan annotations stay on the map after it builds, as the record of the plan, until the user removes them or asks the assistant to; undoing its terrain work or rewinding its job leaves them, and the Annotations undo takes them back one edit at a time. While the Annotations layer is hidden or locked the assistant writes no annotations and gives its plan as text. Source: owner request 2026-10-29.
+- **ASST-24** A custom tag the assistant names for a facility is drawn only after it passes the same on-device text check as a tag the user types. Source: owner request 2026-10-29.
+- **ASST-25** Asked to build from annotations, its own approved plan or zones, chips and routes the user drew, the assistant builds each zone as its tag or name means with what the catalog offers and inside the zone's cells (its area tools take a zone's number and keep to it), lays roads along path zones and routes, leaves reserved zones empty and the annotations standing, reads an untagged zone or a free custom name from its context and asks only when the choice changes the result materially, and reports what it could not build and why. Its read of the annotations tells what each zone holds and which zones hold nothing. Source: owner request 2026-10-29.

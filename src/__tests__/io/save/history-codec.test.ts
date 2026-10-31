@@ -23,11 +23,10 @@ const T = makeTemplate(12, 12);
 function editedExecutor() {
   const state = makeState(12, 12);
   const exec = makeExecutor(state);
-  // Execute 5 commands without commitStroke so they remain as separate undo entries
+  // No commitStroke: the five commands stay separate undo entries for the codec.
   for (let i = 0; i < 5; i++) {
     exec.execute({ type: CommandType.PaintTerrain, cells: [{ x: 2 + i, y: 3 }], terrainType: TerrainType.Mountain, elevation: 1 });
   }
-  // Do not call commitStroke — keep entries uncollapsed for testing the codec
   return { state, exec };
 }
 
@@ -61,14 +60,14 @@ describe('history codec', () => {
   it('restoreHistory seeds a FRESH executor so undo reverts the imported edits', () => {
     const { state, exec } = editedExecutor();
     const entries = decodeHistory(JSON.parse(JSON.stringify(encodeHistory(exec.getUndoEntries(), 'all'))), T)!;
-    // Fresh executor over the same (already edited) state — like after an import.
+    // Fresh executor over the same (already edited) state, like after an import.
     const fresh = makeExecutor(state);
     expect(fresh.canUndo()).toBe(false);
     fresh.restoreHistory(entries);
     expect(fresh.canUndo()).toBe(true);
     fresh.undo();
-    expect(state.cells[3]![6]!.terrain).toBeNull(); // last SetTerrain reverted
-    expect(state.cells[3]![2]!.terrain).not.toBeNull(); // earlier ones intact
+    expect(state.cells[3]![6]!.terrain).toBeNull();
+    expect(state.cells[3]![2]!.terrain).not.toBeNull();
   });
   it('gives a road corner trim from an older save its road before and after, so undo and redo restore it', () => {
     const state = makeState(12, 12);
@@ -128,7 +127,6 @@ describe('history codec', () => {
   it('collapsed-entry round-trip: place object → commitStroke → encode → decode → restore → undo removes it', () => {
     const { state: originalState, exec: originalExec } = editedExecutor();
 
-    // Place an object and collapse it into a single undo entry via commitStroke
     const startSize = originalExec.beginStroke();
     const obj = {
       id: 'test-obj-1', catalogId: 'path-overgrown-dirt',
@@ -141,34 +139,30 @@ describe('history codec', () => {
     expect(placeResult.success).toBe(true);
     expect(originalState.objects.has(obj.id)).toBe(true);
 
-    // Collapse into one entry
     startSize.commit();
-    expect(startSize.size).toBe(1); // collapsed to one
+    expect(startSize.size).toBe(1);
 
-    // Encode all undo entries, JSON round-trip, and decode
     const entries = originalExec.getUndoEntries();
     const section = encodeHistory(entries, 'all');
     const decoded = decodeHistory(JSON.parse(JSON.stringify(section)), T);
     expect(decoded).not.toBeNull();
     expect(decoded!.length).toBe(entries.length);
 
-    // Create a fresh executor over the same (already edited) state and restore history
+    // Fresh executor over the same (already edited) state, like after an import.
     const freshExec = makeExecutor(originalState);
-    expect(freshExec.canUndo()).toBe(false); // fresh executor has no history yet
+    expect(freshExec.canUndo()).toBe(false);
 
     freshExec.restoreHistory(decoded!);
     expect(freshExec.canUndo()).toBe(true);
 
-    // One undo should remove the placed object (the collapsed entry reverts everything)
     freshExec.undo();
-    expect(originalState.objects.has(obj.id)).toBe(false); // object removed
+    expect(originalState.objects.has(obj.id)).toBe(false);
   });
 
   it('keeps a step that placed a half-anchored ramp, drops one that placed a half-anchored tree', () => {
-    // Undo replays this data verbatim, so the gate is the same one the map loader applies: a
-    // halfStep item may stand on the half grid, nothing else may. One bad object drops the whole
-    // section, so a gate that refused a ramp at 5.5 would cost the user their entire step history
-    // on re-import.
+    // Undo replays this data verbatim, so the gate is the map loader's: a halfStep item may stand on
+    // the half grid, nothing else may. One bad object drops the whole section, so refusing a ramp
+    // at 5.5 would lose the entire step history on re-import.
     const section = (catalogId: string, x: number) => ({
       v: HISTORY_V,
       totalSteps: 1,
@@ -198,7 +192,7 @@ describe('history codec', () => {
         cmd: { type: CommandType.PaintTerrain, cells: [], terrainType: TerrainType.Mountain, elevation: 1 },
         before: [],
         after: [],
-        objectOps: { added: 'nope' }, // should be an array
+        objectOps: { added: 'nope' }, // must be an array
       }],
     };
     expect(decodeHistory(malformed, T)).toBeNull();
@@ -212,7 +206,7 @@ describe('history codec', () => {
         cmd: { type: CommandType.PaintTerrain, cells: [], terrainType: TerrainType.Mountain, elevation: 1 },
         before: [],
         after: [],
-        objectOps: null, // should be an object with arrays
+        objectOps: null, // must be an object with arrays
       }],
     };
     expect(decodeHistory(malformed, T)).toBeNull();

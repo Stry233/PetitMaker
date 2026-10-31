@@ -5,10 +5,8 @@ import { cursorArt, busyFrame, BADGED_IDS, BUSY_FRAME_COUNT } from '../../../ass
 import { decodePng } from '../../../io/share/raster/png-raster';
 
 /**
- * The art is one generated SVG per drawing: geometry for the line drawings, and the painted
- * masses embedded as their 2x renders (data-URI PNGs on a `viewBox 0 0 64 64`). These read the
- * Shipped files off disk; `cursorArt` resolves to a bundler URL that is a stub under vitest,
- * which is enough to assert which file an id points at, but not what is in it.
+ * One generated SVG per drawing; painted ones embed their 2x render as a data-URI PNG. The files
+ * are read off disk because `cursorArt` resolves to a bundler stub under vitest.
  */
 const ART_DIR = 'src/assets/cursors';
 const svgOf = (stem: string) => readFileSync(`${ART_DIR}/${stem}.svg`, 'utf8');
@@ -21,10 +19,8 @@ const embedded = async (svg: string) => {
   return out;
 };
 /**
- * Coordinates of every pixel the artist drew in an embedded render. `minAlpha` chooses what
- * counts: the default takes the faintest fringe, which is right for "is anything drawn near
- * here". Locating ink wants `SOLID` instead — the painted art carries a soft edge a pixel or two
- * outside itself.
+ * Pixels of a render with alpha above `minAlpha`. The default takes the faint fringe; locating ink
+ * wants `SOLID`, since painted art has a soft edge a pixel or two wide.
  */
 function drawn(img: { width: number; data: Uint8Array }, minAlpha = 8): Array<[number, number]> {
   const out: Array<[number, number]> = [];
@@ -40,8 +36,7 @@ const PAINTED: readonly CursorId[] = ['move', 'hand-open', 'hand-closed', 'orbit
 /** How far a hotspot may sit from anything drawn, in the embedded render's 2x pixels. */
 const NEAR = 8;
 
-// Keyword cursors a browser is guaranteed to understand: what the user gets if our image or
-// hotspot is ever rejected.
+// Keywords every browser understands, shown when the image or hotspot is rejected.
 const KEYWORDS = ['default', 'crosshair', 'grab', 'grabbing', 'move', 'copy', 'progress', 'not-allowed', 'pointer', 'all-scroll', 'text', 'help'];
 
 describe('cursor catalogue', () => {
@@ -65,31 +60,27 @@ describe('cursor catalogue', () => {
   });
 
   it('falls the move tool back to grab, never to the move keyword', () => {
-    // macOS renders the `move` keyword as the closed hand, so under system cursors the tool read
-    // as a grip that never releases; grab opens at idle and the controller's system-mode pan
-    // closes it (`grabbing`) exactly while the view is being dragged.
+    // macOS draws the `move` keyword as a closed hand; `grab` is open at idle and system-mode pan
+    // shows `grabbing` only while dragging.
     expect(CURSORS.move.fallback).toBe('grab');
     expect(CURSORS['hand-closed'].fallback).toBe('grabbing');
   });
 
   it('marks busy as frame-only: no single file, an animated ring, the OS keyword as fallback', () => {
-    // `hasArt: false` means "no busy.svg of its own" — the art is the frame ring the controller
-    // cycles, since a static custom cursor reads as stuck while a long operation runs.
+    // Busy has no file of its own: the controller cycles a frame ring, since a static cursor reads
+    // as stuck.
     expect(CURSORS.busy.hasArt).toBe(false);
     expect(CURSORS.busy.fallback).toBe('progress');
-    // `help` is the other frameless id, differently: no drawing exists at all, and the OS help
-    // arrow is the design until the cursor PSD gains a question mark. Everything else is painted.
+    // `help` has no drawing; the OS help arrow stands in until the cursor PSD gains a question mark.
     expect(CURSORS.help.hasArt).toBe(false);
     expect(CURSORS.help.fallback).toBe('help');
     for (const id of CURSOR_IDS.filter((i) => i !== 'busy' && i !== 'help')) expect(CURSORS[id].hasArt, id).toBe(true);
   });
 
   it('only lets cursors whose tool can ANSWER carry the forbidden badge', () => {
-    // Panning, orbiting, marquee and busy are always legal, and `select` means "nothing here to act
-    // on", which is not a refusal. `move` and `edge-cut` cannot answer at hover time either: a
-    // move's only refusable fact is the drop cell, unknown until the drag ends, and cut validity is
-    // per-CORNER, so there is no single answer for the cell under the pointer. The DOM four are not
-    // tool cursors at all, and `blocked` is the refusal sign.
+    // Pan, orbit, marquee and busy are always legal; `select` refuses nothing; a move's drop cell is
+    // unknown until the drag ends and cut validity is per corner; the DOM four are not tool cursors;
+    // `blocked` is the sign itself.
     for (const id of ['hand-open', 'hand-closed', 'orbit', 'marquee', 'busy', 'select', 'move', 'edge-cut',
       'default', 'clickable', 'blocked', 'text'] as const) {
       expect(FORBIDDABLE.has(id), id).toBe(false);
@@ -110,9 +101,8 @@ describe('cursor art', () => {
   });
 
   it('declares the tile on every file, over the 2x canvas the offsets are stated in', () => {
-    // The intrinsic 32 is the drawn size (an engine rasterises an SVG cursor at the screen's own
-    // scale), and both engines drop a custom cursor larger than 32 CSS px near the viewport edges
-    // (the anti-spoofing rule), so the declared size is load-bearing on both counts.
+    // The intrinsic size is the drawn size, and engines drop a custom cursor over 32 CSS px near
+    // the viewport edges.
     for (const id of ART_IDS) {
       const svg = svgOf(id);
       expect(svg, id).toContain(`width="${CURSOR_SIZE}" height="${CURSOR_SIZE}"`);
@@ -122,9 +112,8 @@ describe('cursor art', () => {
   });
 
   it('collapses every tool-identity cursor onto the one arrow', () => {
-    // A cursor whose only message is "this tool is armed" has nothing left to say: the preview cell
-    // under the pointer carries the tool's own picture. So these are one drawing, byte for byte, and
-    // switching tools leaves the pointer looking and pointing exactly where it was.
+    // The preview cell under the pointer shows the armed tool, so tool cursors share one drawing and
+    // hotspot.
     const arrow = svgOf('select');
     for (const id of ['default', 'clickable', 'mountain', 'water', 'road', 'place', 'eraser', 'edge-cut'] as const) {
       expect(svgOf(id) === arrow, `${id} is not the arrow`).toBe(true);
@@ -162,9 +151,7 @@ describe('cursor art', () => {
     const svg = svgOf('text');
     expect(svg).not.toContain('<image');
     expect(svg).not.toContain('<path');
-    // The dark glyph's rectangles: bbox height is the ink height (22) on the 2x canvas, kept
-    // under the arrow's box (26): an upright reads taller than anything else
-    // of its height.
+    // The dark glyph is 22 tall at 1x, under the arrow's 26, because an upright reads taller.
     const inks = [...svg.matchAll(/<rect x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)" fill="#634b49"/g)]
       .map((m) => m.slice(1, 5).map(Number) as [number, number, number, number]);
     expect(inks.length).toBe(3);
@@ -184,25 +171,21 @@ describe('cursor art', () => {
   });
 
   it('draws the hand at one size whether it is open or closed', async () => {
-    // The two alternate inside a single drag, so they are normalised together: sized apart, the
-    // wider open hand was scaled down further and the hand jumped a fifth larger as the grip took
-    // hold. Same ink height, same top edge, and the same hotspot.
+    // The two alternate within one drag, so they share ink height, top edge and hotspot.
     const box = async (id: CursorId) => {
       const pts = drawn((await embedded(svgOf(id)))[0]!, SOLID);
       return { top: Math.min(...pts.map(([, y]) => y)), bottom: Math.max(...pts.map(([, y]) => y)) };
     };
     const [open, closed] = [await box('hand-open'), await box('hand-closed')];
-    // Within one 2x pixel: the pair shares one evened 1x box, and where the first `SOLID` row lands
-    // inside the render's soft edge is the resample's to decide.
+    // Within one 2x pixel: where the first `SOLID` row falls in the soft edge depends on the resample.
     expect(Math.abs(closed.top - open.top)).toBeLessThanOrEqual(1);
     expect(Math.abs((closed.bottom - closed.top) - (open.bottom - open.top))).toBeLessThanOrEqual(2);
     expect(CURSORS['hand-closed'].hotspot).toEqual([...CURSORS['hand-open'].hotspot]);
   });
 
   it('keeps every painted drawing near one optical size', async () => {
-    // Each drawing's ink is normalised to a common long side by the extractor (30 of the 32 tile,
-    // 26 for the refusal sign, which is a sign rather than a picture) — read here off the
-    // embedded 2x renders.
+    // The extractor sets each long side to 30 of the 32 tile (26 for the refusal sign); bands are
+    // in 2x pixels.
     const band: Partial<Record<CursorId, [number, number]>> = {
       blocked: [48, 56],
     };
@@ -217,9 +200,7 @@ describe('cursor art', () => {
   });
 
   it('puts every painted hotspot on the art it belongs to', async () => {
-    // The hotspot is the pixel the drawing acts from, so it has to be on the drawing; hotspots are
-    // in tile pixels and the embedded render is the 2x canvas. `move` is the one deliberate
-    // exception, held by the test below.
+    // Hotspots are in tile pixels, the render is 2x. `move` is covered by the next test.
     for (const id of PAINTED.filter((i) => i !== 'move')) {
       const [hx, hy] = CURSORS[id].hotspot.map((v) => v * 2);
       const pts = drawn((await embedded(svgOf(id)))[0]!);
@@ -229,9 +210,7 @@ describe('cursor art', () => {
   });
 
   it('keeps move\'s hotspot inside the hollow its four arrows leave', async () => {
-    // Four arrows pointing at the point they act from, so the centre is inside the drawing and
-    // painted by none of it. What can be asked is that the hotspot is the middle, and that the
-    // drawing surrounds it on all four sides.
+    // The four arrows leave the centre unpainted, so the hotspot is the middle with ink on all sides.
     const [hx, hy] = CURSORS.move.hotspot;
     expect([hx, hy]).toEqual([CURSOR_SIZE / 2, CURSOR_SIZE / 2]);
     const img = (await embedded(svgOf('move')))[0]!;
@@ -248,8 +227,8 @@ describe('cursor art', () => {
   });
 
   it('draws a badged variant for exactly the cursors that can refuse', () => {
-    // The badge is composited at an offset chosen per silhouette, so a cursor entering `FORBIDDABLE`
-    // without an entry in the extractor's table would silently show its plain self when refusing.
+    // The extractor places the badge per silhouette; a `FORBIDDABLE` id missing from its table
+    // would refuse with its plain art.
     expect([...BADGED_IDS].sort()).toEqual([...FORBIDDABLE].sort());
   });
 
@@ -259,8 +238,7 @@ describe('cursor art', () => {
       expect(cursorArt(id, { forbidden: true }), id).toContain(`${id}-forbidden.svg`);
       const [plain, badged] = [svgOf(id), svgOf(`${id}-forbidden`)];
       expect(badged, id).not.toBe(plain);
-      // The badge is the sign image placed against the arrow's right shoulder (18,0 at 1x); the
-      // drawing itself is untouched, so the plain art appears verbatim inside the badged file.
+      // The sign sits at the arrow's right shoulder (18,0 at 1x) beside the plain art, verbatim.
       expect(badged, id).toContain('<image x="36" y="0"');
       const arrowBody = plain.replace(/^<svg[^>]*>/, '').replace('</svg>', '');
       expect(badged, `${id}'s badge covers its own art`).toContain(arrowBody);
@@ -272,15 +250,13 @@ describe('cursor art', () => {
   });
 
   it('never reaches for a second badge on art that already refuses', () => {
-    // `blocked` is the refusal sign, so asking it for `forbidden` must be a no-op rather than
-    // looking up a doubly-badged file that does not exist.
+    // `blocked` is the sign itself, so `forbidden` changes nothing.
     expect(cursorArt('blocked', { forbidden: true })).toBe(cursorArt('blocked'));
     expect(BADGED_IDS.has('blocked')).toBe(false);
   });
 
   it('tells the user what a Ctrl+click will do, in the arrow\'s own geometry', () => {
-    // Without distinct art, holding Ctrl looks identical to not holding it. The marks are rounded
-    // lines like the arrow's gloss, drawn under the arrow so a contended pixel goes to the tip.
+    // The marks are rounded lines like the arrow's gloss, drawn first so the tip wins a shared pixel.
     const [add, remove] = [svgOf('select-add'), svgOf('select-remove')];
     expect(add).not.toBe(remove);
     for (const [name, svg, lines] of [['add', add, 4], ['remove', remove, 2]] as const) {
@@ -297,8 +273,7 @@ describe('cursor art', () => {
     const svg = svgOf('marquee');
     const band = await embedded(svg);
     expect(band.length).toBe(1);
-    // Below and right of the arrow (12,12 at 1x), and painted first so the arrow wins a contended
-    // pixel.
+    // Below and right of the arrow (12,12 at 1x), drawn first so the arrow wins a shared pixel.
     expect(svg).toContain('<image x="24" y="24"');
     expect(svg.indexOf('<image'), 'the band is over the arrow').toBeLessThan(svg.indexOf('matrix'));
     for (const id of ['select', 'select-add', 'select-remove', 'marquee'] as const) {
@@ -320,20 +295,16 @@ describe('cursor CSS', () => {
   it('never emits a bare url(), for every id', async () => {
     const { cursorCss } = await import('../../../assets/cursors/cursor-css');
     for (const id of CURSOR_IDS) {
-      // A closed url(), then the hotspot, then the mandatory keyword. An unclosed url()
-      // makes the whole declaration invalid and the element gets no cursor at all. `busy` is in
-      // it too: no file of its own, but the ring's frames answer through the same shape. `help`
-      // alone resolves to its bare keyword: it has no drawing, by design, until the PSD gains one.
+      // An unclosed url() voids the declaration. `busy` answers with a ring frame; `help` has no
+      // drawing and resolves to its keyword.
       if (id === 'help') { expect(cursorCss(id)).toBe('help'); continue; }
       expect(cursorCss(id).trimEnd(), id).toMatch(/^url\("[^"]+"\)\s+\d+\s+\d+,\s*[a-z-]+$/);
     }
   });
 
   it('wraps the url as image-set 1x where the engine reads it in cursor', async () => {
-    // Blink and WebKit draw a cursor at natural size divided by the image-set density and
-    // rasterise an SVG at the device scale on their own, so 1x is the one density that leaves the
-    // intrinsic 32 drawn at 32 CSS px on every screen. The prefixed spelling is asked for only
-    // where the plain one is refused.
+    // Blink and WebKit divide the drawn size by the image-set density and rasterise an SVG at device
+    // scale themselves, so only 1x draws the intrinsic size. The prefixed spelling is a fallback.
     const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
     const supports = vi.fn((_p: string, v: string) => v.startsWith('image-set('));
     vi.stubGlobal('CSS', { supports });
@@ -351,10 +322,8 @@ describe('cursor CSS', () => {
   });
 
   it('raises the density to 2x on Gecko alone, where it is a rasterisation hint and not a size', async () => {
-    // Gecko sizes a vector cursor at its intrinsic width whatever the density, and rasterises at
-    // the declared density: a 1x goes soft wherever the hovered element stands under CSS zoom,
-    // which the app's chrome always does (probed: Firefox 152 at dpr 2). Gecko is the one
-    // engine that parses the -moz-appearance alias, which is how the seam tells it apart.
+    // Gecko sizes a vector cursor intrinsically but rasterises at the declared density, so 1x blurs
+    // under the chrome's CSS zoom (Firefox 152 at dpr 2). Only Gecko parses `-moz-appearance`.
     const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
     vi.stubGlobal('CSS', {
       supports: (p: string, v: string) => v.startsWith('image-set(') || p === '-moz-appearance',
@@ -378,8 +347,7 @@ describe('cursor CSS', () => {
   });
 
   it('emits a URL the double-quoted url() can actually hold', async () => {
-    // A `"` would close the url() early and invalidate the whole declaration, leaving the
-    // element with no cursor at all; the bundler decides this string, so it is worth asserting.
+    // The bundler chooses this string, and a `"` in it would close the url() early.
     const { cursorCss } = await import('../../../assets/cursors/cursor-css');
     for (const id of CURSOR_IDS) {
       const uri = /url\("([^"]*)"\)/.exec(cursorCss(id, { forbidden: true }))?.[1];

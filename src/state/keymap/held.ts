@@ -1,13 +1,15 @@
 /*
  * The held commands: keymap rows a key serves while it is down rather than on a press. Each one's
  * key is the last segment of its effective combo, read live from the keymap store, so a rebind or
- * an unbind (no key: never held) takes effect at once on every reader.
+ * an unbind (no key: never held) takes effect at once on every reader. A touch latch in the editor
+ * store holds a command the same way, for a hand with no key to hold.
  */
 import { heldToken } from '../../platform/input/combo';
 import { isKeyHeld, onHeldKeysChange } from '../../platform/input/held-keys';
 import { effectiveCombo, type Overrides } from './resolve';
 import type { CommandId } from './registry';
 import { useKeybinds } from './store';
+import { useEditorStore, type EditorStore } from '../store';
 
 /** Constrain snaps shape drags straight, square or round; multi-select turns a click into a
  *  membership toggle and a drag into a rubber band; break-handle turns a curve anchor's two
@@ -32,12 +34,18 @@ function heldKeyOf(id: HeldCommandId): string {
   return memo.tokens.get(id) ?? '';
 }
 
+/** The held commands a touch latch holds, by the store flag that holds each. */
+const LATCHES: Partial<Record<HeldCommandId, (s: EditorStore) => boolean>> = {
+  'selection.multi': (s) => s.multiSelectLatched,
+};
+
 export function isCommandHeld(id: HeldCommandId): boolean {
-  return isKeyHeld(heldKeyOf(id));
+  return isKeyHeld(heldKeyOf(id)) || (LATCHES[id]?.(useEditorStore.getState()) ?? false);
 }
 
 /**
- * Subscribe to `id` going down or up, by key or by a rebind that moves it. Returns an unsubscribe.
+ * Subscribe to `id` going down or up, by key, by a rebind that moves it or by its latch. Returns an
+ * unsubscribe.
  *
  * A key press runs with no pointer event beside it, so a reader that only recomputes on pointer
  * move would see the new state one mouse move late; the pointer machine and the cursor re-sample
@@ -53,5 +61,6 @@ export function onCommandHeldChange(id: HeldCommandId, fn: () => void): () => vo
   };
   const offKeys = onHeldKeysChange(check);
   const offKeymap = useKeybinds.subscribe(check);
-  return () => { offKeys(); offKeymap(); };
+  const offLatch = LATCHES[id] ? useEditorStore.subscribe(check) : () => {};
+  return () => { offKeys(); offKeymap(); offLatch(); };
 }

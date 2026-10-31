@@ -5,7 +5,7 @@ import { makeState, setTerrain } from '../_support/map-state';
 
 /**
  * Ramp (heightDrop) robustness audit: the support sweep must validate the real
- * surface — not just elevation numbers. Water at the right elevation is not
+ * surface, not just elevation numbers. Water at the right elevation is not
  * support; Γ fillets are cosmetic; corner trims on full blocks are cosmetic.
  */
 describe('ramp policy robustness', () => {
@@ -62,7 +62,7 @@ describe('ramp policy robustness', () => {
     // elev-2 plateau (rows 5..14) over an elev-1 shelf (rows 15..19)
     for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) setTerrain(state, x, y, TerrainType.Mountain, 2);
     for (let y = 15; y <= 19; y++) for (let x = 5; x <= 14; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
-    // one low-run cell carries a tier-2 fillet over its real tier-1 base — cosmetic
+    // one low-run cell carries a tier-2 fillet over its real tier-1 base (cosmetic)
     setTerrain(state, 9, 16, TerrainType.Mountain, 2);
     state.cells[16]![9]!.terrain!.patchOnly = true;
     const cmd = placeRamp(8, 14);
@@ -71,7 +71,7 @@ describe('ramp policy robustness', () => {
 
   it('accepts a ramp on a TRIMMED (cut-corner) cliff lip — trims are cosmetic by design', () => {
     const state = plateau();
-    // generation auto-trims cliffs, then places ramps on them — pin that behavior
+    // generation auto-trims cliffs and then places ramps on them
     state.cells[14]![8]!.terrain!.corners = ['square', 'square', 'fan', 'fan'];
     const cmd = placeRamp(8, 14);
     expect(createDefaultRegistry().validatePreCommand(cmd, state)).toHaveLength(0);

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { spec } from '../../_support/spec';
 import { Disclosure } from '../../../ui/primitives/Disclosure';
 
 function Form({ open }: { open: boolean }) {
@@ -26,4 +27,52 @@ it('excludes departing controls before their exit completes', () => {
   view.rerender(content(false));
   expect(view.getByTestId('fold').hasAttribute('inert')).toBe(true);
   expect(view.getByTestId('fold').style.pointerEvents).toBe('none');
+});
+
+/** The Web Animations surface a browser offers, enough for Framer to hand it opacity: a browser
+ *  finishes that half of a glide outside Framer's frame loop, which jsdom alone never does. */
+class BrowserAnimation {
+  playState = 'running';
+  currentTime = 0;
+  startTime = 0;
+  playbackRate = 1;
+  onfinish: (() => void) | null = null;
+  readonly effect: { getComputedTiming: () => { duration: number }; updateTiming: () => void };
+  private readonly timer: ReturnType<typeof setTimeout>;
+  constructor(duration: number) {
+    this.effect = { getComputedTiming: () => ({ duration }), updateTiming: () => {} };
+    this.timer = setTimeout(() => { this.playState = 'finished'; this.currentTime = duration; this.onfinish?.(); }, duration);
+  }
+  cancel() { clearTimeout(this.timer); this.playState = 'idle'; }
+  pause() {}
+  play() {}
+  finish() {}
+  commitStyles() {}
+}
+
+beforeAll(() => {
+  Object.defineProperty(Element.prototype, 'animate', {
+    configurable: true,
+    value: (_keyframes: unknown, options: { duration?: number }) => new BrowserAnimation(options.duration ?? 0),
+  });
+});
+afterAll(() => { Reflect.deleteProperty(Element.prototype, 'animate'); });
+
+spec('UI-43', 'an arrived disclosure holds no fixed height, so content that grows later pushes what follows down', async () => {
+  // jsdom lays nothing out; a one-line row's height stands in for the measured one.
+  const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(31);
+  try {
+    const view = render(
+      <MotionConfig reducedMotion="never">
+        <AnimatePresence><Disclosure key="row" testId="fold"><span>Building a road</span></Disclosure></AnimatePresence>
+      </MotionConfig>,
+    );
+    const frame = view.getByTestId('fold');
+    await waitFor(() => expect(frame.style.overflow).toBe('visible'), { timeout: 2000 });
+    // Any frame the glide still owes paints before the resting style is read.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(frame.style.height).toBe('');
+  } finally {
+    height.mockRestore();
+  }
 });

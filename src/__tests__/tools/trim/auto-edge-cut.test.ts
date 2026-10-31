@@ -30,9 +30,7 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('elevation-independent: rounds a TALL isolated tip (elev 3..6) — no height gate', () => {
-    // An elev>=2 convex corner must round even where the cut reveals only ground, or a tall circle or
-    // pillar keeps square corners under auto-trim while the manual tool rounds it. Cuttability is a
-    // 2D-silhouette property, so a convex tip rounds at any height.
+    // Cuttability is a property of the 2D silhouette, as with the manual tool, so height does not matter.
     for (const e of [3, 4, 6]) {
       const state = makeState(10, 10);
       setTerrain(state, 5, 5, TerrainType.Mountain, e);
@@ -72,13 +70,10 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('STROKE path fills an EMPTY Γ notch COSMETICALLY (patchBase 0, no base block) — matches the manual tool', () => {
-    // The build-brush auto-trim (stroke path) must produce only states the manual EdgeCutTool could produce.
-    // For an empty concave notch the manual tool materialises a cosmetic fillet with patchBase 0 (no base
-    // column) — the notch stays open ground behind a rounded top corner. Raising a real support column
-    // here would violate auto-trim-is-cosmetic (a structural base block the manual tool never adds).
+    // Auto-trim produces only states the manual EdgeCutTool can: over an empty notch, a cosmetic
+    // fillet with patchBase 0 and open ground behind its rounded corner.
     const state = makeState(10, 10);
-    // Tier 1: a fillet has no mass of its own, so over an empty notch it can only rest on the
-    // ground. Higher up it would hang in the air and is not offered at all.
+    // Tier 1: a fillet has no mass, so over an empty notch it rests on the ground or is not offered.
     const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-1 L; notch (4,4) empty
     for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 1);
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', L.map(([x, y]) => ({ x, y })), []);
@@ -86,19 +81,15 @@ describe('applyAutoEdgeCut — terrain', () => {
     expect(patch.elevation, 'fillet sits at the wrapping tier').toBe(1);
     expect(patch.patchOnly).toBe(true);
     expect(patch.corners![0]).toBe('fan');
-    // A cosmetic fillet with real support 0, not a structurally-raised base block.
     expect(patch.patchBase, 'cosmetic — no base column added (AUTO-TRIM-IS-COSMETIC)').toBe(0);
-    // cut-backing must therefore reveal nothing behind the cut (open notch), exactly like the manual tool,
-    // rather than the phantom mountain@N-1 base `cutBacking`'s patchBase-undefined fallback fabricates.
+    // With patchBase undefined, `cutBacking` would fall back to a phantom mountain one tier lower.
     const back = cutBackingByCorner(patch, 1, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
     expect(back, 'no fabricated base backing').toEqual([null, null, null, null]);
   });
 
   it('a WATER notch keeps its water and rounds its own corner — filled by the mountain that wraps it', () => {
-    // A mountain built into a pond. The water cell in the mountain's Γ notch is a different real
-    // surface, so it is never flooded with a fillet (it rounds its own convex corner instead) — but what
-    // shows behind that cut is the wrapping mountain, not the ground under the mountain. A ground reveal
-    // here draws a wedge of grass at every step of the junction, which reads as a dent in the bank.
+    // A mountain built into a pond: the water in its Γ notch is never filled, and behind the water's
+    // own cut shows the wrapping mountain, since a ground reveal would draw a grass wedge in the bank.
     const state = makeState(10, 10);
     for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Water, 0);
     const L: [number, number][] = [[5, 4], [4, 5], [5, 5]]; // wraps the BR corner of the water at (4,4)
@@ -114,10 +105,8 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('two mountains attached DIAGONALLY weld across the water corner between them', () => {
-    // The 2x2 has mountain and bare ground on one diagonal, with mountain and water
-    // on the other. The two shores meet at a point on the water's corner, which rounds out — and what shows
-    // behind it is those shores, not a wedge of grass driven between them. The Γ fillet stays refused there
-    // (adding mass would bridge the pinch); only the backing, which adds none, welds.
+    // Two mountain cells meet diagonally at the water's corner. The water's cut shows the shores
+    // behind it, and the diagonal fillet is cosmetic so no mass bridges the pinch.
     const state = makeState(12, 12);
     for (let y = 5; y <= 9; y++) for (let x = 5; x <= 9; x++) setTerrain(state, x, y, TerrainType.Water, 0);
     const pinch: [number, number][] = [[5, 4], [4, 5]]; // meeting at the TL corner of the water at (5,5)
@@ -135,13 +124,8 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('GENERATION fills an EMPTY Γ notch COSMETICALLY, identical to the manual/stroke path (no phantom base)', () => {
-    // The notch must round from-empty with patchBase 0, byte-identical to the manual tool, so generated
-    // and painted gammas render the same at any elevation. Guards against raising a solid column here
-    // or omitting patchBase, either of which makes the render fabricate a phantom mountain@N-1 base
-    // (a lower step at the inner corner that hand-drawn terrain never has).
+    // A solid column or a missing patchBase would render a phantom lower step at the inner corner.
     const state = makeState(10, 10);
-    // Tier 1 for the same reason as the stroke path: over an empty notch the fillet rests on the
-    // ground, and there is no tier it could rest on any higher.
     const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // tier-1 L; notch (4,4) empty
     for (const [x, y] of L) setTerrain(state, x, y, TerrainType.Mountain, 1);
     edgeCutGeneratedTerrain(makeToolCtx(state, exec(state)), L.map(([x, y]) => ({ x, y })), 'round');
@@ -149,19 +133,14 @@ describe('applyAutoEdgeCut — terrain', () => {
     expect(patch.elevation).toBe(1);
     expect(patch.patchOnly).toBe(true);
     expect(patch.corners![0]).toBe('fan');
-    // A from-empty gamma: patchBase 0, so the notch stays open ground behind the rounded corner — the cut
-    // reveals nothing (no fabricated lower step).
     expect(patch.patchBase).toBe(0);
     const back = cutBackingByCorner(patch, patch.elevation, (dx, dy) => getCell(state.cells, 4 + dx, 4 + dy)?.terrain);
     expect(back, 'no fabricated base backing').toEqual([null, null, null, null]);
   });
 
   it('AUTO-TRIM-IS-COSMETIC: rounds a lower real block in a Γ notch WITHOUT raising it structurally', () => {
-    // A lower real block tucked into a taller mass's notch (here a tier-1 block in a tier-2 L) gets a
-    // Cosmetic fillet that rounds the inner corner — exactly like a manual Γ click. Auto-trim-is-cosmetic
-    // still holds in the sense that matters: the block's real support (patchBase / standable surface) is
-    // unchanged, so nothing is structurally raised and only the silhouette rounds. Skipping the notch
-    // instead leaves a raised disc or water hole standing on a base with square inner corners.
+    // A tier-1 block in a tier-2 L's notch gets a cosmetic fillet, as a manual Γ click gives it, and
+    // keeps its real support; skipping it would leave square inner corners.
     const state = makeState(10, 10);
     const cells: [number, number][] = [[3, 3], [4, 3], [3, 4], [4, 4]]; // tier-2 L; notch (4,4) holds a tier-1 block
     for (const [x, y] of cells) setTerrain(state, x, y, TerrainType.Mountain, x === 4 && y === 4 ? 1 : 2);
@@ -194,7 +173,6 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('raises an under-tall Γ fillet with the mass — a fillet is a grounded column, whatever its floor', () => {
-    // A Γ fillet rises with its wrapping tier and renders as a column from its structural floor.
     const state = makeState(12, 12);
     const L: [number, number][] = [[3, 3], [4, 3], [3, 4]]; // notch at (4,4)
     const trim = (e: number) => {
@@ -220,10 +198,8 @@ describe('applyAutoEdgeCut — terrain', () => {
   });
 
   it('never trims a neighbour corner whose context the stroke did not change', () => {
-    // A tier-1 run whose corners were left square on purpose, with a second layer painted one cell to
-    // the west. The untouched tier-1 block's far corner faces open ground and the stroke touched neither
-    // its edge neighbours nor its diagonal: the border sweep exists for corners the stroke exposes, and a
-    // corner it did not touch is not its to restyle.
+    // A square-cornered tier-1 run whose west end is raised to tier 2. The far block's corners face
+    // open ground the stroke never touched, so the border sweep leaves them.
     const state = makeState(12, 12);
     for (let x = 3; x <= 6; x++) setTerrain(state, x, 5, TerrainType.Mountain, 1);
     const stroke: [number, number][] = [[3, 5], [4, 5]];
@@ -231,51 +207,41 @@ describe('applyAutoEdgeCut — terrain', () => {
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'rect', stroke.map(([x, y]) => ({ x, y })), []);
     const far = getCell(state.cells, 6, 5)!.terrain!;
     expect(far.corners?.some((c) => c !== 'square') ?? false, 'the far block keeps its square corners').toBe(false);
-    // The cell beside the stroke may still change where the stroke touches its corner context;
-    // the far end of the run is out of reach by construction.
     const painted = getCell(state.cells, 3, 5)!.terrain!;
     expect(painted.elevation).toBe(2);
   });
 
   it('rounds a neighbouring cell made convex by the stroke (mountain peninsula into a new water hole)', () => {
-    // Auto-trim includes neighbouring mountain cells made convex by the new water boundary.
     const state = makeState(12, 12);
     for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     const water: [number, number][] = [[5, 4], [4, 5], [5, 5]]; // an L of water; (4,4) keeps water on its right + below
     for (const [x, y] of water) setTerrain(state, x, y, TerrainType.Water, 1);
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', water.map(([x, y]) => ({ x, y })), []);
-    // (4,4) is mountain, not in the water stroke, but its BR corner now pokes into the water → rounds.
+    // (4,4) is outside the stroke, but its BR corner pokes into the new water.
     expect(getCell(state.cells, 4, 4)!.terrain!.corners?.[3], 'mountain peninsula corner rounds into the water').toBe('fan');
   });
 
   it('RIVER stroke: a water-wrapped ground notch rounds as a GROUND ISLET (manual-reachable), never a water Γ patch', () => {
-    // The manual EdgeCutTool never fills a water notch (its gamma branch is Mountain-only: "a water notch
-    // must not be flooded — the islet rounds out via the water's concave cut"). The correct state at a
-    // river bend's inner corner is a ground-islet cut (a `type: None` cell whose corner rounds out,
-    // revealing the water — islet-rounds-revealing-water). A patchOnly water fillet
-    // there would be a state the manual tool can neither produce nor cycle (no cut site matches), and it
-    // cascades: the patch reads as solid water@0, wrapping the next ground cell down the bank.
+    // The manual tool never fills a water notch; a river bend's inner corner is a ground islet (a
+    // `type: None` cell whose corner rounds out). A water fillet would be uncyclable by the manual tool
+    // and would read as solid water, cascading down the bank.
     const state = makeState(12, 12);
     const RIVER: [number, number][] = [[3, 3], [4, 3], [3, 4], [3, 5]]; // L river @0; inner bend notch (4,4)
     for (const [x, y] of RIVER) setTerrain(state, x, y, TerrainType.Water, 0);
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', RIVER.map(([x, y]) => ({ x, y })), []);
-    // no water Γ patches anywhere — the manual tool cannot produce them
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
       const t = getCell(state.cells, x, y)?.terrain;
       expect(t && t.type === TerrainType.Water && t.patchOnly, `water patch at (${x},${y})`).toBeFalsy();
     }
-    // the notch is a ground-islet cut, exactly what the manual tool produces at this corner
     const notch = getCell(state.cells, 4, 4)!.terrain!;
     expect(notch.type, 'ground islet (None) cell').toBe(TerrainType.None);
     expect(notch.patchOnly).toBeFalsy();
     expect(notch.corners![0], 'TL rounds out into the water').toBe('fan');
-    // no cascade: (4,5) has water on only one edge — not an islet corner; stays plain ground
+    // (4,5) has water on one edge only, so it is no islet corner.
     expect(getCell(state.cells, 4, 5)!.terrain, 'no cascaded fill down the bank').toBeNull();
   });
 
   it('RIVER stroke: every auto-written cut is MODIFIABLE by the manual EdgeCutTool (cyclable site)', () => {
-    // Auto-trimmed river cells must not be dead to the manual tool: after a river
-    // stroke's auto-trim, clicking the bend intersection must find a cut site and change state.
     const state = makeState(12, 12);
     const RIVER: [number, number][] = [[3, 3], [4, 3], [3, 4], [3, 5]];
     for (const [x, y] of RIVER) setTerrain(state, x, y, TerrainType.Water, 0);
@@ -301,7 +267,6 @@ describe('applyAutoEdgeCut — terrain', () => {
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     getCell(state.cells, 5, 5)!.terrain!.corners = ['tri-SE', 'square', 'square', 'square'];
     applyAutoEdgeCut(makeToolCtx(state, exec(state)), 'round', [{ x: 5, y: 5 }], []);
-    // idx0 keeps its manual triangle; the other three round.
     expect(getCell(state.cells, 5, 5)!.terrain!.corners).toEqual(['tri-SE', 'fan', 'fan', 'fan']);
   });
 });
@@ -349,8 +314,8 @@ describe('applyAutoEdgeCut — what it reports it changed', () => {
   });
 
   it('reports a block OUTSIDE the stroke that the stroke left newly convex', () => {
-    // The stroke paints (4,4) only; (5,5) is an older block sitting diagonally, whose corners the
-    // sweep reaches through withBorder. A commit flash over the stroke alone would miss it.
+    // (5,5) is an older diagonal block the border sweep reaches; a flash over the stroke alone would
+    // miss it.
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 4, 4, TerrainType.Mountain, 1);

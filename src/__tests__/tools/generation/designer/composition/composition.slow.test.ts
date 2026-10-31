@@ -1,7 +1,6 @@
-// The composition planner: the archetype a seed draws, and the terrace plates it tiles the planet
-// with. Four promises are pinned here — every buildable cell sits on exactly one plate, a plate is
-// one connected surface, no two neighbouring plates stand more than V-MTN-03's window apart, and a
-// batch of seeds varies in archetype and in the side its mass falls on.
+// The composition planner: every buildable cell sits on exactly one plate, a plate is one connected
+// surface, no two neighbouring plates stand more than V-MTN-03's window apart, and a batch of seeds
+// varies in archetype and in the side its mass falls on.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { type MapTemplate } from '../../../../../core/model/types';
@@ -17,7 +16,7 @@ import { ELEVATION_MAX } from '../../../../../core/game/profile';
 import { templateAnchor } from '../../../../../core/model/landmarks';
 
 const TEMPLATES: MapTemplate[] = [MAP_TEMPLATES.hexia!, MAP_TEMPLATES.tafa!];
-/** Twenty seeds, unrelated to each other, so a batch reading is not one arithmetic sequence. */
+/** Twenty unrelated seeds, so a batch reading is not one arithmetic sequence. */
 const SEEDS = [7, 42, 777, 1024, 2026, 12345, 31337, 90210, 555, 8181,
   313, 64007, 22, 4096, 199, 71, 8888, 3141, 27182, 60103];
 
@@ -53,8 +52,7 @@ function digest(plan: CompositionPlan): string {
 }
 
 describe('the plaza hub', () => {
-  // Every stage measures from the plaza, and the template puts it on the half grid: a rect that
-  // rounded rather than covered would leave the hub's own edge cells outside it.
+  // The template's plaza sits on the half grid, so a rounded rect would leave the hub's edge cells out.
   it('is the whole macro cells the template\'s plaza touches', () => {
     for (const template of TEMPLATES) {
       const r = hubRect(template), p = templateAnchor(template)!;
@@ -75,8 +73,7 @@ describe('plate coverage', () => {
       for (const richness of [0, 0.5, 1]) {
         for (const seed of SEEDS.slice(0, 6)) {
           const plan = planComposition({ seed, template, richness });
-          // Counted rather than asserted per cell: one expect per condition, so a failure names the
-          // condition and 16k cells do not cost 16k assertions.
+          // Counted, not asserted per cell, so 16k cells do not cost 16k assertions.
           const hits = new Uint8Array(template.width * template.height);
           let covered = 0, twice = 0, offLand = 0, unmapped = 0;
           for (const plate of plan.plates) {
@@ -115,8 +112,8 @@ describe('plate coverage', () => {
 
 describe('plate adjacency', () => {
   it('counts a plate met only at a corner, which V-MTN-03 reads over the 3x3', () => {
-    // Four plates meeting at one point: the `+` junction two independent cuts landing on one
-    // coordinate produce. The two diagonal pairs touch nowhere else.
+    // Four plates meeting at one point, the `+` junction of two cuts landing on one coordinate; the
+    // two diagonal pairs touch nowhere else.
     const W = 8;
     const plateOf = new Int16Array(W * 8).fill(-1);
     const plates = [0, 1, 2, 3].map((id) => ({
@@ -141,8 +138,7 @@ describe('plate adjacency', () => {
       const { width: W, height: H } = template;
       for (const seed of SEEDS.slice(0, 10)) {
         const plan = planComposition({ seed, template, richness: 1 });
-        // Pairs that touch on a diagonal and nowhere else, found independently of the planner's own
-        // adjacency so the test cannot agree with a bug.
+        // Pairs that touch on a diagonal and nowhere else, found without the planner's own adjacency.
         const edge = new Set<string>(), diagonal = new Set<string>();
         for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
@@ -166,7 +162,7 @@ describe('plate adjacency', () => {
         }
       }
     }
-    // The case has to occur, or the assertion above proved nothing.
+    // The diagonal-only case occurs, so the pass is not vacuous.
     expect(corners).toBeGreaterThan(0);
   });
 });
@@ -238,20 +234,11 @@ describe('the asked height is reached', () => {
 
   for (const template of TEMPLATES) {
     it(`climbs to the cap the caller asked for on ${template.id}`, () => {
-      // A Max-Height of 8 or 9 coming back as a peak of 4 or 5 has two causes: a plate taking the
-      // Mean of the archetype's potential over its own cells (a mean over a ramp never reads 1),
-      // and no plate carrying the summit's own terraces. Either way the asked cap must be reached
-      // rather than merely permitted.
+      // The cap is reached, not merely permitted.
       for (const cap of [6, 8]) {
-        // Three seeds of twenty fall short at cap 8, and the allowance is exactly that count over a
-        // batch that is deterministic per seed. Both causes are measured. Seed 7 draws `low-relief`
-        // on both templates, whose own ceiling is four tiers at full richness — a broad gentle rise
-        // is a shape rather than a height. Seeds 31337 and 60103 on tafa draw `distributed-massifs`
-        // and stop at 7 because there is no ground left to crown: with one tier owed, a crown may only
-        // Lift one, and every floor it could stand on erodes to exactly zero cells at the inset that
-        // lift needs (31337: 1553 cells at tier 5 inset 13, 480 at tier 6 inset 9, 100 at tier 7
-        // inset 5, all three to nothing; 60103: 1067, 737, 86, the same). What closes those two is a
-        // Wider mass, which is how the mass is cut rather than how tall it is asked to be.
+        // Three of the twenty seeds fall short at cap 8. Seed 7 draws `low-relief`, whose ceiling is
+        // four tiers. Seeds 31337 and 60103 on tafa draw `distributed-massifs` and stop at 7: the
+        // crown's last lift needs an inset at which every floor it could stand on erodes away.
         const short = SEEDS.filter((seed) => peakOf(planComposition({ seed, template, richness: 1, maxElevation: cap })) !== cap);
         expect(short.length, `${template.id} cap ${cap}: short on ${short.join(', ')}`)
           .toBeLessThanOrEqual(3);
@@ -270,9 +257,7 @@ describe('the asked height is reached', () => {
   }
 
   it('carries mass on every full-richness seed, the flat archetype included', () => {
-    // Seed 7 can draw the low-relief archetype at full richness as a single-storey planet. Low
-    // relief is a shape — a broad gentle rise rather than a wall — and at full richness it still
-    // has to be ground worth climbing.
+    // Seed 7 draws the low-relief archetype, a broad gentle rise.
     for (const template of TEMPLATES) {
       for (const seed of SEEDS) {
         expect(peakOf(planComposition({ seed, template, richness: 1, maxElevation: ELEVATION_MAX })))
@@ -290,8 +275,8 @@ describe('archetype variety', () => {
       const axes = new Set(plans.map((p) => p.axis));
       expect(archetypes.size).toBeGreaterThanOrEqual(4);
       expect(axes.size).toBe(4);
-      // The plan's own axis is the direction its mass was designed to rise toward; on a finished map
-      // `sampleComposition` reads the same fact off the ground.
+      // The plan's axis is the direction its mass rises toward, as `sampleComposition` reads it off a
+      // finished map.
       const batch: CompositionSample[] = plans.map((p) => ({ archetype: p.archetype, direction: p.axis }));
       const variety = compositionVariety(batch);
       expect(variety.applicable).toBe(true);

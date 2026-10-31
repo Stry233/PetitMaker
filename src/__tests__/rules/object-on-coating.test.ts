@@ -1,11 +1,7 @@
 /**
- * V-PLACE-COATED — nothing stands on a road.
- *
- * The backstop for a caller that puts an object on coated cells without stripping the coating
- * first. It cannot be a pre-command rule: V-PLACE-OVERLAP exempts coatings precisely so a road
- * never blocks a placement, because the same validation answers the placement ghost's pre-click
- * probe, when the road is still there and the click is still legal. Only the finished stroke can
- * tell "coated over" from "left standing on".
+ * V-PLACE-COATED backstops a caller that places an object on coated cells without stripping them. It
+ * is a post-stroke rule because V-PLACE-OVERLAP exempts coatings (the placement ghost probes before
+ * the strip), so only the finished stroke can tell "coated over" from "left standing on".
  */
 import { describe, it, expect } from 'vitest';
 import { objectOnCoatingRule } from '../../rules/object-on-coating';
@@ -42,8 +38,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
   });
 
   it('lets a flower or a tree stand on a plantable road, and only on one', () => {
-    // The game plants flowers, crops and trees on some road surfaces; the editor grants it through
-    // the road's `plantable` trait, which the dirt road carries.
+    // The dirt road carries the `plantable` trait; the cobblestone does not.
     for (const plant of ['flower-daisy', 'tree-apple']) {
       expect(objectOnCoatingRule.validate(
         withObjects(at('r', 'path-overgrown-dirt', 4, 4), at('p', plant, 4, 4))), plant).toEqual([]);
@@ -53,8 +48,8 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
   });
 
   it('exempts a crossing, whose deck is paved across on purpose', () => {
-    // The generator routes the street bank-to-bank over a bridge; a road on those cells is the
-    // intended arrangement, so flagging it would revert every generation that builds one.
+    // The generator routes streets bank to bank over bridges, so flagging this would revert every
+    // generation that builds one.
     const state = withObjects(at('r', 'path-overgrown-dirt', 5, 5), at('b', 'bridge-plank', 5, 5));
     expect(objectOnCoatingRule.validate(state)).toEqual([]);
   });
@@ -76,10 +71,7 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
   });
 
   it('reverts a real stroke that placed an object on a road without stripping it', () => {
-    // The end-to-end point of the rule: a caller that forgets the strip gets its stroke undone
-    // rather than leaving a map the game cannot build. Nothing refuses the commands themselves —
-    // V-PLACE-OVERLAP exempts the road — so this is the only thing standing between a forgotten
-    // strip and an illegal map.
+    // No command is refused (V-PLACE-OVERLAP exempts the road), so this rule alone reverts the stroke.
     const state = makeState(20, 20);
     const executor = makeExecutor(state);
     const placing = executor.beginStroke();
@@ -87,13 +79,12 @@ describe('V-PLACE-COATED: nothing stands on a road', () => {
     placing.commit();
 
     const strokeStart = executor.beginStroke();
-    // Accepted on its own: the overlap rule lets an object sit over a coating on purpose.
     expect(executor.execute(placeCmd(at('t', 'tree-apple', 4, 4))).success).toBe(true);
     const violations = strokeStart.commit();
 
     expect(violations.map((v) => v.ruleId)).toContain('V-PLACE-COATED');
-    expect(state.objects.has('t')).toBe(false); // reverted
-    expect(state.objects.has('r')).toBe(true);  // the road that was there all along survives
+    expect(state.objects.has('t')).toBe(false);
+    expect(state.objects.has('r')).toBe(true);
   });
 
   it('answers firstOnly without sweeping the whole map', () => {

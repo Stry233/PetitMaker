@@ -1,4 +1,4 @@
-// Shared degradation models for the PetitGlyph robustness harness (not a test file — no test
+// Shared degradation models for the PetitGlyph robustness harness (not a test file; no test
 // blocks, so vitest won't run it). Each transform takes an RGBA buffer (+ dims) and returns a
 // new RGBA buffer the same size, simulating a realistic capture/repost pipeline.
 
@@ -26,7 +26,7 @@ export function noise(rgba: Uint8Array, amp: number, seed: number): Uint8Array {
   return o;
 }
 
-/** Separable convolution with a 3×3 kernel (weights need not sum to 1; normalized per pixel). */
+/** Convolution with a 3×3 kernel (weights need not sum to 1; normalized per pixel). */
 export function blurKernel(rgba: Uint8Array, w: number, h: number, K: number[][]): Uint8Array {
   const out = new Uint8Array(rgba.length);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 3; c++) {
@@ -70,7 +70,7 @@ export function downUp(rgba: Uint8Array, w: number, h: number, factor: number): 
   return resizeBilinear(small, dw, dh, w, h);
 }
 
-// ── JPEG-like compression: per 8×8 block DCT-II → quantize (scaled luma table) → inverse. ──
+// JPEG-like compression: per 8×8 block DCT-II → quantize (scaled luma table) → inverse.
 const QBASE = [
   16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55,
   14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
@@ -138,7 +138,7 @@ export function jpegLike(rgba: Uint8Array, w: number, h: number, quality = 75): 
 
 
 /** Chroma 4:2:0 subsampling: convert to YCbCr (BT.601, 128-centered chroma), average Cb/Cr over
- *  each 2×2 block (odd edges clamp to the available pixels), then convert back — keeps per-pixel
+ *  each 2×2 block (odd edges clamp to the available pixels), then convert back. Keeps per-pixel
  *  luma but destroys chroma detail below 2×2, exactly like a JPEG/H.264 4:2:0 encode. Same-size
  *  RGBA output, alpha forced to 255. Pure. */
 export function chromaSubsample420(rgba: Uint8Array, w: number, h: number): Uint8Array {

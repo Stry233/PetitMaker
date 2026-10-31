@@ -43,13 +43,13 @@ describe('Central plaza as an immutable object', () => {
     expect(p.elevation).toBe(0);
     expect(p.locked).toBe(true);
 
-    expect((templateLandmarkObjects(makeState().template)[0] ?? null)).toBeNull(); // default template has no plaza
+    expect((templateLandmarkObjects(makeState().template)[0] ?? null)).toBeNull();
   });
 
   it('is not in any placement list, but IS click-selectable (locked governs modification, not hit-testing)', () => {
     const s = stateWithPlaza();
     expect(getCatalogByCategory(ItemCategory.Facility).some(i => i.id === ANCHOR_LANDMARK.id)).toBe(false);
-    expect(objectAt(getObjectIndex(s), { x: 80, y: 70 })?.id).toBe(ANCHOR_LANDMARK.id); // inside the plaza → hit, same as any object
+    expect(objectAt(getObjectIndex(s), { x: 80, y: 70 })?.id).toBe(ANCHOR_LANDMARK.id);
   });
 
   it('blocks object placement overlapping the plaza; allows adjacent', () => {
@@ -79,8 +79,8 @@ describe('Central plaza as an immutable object', () => {
       afterCorners: ['fan', 'square', 'square', 'square'],
       patchOnly: true, terrainType: TerrainType.Mountain, elevation: 2, patchBase: 0,
     });
-    expect(trim(77).success).toBe(false); // the fillet would materialise terrain over the plaza
-    expect(trim(76).success).toBe(true);  // touches the half-block edge only → allowed
+    expect(trim(77).success).toBe(false);
+    expect(trim(76).success).toBe(true);  // touches the half-block edge only
   });
 
   it('a terrainBase object provides 3x3 structural support at the layer of the ground it stands on', () => {
@@ -107,14 +107,11 @@ describe('Central plaza as an immutable object', () => {
   it('V-LOCK-02 rejects RemoveObject of the locked plaza; clearAllObjects keeps it and the ban holds', () => {
     const s = stateWithPlaza();
     const e = makeExecutor(s);
-    // direct RemoveObject of the plaza is rejected
     const rm: Command = { type: CommandType.RemoveObject, objectId: ANCHOR_LANDMARK.id};
     expect(e.execute(rm).success).toBe(false);
     expect(s.objects.has(ANCHOR_LANDMARK.id)).toBe(true);
-    // bulk clear leaves the plaza in place
     clearAllObjects({ state: s, execute: (c) => e.execute(c) });
     expect(s.objects.has(ANCHOR_LANDMARK.id)).toBe(true);
-    // and building on a plaza cell is still rejected after the clear
     expect(e.execute(place('building-stall', 80, 70)).success).toBe(false);
   });
 
@@ -129,7 +126,6 @@ describe('Central plaza as an immutable object', () => {
   it('objectRect uses the plaza fractional rect, catalog size for normal objects', () => {
     const plaza = (templateLandmarkObjects({ ...makeState().template, landmarks: [{ ...PLAZA }]})[0] ?? null)!;
     expect(objectRect(plaza)).toEqual({ x: PLAZA.x, y: PLAZA.y, w: PLAZA.width, h: PLAZA.height });
-    // a cell that only touches the plaza edge does not overlap; the next one does
     expect(cellOverlapsRect(objectRect(plaza), 76, 70, 'terrain')).toBe(false);
     expect(cellOverlapsRect(objectRect(plaza), 77, 70, 'terrain')).toBe(true);
   });

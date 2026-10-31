@@ -1,12 +1,7 @@
-// The methodology pipeline as it reaches a map: plans committed through the live RuleRegistry, one
-// `tryPlace` per object. What is asserted here is therefore the committed state, read back with the
-// same scorers the evaluation harness grades a finished map with — the plan promising a building is
-// not the same claim as the rules accepting it.
-//
-// Every placement is legal by construction — the sculpt caps its own heights, cuts its own water to
-// the water rules and keeps the ground under a building and its doorstep flat, and the router only
-// walks ground a coating can be laid on — so a refusal, a post-stroke violation or a missing anchor
-// is a defect, never an expected loss.
+// The designed pipeline as it reaches a map: plans committed through the live RuleRegistry and read
+// back with the evaluation harness's scorers, since a plan promising a building is not the rules
+// accepting it. Every placement is legal by construction, so a refusal, a post-stroke violation or a
+// missing anchor is a defect, never an expected loss.
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch over both templates and every seed; tens of seconds on an idle machine.
@@ -43,10 +38,8 @@ function build(seed: number, template: MapTemplate, richness = DEFAULT_RICHNESS)
   return designedMap(seed, template, { richness });
 }
 
-/** The map's content as one string. Object ids cannot be part of it: `generateObjectId` mints a
- *  fresh unique id per placement, so `mapFingerprint` (which mixes them, since a rule can read one)
- *  differs between two identical runs by design. What determinism means here is that the same
- *  inputs put the same things in the same places. */
+/** The map's content as one string, without object ids: each run mints fresh ones, so
+ *  `mapFingerprint` (which mixes them in) differs between two identical runs. */
 function contentDigest(state: GridState): string {
   const cells: string[] = [];
   for (let y = 0; y < state.template.height; y++) {
@@ -162,16 +155,11 @@ describe('every door opens on a road', () => {
       for (const seed of SEEDS) {
         const { state, outcome } = build(seed, template);
         const paved = pavedCells(state);
-        // A door the network cannot reach is reported, not faked, and this bar is that report rather
-        // than a claim. Paving the doorstep cell where no course reached the streets would read as a
-        // roaded gate while the connectivity ledger counted the same cell as pavement the plaza cannot
-        // walk to and as a tip, so nothing is laid there. The debt is the route, not the reading: what
-        // closes it is a stage-C lot that fronts a street. Measured over twenty-five seeds per
-        // template: at most 6 unroaded gates on one map, a mean of 1.2 (hexia) and 1.4 (tafa).
+        // A door the network cannot reach is reported rather than given a doorstep the plaza cannot
+        // walk to. Over twenty-five seeds per template a map has at most 6 unroaded gates.
         expect(outcome.unroadedGates.length, `${template.id}/${seed}`).toBeLessThanOrEqual(7);
         unroaded.push(outcome.unroadedGates.length);
-        // The same allowance, seen from the door's side: every approach but the one the outcome
-        // named is pavement.
+        // Every approach but the ones the outcome named is pavement.
         const named = new Set(outcome.unroadedGates.map((g) => g.catalogId));
         for (const p of outcome.anchors.placements) {
           if (named.has(p.catalogId)) continue;
@@ -179,7 +167,7 @@ describe('every door opens on a road', () => {
             `${template.id}/${seed} ${p.catalogId} approach ${p.approach.x},${p.approach.y}`).toBe(true);
         }
       }
-      // The batch claim: these ten seeds measure a mean of 1.1 (hexia) and 1.7 (tafa).
+      // These ten seeds average 1.1 (hexia) and 1.7 (tafa).
       const mean = unroaded.reduce((a, b) => a + b, 0) / unroaded.length;
       expect(mean, `${template.id}: mean ${mean.toFixed(1)} unroaded gates`).toBeLessThanOrEqual(2);
     }
@@ -230,8 +218,7 @@ describe('buildings on the street\'s own pavement', () => {
         paved += outcome.floors.paved;
       }
       const share = GENERATION_STYLE.pavedFloors.share;
-      // Measured over these ten seeds at a share of 0.75: hexia paves 69 of 101 qualifying buildings
-      // (120 standing), tafa 77 of 99.
+      // At a share of 0.75 these seeds pave 69 of 101 qualifying buildings on hexia and 77 of 99 on tafa.
       expect(paved / eligible, `${template.id}: ${paved} of ${eligible} qualifying buildings paved`).toBeGreaterThan(share - 0.15);
       expect(paved / eligible, `${template.id}: ${paved} of ${eligible} qualifying buildings paved`).toBeLessThan(share + 0.15);
       expect(eligible / standing, `${template.id}: ${eligible} of ${standing} buildings qualify`).toBeLessThan(1);
@@ -291,9 +278,8 @@ describe('the generate facade', () => {
 });
 
 describe('the water system, on the committed map', () => {
-  // Tofu water is a box-shaped lake dropped at a random place with a mountain for a border, and
-  // `waterStoryLedger` names box-shaped lakes. Checking it seed by seed localizes a failure to the
-  // water reading instead of the full quality ledger.
+  // Tofu water is a box-shaped lake bordered by mountain. Read per seed, a failure points at the
+  // water reading rather than the whole ledger.
   it('drops no tofu lake, on either template, at any seed', () => {
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS) {
@@ -301,27 +287,18 @@ describe('the water system, on the committed map', () => {
         const w = waterStoryLedger(state);
         expect(w.tofu, `${template.id}/${seed}: first at `
           + `${w.where.map((c) => `${c.x},${c.y} (${c.cells})`).join(' ')}`).toBe(0);
-        // The loose share is small because the water is composed: most of a map's water stands in a few
-        // large figures that account for themselves, so an accent the course does not pass is a small
-        // share of a big total. Measured over both templates at these ten seeds, full richness.
+        // Most water stands in a few large figures that account for themselves, so a loose accent is a
+        // small share of the total.
         expect(w.unaccountedShare, `${template.id}/${seed}`).toBeLessThanOrEqual(0.10);
       }
     }
   });
 
   it('runs one course, and it arrives somewhere', () => {
-    // Two claims, and they belong to different things. That the map's water story arrives is the
-    // planner's own promise — a course that reaches neither a pond nor the coast is reverted cell for
-    // cell — and `ending` alone cannot be asserted, since it is typed to the two arrivals and a course
-    // that reached neither comes back null. So the arrival is read on the committed map: every cell the
-    // course carved stands in water when the stroke closes, and the arrival it named stands there with
-    // it. What that catches is a later pass writing over the story, which is the way this claim can
-    // actually fail: the passes after it raise ground, lay pavement and plant.
-    //
-    // What the finished map is read for is the shape of its watercourse, and that reading cannot name the
-    // story on a map whose water is composed: it takes whichever body reads as a descending channel, and
-    // a map now carries cascade stairs and long thin figures that read that way too. So the shape bars
-    // below are batch claims with their measurements stated.
+    // The arrival is read on the committed map: every carved cell and the named arrival stand in water
+    // when the stroke closes, which catches a later pass (raising ground, paving, planting) writing
+    // over the story. The shape reading takes whichever body reads as a descending channel, cascade
+    // stairs included, so the shape bars are batch claims.
     let carved = 0, landed = 0;
     let present = 0, straightOk = 0, bothEnds = 0;
     for (const seed of SEEDS) {
@@ -333,8 +310,7 @@ describe('the water system, on the committed map', () => {
           state.cells[y]?.[x]?.terrain?.type === TerrainType.Water;
         const pond = story.pond;
         const mouth = story.spine[story.spine.length - 1];
-        // The arrival: the pond it filled, or the mouth it ran to. A pond is a drawn shape rather than a
-        // filled rect, so it is read as water standing anywhere inside its box.
+        // A pond is a drawn shape, not a filled rect, so it arrives if water stands anywhere in its box.
         const arrival = story.ending === 'pond'
           ? !!pond && rectCells(pond.rect).some((c) => wet(c.x, c.y))
           : !!mouth && wet(mouth.x, mouth.y);
@@ -346,36 +322,17 @@ describe('the water system, on the committed map', () => {
       if (s.longestStraight <= STREAM_STRAIGHT_MAX) straightOk++;
       if (s.source && s.destination) bothEnds++;
     }
-    // Every seed of ten carves a course, and every course's arrival stands on the map.
     expect(carved, `${carved} of ${SEEDS.length} seeds carve a course`).toBe(SEEDS.length);
     expect(landed, `${landed} of ${carved} courses stand whole on the map, arrival included`)
       .toBe(carved);
-    // A course is read on every seed at full richness.
     expect(present, `${present} of ${SEEDS.length} seeds read as carrying a course`)
       .toBeGreaterThan(SEEDS.length * 0.7);
-    // Both ends, read off the finished map: the body the shape reading picked rises where nothing feeds
-    // it and ends in still water or at the coast. It is a batch claim at the value it measures, and the
-    // value is low for a reason worth stating rather than hiding: the reading names the most
-    // channel-like descending body, which on a composed map is as often a cascade stair or a trough as
-    // it is the story, and neither of those is required to end anywhere. Measured 9 of 25
-    // courses over twenty-five seeds at full richness and 2 at these ten; the story's own arrival is
-    // the claim asserted above, on every seed. The share is taken over
-    // the courses the reading actually found, which is the denominator the message names: read against
-    // the seed count instead, a batch whose reading named fewer courses was held to a higher share of
-    // them for no reason anybody stated.
+    // The bar is low because the picked body is as often a cascade stair or a trough as the story, and
+    // neither has to end anywhere; the story's own arrival is asserted above.
     expect(bothEnds, `${bothEnds} of ${present} courses read both ends`)
       .toBeGreaterThanOrEqual(present * 0.2);
-    // The width claim is not made here. That a course narrows and widens along its way (local widening
-    // and narrowing) is a claim about the planner, and `water-story.test.ts` asserts it on the course's own cells
-    // where nothing else is in the way. On a finished map whose water is composed this reading answers
-    // for whichever body it picked, and a trough or a comb the figure pass drew runs at one width by
-    // construction — measured, it read 5 to 6 of 10 depending on which ground the landmark took first,
-    // which is a fact about the reading and not about the water.
-    // The straight-run bar is a batch claim, and the reason is the reading rather than the planner:
-    // the course is measured on the finished map, where its own pond and any cascade it flows into
-    // are the same body, and a centroid dragged by a wide arrival reads a longer straight run than
-    // the line the planner drew. Measured on the references by this code, the style target's course
-    // reads 3 and the garden town's raised channel reads 17.
+    // Width is asserted on the course's own cells in `water-story.test.ts`. On the finished map the
+    // course, its pond and any cascade read as one body, which lengthens the straight run.
     expect(straightOk, `${straightOk} of ${present} courses stay under ${STREAM_STRAIGHT_MAX}`)
       .toBeGreaterThan(present * 0.7);
   });
@@ -387,9 +344,8 @@ describe('the water system, on the committed map', () => {
       const f = evaluateMap(state).water.fountains;
       if (f.related >= 1) related++;
     }
-    // Fountain presence is soft below full richness and a majority claim at it: a court wants a flat
-    // terrace with room for its whole composition and a street within reach, and a seed whose plates
-    // offer neither is left without one rather than given a court standing in a wall.
+    // A majority claim: a court needs a flat terrace with room for it and a street within reach, and a
+    // seed whose plates offer neither gets no court.
     expect(related, `${related} of ${SEEDS.length} seeds carry a related court`)
       .toBeGreaterThan(SEEDS.length * 0.6);
   });

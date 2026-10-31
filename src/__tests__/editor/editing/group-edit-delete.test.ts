@@ -1,9 +1,8 @@
 /**
  * `deleteSelection` is the single call path behind every "delete this selection" (the keyboard
  * shortcut, SelectionCard's group button, ContextMenu, DeletePopover): `deleteGroup` with the
- * poof bound in, re-deriving the surviving selection, and `reportDeleteGroup`. Before this, four
- * call sites threaded `poofRemoved` by hand as an optional argument — a caller that forgot it lost
- * the removal animation with no type error.
+ * poof bound in, re-deriving the surviving selection, and `reportDeleteGroup`, so no caller threads
+ * `poofRemoved` by hand and none can lose the removal animation.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { setActiveView } from '../../../view/active-view';

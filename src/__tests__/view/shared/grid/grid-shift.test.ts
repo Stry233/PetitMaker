@@ -1,5 +1,7 @@
-/** The cell grid's offset glides between grids on the canvas registry's motion, and passes the
- *  reduced-motion gate: under it the lines stand on the new grid at once, a glide in flight included. */
+/**
+ * The cell grid's offset glides between grids on the canvas registry's motion, and passes the
+ * reduced-motion gate: under it the lines stand on the new grid at once, a glide in flight included.
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { GridShift } from '../../../../view/shared/grid/grid-shift';
 import { GRIDS } from '../../../../core/game/profile';

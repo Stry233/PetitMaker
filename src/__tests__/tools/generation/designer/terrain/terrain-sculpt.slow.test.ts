@@ -1,16 +1,6 @@
-// The sculptor: the ground the design stands on, realized from the composition's plates. Two kinds
-// of claim are pinned here.
-//
-// The shape claims are read off the pure sculpt (`sculptTerrain` takes the three stages' plans and
-// gives a TerrainPlan back): the ground a cell ends at is the composition's own tier, a flight's
-// landings are carved where stage B declared them, and the water speaks the grammar the reference
-// maps read — bodies at every tier, falls with capped ends, and dry beds between the bars of a
-// comb rather than planting standing in water.
-//
-// The legality claims are read off a committed map, because that is the only place they mean
-// anything: the sculpt draws only shapes the water and base-support rules already accept, so the
-// finished state must re-validate with no violations and no refused layer — a repaired-away terrace
-// would pass a rule check while failing the design.
+// The sculptor realizes the composition's plates as ground. Shape claims (tiers, flight landings,
+// water kinds and tiers) are read off the pure sculpt; legality claims off a committed map, which
+// must re-validate with no violations and no refused layer.
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch; tens of seconds on an idle machine.
@@ -33,8 +23,7 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
 const SEEDS = [12345, 777, 42, 2026, 7];
 
-/** The pure sculpt for one seed: the three planning stages, then the ground they stand on. No map is
- *  touched, which is the whole point — every stage is data in, data out. */
+/** The pure sculpt for one seed: the three planning stages, then the ground they stand on. */
 function sculptFor(seed: number, template: MapTemplate, richness: number): TerrainSculpt {
   const { composition, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
   return sculptTerrain({ template, composition, streets, plan, anchors, seed, richness, ground });
@@ -59,15 +48,13 @@ describe('the ground is the composition, realized', () => {
         for (let i = 0; i < tiers.length; i++) {
           if (tiers[i]! <= 0) continue;
           cells++;
-          // Water carries its own level, a flight's landing is a tier the plan asked for, and a
-          // composed place stands one above its block's floor on purpose; every other cell stands
-          // exactly where the composition put it.
+          // Water carries its own level; a composed place stands one above its block's floor.
           const level = s.terrain.water[i]! >= 0 ? s.terrain.water[i]! : s.terrain.tier[i]!;
           if (level === tiers[i] || level === tiers[i]! + 1) agreed++;
         }
         expect(cells, `${template.id}/${seed}`).toBeGreaterThan(200);
-        // The tier curve peaks at the game's top layer, and a taller summit's base support takes more
-        // of its rim below the plate tier: Hexia seed 42 stands 0.88 there, the other seeds above 0.9.
+        // A taller summit's base support takes more of its rim below the plate tier: hexia seed 42
+        // reads 0.88, the other seeds above 0.9.
         expect(agreed / cells, `${template.id}/${seed}: cells at their plate's tier`)
           .toBeGreaterThan(0.88);
       }
@@ -106,9 +93,8 @@ describe('the ground is the composition, realized', () => {
   it('honours a lowered ceiling', () => {
     const { composition, streets, plan, anchors } = planDesign({ seed: 42, template: HEXIA, richness: 1, maxElevation: 3 });
     const s = sculptTerrain({ template: HEXIA, composition, streets, plan, anchors, seed: 42, richness: 1 });
-    // Not passed a ceiling of its own. The composition was drawn under one and the sculptor reads it
-    // off the plan, so a caller that caps the composition caps the map: the passes that add a tier —
-    // a place's terrace, a door's backing, a shop's ring — are held to the plan's own ask.
+    // The sculptor gets no ceiling of its own: it reads the cap off the plan, so the passes that add a
+    // tier (a place's terrace, a door's backing) stay under it.
     expect(s.wall.peak).toBeLessThanOrEqual(3);
     expect(Math.max(...s.terrain.tier)).toBeLessThanOrEqual(3);
     expect(Math.max(...s.terrain.water)).toBeLessThanOrEqual(3);
@@ -129,10 +115,8 @@ describe('the ground is the composition, realized', () => {
 });
 
 describe('the ground is not a box (I5.3)', () => {
-  // Tofu terrain is a raised terrace drawn as a full rectangle with a ruled seam where two plates
-  // meet. Two passes answer it — the corner chamfers `liftRect` gives a lift, and the bite
-  // `erodeSeams` takes out of a seam where nothing is built — and what is pinned here is the shape
-  // they leave and the legality they keep.
+  // Against terraces drawn as full rectangles with ruled seams: `liftRect` chamfers a lift's corners
+  // and `erodeSeams` bites seams where nothing is built.
   it('leaves the median terrace off its own bounding box', () => {
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS.slice(0, 3)) {
@@ -141,16 +125,14 @@ describe('the ground is not a box (I5.3)', () => {
         expect(shape.components, `${template.id}/${seed}`).toBeGreaterThan(20);
         expect(shape.medianFill, `${template.id}/${seed}: median box fill`)
           .toBeLessThanOrEqual(TERRACE_FILL_MAX);
-        // And the map is not made of boxes: the share at the box fill is well under all of it.
         expect(shape.boxyShare, `${template.id}/${seed}: boxy share`).toBeLessThan(0.7);
       }
     }
   });
 
   it('erodes a seam only where nothing is built against it', () => {
-    // Pavement, doorsteps and the figure's panel are reserved before the bite is taken, so a paved
-    // cell can never stand on ground the erosion moved: read on the finished map, every road tile
-    // stands on one level with its own 2x2 window, which is what a coating validates.
+    // Pavement, doorsteps and the figure's panel are reserved before erosion, so every road tile's
+    // 2x2 window stays on one level, as a coating requires.
     for (const seed of SEEDS.slice(0, 3)) {
       const { state, violations } = build(seed, HEXIA, 1);
       expect(violations, `hexia/${seed}`).toEqual([]);
@@ -181,14 +163,9 @@ describe('water is a material', () => {
         for (const row of state.cells) {
           for (const cell of row) if (cell.terrain?.type === TerrainType.Water) water++;
         }
-        // The planet's water is spent on a course, its fountain courts, the cascades and a few
-        // accents rather than on beds cut into every terrace, so the count is a small share of the
-        // ground. What is pinned is that a full-richness map is wet: measured 567-936 cells on hexia
-        // and 707-1080 on tafa over these seeds.
+        // These seeds hold 567 to 936 water cells on hexia and 707 to 1080 on tafa.
         expect(water, `${template.id}/${seed}`).toBeGreaterThan(450);
-        // A fall is cut where a terrace step offers a run with caps at both ends, so how many a map
-        // carries is its composition's to say: a plate map with few long steps carries a handful, a
-        // terraced one carries dozens. What is pinned is that the water falls somewhere.
+        // How many falls a map carries depends on its terrace steps; it must carry some.
         expect(detectWaterfalls(state).length, `${template.id}/${seed}`).toBeGreaterThan(2);
       }
     }
@@ -202,11 +179,8 @@ describe('water is a material', () => {
       for (const f of s.water) kinds.add(f.kind);
       if (s.story) stories++;
     }
-    // The course and its arrival, the courts, the cascades off the terrace steps, and the accents
-    // beside them: that is the whole inventory of a map's water.
     expect([...kinds].sort()).toEqual(expect.arrayContaining(['accent', 'fall', 'fountain', 'pond', 'story']));
-    // The story is the planet's water. A map whose ground carries none is left dry rather than
-    // sprinkled, so this is a majority claim and not an every-seed one.
+    // A map whose ground offers no story is left dry, so this is a majority claim.
     expect(stories, `${stories} of ${SEEDS.length} seeds carry a story`).toBeGreaterThan(SEEDS.length / 2);
   });
 
@@ -214,8 +188,7 @@ describe('water is a material', () => {
     const s = sculpt(12345, HEXIA, 1);
     const tiers = new Set<number>();
     for (const f of s.water) tiers.add(f.tier);
-    // The style target carries water on every one of its layers, its share roughly doubling
-    // above elevation 3. One mechanism covers every layer here, so a rich map spreads.
+    // The style target carries water on every layer, its share roughly doubling above elevation 3.
     expect(tiers.size, `tiers ${[...tiers].sort().join(',')}`).toBeGreaterThan(2);
     expect(Math.max(...tiers)).toBeGreaterThan(1);
   });
@@ -229,8 +202,8 @@ describe('water is a material', () => {
       const category = categoryOf(o);
       if (category !== ItemCategory.Tree && category !== ItemCategory.Flora) continue;
       const x = Math.floor(o.position.x), y = Math.floor(o.position.y);
-      // The flat trait's own window: the cell plus one column right and one row below. The reference
-      // maps hold zero plants breaking it, and so must ours.
+      // The flat trait's window: the cell, one column right and one row below. The references have
+      // no plant breaking it.
       for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
         if (x + dx >= W || y + dy >= H) continue;
         expect(wet(x + dx, y + dy), `${o.catalogId} at ${x},${y} sweeps water`).toBe(false);

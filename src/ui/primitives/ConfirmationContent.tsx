@@ -3,6 +3,7 @@ import { ActionButton } from './ActionButton';
 import { roleFont, LINE_HEIGHT } from '../design/text-weight';
 import { skin, windowCard, windowTitle } from '../design/window-skin';
 import { Spinner } from './Spinner';
+import { WindowBody, windowColumn } from './Window';
 
 export interface ConfirmationContentProps {
   title: string;
@@ -21,8 +22,10 @@ export interface ConfirmationContentProps {
   cancelTestId?: string;
 }
 
+/** The card never scrolls: under its height cap the message gives way and the title and the actions
+ *  stay in the card. */
 export const confirmationCardStyle: CSSProperties = {
-  ...windowCard, padding: '24px 28px 20px', overflowY: 'auto',
+  ...windowCard, padding: '24px 28px 20px', overflow: 'hidden', display: 'flex', flexDirection: 'column',
 };
 
 /** The designed height of the action row and its choice buttons, in design px. */
@@ -43,11 +46,15 @@ export function ConfirmationContent({
 }: ConfirmationContentProps) {
   const buttonStyle = alternativeAction ? choiceStyle : actionStyle;
   return (
-    <div aria-busy={busy || undefined} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <h2 style={{ ...windowTitle, margin: 0, lineHeight: LINE_HEIGHT.snug, overflowWrap: 'anywhere' }}>{title}</h2>
-      {message && <p style={{ ...roleFont('body'), color: skin.plateInk, margin: 0, lineHeight: 1.5 }}>{message}</p>}
-      {body}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'stretch', gap: 8, minHeight: CONFIRM_ACTION_HEIGHT }}>
+    <div aria-busy={busy || undefined} style={{ ...windowColumn, gap: 14 }}>
+      <h2 style={{ ...windowTitle, margin: 0, lineHeight: LINE_HEIGHT.snug, overflowWrap: 'anywhere', flex: 'none' }}>{title}</h2>
+      {(message || body) && (
+        <WindowBody style={{ flex: '0 1 auto' }} contentStyle={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {message && <p style={{ ...roleFont('body'), color: skin.plateInk, margin: 0, lineHeight: 1.5 }}>{message}</p>}
+          {body}
+        </WindowBody>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'stretch', gap: 8, minHeight: CONFIRM_ACTION_HEIGHT, flex: 'none' }}>
         {busy ? <Spinner size={22} color={skin.ink} /> : <>
           {alternativeAction && <ActionButton appearance="tertiary" hoverFill={skin.inset} style={{ ...choiceStyle, marginInlineEnd: 'auto' }} onClick={alternativeAction.onClick}>{alternativeAction.label}</ActionButton>}
           <ActionButton appearance="secondary" data-testid={cancelTestId} autoFocus={!!alternativeAction} style={buttonStyle} onClick={onCancel}>{cancelLabel}</ActionButton>

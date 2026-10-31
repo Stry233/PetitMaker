@@ -1,14 +1,9 @@
 /**
- * The layer stack imports downward: a module imports from its own layer or a layer below it, in the
- * order of `scripts/layers.mts:LAYERS`. An edge is a runtime import as `_support/source-graph.ts`
- * defines it. A type-only import builds no edge, but one that points up is a contract a lower layer
- * borrows from a higher one, so each is listed with its reason.
- *
- * Every top-level folder of `src/` is a layer, except the Lite entry and the tests. The entry files
- * at the root of `src/` and the Lite entry under `src/lite/` rank above every layer: they compose
- * the app and nothing imports them. A path `LEAF_RANKS` names ranks with the lower layer it gives.
- * No runtime edge points up; the type-only edges that do are listed in
- * `repo/import-direction-allowlist.json`, keyed `importer -> target` by repository path.
+ * A module imports from its own layer or one below it, in the order of `scripts/layers.mts:LAYERS`,
+ * where an edge is a runtime import as `_support/source-graph.ts` defines it. A type-only import
+ * that points up borrows a contract from a higher layer, so each is listed with its reason in
+ * `repo/import-direction-allowlist.json`. Root entry files and `src/lite/` rank above every layer,
+ * and a path `LEAF_RANKS` names ranks with the lower layer it gives.
  */
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
@@ -16,8 +11,8 @@ import { SRC, allSpecifiers, importEdges, resolveSpec, runtimeSpecifiers, source
 import allowlist from './import-direction-allowlist.json';
 import { APART_LAYERS, LAYER_RANK as RANK, rankedLayer, type Layer } from '../../../scripts/layers.mts';
 
-/** Upward type-only edges, as `importer -> target` by repository path with the target without its
- *  extension, each with the reason the contract sits where it does. */
+/** Upward type-only edges, keyed `importer -> target` by repository path (target without its
+ *  extension), each with its reason. */
 const TYPE_ONLY_UPWARD: Readonly<Record<string, string>> = allowlist.typeOnly;
 
 /** The layer a src-relative path belongs to: its top-level folder (a bare folder name is the
@@ -105,15 +100,13 @@ describe('top-level src folders are layers', () => {
 });
 
 /**
- * `ToolContext` is the seam. `state` sits below `tools`, so a tool importing the store points down
- * and the layer test above has nothing to say about it; a store read mid-stroke would be a hidden
- * argument, free to differ between the probe that draws the cursor and the click that acts. No file
- * under `tools/` knows the store, the toast channel or held keys: the editor hands the tool manager
- * an arming source and host channels (`editor/session/tool-wiring.ts`). `state/catalog`,
- * `state/object-index` and `state/object-geometry` are pure functions over map data, not the store.
+ * `state` sits below `tools`, so the layer test allows a tool to import the store; but a store read
+ * mid-stroke is a hidden argument that can differ between the cursor probe and the click. Tools get
+ * the store's facts, toasts and held keys through `ToolContext` (`editor/session/tool-wiring.ts`).
+ * `state/catalog`, `state/object-index` and `state/object-geometry` are pure, not the store.
  */
 const STORE = 'state/store';
-/** The tools, generation among them, which takes its editor facts the same way. */
+/** The tools, generation included. */
 const TOOL_FILES: ReadonlyArray<string> = sourceFiles(join(SRC, 'tools'));
 
 describe('tools reach the editor through ToolContext', () => {

@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Held pan keys, shared by the editor and the export shot editor.
- *
- * A surface running its own loop against literal w/a/s/d gives a user who rebound the pan keys their
- * keys everywhere except there. These pin that both surfaces read the one key map.
+ * Held pan keys, shared by the editor and the export shot editor, both reading the one key map so a
+ * rebound pan key works on each.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
@@ -60,8 +58,6 @@ describe('held pan keys', () => {
   });
 
   it('follows a REBOUND pan key, and drops the key it replaced', () => {
-    // The whole point of routing both surfaces through the keybind store: the shot editor honours
-    // this too, which the hardcoded loop it replaced could not.
     useKeybinds.setState({ overrides: { 'camera.pan_up': 'k' } });
     const pan = vi.fn();
     render(<Panner onPan={pan} />);
@@ -111,7 +107,7 @@ describe('held pan keys', () => {
   });
 
   it('stops panning when the window loses focus mid-hold, rather than running on', () => {
-    // Without this the keyup never arrives (it goes to whatever took focus) and the camera drifts.
+    // The keyup goes to whatever took focus, so without this the camera drifts.
     const pan = vi.fn();
     render(<Panner onPan={pan} />);
     act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true })); });
@@ -146,8 +142,7 @@ describe('pan speed', () => {
   });
 
   it('lets creep TAKE BACK a run, rather than the run winning', () => {
-    // The modifier is pressed during the sprint, so it has to be able to cancel it — otherwise a
-    // double tap locks the camera fast until every key comes up.
+    // Otherwise a double tap locks the camera fast until every key comes up.
     const pan = vi.fn();
     render(<Panner onPan={pan} />);
     step(pan, false, 's');

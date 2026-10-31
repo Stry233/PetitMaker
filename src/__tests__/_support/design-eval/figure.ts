@@ -1,11 +1,9 @@
 /**
  * The map's one set piece, and where the best ends of the network go.
  *
- * A figure is a gap-tolerant cluster of water, not a water body, which is why the reading does not
- * go through `water-bodies.ts`: the set piece is a flooded panel with dry mass standing in it — the
- * reference's banner is 772 water cells around 130 cells of retained mountain — so a body
- * decomposition returns a court's concentric rings as four separate annuli and a banner as the gaps
- * between its letters.
+ * A figure is a gap-tolerant cluster of water, not a water body: the set piece is a flooded panel with
+ * dry mass standing in it, so a body decomposition would split a court's concentric rings into four
+ * annuli and a banner into the gaps between its letters.
  */
 import type { GridState } from '../../../core/model/types';
 import { ARRIVAL_REACH } from './streets';
@@ -13,48 +11,33 @@ import { FIGURE_CALM } from '../../../tools/generation/designer/water/water-form
 import { eachTerminus, readMap, type MapMasks } from '../../../tools/reading';
 import { gapClusters } from './grid';
 
-/**
- * The map's one set piece, read off the finished map: a composition has a primary set piece, two
- * or three secondary ones and ordinary ground, and when every place is equally elaborate none is
- * the point.
- *
- * Cells within `FIGURE_GAP` of each other are one figure, the flora-cluster tolerance, so this sees
- * what a viewer sees. Dominance is the largest figure against the second largest.
- *
- * Framing is the share of the `FIGURE_CALM` band around the figure's box that is calm, paved or
- * bare. It does not tell the two apart: a high reading says the ground was kept clear, not that a
- * border was built.
- */
+/** Cells within this distance of each other are one figure: the flora-cluster tolerance, so the
+ *  reading sees what a viewer sees. */
 export const FIGURE_GAP = 2;
 
 /**
- * The water a cluster must stand in to count as a composed figure here, and the number the gate reads.
+ * The water a cluster must stand in to count as a composed figure; the gate reads the same number.
  *
- * It sits under the pass's own panel floor (`SET_PIECE_MIN`, 120 cells) because the two numbers count
- * different things: a court's pattern stands dry inside its panel, so the water a 120-cell panel leaves
- * is about 100 cells. One declaration, so the count in this reading and the floor the gate holds a map
- * to cannot drift apart — read against 120, a gate-passing map returns `figures: 0`.
+ * It sits under the landmark panel floor (`SET_PIECE_MIN`, 120 cells) because a court's pattern stands
+ * dry inside its panel: a 120-cell panel leaves about 100 cells of water.
  */
 export const SET_PIECE_CELLS_MIN = 80;
 
 /**
- * The water a full-richness map's biggest composed figure must stand in: the scale at which a
- * centrepiece reads as larger than anything else rather than one of several modest ponds.
- * `SET_PIECE_CELLS_MIN` only makes a cluster count as a figure. 200 rather than 250 lets a seed
- * that draws the text family fit it at scale 2. The ladder ratio stays ungated because the
- * reference's own banner and lettering field are nearly equal. The harness and the probe both read
- * it from here.
+ * The water a full-richness map's biggest figure must stand in, so the centrepiece reads as larger
+ * than anything else rather than one of several modest ponds. 200 lets a seed that draws the text
+ * family fit it at scale 2. The ladder ratio stays ungated: the reference's own banner and lettering
+ * field are nearly equal.
  */
 export const SET_PIECE_FLOOR = 200;
 
 export interface FigureReading {
   /** Water clusters of `SET_PIECE_CELLS_MIN` cells or more: the map's composed figures. */
   figures: number;
-  /** Cells of the largest, and of the second largest cluster (0 where there is none). */
+  /** Cells of the largest and the second largest cluster (0 where there is none). */
   largest: number;
   second: number;
-  /** The largest over the second: the ladder as one number. `Infinity` where nothing else comes near
-   *  the floor, which is the cleanest possible answer to "one thing that happens once". */
+  /** The largest over the second; `Infinity` where there is no second cluster. */
   dominance: number;
   /** The largest figure's own bounding box, and how much of it stands in water. */
   box: { x: number; y: number; w: number; h: number };
@@ -65,6 +48,13 @@ export interface FigureReading {
   toPavement: number;
 }
 
+/**
+ * The map's set piece read off the finished map: a composition has one primary set piece, so
+ * dominance compares the largest figure with the second.
+ *
+ * Framing counts the `FIGURE_CALM` band around the figure's box that is paved or bare without telling
+ * the two apart: a high reading says the ground was kept clear, not that a border was built.
+ */
 export function figureReading(state: GridState, g = readMap(state)): FigureReading {
   const { W, H } = g;
   const clusters = waterClusters(g);
@@ -123,15 +113,10 @@ export function figureReading(state: GridState, g = readMap(state)): FigureReadi
 }
 
 /**
- * Where the best ends of the network go.
- *
- * That every end arrives at something is `streetArrivals`, and it is a hard rule. This is the half it
- * does not read: the strongest places on the map should all be terminal, and what a walk ends at should
- * be a place built to be arrived at rather than the nearest garden. So the termini are sorted by
- * what stands in their forward cone: the map's own figure, a crossing that carries the walk somewhere
- * else, an anchor building's door, or ordinary ground.
- *
- * The cone is `streetArrivals`' own, so the two readings cannot disagree about where an end is looking.
+ * Where the best ends of the network go: `streetArrivals` checks that every end arrives at something;
+ * this sorts the termini by what stands in their forward cone (the map's figure, a crossing, a
+ * structure, or ordinary ground), so a walk ends at a place built to be arrived at. The cone reach is
+ * `ARRIVAL_REACH`, the same as `streetArrivals`.
  */
 export interface SingularArrivals {
   termini: number;

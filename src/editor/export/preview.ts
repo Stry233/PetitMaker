@@ -6,7 +6,7 @@
 // preview stays in its loading state — there is no placeholder band.
 import { host } from '../host/host';
 import { computeComposition } from '../../io/export/compose';
-import { deviceCanvasLimits } from '../../io/export/canvas-limits';
+import { layoutWithinDevice } from '../../io/export/canvas-limits';
 import { CANVAS_LIMITS, mapNativePx } from '../../io/export/sizing';
 import { layersFor } from '../../io/export/layer-preview';
 import { getMapStats } from '../../state/map-stats';
@@ -117,9 +117,9 @@ function paintCanvasLayout(args: PaintPreviewArgs): { canvas: HTMLCanvasElement;
   // The code band's geometry is exact pixel math (moduleBaseFor of the composition width), so the
   // preview gets the true band rect for free, and codeImg is the real encoded band (identical to
   // the export for the standard/high presets — same session createdAt).
-  const limits = deviceCanvasLimits();
   const dropped = { card3d: card3dAngles.length === 0 };
-  const comp = exportComposition(options, state, sum, { aspect: mapAspect, px: { w: baseMap.width, h: baseMap.height } }, { limits, dropped });
+  const mapPx = { w: baseMap.width, h: baseMap.height };
+  const comp = layoutWithinDevice((limits) => exportComposition(options, state, sum, { aspect: mapAspect, px: mapPx }, { limits, dropped }));
 
   // Footer dimensions must report the final export size. Presets fix their width, so the preview
   // composition already matches; Native is captured small for the preview, so compute its true

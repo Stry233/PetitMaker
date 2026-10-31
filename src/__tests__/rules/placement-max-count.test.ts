@@ -36,9 +36,7 @@ describe('V-PLACE-MAX: per-item placement cap', () => {
     const state = makeState(20, 20);
     state.objects.set('a', obj('a', 'test-triple', 3, 5));
     state.objects.set('b', obj('b', 'test-triple', 6, 5));
-    // 2 placed < cap 3 → a third is allowed
     expect(placementMaxCountRule.validate(place(obj('c', 'test-triple', 9, 5)), state)).toHaveLength(0);
-    // 3 placed → the fourth is rejected, and the message reports the cap of 3
     state.objects.set('c', obj('c', 'test-triple', 9, 5));
     const errs = placementMaxCountRule.validate(place(obj('d', 'test-triple', 12, 5)), state);
     expect(errs).toHaveLength(1);

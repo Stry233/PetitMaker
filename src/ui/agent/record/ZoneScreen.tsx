@@ -1,6 +1,6 @@
 import type { Ref } from 'react';
 import type { JobView, LiveConnection, SetupEntry } from '../../../agent/panel';
-import { cueCharacter } from '../character/intent';
+import { useCharacterChannel } from '../character/intent';
 import { DreamOffice } from '../desk/DreamOffice';
 import { ManageScreen } from '../connection/ManageScreen';
 import type { ZoneEvent } from '../derive/zone';
@@ -17,13 +17,11 @@ export type ZoneScreenKind =
 
 /** The setup, keyless rest, management or opened-record screen standing in the job zone. */
 export function ZoneScreen({
-  screen, setupRef, pictured, pinned, jobCount, running, phase, liveConnection, recordStamp, rolledBack,
+  screen, setupRef, pinned, jobCount, running, phase, liveConnection, recordStamp, rolledBack,
   dispatch, onSetupFace, onClearJobs, onStop, onPause, onCloseRecord, onClearRecord,
 }: {
   screen: ZoneScreenKind;
   setupRef: Ref<SetupHandle>;
-  /** A Help figure, which never drives the live character. */
-  pictured: boolean;
   pinned: boolean;
   /** The records a clear would still remove. */
   jobCount: number;
@@ -40,6 +38,7 @@ export function ZoneScreen({
   onCloseRecord(): void;
   onClearRecord?(orderSeq: number): void;
 }) {
+  const character = useCharacterChannel();
   switch (screen.kind) {
     case 'setup':
       return (
@@ -58,7 +57,8 @@ export function ZoneScreen({
       return (
         <DreamOffice
           onConnect={() => {
-            if (!pictured) { cueCharacter({ kind: 'acknowledge' }); cueCharacter({ kind: 'wake' }); }
+            character.cue({ kind: 'acknowledge' });
+            character.cue({ kind: 'wake' });
             dispatch({ type: 'setup', entry: 'key' });
           }}
           pinned={pinned}

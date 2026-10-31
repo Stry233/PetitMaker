@@ -1,10 +1,6 @@
-// The theme kits: the elements each family builds a place out of, and what those places look like
-// once a whole map has been composed of them.
-//
-// The unit half works on a synthetic canvas, because what a kit does is decide a composition and
-// that decision is pure. The map half asserts the two things a composition can only be judged on
-// once it is down: the rules accepted every mark (a refused plant is a hole in a mirror), and the
-// finished map scores in the reference maps' own bands for symmetry, unity and density.
+// The theme kits, on a synthetic canvas and on whole designed maps: the rules accept every mark (a
+// refused plant is a hole in a mirror) and the map scores in the reference maps' bands for symmetry,
+// unity and density.
 import { CHUNK_LOAD_LIMIT } from '../../../../../core/game/profile';
 import { getMapStats } from '../../../../../state/map-stats';
 import { describe, it, expect, vi } from 'vitest';
@@ -35,21 +31,16 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
 const SEEDS = [12345, 777, 42, 2026, 7, 31337, 90210, 1024, 4242, 99];
 /**
- * The seeds the richness-range unity floor is read over, as a mean. A planet's unity share is read
- * over the one-level runs its terraces and streets leave, so one map's reading moves with every
- * street that climbs onto a terrace and every one-cell shift of the plaza: at full richness seed
- * 2026 reads 0.50 while the mean over these eight reads 0.68 and over twenty 0.73. The floor claims
- * a property of the generator rather than of one map, so it is read as a mean.
+ * The seeds the richness-range unity floor is averaged over: one map's share swings with every street
+ * that climbs a terrace (at full richness seed 2026 reads 0.50, the mean over these eight 0.68).
  */
 const UNITY_SEEDS = SEEDS.slice(0, 8);
 
-// --- a canvas to compose on ---------------------------------------------------------------------
-
 const CANVAS_W = 96;
 
-/** A rectangle of plantable ground, with the region's palette on it. */
 const TREE_SHARE = 0.3;
 
+/** A rectangle of plantable ground, with the region's palette on it. */
 function canvasOf(rect: Rect, palette: RegionPalette, cover: number, treeShare = TREE_SHARE): KitCanvas {
   const cells = new Set<number>();
   for (let y = rect.y; y < rect.y + rect.h; y++) {
@@ -80,8 +71,6 @@ function everyRegion(): RegionPlan[] {
   return [...themes, ...anchors];
 }
 
-// --- the units ------------------------------------------------------------------------------------
-
 describe('the kit dispatcher', () => {
   it('has a style for every theme in the library and every anchor kind', () => {
     for (const region of everyRegion()) {
@@ -101,8 +90,6 @@ describe('the kit dispatcher', () => {
     for (const want of wants) {
       expect(want.pools, want.regionId).toBeGreaterThanOrEqual(0);
       expect(want.pools, want.regionId).toBeLessThanOrEqual(2);
-      // The bamboo court is the one theme that asks for ground to be cut down, and the shop is the
-      // one anchor the taste cases ring with a terrace.
       if (want.sunken) expect(byId.get(want.regionId)!.themeId).toBe('bamboo-court');
       if (want.ring) expect(byId.get(want.regionId)!.kind).toBe('shop');
     }
@@ -111,19 +98,15 @@ describe('the kit dispatcher', () => {
 
 describe('a kit fills its lot', () => {
   const palette = samplePalette();
-  // Big enough to steer. A kit tiles its canvas in 5x6-ish blocks and mirrors their indices, so a
-  // 20x16 lot resolves to two steerable keys — the rungs are then so coarse that the nearest one to
-  // a wanted cover can be a third of it away, and what the claim below would be measuring is the
-  // grain of the fixture rather than the tiling.
+  // Big enough to steer: a kit tiles in blocks of about 5x6 and mirrors their indices, so a 20x16 lot
+  // has two steerable keys and would measure the fixture's grain rather than the tiling.
   const rect: Rect = { x: 8, y: 8, w: 40, h: 32 };
 
   it('plants inside the canvas, and more of it the more cover it is given', () => {
     let rose = 0, kits = 0;
     for (const region of everyRegion()) {
       const counts: number[] = [];
-      // Each cover is clamped the way the dressing pass clamps it. Past `coverCap` the tree
-      // lattices take ground the beds needed and the run plants less the more it is asked for, which
-      // is the cap's whole reason for existing rather than a claim about the tiling.
+      // Clamped as the dressing pass clamps it: past `coverCap` the tree lattices take the beds' ground.
       for (const cover of [0.15, 0.35, 0.6].map((c) => Math.min(c, coverCap(TREE_SHARE)))) {
         const canvas = canvasOf(rect, palette, cover);
         const marks = compose(canvas, styleOf(region, makeRng(3)), 'v');
@@ -132,9 +115,7 @@ describe('a kit fills its lot', () => {
         }
         counts.push(marks.length / canvas.cells.size);
       }
-      // The ladder is discrete and the steering stops within 0.02 of what it was asked for, so one
-      // step of the cover knob can land a shade under the step before it. What the claim is about is
-      // the trend, and `SLACK` is the grain the mechanism actually has.
+      // Steering stops within 0.02 of the ask, so one cover step can land a shade under the previous.
       const SLACK = 0.03;
       expect(counts[0], region.id).toBeGreaterThan(0.02);
       expect(counts[1], region.id).toBeGreaterThanOrEqual(counts[0]! - SLACK);
@@ -143,9 +124,7 @@ describe('a kit fills its lot', () => {
       kits++;
       if (counts[2]! > counts[0]!) rose++;
     }
-    // Not every kit: on a canvas this size a mix of elements the density knob may not move (a border
-    // run, a chequer, the grove a kit asked for) can fill every block and saturate, which is the
-    // knob refusing to fell an orchard for a flower bed rather than the knob failing.
+    // Not every kit: a mix the density knob cannot move (a border run, a chequer) saturates.
     expect(rose / kits).toBeGreaterThan(0.7);
   });
 
@@ -179,15 +158,14 @@ describe('a kit fills its lot', () => {
       const families = new Map<string, number>();
       for (const m of marks) families.set(familyOf(m.catalogId), (families.get(familyOf(m.catalogId)) ?? 0) + 1);
       const dominant = Math.max(...families.values()) / marks.length;
-      // Half on one canvas; the map-level assertion below is where the references' 60% is checked, and
-      // a single 20x16 canvas holds too few blocks for the accent draw to average out.
+      // Half on one canvas: a single canvas holds too few blocks for the accent draw to average out.
       expect(dominant, `${region.id} dominant ${dominant.toFixed(2)}`).toBeGreaterThanOrEqual(0.5);
     }
   });
 
   it('lays a block in one species, so a bed reads as a bed', () => {
-    // A flower field with the trees turned down to what a flat map asks for: the claim is about the
-    // Bed, and a canvas whose blocks the tree share has taken holds none to read.
+    // A flower field with the trees turned down to what a flat map asks for; a canvas whose blocks
+    // the tree share has taken holds no bed to read.
     const canvas = canvasOf(rect, palette, 0.5, 0.05);
     const region = everyRegion().find((r) => r.themeId === 'flower-field')!;
     const marks = compose(canvas, styleOf(region, makeRng(3)), 'v');
@@ -201,8 +179,6 @@ describe('a kit fills its lot', () => {
     expect(runs).toBeGreaterThan(4);
   });
 });
-
-// --- the map --------------------------------------------------------------------------------------
 
 /** One designed map, generated once per (seed, template, richness, load limit) for this file. The
  *  load check runs on every read. */
@@ -230,37 +206,22 @@ describe('the dressed map', () => {
   });
 
   it('scores inside the calibration bands for symmetry, unity and density', () => {
-    // Symmetry is read over the batch, the other two per map. A mirror is only offered to a run
-    // compact enough to carry one, so how many of a map's regions get one depends on how the
-    // terrain happened to cut that map's open ground — the style target itself scores 0.67, and a
-    // per-seed floor at the batch's own mean would be asking every planet to be the average one.
-    // The floor each seed still holds is the one that says the operator ran at all.
+    // Symmetry is held over the batch, the other two per map: a mirror is offered only to a run
+    // compact enough to carry one, which depends on how the terrain cut the ground. The per-seed
+    // symmetry floor only shows the operator ran.
     const shares: number[] = [];
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS) {
         const { state } = build(seed, template);
         const { scores, metrics } = evaluateMap(state);
         const where = `${template.id}/${seed}`;
-        // A floor with room under the observed worst. Street-end marks, door backings and the
-        // anti-grid's L-shaped blocks all cut plantable ground into shapes a kit mirrors about less
-        // readily; the cascade stair taking its water off the flanks gives some back.
         expect(scores.symmetryShare, where).toBeGreaterThanOrEqual(0.25);
         shares.push(scores.symmetryShare);
-        // 0.59 to 0.90 per seed since the dressing began composing a spot at each street end: the
-        // spot takes the palette of whichever run owns the ground ahead, but where that ground
-        // belongs to no run — which is where a walk ends at nothing, so exactly where the spot is
-        // wanted — it takes the nearest region's instead, and that is one species the run it lands
-        // beside does not otherwise plant. The batch claim below is unchanged.
-        // And it came down with the anti-grid for the same reason symmetry did: a staggered street
-        // cuts a place into runs that share a boundary with the one beside them, so a run's dominant
-        // family carries a smaller share of it. Measured over both templates at these ten seeds:
-        // worst 0.53.
+        // The worst seed over both templates reads 0.53: a street-end spot on unowned ground takes the
+        // nearest region's palette, and a staggered street splits a place into runs.
         expect(scores.unityShare, where).toBeGreaterThanOrEqual(0.50);
-        // The floor is the reference's own, less the ground the water took. Both references sit at
-        // 0.073 and 0.092 plants per land cell, and the band's floor is the lower of the two; at
-        // full richness a quarter of our planet is water and every water cell also costs the dry
-        // cells whose flat sweep reaches it, so a watery seed lands a few thousandths under. The
-        // arrangement is what this file is about, and the volume is measured rather than forced.
+        // The references sit at 0.073 and 0.092 plants per land cell; the floor is the lower one less
+        // the ground water takes (a water cell also costs the dry cells whose flat sweep reaches it).
         expect(metrics.objects.decorDensity, where).toBeGreaterThanOrEqual(0.065);
         expect(metrics.objects.decorDensity, where).toBeLessThanOrEqual(0.095);
       }
@@ -274,13 +235,11 @@ describe('the dressed map', () => {
     for (const richness of [0.2, 1]) {
       const { state } = build(pinned, HEXIA, richness);
       const { scores, metrics } = evaluateMap(state);
-      // 0.28 at full richness on this seed against 0.35 at the quiet end, because a terrace cuts a
-      // place into runs at two levels and a mirror laid across the step is accounted in neither run.
-      // The batch claim in the test above is where the operator is judged.
+      // This seed reads 0.28 at full richness and 0.35 at the quiet end: a mirror across a terrace step
+      // counts in neither run.
       expect(scores.symmetryShare, `richness ${richness}`).toBeGreaterThanOrEqual(richness >= 1 ? 0.25 : 0.35);
-      // 0.52 at full richness for the same reason: a palette composes on the ground the terrace steps
-      // left it, so a place shares its run with the one beside it rather than standing one species
-      // deep. Read as the mean over `UNITY_SEEDS`.
+      // Unity is lower at full richness for the same reason: terrace steps leave a place sharing its
+      // run with its neighbour.
       const unity = UNITY_SEEDS.map((s) => (s === pinned ? scores : evaluateMap(build(s, HEXIA, richness).state).scores).unityShare);
       const unityMean = unity.reduce((a, b) => a + b, 0) / unity.length;
       expect(unityMean, `richness ${richness}: unity ${unity.map((u) => u.toFixed(2)).join(', ')}`)

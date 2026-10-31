@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The keybinding registry is the single source of truth, so guard its invariants + the pure override
- * logic (resolution, conflict/steal, UI-zoom twin protection, persistence). The visual keyboard page
- * reads all of this, so a broken invariant would surface as a wrong/unbindable key.
+ * The keybinding registry's invariants and the pure override logic: resolution, conflict and steal,
+ * UI-zoom twin protection, persistence. The keyboard page reads all of it.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
@@ -43,8 +42,7 @@ describe('command registry (single source of truth)', () => {
   });
 
   it('routes the menu toggle through the host, not straight at the store', () => {
-    // Whether the menu is open is the shell's own React state, not a store field, so a command
-    // cannot reach it directly: it has to go through the context the shell supplies.
+    // Menu visibility is the shell's React state, not a store field.
     const toggleMenu = vi.fn();
     COMMAND_BY_ID.get('app.menu')!.run({ ...noopCtx, toggleMenu });
     expect(toggleMenu).toHaveBeenCalledTimes(1);
@@ -53,7 +51,7 @@ describe('command registry (single source of truth)', () => {
   it('ships undo/redo on the conventional combos as ordinary editable rows', () => {
     expect(COMMAND_BY_ID.get('history.undo')?.defaultCombo).toBe('ctrl+z');
     expect(COMMAND_BY_ID.get('history.redo')?.defaultCombo).toBe('ctrl+shift+z');
-    // Rebindable like anything else: an override moves them, index and all.
+    // An override moves them, index and all.
     expect(effectiveCombo({ 'history.undo': 'ctrl+alt+u' }, 'history.undo')).toBe('ctrl+alt+u');
     expect(bindingIndex({ 'history.undo': 'ctrl+alt+u' }).get('ctrl+alt+u')).toBe('history.undo');
     expect(bindingIndex({ 'history.undo': 'ctrl+alt+u' }).has('ctrl+z')).toBe(false);
@@ -128,8 +126,7 @@ describe('command registry (single source of truth)', () => {
     const state = makeState();
     state.objects.set('a', makeObject('a', 1, 1));
     state.objects.set('plaza', { ...makeObject('plaza', 5, 5), locked: true });
-    // Start from a non-empty, non-matching selection: an implementation that
-    // Appended instead of replacing would leave this terrain ref behind.
+    // A non-matching starting selection, so appending instead of replacing would leave it behind.
     useEditorStore.setState({ gridState: state, selection: [{ kind: 'terrain', x: 9, y: 9 }] });
     try {
       COMMAND_BY_ID.get('selection.all')!.run(noopCtx);
@@ -174,8 +171,7 @@ describe('keyboard layout', () => {
   });
 
   it('every modifier keycap reports the layer it represents, so it can light up when engaged', () => {
-    // Shift holds a command (constrain) so it is not a `mod` toggle like Ctrl/Alt; it must still
-    // declare `layerOf` or it can never highlight — including in ctrl+shift / alt+shift combos.
+    // Shift holds a command (constrain), so it declares `layerOf` rather than `mod` to highlight.
     for (const k of KEY_ROWS.flat()) {
       if (!['shift', 'ctrl', 'alt'].includes(k.base)) continue;
       const represents = k.mod ?? k.layerOf;
@@ -204,20 +200,19 @@ describe('keyboard layout', () => {
     expect(a.get('arrowdown')).toBe('camera.pan_down');
     expect(a.get('arrowleft')).toBe('camera.pan_left');
     expect(a.get('arrowright')).toBe('camera.pan_right');
-    // They are fixed aliases, not user-editable primaries, so they are not in the bindingIndex; the
-    // keyboard page has to fall back to aliasIndex or an arrow key renders blank.
+    // Fixed aliases sit outside bindingIndex, so the keyboard page falls back to aliasIndex for them.
     expect(bindingIndex({}).has('arrowup')).toBe(false);
   });
 
   it('has an Esc + F1-F12 function row; browser-reserved F-keys + PrintScreen are non-bindable', () => {
     const fkeys = new Map(KEY_ROWS.flat().filter((k) => /^f\d+$/.test(k.base)).map((k) => [k.base, k]));
     for (let n = 1; n <= 12; n++) expect(fkeys.has(`f${n}`), `missing f${n}`).toBe(true);
-    // Browser-reserved (Help/Find/Reload/AddrBar/Fullscreen/DevTools) → shown but not bindable.
+    // Browser-reserved (help, find, reload, address bar, fullscreen, devtools): shown, not bindable.
     for (const t of ['f1', 'f3', 'f5', 'f6', 'f11', 'f12']) expect(fkeys.get(t)?.fixed, t).toBe(true);
     for (const t of ['f2', 'f4', 'f7', 'f8', 'f9', 'f10']) expect(fkeys.get(t)?.fixed, t).toBeFalsy();
-    // PrtSc is OS-captured -> shown but not bindable.
+    // The OS captures PrintScreen.
     expect(NAV.find((k) => k.base === 'printscreen')?.fixed).toBe(true);
-    // Arrows sit at the bottom of the nav cluster (a gap row above them) so its bottom aligns.
+    // Arrows sit at the bottom of the nav cluster, below a gap row, so its bottom aligns.
     expect(NAV.find((k) => k.base === 'arrowup')?.row).toBe(5);
     expect(NAV.find((k) => k.base === 'arrowdown')?.row).toBe(6);
   });
@@ -227,7 +222,7 @@ describe('keyboard layout', () => {
     expect(comboFromEvent(ev({ key: 'B' }))).toBe('b');
     expect(comboFromEvent(ev({ key: 'z', ctrlKey: true, shiftKey: true }))).toBe('ctrl+shift+z');
     expect(comboFromEvent(ev({ key: 'Shift', shiftKey: true }))).toBeNull();
-    // The pan-hold gesture is a bound command like any other, so its key records like any other.
+    // The pan-hold gesture is a bound command, so space records like any key.
     expect(comboFromEvent(ev({ key: ' ' }))).toBe('space');
   });
 
@@ -311,7 +306,7 @@ describe('rebind store', () => {
   });
 
   it('steals the combo from the prior holder (which becomes unbound)', () => {
-    // '2' is eraser's default; give it to the brush → eraser loses it.
+    // '2' is the eraser's default.
     const r = useKeybinds.getState().rebind('tool.brush', '2');
     expect(r.ok).toBe(true);
     expect(r.displaced).toBe('tool.erase');
@@ -386,7 +381,7 @@ describe('UI zoom is registered, rebindable, and matched by its listener', () =>
     expect(matchesUiZoomCombo('ctrl+=', press('+', { ctrlKey: true, shiftKey: true }))).toBe(true);
     expect(matchesUiZoomCombo('ctrl+=', press('=', { metaKey: true }))).toBe(true);
     expect(matchesUiZoomCombo('ctrl+-', press('_', { ctrlKey: true, shiftKey: true }))).toBe(true);
-    // No Ctrl/Cmd at all, and Alt that the combo never asked for: neither is this binding.
+    // Missing Ctrl or Cmd, or an extra Alt, does not match.
     expect(matchesUiZoomCombo('ctrl+=', press('=', {}))).toBe(false);
     expect(matchesUiZoomCombo('ctrl+=', press('=', { ctrlKey: true, altKey: true }))).toBe(false);
     // A key with no shifted twin of its own is matched exactly, Shift included.
@@ -403,7 +398,7 @@ describe('UI zoom is registered, rebindable, and matched by its listener', () =>
     const twin = useKeybinds.getState().rebind('tool.brush', 'ctrl+shift+=');
     expect(twin.ok).toBe(false);
     expect(twin.reason).toBe('reserved-combo');
-    // The `BASE` combo is an ordinary binding: taking it is an ordinary steal.
+    // The base combo is an ordinary binding, so taking it is an ordinary steal.
     const base = useKeybinds.getState().rebind('tool.brush', 'ctrl+=');
     expect(base.ok).toBe(true);
     expect(base.displaced).toBe('app.ui_zoom_in');
@@ -462,7 +457,7 @@ describe('the shortcut engine wires the registry', () => {
     const view = renderHook(() => useEditorShortcuts(deps));
     try {
       expect(send({ key: '=', ctrlKey: true }).defaultPrevented).toBe(false);
-      // The instrument works: a command with a run body takes its key.
+      // Control: a command with a run body takes its key.
       expect(send({ key: 'g', ctrlKey: true }).defaultPrevented).toBe(true);
     } finally {
       view.unmount();

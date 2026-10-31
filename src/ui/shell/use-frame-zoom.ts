@@ -1,15 +1,15 @@
 /* The frame's live zoom: the whole frame stands under one `zoom`, so a measurement from outside divides by it. */
-import { useAnimatedUiZoom } from '../design/ui-zoom-anim';
-import { useDenseScript, useDevicePixelRatio, useViewportFit } from '../design/scale';
+import { useChromeScale, useDenseScript, useDevicePixelRatio } from '../design/scale';
 import { readableWeight } from '../design/text-weight';
 import { ZOOM } from './units';
 
 /**
- * The factor every frame length is drawn at: page zoom, the window's fit and the live UI zoom (the chrome
- * rides the same fit).
+ * The factor every frame length is drawn at: `units.ts:ZOOM` times the one scale. It answers for the
+ * settled scale; while the scale glides, the frame plane's writer (`dock/use-dock-planes.ts`) draws
+ * the live one.
  */
 export function useFrameZoom(): number {
-  return ZOOM * useViewportFit() * useAnimatedUiZoom();
+  return ZOOM * useChromeScale();
 }
 
 /**

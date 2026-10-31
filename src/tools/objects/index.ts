@@ -2,8 +2,9 @@
  * The objects module's door: editing the objects already standing, with no pointer in it.
  *
  * `actions.ts` holds the single-object edits (move, rotate, remove, peel the terrain out from
- * under) and `group-actions.ts` their group forms, each one stroke group; `candidate.ts` is the
- * object a placement would stand. The probes and the coating strip they land through are
+ * under) and `group-actions.ts` their group forms, each one stroke group; `arrangement.ts` copies a
+ * selection and plans and places its copies; `batch-slots.ts` lays out a Paint stroke's spots;
+ * `candidate.ts` is the object a placement would stand. The probes and the coating strip they land through are
  * `placement/`'s; the placer tool and the drag session are `pointer/objects/`'s. The chrome offers
  * the edits, `editor` plays their feedback and the Help figures run them on their own world.
  */
@@ -14,3 +15,8 @@ export {
 } from './group-actions';
 export type { GroupRotation } from './group-rotation';
 export { candidateObject } from './candidate';
+export { BatchSlots, type BatchSlot, type BatchLayout } from './batch-slots';
+export {
+  copyArrangement, arrangementOf, planPaste, findOpenPaste, pasteArrangement, pasteAt,
+  type CopyResult, type PasteAim, type PasteDoor, type PasteOutcome, type PastePlan, type PasteResult,
+} from './arrangement';

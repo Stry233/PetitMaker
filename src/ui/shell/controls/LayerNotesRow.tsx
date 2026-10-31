@@ -1,17 +1,20 @@
 /** The layer panel's pinned row for the plan-notes layer. */
 import { TileToggle } from './LayerTile';
 import { LayerRowPlate } from './LayerRowPlate';
-import { TILE, NOTES_ROW } from './layer-plate';
+import { NOTES_ROW, notesPadY, tileOf } from './layer-plate';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useTouchMode } from '../../design/input-mode';
 import { ActionButton } from '../../primitives/ActionButton';
 import { useT } from '../../../i18n/context';
 import { openHelp } from '../../session/help-targets';
 import { useEditorStore } from '../../../state/store';
+import { notesOpenable } from '../../../state/slices/shell';
 import { showNotesForEditing } from '../../../editor/editing/annotation-edit';
-import { btnReset, cursors, font } from '../../design/styles';
+import { btnReset, cursors, font, UNAVAILABLE } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { ACTIVE, INK, INSET, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
-import { useFrameReadableWeight } from '../use-frame-zoom';
+import { useFrameReadableWeight, useFrameZoom } from '../use-frame-zoom';
 import { useUiPreviewPose } from '../../design/preview';
 
 /**
@@ -32,13 +35,20 @@ export function NotesRow({ lane, selected }: { lane: number; selected: boolean }
   const visible = posed ? posed.visible : data?.visible !== false;
   const locked = posed ? posed.locked : data?.locked === true;
   const count = data?.items.length ?? 0;
-  const tileM = TILE.column;
+  // The row is the door into Notes; its eye, lock and help stay live while the door is shut.
+  const shut = useEditorStore((s) => !notesOpenable(s)) && !posed && !selected;
+  const dim = shut ? UNAVAILABLE : 1;
+  const touch = useTouchMode();
+  // The file tile's own columns, at the input mode's pitch, so the eyes and locks line up down the panel.
+  const tileM = tileOf('column', touch);
+  const padY = notesPadY(touch);
+  const zoom = useFrameZoom();
   const ink = selected ? INK : PLATE_INK;
   const line = (measurer: boolean) => (
     <div
       style={{
         position: 'relative', display: 'flex', alignItems: 'center', gap: tileM.readingGap,
-        padding: `${NOTES_ROW.padY}px ${tileM.padX}px`, pointerEvents: 'none',
+        padding: `${padY}px ${tileM.padX}px`, pointerEvents: 'none',
         whiteSpace: 'nowrap',
         ...(measurer ? { visibility: 'hidden' as const } : {}),
       }}
@@ -56,16 +66,17 @@ export function NotesRow({ lane, selected }: { lane: number; selected: boolean }
             ...btnReset, width: NOTES_ROW.help, height: NOTES_ROW.help, margin: `0 ${NOTES_ROW.helpMarginX}px`, flex: 'none', borderRadius: '50%',
             background: selected ? INK : INSET, color: selected ? ACTIVE : PLATE_INK,
             fontFamily: font.family, ...roleFont('small'), lineHeight: `${NOTES_ROW.help}px`,
-            textAlign: 'center', pointerEvents: measurer ? 'none' : 'auto', cursor: cursors.clickable,
+            textAlign: 'center', pointerEvents: measurer ? 'none' : 'auto', cursor: cursors.clickable, position: 'relative',
           }}
         >
           ?
+          {measurer ? null : <TouchReach zoom={zoom} />}
         </ActionButton>
-        <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, whiteSpace: 'nowrap', ...(measurer ? {} : { overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
+        <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, opacity: dim, whiteSpace: 'nowrap', ...(measurer ? {} : { overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
           {t('annot.layer')}
         </span>
       </div>
-      <span style={{ minWidth: tileM.count, textAlign: 'right', fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+      <span style={{ minWidth: tileM.count, textAlign: 'right', fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, opacity: dim, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: tileM.toggleGap }}>
         <TileToggle
           icon={`${visible ? 'eye-open' : 'eye-closed'}-selected`}
@@ -92,6 +103,8 @@ export function NotesRow({ lane, selected }: { lane: number; selected: boolean }
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: lane }}>
       <LayerRowPlate
         selected={selected}
+        unavailable={shut}
+        dim="caller"
         aria-label={t('annot.layer')}
         data-testid="shell-layer-annotation"
         onClick={() => (selected ? setEditMode({ mode: null }) : showNotesForEditing())}

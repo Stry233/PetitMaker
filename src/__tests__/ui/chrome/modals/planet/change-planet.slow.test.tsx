@@ -27,8 +27,6 @@ import { jsonFile } from '../../../../_support/json-file';
 import { newMap, requestTransferPreview } from '../../../../../editor/operations';
 import { transferPreviewOf } from '../../../../../tools/generation/run/planet-preview';
 import { currentEditor, editorPort } from '../../../../../editor/session/context';
-import { useTransition } from '../../../../../ui/design/motion/use-motion';
-import { framerMotion } from '../../../../../ui/design/motion';
 import { createExecutor } from '../../../../../state/executor';
 import { installPictureRenderer } from '../../../../_support/picture-renderer';
 
@@ -38,14 +36,10 @@ vi.mock('../../../../../pipelines/moderation/text/reviewer', async (original) =>
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
 
-// Passthroughs, watched: how often the carry step asks for the transfer, and which motion its steps take.
+// Passthrough, watched: how often the carry step asks for the transfer.
 vi.mock('../../../../../editor/operations', async (original) => {
   const actual = await original<typeof import('../../../../../editor/operations')>();
   return { ...actual, requestTransferPreview: vi.fn(actual.requestTransferPreview) };
-});
-vi.mock('../../../../../ui/design/motion/use-motion', async (original) => {
-  const actual = await original<typeof import('../../../../../ui/design/motion/use-motion')>();
-  return { ...actual, useTransition: vi.fn(actual.useTransition) };
 });
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
@@ -689,19 +683,6 @@ describe('the carry step', () => {
     expect(screen.queryByTestId('planet-dropped')).toBeNull();
   });
 
-  it('crossfades its steps through the registry motion', async () => {
-    const w = world();
-    paint(w.executor, 40);
-    show();
-    vi.mocked(useTransition).mockClear();
-    toCarry();
-    const { calls, results } = vi.mocked(useTransition).mock;
-    const at = calls.findIndex(([id]) => id === 'section.opacity');
-    expect(at).toBeGreaterThanOrEqual(0);
-    expect(results[at]!.value).toEqual(framerMotion('section.opacity'));
-    expect(screen.getAllByTestId('planet-step').length).toBeGreaterThan(0);
-    await ready();
-  });
 });
 
 describe('Export first', () => {
@@ -751,13 +732,16 @@ describe('Export first', () => {
 });
 
 describe('the card height cap', () => {
-  it('bounds the card and scrolls its own content rather than clipping it', () => {
+  it('bounds the card, which never scrolls: its planet list gives way and the actions stay', () => {
     world();
     show();
     const dialog = screen.getByRole('dialog');
     const cap = parseFloat(dialog.style.maxHeight);
     expect(dialog.style.maxHeight).toMatch(/px$/);
     expect(cap).toBeGreaterThan(0);
-    expect(dialog.style.overflowY).toBe('auto');
+    expect(dialog.style.overflow).toBe('hidden');
+    const scrolls = (el: HTMLElement | null): boolean => !!el && el !== dialog && (el.style.overflowY === 'auto' || scrolls(el.parentElement));
+    expect(scrolls(screen.getByTestId('planet-hexia'))).toBe(true);
+    expect(scrolls(screen.getByTestId('planet-switch'))).toBe(false);
   });
 });

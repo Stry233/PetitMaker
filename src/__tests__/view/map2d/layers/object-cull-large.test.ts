@@ -3,7 +3,7 @@
  * Chunk culling buckets an object by its anchor cell, with an 8-tile overscan
  * margin for spill. An object larger than that margin (such as the central
  * plaza) can have its anchor chunk fully outside the padded view while most of
- * its body is still on screen — zooming in near a plaza corner made the whole
+ * its body is still on screen, so zooming in near a plaza corner would make the whole
  * plaza vanish. Oversized objects therefore bypass the buckets and sit directly
  * in their per-elevation container: still layer-faded, never culled.
  */

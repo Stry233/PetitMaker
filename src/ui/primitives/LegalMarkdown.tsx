@@ -19,7 +19,7 @@ import { font, radii } from '../design/styles';
 import { HAIRLINE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY } from '../design/tokens';
 import { useReadableWeight } from '../design/scale';
 import { roleFont, roleWeight, TEXT_ROLES } from '../design/text-weight';
-import { useScrollFade } from './scroll-fade';
+import { useScrollRow } from './use-scroll-row';
 
 const PROSE = {
   body: {
@@ -92,7 +92,6 @@ const PROSE = {
     margin: '20px 0',
   } satisfies CSSProperties,
   tblWrap: {
-    overflowX: 'auto',
     margin: '0 0 12px',
   } satisfies CSSProperties,
   table: {
@@ -129,11 +128,11 @@ type InternalLinkHandler = ((slugPath: string) => void) | undefined;
  *  hook call there would run a variable number of times per `LegalMarkdown` render (once per table
  *  in the doc) and break the rules of hooks. A real component sidesteps that — React gives each
  *  mounted `<TableWrap>` its own hook call, however many a doc holds. */
-function TableWrap({ children }: { children: ReactNode }): ReactNode {
+function TableWrap({ zoom, children }: { zoom: number; children: ReactNode }): ReactNode {
   const ref = useRef<HTMLDivElement>(null);
-  const fade = useScrollFade(ref, 'x');
+  const row = useScrollRow(ref, { zoom, pointerEvents: 'auto' });
   return (
-    <div ref={ref} className="tbl" style={{ ...PROSE.tblWrap, ...fade }}>
+    <div ref={ref} className="tbl" style={{ ...PROSE.tblWrap, ...row }}>
       {children}
     </div>
   );
@@ -191,7 +190,9 @@ function renderInline(children: Inline[], onInternalLink: InternalLinkHandler, s
   ));
 }
 
-function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHandler, weightAt: (nominal: number, size: number) => number): ReactNode {
+function renderBlock(
+  node: MdNode, key: number, onInternalLink: InternalLinkHandler, weightAt: (nominal: number, size: number) => number, zoom: number,
+): ReactNode {
   switch (node.t) {
     case 'h': {
       const Tag = `h${node.level}` as 'h1' | 'h2' | 'h3' | 'h4';
@@ -242,7 +243,7 @@ function renderBlock(node: MdNode, key: number, onInternalLink: InternalLinkHand
       return <hr key={key} style={PROSE.hr} />;
     case 'table':
       return (
-        <TableWrap key={key}>
+        <TableWrap key={key} zoom={zoom}>
           <table style={PROSE.table}>
             <thead>
               <tr>
@@ -274,11 +275,14 @@ export function LegalMarkdown({
   nodes,
   onInternalLink,
   dense,
+  zoom = 1,
 }: {
   nodes: MdNode[];
   onInternalLink?: (slugPath: string) => void;
   dense?: boolean;
+  /** The CSS zoom the prose is drawn under, which a wide table's wheel travel divides out. */
+  zoom?: number;
 }) {
   const weightAt = useReadableWeight(dense);
-  return <>{nodes.map((node, i) => renderBlock(node, i, onInternalLink, weightAt))}</>;
+  return <>{nodes.map((node, i) => renderBlock(node, i, onInternalLink, weightAt, zoom))}</>;
 }

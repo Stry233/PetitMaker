@@ -23,7 +23,7 @@ const clampCentre = (centre: number, radius: number, size: number): number => {
  *
  * The drag grows the figure in its own direction to reach the floor; at an edge that direction runs
  * off the map, the cells past it are dropped and the region arrives short of the very floor that
- * pushed it there — a drag that cannot satisfy its own minimum however far it is pulled. There is
+ * pushed it there: a drag that cannot satisfy its own minimum however far it is pulled. There is
  * only one direction left at an edge, so the whole figure slides that way instead.
  */
 describe('a region with a floor, drawn at a margin', () => {

@@ -1,10 +1,6 @@
 /**
- * Auto-trim while a freehand stroke is being drawn.
- *
- * The brush paints as it moves, so without this the stroke reads square under the cursor and only
- * rounds on release. The property that has to hold is that trimming as it goes changes nothing
- * about where the stroke ends up: a corner rounded early and built against later must be derived
- * again from the mass the stroke finished with.
+ * Auto-trim while a freehand stroke is drawn. Trimming as it goes must not change where the stroke
+ * ends up: a corner rounded early and built against later is derived again from the finished mass.
  */
 import { describe, it, expect } from 'vitest';
 import { DrawingTool } from '../../../tools/pointer/paint/drawing-tool';
@@ -35,7 +31,7 @@ function drag(w: ReturnType<typeof world>, path: MacroCoord[]) {
   w.tool.onPointerUp(cell(path[path.length - 1]!), point(MICRO), w.ctx);
 }
 
-/** Every cell's shape, as a comparable string. */
+/** Every terrain cell's shape, as sorted comparable strings. */
 const shapeOf = (state: GridState) => {
   const out: string[] = [];
   state.cells.forEach((row, y) => row.forEach((cell, x) => {
@@ -46,7 +42,7 @@ const shapeOf = (state: GridState) => {
   return out.sort();
 };
 
-/** The same mass, painted in one go and trimmed once — what the stroke is supposed to end as. */
+/** The same mass painted in one go and trimmed once. */
 function paintedAtOnce(cells: MacroCoord[], mode: AutoEdgeCut) {
   const state = makeState(40, 40);
   const executor = makeExecutor(state);
@@ -60,8 +56,7 @@ function paintedAtOnce(cells: MacroCoord[], mode: AutoEdgeCut) {
 const PATHS: { name: string; path: MacroCoord[] }[] = [
   { name: 'a straight drag', path: [{ x: 6, y: 10 }, { x: 9, y: 10 }, { x: 13, y: 10 }, { x: 18, y: 10 }] },
   { name: 'an L', path: [{ x: 8, y: 8 }, { x: 14, y: 8 }, { x: 14, y: 14 }] },
-  // The case the squaring exists for: the stroke comes back alongside itself, so corners it rounded
-  // on the way out are interior by the time it finishes.
+  // Corners rounded on the way out are interior by the time the stroke finishes.
   { name: 'a drag that doubles back', path: [{ x: 8, y: 20 }, { x: 16, y: 20 }, { x: 16, y: 23 }, { x: 8, y: 23 }] },
   { name: 'a loop', path: [{ x: 10, y: 28 }, { x: 16, y: 28 }, { x: 16, y: 33 }, { x: 10, y: 33 }, { x: 10, y: 28 }] },
 ];
@@ -81,9 +76,7 @@ for (const mode of ['round', 'rect'] as const) {
     }
 
     it('matches the finished shape at every point of the drag, not just at the end', () => {
-      // The dab-local pass keeps corners it finds, so without re-deriving its window a corner
-      // rounded on one dab stays rounded when the next dab builds against it — rounded notches
-      // through the middle of the band, and a stroke that changes shape when the button comes up.
+      // The dab-local pass keeps corners it finds, so its window must be re-derived each dab.
       const w = world(3, 'mountain', mode);
       const path = [{ x: 8, y: 8 }, { x: 12, y: 8 }, { x: 12, y: 12 }, { x: 8, y: 12 }, { x: 8, y: 9 }];
       w.tool.onPointerDown(cell(path[0]!), point(MICRO), w.ctx);
@@ -99,7 +92,6 @@ for (const mode of ['round', 'rect'] as const) {
     });
 
     it('has already rounded the shape before the button comes up', () => {
-      // The whole point: mid-drag, the mass on the map is trimmed rather than square.
       const w = world(3, 'mountain', mode);
       w.tool.onPointerDown(cell({ x: 10, y: 10 }), point(MICRO), w.ctx);
       w.tool.onPointerMove(cell({ x: 15, y: 10 }), point(MICRO), w.ctx);
@@ -111,19 +103,15 @@ for (const mode of ['round', 'rect'] as const) {
 }
 
 /*
- * A road is a coating rather than a terrain cell, so its shape lives on the placed object and its
- * cut follows its neighbours: laying the next tile turns the last one from an end-cap into a
- * through-piece. Trimming as the drag goes therefore has the same obligation terrain has — square
- * the stroke's own cells and derive the shape again — and the same property to hold: what the drag
- * leaves behind is what the same road trimmed once at the end would be.
+ * A road's cut lives on the placed object and follows its neighbours: laying the next tile turns
+ * the last end-cap into a through-piece. The drag must still end as the road trimmed once.
  */
 const roadShapeOf = (state: GridState) =>
   [...state.objects.values()]
     .map((o) => `${o.position.x},${o.position.y}:${(o.corners ?? []).join('|')}`)
     .sort();
 
-/** The same road, laid in one go and trimmed once. Matches `makeToolCtx`'s default `tileMaterial`,
- *  the material the drag's own ctx paves with unless a test overrides it. */
+/** The same road laid in one go and trimmed once, in `makeToolCtx`'s default `tileMaterial`. */
 function pavedAtOnce(cells: MacroCoord[], mode: AutoEdgeCut) {
   const state = makeState(40, 40);
   const executor = makeExecutor(state);
@@ -138,7 +126,7 @@ function pavedAtOnce(cells: MacroCoord[], mode: AutoEdgeCut) {
   return state;
 }
 
-/** Every road cell the map holds, in the order the comparison wants them. */
+/** The position of every object on the map. */
 const pavedCells = (state: GridState): MacroCoord[] =>
   [...state.objects.values()].map((o) => ({ x: o.position.x, y: o.position.y }));
 
@@ -162,9 +150,8 @@ for (const mode of ['round', 'rect'] as const) {
     });
 
     it('squares a tile the drag has since paved past', () => {
-      // The case the squaring exists for: an end-cap trimmed on one sample is a through-piece by
-      // the next, and `cutRoads` keeps the cuts it finds, so without re-deriving the window the
-      // drag leaves cut corners running down the middle of the road.
+      // An end-cap trimmed on one sample is a through-piece by the next, and `cutRoads` keeps the cuts
+      // it finds.
       const w = world(1, 'road', mode);
       w.tool.onPointerDown(cell({ x: 10, y: 10 }), point(MICRO), w.ctx);
       w.tool.onPointerMove(cell({ x: 13, y: 10 }), point(MICRO), w.ctx);

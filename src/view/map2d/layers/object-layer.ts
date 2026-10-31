@@ -128,6 +128,11 @@ export class ObjectLayer {
     this.roads.flush();
   }
 
+  /** The road-surface rebuild the scheduler queued, run by the renderer before it paints a frame. */
+  flushQueuedRoadRegions(): void {
+    this.roads.flushQueued();
+  }
+
   /** The per-elevation sub-container for `elev`, created (z-ordered, and honoring
    *  the current hidden set) on first use. */
   private layerContainerFor(elev: number): PIXI.Container {

@@ -141,8 +141,8 @@ describe('a kept frame\'s own lines', () => {
   const tileSize = { width: TW, height: TH };
   const ground = broadbandField(21, 512, 256);
   const dash = (v: number) => (Math.floor(v / (2 * CELL.width)) % 2 === 0 ? 1 : 0);
-  /** A tile's plane of textured ground (RMS 8 levels) under dashed region load lines of 12, the
-   *  tile's origin at (x, y) in scan pixels and the lines at `origin`. */
+  /** A tile at scan pixel (x, y): textured ground (RMS 8 levels) under dashed region load lines of
+   *  12 levels placed at `origin`. */
   const frameAt = (x: number, y: number, origin: { x: number; y: number }, seed: number) => {
     const tile = ground(x, y, tileSize, 1, seed);
     for (let r = 0; r < TH; r++) {
@@ -163,8 +163,7 @@ describe('a kept frame\'s own lines', () => {
     for (let k = 0; k < 8; k++) {
       const at = { x: 61.7 * k + 0.37 * k, y: 23.3 * k + 0.61 * k };
       const seen = frameLines(frameAt(at.x, at.y, origin, 300 + k));
-      // A line at tile offset t sits at scan position at + t. The tile is under two chunks tall, so
-      // where only one horizontal line crosses it the y comb has no spread to judge and reads none.
+      // The tile is under two chunks tall, so where one horizontal line crosses it y reads none.
       if (seen.x !== null) { read.x++; worst.x = Math.max(worst.x, wrapDiff(at.x + seen.x, origin.x, PX) / CELL.width); }
       if (seen.y !== null) { read.y++; worst.y = Math.max(worst.y, wrapDiff(at.y + seen.y, origin.y, PY) / CELL.height); }
     }

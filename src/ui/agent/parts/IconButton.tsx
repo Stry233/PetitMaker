@@ -2,6 +2,7 @@ import { forwardRef, type CSSProperties } from 'react';
 import { ACTIVE, INK, MUTED, PLATE } from '../../design/tokens';
 import { radii } from '../../design/styles';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { Icon, type IconId } from './sprite';
 import { edge, panelTint } from '../panel-skin';
 
@@ -28,25 +29,27 @@ interface IconButtonProps {
 }
 
 const BOX: CSSProperties = {
-  width: ICON_BUTTON, height: ICON_BUTTON, flex: '0 0 auto', padding: 0,
+  position: 'relative', width: ICON_BUTTON, height: ICON_BUTTON, flex: '0 0 auto', padding: 0,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'none',
 };
 
-/** One pressable glyph, with the house yellow as the press and hover rather than as a resting state. */
+/** One pressable glyph, with the house yellow as the press and hover rather than as a resting state.
+ *  Its name hangs below it in touch mode: the panel's glyph controls stand along its top. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
   testId, icon, label, disabled = false, lit = false, door = false, knob = false, onClick, ...rest
 }, ref) {
   const face: CSSProperties = knob
     ? { border: edge, borderRadius: radii.pill, color: INK }
     : { border: 'none', borderRadius: radii.chip, color: door && !lit ? MUTED : INK };
+  const name = useNameReveal(label, 'below');
   return (
     <ActionButton
       ref={ref}
       data-testid={testId}
       data-icon={icon}
       data-act={rest['data-act']}
-      title={label}
       aria-label={label}
+      {...name.bind}
       disabled={disabled}
       fill={knob ? PLATE : lit ? ACTIVE : panelTint.chip}
       hoverFill={ACTIVE}
@@ -54,6 +57,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       style={{ ...BOX, ...face }}
     >
       <Icon id={icon} size={16} />
+      {name.bubble}
     </ActionButton>
   );
 });

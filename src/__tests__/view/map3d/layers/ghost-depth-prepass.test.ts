@@ -1,12 +1,8 @@
 /**
- * The 3D placement ghost must read as one body.
- *
- * A model is merged from parts (a trunk inside a canopy, posts under a deck), so a single
- * translucent pass blends every interior face and the ghost shows its own guts. The fix is a
- * depth-only pre-pass over the same geometry: it writes the silhouette's depth, and the colour pass
- * then fails the depth test everywhere an interior face sits behind the surface. These pin the
- * structure that produces it, plus the two things the drag makes expensive: the validity tint must
- * swap cached materials rather than build them, and a pointer sample must not allocate.
+ * The 3D placement ghost reads as one body. A model is merged from parts (a trunk inside a canopy),
+ * so one translucent pass would show every interior face; a depth-only pre-pass over the same geometry
+ * makes the colour pass fail the depth test behind the surface. During a drag the validity tint swaps
+ * cached materials and a pointer sample allocates nothing.
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
@@ -39,8 +35,7 @@ function prepassOf(mesh: THREE.Mesh): THREE.Mesh {
 describe('3D placement ghost: depth pre-pass', () => {
   it('the model this pins really is multi-part', () => {
     expect(hasModel(TREE)).toBe(true);
-    // Parts are merged into one geometry, which is exactly why per-part opacity had nothing to
-    // occlude it: the whole body is a single translucent draw.
+    // The parts merge into one geometry, so the whole body is a single translucent draw.
     expect(modelGeometry(TREE)!.getAttribute('position').count).toBeGreaterThan(100);
   });
 
@@ -77,8 +72,7 @@ describe('3D placement ghost: depth pre-pass', () => {
     const [mesh] = bodies(o);
     const depth = prepassOf(mesh!);
     expect(depth.renderOrder).toBeLessThan(mesh!.renderOrder);
-    // The wash a wide canopy hangs over must survive: the pre-pass runs after every decal, so its
-    // depth can never punch the footprint out.
+    // The pre-pass runs after every decal, so its depth cannot punch out the wash under a canopy.
     const decals = o.group.children.filter((c) => (c as THREE.Mesh).isMesh && c.children.length === 0);
     expect(decals.length).toBeGreaterThan(0);
     for (const d of decals) expect(d.renderOrder).toBeLessThan(depth.renderOrder);
@@ -137,9 +131,8 @@ describe('3D placement ghost: depth pre-pass', () => {
   });
 
   it('leaves renderOrder 1 and 2 to the ghost: every other overlay object stays at 0', () => {
-    // A Group's renderOrder becomes the shared groupOrder of its subtree, so its children sort by
-    // their own number alone. Anything else claiming 1 or more would draw after the pre-pass and be
-    // depth-clipped by it wherever the ghost stands, with nothing to say so.
+    // A Group's renderOrder is shared by its subtree, so children sort by their own number: anything
+    // else at 1 or more would draw after the pre-pass and be depth-clipped by it.
     const gs = makeState(24, 24) as GridState;
     const o = overlayFor(gs);
     const cells = [{ x: 6, y: 6 }, { x: 7, y: 6 }];
@@ -176,8 +169,7 @@ describe('3D placement ghost: depth pre-pass', () => {
     const o = overlayFor(gs);
     o.showPlacementGhost({ catalogId: TREE, x: 6, y: 6, rotation: 0, elevation: 0 }, true);
     const mesh = bodies(o)[0]!;
-    // The pre-pass is a child, so three.js skips it the moment the body goes invisible — no second
-    // visibility flag to forget.
+    // As a child, the pre-pass is skipped by three.js whenever the body is invisible.
     expect(prepassOf(mesh).parent).toBe(mesh);
     o.clearGhost();
     expect(mesh.visible).toBe(false);

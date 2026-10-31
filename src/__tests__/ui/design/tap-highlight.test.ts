@@ -20,9 +20,10 @@ describe('scrollbars', () => {
     expect(elsewhere).not.toMatch(/scrollbar-width: (thin|auto)/);
   });
 
-  it('narrows the bar on a coarse pointer, where it is always visible', () => {
-    const coarse = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
-    expect(coarse).toContain('--scrollbar-size: 8px');
+  it('narrows the bar in touch mode, where it is always visible', () => {
+    const touch = css.match(/html\[data-input-mode='touch'\]\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(touch).toContain('--scrollbar-size: 8px');
+    expect(css).not.toContain('pointer: coarse');
     expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*width: var\(--scrollbar-size\)/);
   });
 });

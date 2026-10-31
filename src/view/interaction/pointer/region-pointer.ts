@@ -46,11 +46,12 @@ export class RegionPointer {
   }
 
   /** Closes the stroke into the region; false when no stroke is open. `time` is the release event's
-   *  timestamp, which a multi-click figure's double-click window reads. */
-  release(time?: number): boolean {
+   *  timestamp and `windowMs` the releasing pointer's double-click window, which a multi-click
+   *  figure reads. */
+  release(time?: number, windowMs?: number): boolean {
     if (!this.painting) return false;
     this.painting = false;
-    finishRegionStroke(time);
+    finishRegionStroke(time, windowMs);
     return true;
   }
 

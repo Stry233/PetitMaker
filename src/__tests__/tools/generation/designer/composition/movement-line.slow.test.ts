@@ -1,9 +1,7 @@
 /**
- * The movement line (the methodology's direction-and-circulation step): the walk every other stage composes around.
- *
- * What is pinned here is what the later stages depend on and what makes a walk legible: a walk that
- * Exists with a readable sequence, legs that join end to end so a street can be laid
- * along them, a theme pair the kit library can answer, and the same walk from the same seed.
+ * The movement line, the walk every other stage composes around: a readable sequence of stops, legs
+ * that join end to end so a street can be laid along them, themes the kit library answers, and the
+ * same walk from the same seed.
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -46,16 +44,8 @@ describe('the movement line', () => {
   });
 
   /**
-   * The look-out stands on the mass, which is what makes the role a fact rather than a label.
-   *
-   * A walk grown greedily with a seen-set and no way back strands in a pocket of the plate graph and
-   * leaves the summit unvisited: read that way over twenty seeds, three ended on tier 1, 2 and 6 of an
-   * planet planned to 8, all three of them called a look-out. The route backtracks, and its destination
-   * is the highest ground the plaza can reach and stand on, so every seed of twenty on both templates
-   * ends on the composition's own peak.
-   *
-   * Read against the plan's peak rather than the built map's, because that is the promise this planner
-   * makes; `gen-eval.mts` carries the same reading against the built one.
+   * The look-out stands on the summit, read against the plan's peak rather than the built map's. A walk
+   * grown greedily with no way back can strand in a pocket of the plate graph short of it.
    */
   it('ends on the composition own highest ground, wherever there is a massif', () => {
     const wide = [...SEEDS, 555, 8181, 313, 64007, 22, 4096, 199, 71, 8888, 3141, 27182, 60103];
@@ -65,9 +55,7 @@ describe('the movement line', () => {
         for (const seed of wide) {
           const composition = planComposition({ seed, template, richness, maxElevation: 8 });
           const line = planMovementLine({ seed, template, composition, richness });
-          // A map asked for less than a massif has no summit to arrive at, and the walk is bounded by
-          // its stop count instead: the same test the composition itself gates the skirt and the
-          // crowns on. It is the low-relief archetype at middle richness that lands here.
+          // Below a massif there is no summit to arrive at (the low-relief archetype at middle richness).
           if (composition.peakTier < MASSIF_PEAK_FROM) { flat++; continue; }
           const peak = Math.max(...composition.plates.map((p) => p.tier));
           const last = line.stops[line.stops.length - 1];
@@ -78,8 +66,7 @@ describe('the movement line', () => {
         }
       }
     }
-    // The skip has to stay the exception, or the probe proves nothing: measured 68 of 80 runs carry a
-    // massif and arrive on it, the twelve skipped all at middle richness.
+    // The skip stays the exception, or the probe proves nothing: 68 of these 80 runs carry a massif.
     expect(arrived, `${arrived} arrivals against ${flat} maps with no massif`).toBeGreaterThan(3 * flat);
   });
 
@@ -91,8 +78,7 @@ describe('the movement line', () => {
       for (let k = 0; k + 1 < segments.length; k++) {
         const a = segments[k]!, b = segments[k + 1]!;
         if (a.axis === b.axis) continue;
-        // Two consecutive legs turn a corner, and the corner cell lies on both of them: a leg whose
-        // end is nowhere near the next one is two walks rather than one.
+        // Consecutive legs on different axes share their corner cell.
         const holds = (seg: typeof a, at: number): boolean => at >= seg.from - 1 && at <= seg.to + 1;
         expect(holds(a, b.line) && holds(b, a.line)).toBe(true);
       }
@@ -125,12 +111,8 @@ describe('the movement line', () => {
   });
 
   /**
-   * The walk is paved, which is the only thing that makes it a walk rather than a plan.
-   *
-   * Not all of it: a leg's stretch is dropped where the ground cannot carry a street at all (a coast
-   * eating a corner, a terrace step across the line), and where the plates leave a piece shorter than
-   * a street it is dropped rather than laid as a stub. The numbers the two bars are set against are
-   * stated at the assertions, which are where a batch is re-measured.
+   * Not all of it: a stretch is dropped where the ground cannot carry a street (a coast eating a
+   * corner, a terrace step across the line) or where the plates leave a piece shorter than a street.
    */
   it('is paved, and mostly paved', () => {
     for (const template of [hexia, tafa]) {
@@ -143,14 +125,9 @@ describe('the movement line', () => {
           const share = line.trace.length ? on / line.trace.length : 0;
           shares.push(share);
         }
-        // The batch is the claim and the count stands beside it. The planet is terraced all the way to
-        // its summit, so the walk climbs: every step it crosses costs it the cell no
-        // coating may be laid on before a step and the corridor the flight stands in, and a leg the
-        // flights cannot carry at all is pruned rather than left unreachable. Measured over both
-        // templates at both ends of the axis, these eight seeds: 21% to 96% per seed, batch means 62%
-        // to 88%. What the batch reading is for is a walk that is mostly pavement rather than a line
-        // drawn over whatever the map happened to build, and the per-seed floor beside it is what
-        // catches a walk that was never laid at all.
+        // The walk climbs terraces, and each flight keeps pavement off the cell before it and the
+        // corridor it stands in; a leg the flights cannot carry is pruned. Over these seeds a single walk ranges from 21% to 96% paved
+        // and batch means from 62% to 88%; the per-seed floor catches a walk that was never laid.
         const batch = shares.reduce((a, b) => a + b, 0) / shares.length;
         expect(batch, `${template.id} r${richness}: batch ${(batch * 100).toFixed(0)}% paved`)
           .toBeGreaterThan(0.55);

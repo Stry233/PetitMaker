@@ -1,10 +1,9 @@
 /**
- * Half-step span items at the trait level: the trait itself, the
- * covered-cell expansion in V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid
- * guard. Detection (bridge-span / heightDrop walking the half grid) belongs to
- * `half-step-detection.test.ts` — these fixtures carry `halfStep` paired with
- * `noFloat`/no other trait, never `waterSpan`/`heightDrop`, so the trait is
- * exercised in isolation.
+ * Half-step span items at the trait level: the trait itself, the covered-cell expansion in
+ * V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid guard. Detection (bridge-span and
+ * heightDrop walking the half grid) belongs to `half-step-detection.test.ts`. These fixtures
+ * carry `halfStep` with `noFloat` or no other trait, never `waterSpan` or `heightDrop`, so the
+ * trait is exercised in isolation.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -91,7 +90,7 @@ describe('noFloat sweep over covered cells (half-integer anchor)', () => {
   it('rejects exactly the covered cells with no support, including the half-covered ends', () => {
     const state = makeState();
     // hs-pier (width 2) at x=7.5 covers macro cells 7, 8, 9 (floor/ceil expansion).
-    // Support only cell 8 — 7 and 9 must both be reported as offenders.
+    // Only cell 8 has support, so 7 and 9 are both reported as offenders.
     setTerrain(state, 8, 5, TerrainType.Mountain, 1);
     const errors = traitPlacementRule.validate(place('hs-pier', 7.5, 5), state);
     expect(errors).toHaveLength(1);
@@ -117,7 +116,7 @@ describe('V-PLACE-OVERLAP: float-rect intersection at a half offset', () => {
   it('refuses an object touching the edge of a half-offset footprint', () => {
     const state = makeState();
     state.objects.set('slab', { id: 'slab', catalogId: 'hs-slab', position: { x: 7.5, y: 5 }, rotation: 0, elevation: 0 });
-    // hs-slab covers world [7.5, 9.5) x [5, 6) — a tree at (9,5) overlaps it.
+    // hs-slab covers world [7.5, 9.5) x [5, 6); a tree at (9,5) overlaps it.
     expect(placementOverlapRule.validate(place('tree-apple', 9, 5), state).length).toBeGreaterThan(0);
   });
 
@@ -137,7 +136,7 @@ describe('V-PLACE-BLOCK: terrain paint under a half-anchored deck', () => {
     const state = makeState();
     state.objects.set('slab', { id: 'slab', catalogId: 'hs-slab', position: { x: 7.5, y: 5 }, rotation: 0, elevation: 0 });
     // A half anchor lines up exactly with the terrain grid: hs-slab (width 2) at x=7.5
-    // covers terrain cells 8 and 9 only — no bleed onto 7 or 10 (contrast the integer
+    // covers terrain cells 8 and 9 only, no bleed onto 7 or 10 (contrast the integer
     // case, where the same footprint would extend the block by one cell).
     expect(objectBlocksTerrainRule.validate(paint(8, 5), state).length).toBeGreaterThan(0);
     expect(objectBlocksTerrainRule.validate(paint(9, 5), state).length).toBeGreaterThan(0);

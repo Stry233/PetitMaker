@@ -46,7 +46,7 @@ describe('reading recorded MP4 files', () => {
       expect(track.codec).toMatch(CODECS[name]!);
       expect(s.count).toBe(want.packets.length);
       const got = Array.from({ length: s.count }, (_, k) => ({ offset: s.offset[k]!, size: s.size[k]!, time: s.time[k]!, key: s.key[k] === 1 }));
-      // ffprobe prints presentation times rounded to the stream's time base; ours round the same way.
+      // ffprobe prints presentation times rounded to the stream's time base; the reader's times round the same way.
       for (let k = 0; k < s.count; k++) {
         expect(got[k]!.offset).toBe(want.packets[k]!.offset);
         expect(got[k]!.size).toBe(want.packets[k]!.size);
@@ -156,8 +156,8 @@ describe('reading MP4 boxes built here', () => {
     const t = await read(source(file({
       edits: [[500, -1], [5000, 1200]], stsz: [10, 10, 10], chunks: [0], stsc: [[1, 3]], stts: [[3, 600]], ctts: [[1, 1200], [1, 1800], [1, 600]], stss: [1],
     }, 30)).src);
-    // 500 movie units of 1000 a second delay by 0.5 s; compositions 1200, 2400 and 1800 at 600 units a
-    // second start 1200 units in.
+    // The empty edit delays by 0.5 s (500 at 1000 units/s); compositions 1200, 2400 and 1800 at 600
+    // units/s are read from media time 1200.
     expect(Array.from(t.samples.time)).toEqual([500000, 2500000, 1500000]);
     expect(Array.from(t.samples.key)).toEqual([1, 0, 0]);
   });

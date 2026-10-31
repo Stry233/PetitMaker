@@ -1,6 +1,6 @@
 // The quick-hints level: a persisted store field the hint panel reads. The panel has no home in
-// this interface yet and Settings carries no row for it, so what is pinned here is the persistence
-// path alone (default, write-through, corrupt value).
+// this interface and Settings carries no row for it, so only the persistence path is covered
+// (default, write-through, corrupt value).
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../../state/store';
 import { PREFS, readPref } from '../../../platform/storage/prefs';

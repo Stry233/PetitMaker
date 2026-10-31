@@ -1,20 +1,17 @@
 /*
- * Central registry for shell and assistant motion. Inform motions reinforce visible state and remain
- * meaningful with reduced motion; ambient motions are decorative and are removed. Sample motions
- * preview a motion setting and play under every preference, only through `MotionSample`.
- * Call sites use ids.
+ * Central registry for shell and assistant motion. Inform motions reinforce visible state and say
+ * which; ambient motions are decorative and bound their travel. Under reduced motion both step to
+ * state through the adapters. Sample motions preview a motion setting and play under every
+ * preference, only through `MotionSample`. Call sites use ids.
  */
 import { pressable } from '../styles';
 import { TAPE, VIGNETTE_DEPTH } from '../tokens';
+import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 import type { CurveId } from './curves';
 
 /** Shared button hover growth as a fraction of the button. */
 const HOVER_GROWTH = pressable.whileHover.scale - 1;
 
-/** Duration of one complete gesture-tour demonstration, in seconds. */
-const TOUR_REP_S = 2.7;
-/** How many buttons a diagram that teaches "any button" has to get through, one rep each. */
-const TOUR_BUTTONS = 3;
 
 /** Construction-tape travel per cycle; matching the stripe period prevents a seam jump. */
 const TAPE_STRIPE_PX = TAPE.stripeSize;
@@ -27,6 +24,9 @@ const CHARACTER_POP_S = 0.3;
 
 /** Shared panel-height and setup-step transition time, in seconds. */
 const PANEL_HEIGHT_S = 0.24;
+
+/** The welcome tips' crossing between cards and the card's height glide, one clock, in seconds. */
+const TOUR_CROSS_S = 0.34;
 
 /** The plain in-place crossfade a control's drawing or wording changes on. */
 const CONTROL_FADE = { tier: 'inform', curve: 'ease', duration: 0.18 } as const;
@@ -51,6 +51,9 @@ interface Base {
   outShare?: number;
   /** Optional departure curve when it differs from the landing curve. */
   outCurve?: CurveId;
+  /** The curve a re-arrangement's departing and arriving surfaces fade on, where it differs from the
+   *  curve its pieces travel on (`primitives/morph.ts`). */
+  fadeCurve?: CurveId;
   /** Fraction of entry time at which a flip reaches its overshoot keyframe. */
   overshootAt?: number;
   landCurve?: CurveId;
@@ -69,16 +72,51 @@ interface AmbientMotion extends Base {
   amplitude: number;
 }
 
-/** A preview of what a motion setting does. It plays under every preference so each option of the
- *  setting shows its own level; `MotionSample` is its only player. */
+/** One key of a sample's loop: when it falls (a fraction of the loop), how high the moving part
+ *  stands (a fraction of `amplitude`), its width and height scale about its base, and the scale of
+ *  the mark on the ground beneath it. */
+export type SampleKey = readonly [at: number, lift: number, scaleX: number, scaleY: number, ground: number];
+
+/** A preview of what a motion setting does: a map cell dropping `amplitude` px onto its ground mark,
+ *  one loop per level of the setting. It plays under every preference so each option of the setting
+ *  shows its own level; `MotionSample` is its only player. */
 interface SampleMotion extends Base {
   tier: 'sample';
   amplitude: number;
-  /** The Framer value the sample animates from 0 to its amplitude. */
-  property: 'rotate';
+  /** A segment that rises takes `curve` and one that falls takes this; a level segment eases. */
+  fallCurve: CurveId;
+  /** Each level's loop, keys in time order from 0 to 1. */
+  tracks: { readonly full: readonly SampleKey[]; readonly reduced: readonly SampleKey[] };
   /** The setting this motion previews. */
   previews: string;
 }
+
+/** Full: the cell falls, lands squashed, bounces twice lower, settles, holds, shrinks away and stands
+ *  at the top again. */
+const CELL_BOUNCE: readonly SampleKey[] = [
+  [0, 1, 0.92, 1.08, 0.35],
+  [0.24, 0, 1.3, 0.7, 1.25],
+  [0.27, 2 / 36, 0.94, 1.06, 1.14],
+  [0.39, 17 / 36, 1, 1, 0.7],
+  [0.5, 0, 1.16, 0.84, 1.1],
+  [0.57, 6 / 36, 1, 1, 0.9],
+  [0.63, 0, 1.06, 0.94, 1],
+  [0.67, 0, 1, 1, 1],
+  [0.84, 0, 1, 1, 1],
+  [0.9, 0, 0, 0, 0],
+  [0.91, 1, 0, 0, 0],
+  [1, 1, 0.92, 1.08, 0.35],
+];
+
+/** Reduced: the same fall on the same beat, landing without a squash or a bounce. */
+const CELL_LAND: readonly SampleKey[] = [
+  [0, 1, 1, 1, 0.35],
+  [0.24, 0, 1, 1, 1],
+  [0.84, 0, 1, 1, 1],
+  [0.9, 0, 0, 0, 0],
+  [0.91, 1, 0, 0, 0],
+  [1, 1, 1, 1, 0.35],
+];
 
 export type Motion = InformMotion | AmbientMotion | SampleMotion;
 
@@ -87,6 +125,14 @@ export const MOTIONS = {
   'meter.fill': { tier: 'inform', curve: 'ease', duration: 0.25, says: 'the map capacity changed' },
   'modal.dim': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the window is at work and the page waits' },
   'map.view.crossfade': { tier: 'inform', curve: 'ease', duration: 0.35, says: 'the map view changed underneath you' },
+  /** The ring filling by a still finger over the hold time, after which the map's menu opens or
+   *  the held card lifts into the hand. */
+  'press.hold': {
+    tier: 'inform', curve: 'linear', duration: GESTURE_TIMING.touch.holdMs / 1000,
+    says: 'keep holding here and what you hold acts: the menu opens or the card lifts',
+  },
+  /** The magnifier rising over a touch press. */
+  'map.loupe.arrive': { tier: 'inform', curve: 'punchy', duration: 0.16, says: 'this circle shows the cells under your finger' },
   'character.blink.lid': { tier: 'ambient', curve: 'easeOut', duration: 0.07, amplitude: 1, amplitudeUnit: 'scale' },
   'settings.grid.shift': { tier: 'inform', curve: 'easeOut', duration: 0.22, says: 'the grid lines moved onto the cells the chosen grid marks' },
   /** A Settings tile's caption crossfades from the setting's name into the value a press gave it,
@@ -125,18 +171,35 @@ export const MOTIONS = {
   'surface.leave': { tier: 'inform', curve: 'fade', duration: 0.16, says: 'the surface is put away' },
   /** A card that answers a press at the place it was pressed (the note editor, a count badge) lands with a small overshoot. */
   'surface.pop': { tier: 'inform', curve: 'bouncy', says: 'this card belongs to what you just touched' },
-  /** A control's moving part (a switch knob, a segmented pill, a menu row's tint) travels to its new state. */
+  /** A control's moving part (a switch knob, a menu row's tint) travels to its new state. */
   'control.settle': { tier: 'inform', curve: 'stiff', says: 'the control now holds this value' },
+  /** A segmented choice's plate slides under the segment just chosen and stops on it without overshooting. */
+  'control.plate.slide': { tier: 'inform', curve: 'punchy', duration: 0.24, says: 'this segment is the one chosen now' },
   /** A notice slides in from its window edge and settles. */
   'notice.arrive': { tier: 'inform', curve: 'stiff', says: 'there is something to read here' },
-  /** The tour's spotlight and dim travel to the next target without overshooting it. */
+  /** A Show me's spotlight and dim travel to the next control without overshooting it. */
   'tour.spotlight.move': { tier: 'inform', curve: 'roll', duration: 0.16, says: 'this is the control the tour describes now' },
-  /** The tour card's copy crosses over slowly when the card stays in place between steps. */
-  'tour.copy.swap': { tier: 'inform', curve: 'gentle', says: 'the tour moved on to its next step' },
-  /** The tour card's height follows its incoming copy. */
-  'tour.card.resize': { tier: 'inform', curve: 'stiff', says: 'the card fits what it now says' },
-  /** A tour card pops at its target; its scale settles continuously so the card never snaps at the end. */
-  'tour.card.pop': { tier: 'inform', curve: 'bouncy', settleScale: true, says: 'this card describes the control it points at' },
+  /** The tour window's reel and words travel `amplitude` px out the way the run went and the next
+   *  card's in from the other side, crossing over; the words follow the reel by `stagger`, and the
+   *  leaving card goes over `outShare` of the arrival. */
+  'tour.copy.swap': {
+    tier: 'inform', curve: 'punchy', duration: TOUR_CROSS_S, amplitude: 24, stagger: 0.04, outShare: 0.6,
+    says: 'the tour moved on to the card that way',
+  },
+  /** After a part is pressed, a reel's bars follow the clip's time exponentially to it, `duration` the
+   *  time constant; steady play and the loop's restart stand at the clip's own time. */
+  'tour.reel.seek': { tier: 'inform', curve: 'easeOut', duration: 0.06, says: 'the reel now plays from here' },
+  /** A reel's frame, mark, bars and caption travel from their place in the card to the enlarged plate
+   *  and back (`primitives/morph.ts:morphScope`), the plate growing with them from round the frame; a
+   *  caption that re-flows crosses over in `outShare`, and the dim and the mark's glyphs cross over the
+   *  whole motion. */
+  'tour.reel.enlarge': { tier: 'inform', curve: 'punchy', duration: 0.34, outShare: 0.4, fadeCurve: 'fade', says: 'the demonstration is shown large, or back in its card' },
+  /** A tips card's reel and words, dragged by a swipe too short to turn the card, spring back into place. */
+  'tour.card.swipe': { tier: 'inform', curve: 'stiff', says: 'the card stays where it was' },
+  /** The tour window's height follows its incoming card. */
+  'tour.card.resize': { tier: 'inform', curve: 'punchy', duration: TOUR_CROSS_S, says: 'the window fits the card it now shows' },
+  /** A Show me's callout pops beside the control it rings; its scale settles continuously so it never snaps at the end. */
+  'tour.card.pop': { tier: 'inform', curve: 'bouncy', settleScale: true, says: 'this callout describes the control it rings' },
   /** Stagger: each anchor's grab lands this long after the one before it. */
   'curve.fade': { tier: 'inform', curve: 'easeOut', duration: 0.18, stagger: 0.045, says: 'the curve controls changed' },
   'notice.leave': { tier: 'inform', curve: 'accel', duration: 0.2, says: 'the notice is dismissed' },
@@ -151,6 +214,26 @@ export const MOTIONS = {
   /** The interface scale follows its setting exponentially; `duration` is the follow's time constant
    *  (a 60 Hz frame closes a fifth of the gap). */
   'ui.zoom.follow': { tier: 'inform', curve: 'easeOut', duration: 0.075, says: 'the interface is resizing to the scale you chose' },
+  /** The chrome travels and resizes from its arrangement for the old input mode to the new one's
+   *  (`primitives/morph.ts`), a surface only one mode has arriving over the rest after `outShare`, and
+   *  content that leaves or re-flows inside a surface crossing what replaces it over `outShare`;
+   *  reduced motion steps to the new size. */
+  'shell.mode.resize': { tier: 'inform', curve: 'punchy', duration: 0.3, outShare: 0.5, fadeCurve: 'fade', says: 'the interface is sized for the input you are using now' },
+  /** The frame's chrome travels from its old arrangement to its new one when the layout shape flips
+   *  (`primitives/morph.ts`), a surface only one arrangement has arriving over the rest after
+   *  `outShare`, and content that leaves or re-flows inside a surface crossing what replaces it over
+   *  `outShare`; reduced motion re-arranges at once. */
+  'shell.shape.morph': { tier: 'inform', curve: 'punchy', duration: 0.42, outShare: 0.5, fadeCurve: 'fade', says: 'these are the same controls, standing where the turned screen puts them' },
+  /** A folded mode row's stack unfolds into the row and folds back, each tile travelling between the
+   *  stack and its place (`shell/controls/ModeRow.tsx:ModeTiles`); reduced motion re-arranges at once. */
+  'shell.row.fold': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'these are the modes, folded into one stack' },
+  /** The dock's seam handle fades in once the dock has formed under it. */
+  'dock.handle.arrive': { tier: 'inform', curve: 'fade', duration: 0.2, says: 'the dock can be resized from here' },
+  /** The tiles behind a folded stack's front, the open mode's caption and the corner actions the
+   *  unfolded row passes over fade with the fold, on a curve that never crosses most of the way in one frame. */
+  'shell.row.fade': { tier: 'inform', curve: 'fade', duration: 0.26, says: 'these modes are behind the stack, and the stack shows no words' },
+  /** The upright bottom bar's surface grows into the open mode's panel and back, as one surface. */
+  'shell.bar.expand': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'this panel is the bar you pressed, opened' },
   /** A Help figure's spotlight and its name plate travel to the corner being described. */
   'help.figure.spotlight': { tier: 'inform', curve: 'ease', duration: 0.4, says: 'the figure now describes this part' },
   /** A Help figure's marks fade in and out with its script. */
@@ -159,12 +242,15 @@ export const MOTIONS = {
   'help.figure.pointer': { tier: 'inform', curve: 'fade', duration: 0.6, says: 'the pointer moves to the next control' },
   /** A Help demo's side card arrives beside its map. */
   'help.figure.card': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'the demo shows this card now' },
+  /** In a window too narrow for two columns, the page list and the chosen page each fill Help; the
+   *  page arrives from the end side and the list from the start side, `amplitude` px away. */
+  'help.screen': { tier: 'inform', curve: 'ease', duration: 0.24, amplitude: 24, says: 'the window now shows the page list or the chosen page' },
   'help.highlight': { tier: 'inform', curve: 'ease', duration: 0.4, says: 'this is the requested section' },
   'help.highlight.leave': { tier: 'inform', curve: 'ease', duration: 1.2, says: 'the requested section has been reached' },
   'loading.dots': { tier: 'inform', curve: 'breathing', duration: 0.72, stagger: 0.14, loop: true, says: 'work is in progress' },
-  'settings.orbit': {
-    tier: 'sample', curve: 'linear', duration: 2.2, loop: true, amplitude: 360, property: 'rotate',
-    previews: 'the motion preference',
+  'settings.cell.drop': {
+    tier: 'sample', curve: 'toss', fallCurve: 'gravity', duration: 1.25, loop: true, amplitude: 22.5,
+    tracks: { full: CELL_BOUNCE, reduced: CELL_LAND }, previews: 'the motion preference',
   },
 
   /** One map tile arrives per asset-preload slice. */
@@ -182,7 +268,7 @@ export const MOTIONS = {
   /** The stadium button's fill sweeping to the fetched share. */
   'splash.pill.fill': {
     tier: 'inform', curve: 'punchy', duration: 0.28,
-    says: 'this share of the art is on the device',
+    says: 'this share of the download is on the device',
   },
   /** The splash and app slide apart during handoff. */
   'splash.handoff': {
@@ -345,6 +431,24 @@ export const MOTIONS = {
     tier: 'inform', curve: 'stiff',
     says: 'this is the tool the map is armed with, and this is what it carries',
   },
+  /** The object shelf's search button grows along its row into the search field, and back; on a wide
+   *  shelf short of room the field shrinks into the button, and grows back out of it. */
+  'shelf.search.expand': {
+    tier: 'inform', curve: 'punchy', duration: 0.26,
+    says: 'this field and the search button are one control',
+  },
+  /** The wide object shelf's brush button grows along the names' row into a pill naming the way to
+   *  place while a mouse rests on it, the search field beside it shrinking by as much, and back. */
+  'shelf.brush.expand': {
+    tier: 'inform', curve: 'punchy', duration: 0.22,
+    says: 'this is how the next press places',
+  },
+  /** The upright object shelf's cards travel between its one sideways row and its grid when its room
+   *  crosses two rows (`primitives/morph.ts:morphScope`); a card scrolled out of view fades in over the rest. */
+  'shelf.layout.morph': {
+    tier: 'inform', curve: 'punchy', duration: 0.34, outShare: 0.4,
+    says: 'these are the same cards, laid out for the room the panel has now',
+  },
   /** Shelf contents swap beneath a stationary category row. */
   'shelf.category.swap': {
     tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 14,
@@ -355,10 +459,17 @@ export const MOTIONS = {
     tier: 'inform', curve: 'stiff', amplitude: 4,
     says: 'this is the setting you are holding, and where it stands',
   },
+  /** A slider's knob and fill follow its value to each stop a press, a drag or a key moves it to, settling in about a tenth of a second so they never trail the finger. */
+  'slider.glide': { tier: 'inform', curve: 'stiff', says: 'the slider now stands at this stop' },
   /** A control both tools offer stays put across a tool switch and glides to its place in the new row. */
   'tool.control.morph': {
     tier: 'inform', curve: 'punchy', duration: 0.28,
     says: 'this is the same control, carried over to the tool you switched to',
+  },
+  /** The size slider takes the length its row now leaves it, its right end standing still. */
+  'tool.size.resize': {
+    tier: 'inform', curve: 'punchy', duration: 0.28,
+    says: 'this is the same slider, at the length its row has room for',
   },
   /** The armed tool's plate slides under the row to the tool just chosen. */
   'tool.highlight.slide': {
@@ -404,41 +515,6 @@ export const MOTIONS = {
   /** Shelf wheel input closes on its horizontal target exponentially; duration is the time constant. */
   'shelf.row.wheel-glide': {
     tier: 'ambient', curve: 'punchy', duration: 0.09, amplitude: 40, amplitudeUnit: 'px',
-  },
-  /* Gesture diagrams share one repetition clock and retain static end-state cues under reduced motion. */
-  /** A held pointer and map travel together. */
-  'tour.gesture.drag': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S, loop: true,
-    amplitude: 26, amplitudeUnit: 'px',
-    says: 'the map follows a held button across the screen',
-  },
-  /** Demonstrates each mouse button independently for one full repetition. */
-  'tour.gesture.cycle': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S * TOUR_BUTTONS, loop: true,
-    says: 'each mouse button on its own does this, and here is every one of them in turn',
-  },
-  /** The wheel beat, in the second half of a rep: the map comes closer and goes back. */
-  'tour.gesture.wheel': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S, loop: true,
-    amplitude: 0.16, amplitudeUnit: 'scale',
-    says: 'the wheel brings the map closer and takes it away again',
-  },
-  /** A brush crossing the map, with the ground appearing behind it. */
-  'tour.gesture.stroke': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S, loop: true,
-    amplitude: 58, amplitudeUnit: 'px',
-    says: 'a brush lays ground along the path it is dragged',
-  },
-  /** Cycles through the 3D slide and orbit gestures; amplitude records the linear slide. */
-  'tour.gesture.orbit': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S * TOUR_BUTTONS, loop: true,
-    amplitude: 14, amplitudeUnit: 'px',
-    says: 'in 3D a left drag slides the map and a right or middle drag turns it',
-  },
-  /** Tips the flat-map diagram into its 3D view; angular travel has no registry amplitude unit. */
-  'tour.gesture.tilt': {
-    tier: 'inform', curve: 'swing', duration: TOUR_REP_S, loop: true,
-    says: 'the flat map and the 3D one are the same map, seen from beside it',
   },
   /* Assistant motions cover panel state, job progress, setup and the hosted character. */
   /** The panel wipe and hosted-character step share one clock and the character's seat origin. */

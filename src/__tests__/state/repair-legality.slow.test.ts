@@ -1,10 +1,7 @@
 /**
- * After automatic repair a map answers to the full rule set a placement and a finished stroke use
- * (`relocation-plan.ts:isLegalMap`), however the map was made: the visitor's saves, saves each
- * released build wrote with its own code, the released-export corpus, and maps built here against
- * every rule at once (objects dropped anywhere, doors against slopes, overlaps, objects on a
- * landmark's ground, terrain on the sea and above the top layer, water no wall holds). The plan the
- * repair's picture shows is the plan that lands: the closing check takes nothing it did not foresee.
+ * After automatic repair a map passes the full rule set (`isLegalMap`), whether it came from a fixture
+ * save, a released build's export or a map built here against every rule at once; and the plan the
+ * repair's picture shows is the plan that lands, with nothing unplanned.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -62,10 +59,9 @@ describe.each(SAVES)('auto repair of %s', (_name, file) => {
 const ROTATIONS: readonly Rotation[] = [0, 90, 180, 270];
 
 /**
- * A map of planet `planet` breaking every rule `seed` draws: objects of every item at random spots and
- * turns (over each other, the sea, the map edge and a landmark's ground), each house with a cliff
- * against its door, terrain on the sea, a peak above the top layer, a column standing alone and a
- * lake with no wall. Built on the map directly, as no rule would let it be drawn.
+ * A `planet` map written directly against the rules: random items at random spots and turns (overlapping,
+ * on the sea, the edge and the landmark's ground), cliffs facing doors, terrain on the sea, peaks above
+ * the top layer, lone columns and unwalled water.
  */
 function lawless(planet: string, seed: number): GridState {
   const rng = makeRng(seed);
@@ -77,7 +73,7 @@ function lawless(planet: string, seed: number): GridState {
   const placed: PlacedObject[] = [];
   for (let i = 0; i < 140; i++) {
     const item = rng.pick(items);
-    // A third of them on or beside the landmark's ground, the rest anywhere.
+    // Every third one on or beside the landmark's ground.
     const near = i % 3 === 0;
     const x = near ? Math.floor(ground.x + rng.range(-3, ground.w + 3)) : rng.int(width);
     const y = near ? Math.floor(ground.y + rng.range(-3, ground.h + 3)) : rng.int(height);
@@ -128,7 +124,7 @@ describe.each([['hexia', 1], ['tafa', 2], ['hexia', 3], ['tafa', 4], ['hexia', 5
 
 describe('a map over the regional load limit', () => {
   it('[PLAN-27] is no violation: the load leaves it as it is and calls it legal', () => {
-    // The limit trips its own notice when the map opens; no rule and no repair answer to it.
+    // The limit raises its own notice when the map opens; no rule or repair answers to it.
     const state = createGridState(getMapTemplate('hexia'));
     const item = getPlaceableWhere((i) => i.width === 1 && i.height === 1 && !findTrait(i, 'exclusionRadius') && catalogLoadValue(i.id) > 0)[0]!;
     const at = inlandSquare(state.template, 20);

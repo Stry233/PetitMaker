@@ -2,7 +2,7 @@
 import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
-import { useChromeScale } from '../design/scale';
+import { useGlidingChromeScale } from '../design/scale';
 import { font, radii, shadows, z } from '../design/styles';
 import { MUTED, PLATE } from '../design/tokens';
 import { TEXT_ROLES } from '../design/text-weight';
@@ -38,7 +38,7 @@ const linkStyle: CSSProperties = {
 
 export function LegalBar() {
   const t = useT();
-  const chrome = useChromeScale();
+  const chrome = useGlidingChromeScale();
   const bottomPanelOpen = useEditorStore((s) => s.editMode.mode !== null || s.selectingRegion);
 
   const hasIcp = !!(LEGAL.icpNumber && LEGAL.icpUrl);

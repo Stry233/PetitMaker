@@ -1,28 +1,34 @@
+import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
 import { presence } from '../../design/motion';
 import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
 import { ActionButton } from '../../primitives/ActionButton';
 import { MapCaption } from './MapCaption';
-import { useToolbarContext } from '../../session/use-toolbar-context';
 import { useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { effectiveCombo } from '../../../state/keymap/resolve';
-import { prettyCombo } from '../../../platform/input/combo';
-import { useT } from '../../../i18n/context';
-import { useKeybinds } from '../../../state/keymap/store';
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useFrameZoom } from '../use-frame-zoom';
 import { btnReset, cursors, radii } from '../../design/styles';
 import { ACTIVE, PLATE } from '../../design/tokens';
 import { GlyphIcon } from '../GlyphIcon';
 import type { Glyph } from '../frame';
 import { useTransition } from '../../design/motion/use-motion';
 import { QUAD, SCALE, TEXT } from '../units';
-import { BarText, ShortcutBadge } from './bar-atoms';
-import { PILL_H, PLATE_PAD, CELL_BOX } from './terrain-cells';
+import { BAR_LINE_HEIGHT, BarText, ShortcutBadge, useCommandTitle } from './bar-atoms';
+import { hoverBleed } from './swatch-strip';
+import { BADGE, PILL_H, PLATE_PAD, CELL_BOX, commandLabel, toolCell } from './terrain-cells';
+import type { ContentType } from '../../../state/editing/edit-mode';
+import { useT } from '../../../i18n/context';
 import { useObjectKey } from '../../primitives/use-object-key';
 
 const TOOL_PILL_WIDTH = 170 * SCALE;
 const TOOL_PILL_GROWTH = 30 * SCALE;
 
 export const TOOL_PILL_GAP = 8;
+
+/** How far an armed pill's caption reaches past its row's ends while that pill grows or shrinks: the
+ *  caption fits the grown pill, and an ungrown pill's centre stands half the growth nearer its end. */
+export const CAPTION_SWAY = TOOL_PILL_GROWTH / 2;
 
 export function toolPillCentre(index: number, activeIndex: number): number {
   return QUAD.left + index * (TOOL_PILL_WIDTH + TOOL_PILL_GAP) + TOOL_PILL_WIDTH / 2
@@ -58,25 +64,45 @@ export function ToolHighlight({ index }: { index: number }) {
 /** Where a toolbar control's caption stands, under its plate. */
 export const CAPTION_TOP = CELL_BOX.h + PLATE_PAD.y + 5;
 
-export function ToolPill({ helpTarget, glyph, label, commandId, active, centre, onSelect }: {
+/** How far a caption reaches under its control's box. */
+export const CAPTION_HANG = CAPTION_TOP - CELL_BOX.h + TEXT.label * BAR_LINE_HEIGHT;
+
+/** How far a tool pill's drawing reaches above its row's box: the plate's `PLATE_PAD.y`, then past the
+ *  plate its hovered growth carrying the shortcut badge or the focus ring, whichever stands farther. */
+export const PILL_RISE = `calc(${PLATE_PAD.y}px + ${hoverBleed(PILL_H / 2, BADGE.rise * SCALE - PLATE_PAD.y)})`;
+
+/** A tool cell's pill on `surface`: the cell's glyph, named after the command that arms it. */
+export function useCellPill(surface: ContentType): (id: string) => { glyph: Glyph; label: string; commandId: string } {
+  const t = useT();
+  return (id) => {
+    const cell = toolCell(id);
+    return { glyph: cell.glyph[surface], label: t(commandLabel(cell.commandId)), commandId: cell.commandId };
+  };
+}
+
+export function ToolPill({ helpTarget, tourTarget, glyph, label, commandId, active, centre, onSelect }: {
   helpTarget?: HelpTarget;
+  /** The tour's Show me can ring this pill. */
+  tourTarget?: TourTargetId;
   glyph: Glyph; label: string; commandId?: string;
   active: boolean; centre: number; onSelect: () => void;
 }) {
-  const t = useT();
   const transition = useTransition('tool.plate.shape');
   const reduced = useReducedMotionConfig();
-  const overrides = useKeybinds(s => s.overrides);
-  const context = useToolbarContext();
-  const combo = commandId ? effectiveCombo(overrides, commandId, context) : null;
-  return <motion.div initial={false} animate={{ width: TOOL_PILL_WIDTH + (active ? TOOL_PILL_GROWTH : 0) }} transition={transition}
+  // Unarmed, the pill shows its glyph alone, so it names itself; armed, its caption names it.
+  const name = useNameReveal(label, 'above', useCommandTitle()(label, commandId));
+  const zoom = useFrameZoom();
+  return <motion.div {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
+    initial={false} animate={{ width: TOOL_PILL_WIDTH + (active ? TOOL_PILL_GROWTH : 0) }} transition={transition}
     style={{ position: 'relative', height: CELL_BOX.h, flex: 'none' }}>
-    <ActionButton {...helpAttributes(helpTarget)} interaction="action" aria-label={label} aria-pressed={active}
-      title={combo ? t('shortcut.with_combo', { label, combo: prettyCombo(combo) }) : label} onClick={onSelect}
+    <ActionButton {...helpAttributes(helpTarget)} {...name.bind} interaction="action" aria-label={label} aria-pressed={active}
+      onClick={onSelect}
       initial={false} animate={{ backgroundColor: active ? PLATE_CLEAR : PLATE }} transition={transition}
       style={{ ...btnReset, position: 'absolute', top: -PLATE_PAD.y, width: '100%', height: PILL_H,
         borderRadius: radii.pill, display: 'grid', placeItems: 'center', pointerEvents: 'auto', cursor: cursors.clickable }}>
       <GlyphSwap glyph={glyph}/>
+      {active ? null : name.bubble}
+      <TouchReach zoom={zoom} />
     </ActionButton>
     {commandId && <ShortcutBadge commandId={commandId} grown/>}
     <AnimatePresence initial={false}>{active && <MapCaption data-tool-caption key={label} top={CAPTION_TOP} centre={centre}

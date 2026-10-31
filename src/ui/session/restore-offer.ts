@@ -3,7 +3,7 @@
  *
  * The offer belongs to the shell, which owns the card, the candidate and every existing way of
  * putting it away: the two answers on it, opening the menu, choosing a mode, making the first edit.
- * They are one path (`Shell.tsx`'s `dismissRestore`) and this is how a surface outside the shell
+ * They are one path (`shell/use-restore-offer.ts:useRestoreOffer`'s `dismiss`) and this is how a surface outside the shell
  * reaches that path rather than growing a second one — the arrival notice, which stands over the map
  * at the same moment and whose OK is a hand saying "yes, this is where I am".
  *

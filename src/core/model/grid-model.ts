@@ -146,8 +146,28 @@ export function bumpObjectsVersion(
   delta?: { removed?: readonly PlacedObject[]; added?: readonly PlacedObject[] },
 ): void {
   const version = state.objectsVersion + 1;
+  const last = state.objectsDelta;
+  const prev = last && last.version === version - 1 && last.depth < DELTA_CHAIN ? last : undefined;
   state.objectsVersion = version;
-  state.objectsDelta = delta ? { version, removed: delta.removed, added: delta.added } : undefined;
+  state.objectsDelta = delta ? { version, removed: delta.removed, added: delta.added, prev, depth: (prev?.depth ?? 0) + 1 } : undefined;
+}
+
+/** How many steps of object deltas a map keeps for a cache a few versions behind (a corner trim
+ *  bumps once per road it recuts); a cache further behind rebuilds. */
+const DELTA_CHAIN = 32;
+
+/** The deltas of every step after `since` up to the map's version, oldest first; null when one of
+ *  those steps left none. */
+export function objectDeltasSince(state: Pick<GridState, 'objectsVersion' | 'objectsDelta'>, since: number): ObjectsDelta[] | null {
+  if (since > state.objectsVersion) return null;
+  const out: ObjectsDelta[] = [];
+  let d = state.objectsDelta;
+  for (let v = state.objectsVersion; v > since; v--) {
+    if (!d || d.version !== v) return null;
+    out.push(d);
+    d = d.prev;
+  }
+  return out.reverse();
 }
 
 /** Cache identity for content, layer locks and placement policy. */

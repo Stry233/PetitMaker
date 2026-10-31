@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The regional-load disc: what it reads, and what it refuses to say.
- *
- * The reading is about a place. The limit is per region, so the control answers "how full is the
- * region I am about to build in", and the two things a test can hold it to are that the region it
- * names is the one under the pointer and that the drawing is a proportion of that region's own
- * load. The third is a negative: there is no text and no number on the control, because the figure
- * is a four-digit thing standing where the eye passes constantly, and the press is what opens it.
- *
- * `map-load.ts` pins the naming rule and the gate that keeps a provisional figure out of a release;
- * these pin what the drawing does with what it is handed.
+ * The regional-load disc and the regions window. The limit is per region, so the disc names the
+ * region under the pointer and draws a proportion of that region's load, with no number on it (a
+ * press opens the window). `map-load.test.ts` holds the naming rule.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
@@ -53,8 +46,7 @@ describe('the regional load disc', () => {
     expect(screen.queryByTestId('shell-load')).toBeNull();
   });
 
-  /** Before the pointer has been over the map there is no region under it, and the control still
-   *  has to read somewhere real: it reads the middle of the island, where the camera opens. */
+  /** With no pointer over the map yet, it reads the middle of the island, where the camera opens. */
   it('rests on the region at the middle of the map, and names it', () => {
     const state = mapWithLoad();
     act(() => { useEditorStore.setState({ gridState: state }); });
@@ -81,8 +73,7 @@ describe('the regional load disc', () => {
     const arc = screen.getByTestId('shell-load').querySelector('circle[stroke-dasharray]')!;
     const [drawn, whole] = arc.getAttribute('stroke-dasharray')!.split(' ').map(Number);
     expect(drawn! / whole!).toBeCloseTo(reading.value / CHUNK_LOAD_LIMIT, 5);
-    // Twelve o'clock, clockwise: the game's own start, and the only thing that makes a part-filled
-    // disc readable as a proportion rather than as an arbitrary arc.
+    // From twelve o'clock clockwise, as the game draws it, so a part-filled disc reads as a proportion.
     expect(arc.getAttribute('transform')).toBe('rotate(-90 50 50)');
   });
 
@@ -94,8 +85,7 @@ describe('the regional load disc', () => {
     expect(screen.getByTestId('shell-load').querySelector('circle[stroke-dasharray]')).toBeNull();
   });
 
-  /** The window is a window: mounted by `Windows` outside the frame's own page zoom, so what the
-   *  press does is open one, the same call a keyboard command or a menu row would make. */
+  /** `Windows` mounts the window outside the frame's page zoom, so the press only asks for it. */
   it('asks for the regions window rather than putting one up itself', () => {
     act(() => { useEditorStore.setState({ gridState: mapWithLoad() }); });
     mount();
@@ -153,7 +143,7 @@ describe('the regions window', () => {
     for (const name of ['A1', 'A2', 'A3', 'B1', 'B2', 'B3']) {
       expect(screen.getByTestId(`shell-region-${name}`), name).toBeTruthy();
     }
-    // Three regions across, which is what makes the grid the island's own shape.
+    // Three regions across, the island's own shape.
     const grid = screen.getByTestId('shell-region-A1').parentElement!;
     expect(grid.style.gridTemplateColumns).toContain('repeat(3,');
   });

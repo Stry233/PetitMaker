@@ -3,8 +3,8 @@
  * the previous map's locks or hidden layers (the panel would show a lock the
  * rules don't enforce until the next toggle re-syncs).
  *
- * Plus the pin: whether the active layer is where a hand put it. The water brush reads it — pinned
- * it paints at that layer, automatic it follows the ground each cell stands on.
+ * Plus the pin: whether the active layer is where a hand put it. The water brush reads it: when pinned
+ * it paints at that layer, otherwise it follows the ground each cell stands on.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';

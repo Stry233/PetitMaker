@@ -1,12 +1,7 @@
 // @vitest-environment jsdom
 /**
- * A button that presses itself is only acceptable if it can be stopped, and if the press it makes
- * is the press a finger makes. Those two are what these pin, plus the one thing a screen reader
- * needs from it.
- *
- * jsdom lays nothing out, so the ring is not testable here beyond its presence: the outline is
- * measured off the rendered element and comes out zero-sized. What is testable is the clock, the
- * three ways of interrupting it, and where the description node lives.
+ * A button that presses itself: it can be stopped, its press is a real click, and a screen reader
+ * hears the countdown as a description. jsdom lays nothing out, so the drawing tests stub `offsetWidth`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -16,8 +11,7 @@ import { TimedButton } from '../../../ui/primitives/TimedButton';
 import { timedHint } from '../../../ui/chrome/timed-hint';
 import { ACTIVE } from '../../../ui/design/tokens';
 
-/** jsdom re-serializes a hex fill as `rgb(...)`, so the fired fill is compared in that form rather
- *  than spelled out a second time. */
+/** jsdom re-serializes a hex fill as `rgb(...)`. */
 const FIRED_RGB = (() => {
   const probe = document.createElement('div');
   probe.style.backgroundColor = ACTIVE;
@@ -56,17 +50,13 @@ describe('a timed button', () => {
     expect(onPress).not.toHaveBeenCalled();
     run(1200);
     expect(onPress).toHaveBeenCalledTimes(1);
-    // A click on the element, not a call of the handler: the two must not be separate paths, and a
-    // click is what carries the browser's own press behaviour with it.
     run(5000);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('says whether the press was its own or a hand\'s', () => {
-    // Nothing in a click event carries this, and a host must not guess from its internals: the
-    // arrival notice answers the saved-session offer beside it when a hand takes its OK, and a
-    // countdown running out is nobody answering anything. Callers that mean the same thing by both
-    // (the restore card, the dev-build notice) simply ignore the argument.
+    // A click event cannot carry this; the arrival notice answers the saved-session offer only when a
+    // hand takes its OK.
     const onPress = vi.fn();
     mount(<TimedButton after={2} hint={timedHint(translate, 2)} onPress={onPress}>Dismiss</TimedButton>);
     fireEvent.click(screen.getByRole('button'));
@@ -85,7 +75,7 @@ describe('a timed button', () => {
     run(10_000);
     expect(onPress).not.toHaveBeenCalled();
     fireEvent.pointerLeave(btn);
-    // A pause, not a restart: what is left of the two seconds is one, so half that is not enough.
+    // A pause, not a restart: one second is left, so 600 ms is not enough.
     run(600);
     expect(onPress).not.toHaveBeenCalled();
     run(600);
@@ -109,7 +99,7 @@ describe('a timed button', () => {
     fireEvent.focus(btn);
     run(30_000);
     expect(onPress).not.toHaveBeenCalled();
-    // And blurring does not put it back: a considered offer stays declined.
+    // Blurring does not put it back.
     fireEvent.blur(btn);
     run(30_000);
     expect(onPress).not.toHaveBeenCalled();
@@ -120,8 +110,7 @@ describe('a timed button', () => {
     mount(<TimedButton after={9} hint={timedHint(translate, 9)} onPress={() => {}} aria-label="Dismiss">Dismiss</TimedButton>);
     const btn = screen.getByRole('button');
     const hint = screen.getByRole('status');
-    // Outside the button: a node inside one is part of its accessible name, so a description
-    // written there would be read as though it were the label.
+    // A node inside the button would join its accessible name.
     expect(btn.contains(hint)).toBe(false);
     expect(btn.getAttribute('aria-describedby')).toBe(hint.id);
     expect(hint.textContent).toBe(translate('timed.self_press', { seconds: 9 }));
@@ -144,9 +133,8 @@ describe('the position a caller asks for', () => {
   });
 
   it('survives the merge when a caller names its own, absolute included', () => {
-    // A band-sized button (RestoreShelf) is positioned absolute against its wrapper and stretched
-    // by left/right rather than a width; `relative` winning here silently collapses it to zero
-    // width, since every one of its children is itself absolutely positioned out of flow.
+    // RestoreShelf's band-sized button is absolute and stretched by left/right; with `relative` it
+    // would collapse to zero width, since all its children are absolutely positioned.
     mount(
       <TimedButton after={2} hint={timedHint(translate, 2)} onPress={() => {}} style={{ position: 'absolute', left: 0, right: 0 }}>
         go
@@ -157,7 +145,7 @@ describe('the position a caller asks for', () => {
 });
 
 describe('a clock the caller owns', () => {
-  // Same layout gap as the stadium's tests: nothing is laid out, so the drawing needs a width.
+  // jsdom lays nothing out, so the drawing needs a width.
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
   });
@@ -203,8 +191,7 @@ describe('a clock the caller owns', () => {
       </I18nProvider>,
     );
     expect(ring().getAttribute('stroke-dashoffset')).toBe('0.9');
-    // A cancelled self-clocked button says so. Saying it here would be a lie: the loop retries
-    // whether the keyboard reached this pill or not, and nothing about the focus stopped it.
+    // The caller's loop retries regardless of focus, so the status does not say it stopped.
     expect(screen.getByRole('status').textContent).toBe(translate('timed.self_press', { seconds: 9 }));
   });
 
@@ -237,8 +224,7 @@ describe('a clock the caller owns', () => {
 });
 
 describe('the stadium clock', () => {
-  // jsdom lays nothing out, so `offsetWidth` is 0 everywhere and the clock svg (gated on
-  // `box.w > 0`) never renders. Give every element a fixed width for these two tests.
+  // The clock svg is gated on `box.w > 0`, and jsdom's `offsetWidth` is 0.
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
   });
@@ -258,8 +244,7 @@ describe('the stadium clock', () => {
     const mark = btn.querySelector('svg line');
     expect(mark, 'the mark is a line, capped round into a stadium').toBeTruthy();
     expect(mark!.getAttribute('stroke-linecap')).toBe('round');
-    // Whole, and spent from there: the dash is the whole mark and the offset walks it off the end,
-    // so an offset of 1 leaves nothing drawn. Empty means fired.
+    // Whole: the offset walks the dash off the end, so 1 leaves nothing drawn.
     expect(mark!.getAttribute('stroke-dashoffset')).toBe('0');
     expect(btn.querySelector('svg rect'), 'the ring is not also drawn').toBeNull();
   });
@@ -279,13 +264,10 @@ describe('the stadium clock', () => {
 });
 
 /**
- * The lent fuse runs between the caller's samples.
- *
- * A process clock is sampled at whatever rate its owner repaints — the retry face reads its backoff
- * once a second — so a ring redrawn only on those samples is a staircase, which is the drawing
- * Reduced motion is supposed to be alone in getting. `spanMs` turns the handed fraction into a rate
- * and a rAF walks the outline on from it. The rendered attribute is the sample; the inline style is
- * the walk, and it wins in the cascade, which is why the two are read separately here.
+ * A caller samples its clock at its own repaint rate (the retry face once a second), so a ring drawn
+ * only on samples is a staircase, which only reduced motion should get. `spanMs` turns the fraction
+ * into a rate a rAF walks on. The attribute is the sample and the inline style, which wins in the
+ * cascade, is the walk.
  */
 describe('the lent fuse glides between the samples it is given', () => {
   beforeEach(() => {
@@ -315,13 +297,12 @@ describe('the lent fuse glides between the samples it is given', () => {
     mountLent('never', 3 / 9, 9_000);
     expect(drawn()).toBeCloseTo(3 / 9, 3);
 
-    // Half a second later, with no new sample: the fuse has spent half a second of the nine.
+    // Half a second later, with no new sample.
     run(500);
     const mid = drawn();
     expect(mid, 'the ring moved between samples').toBeGreaterThan(3 / 9);
     expect(mid).toBeCloseTo(3.5 / 9, 2);
 
-    // And again, so the movement is a walk rather than one jump.
     run(500);
     expect(drawn()).toBeGreaterThan(mid);
     expect(drawn()).toBeCloseTo(4 / 9, 2);
@@ -338,8 +319,7 @@ describe('the lent fuse glides between the samples it is given', () => {
     const { rerender } = mountLent('never', 0.2, 9_000);
     run(2_000);
     expect(drawn()).toBeGreaterThan(0.2);
-    // The caller's next reading says less is spent than the walk had drawn (a longer backoff on the
-    // next attempt). The sample is the truth: the walk restarts from it.
+    // A longer backoff on the next attempt reads less spent than the walk had drawn.
     rerender(
       <MotionConfig reducedMotion="never">
         <I18nProvider>

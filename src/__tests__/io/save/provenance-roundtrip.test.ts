@@ -25,7 +25,7 @@ describe('save/load provenance', () => {
     const raw = readFileSync('src/__tests__/fixtures/saves/legacy-v1-no-provenance.json', 'utf8');
     const parsed = JSON.parse(raw) as { templateId?: string };
     const restored = deserialize(raw, getMapTemplate(parsed.templateId));
-    // at least one content cell exists and is flagged `UNKNOWN`
+    // At least one content cell exists and is flagged `UNKNOWN`.
     let found = false;
     for (const row of restored.provenance!.cellTaint) for (const t of (row ?? [])) if (t && hasFlag(t.flags, TaintFlag.UNKNOWN)) found = true;
     expect(found).toBe(true);

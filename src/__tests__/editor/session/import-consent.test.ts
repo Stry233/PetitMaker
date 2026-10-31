@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * A map load whose landmarks now stand over its content asks before it changes anything: on every
+ * A map load whose landmarks stand over its content asks before it changes anything: on every
  * import path (a save file, a share image, the resumed session) the open map keeps its cells,
  * objects, undo history and cameras, and no autosave is written, while the choice is asked and after
  * it is cancelled, in the choice or in the hand repair. Only a choice opens the imported map.

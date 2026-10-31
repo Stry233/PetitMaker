@@ -9,7 +9,7 @@ import { translations } from '../../../i18n/translations';
 afterEach(() => useKeybinds.getState().resetAll());
 
 describe('contextual toolbar bindings', () => {
-  it.each(TOOLBAR_CONTEXTS)('numbers visible groups without gaps in %s', context => {
+  it.each(TOOLBAR_CONTEXTS.filter((c) => c !== 'objects'))('numbers visible groups without gaps in %s', context => {
     const bindings = new Map(COMMAND_META.flatMap((c) => {
       const combo = toolbarDefault(context, c.id);
       return typeof combo === 'string' ? [[c.id, combo] as const] : [];
@@ -18,6 +18,11 @@ describe('contextual toolbar bindings', () => {
     expect(numbers).toEqual(numbers.map((_, index) => String(index + 1)));
     expect(numbers.length).toBeLessThanOrEqual(9);
     for (const [id, combo] of bindings) expect(bindingIndex({}, context).get(combo)).toBe(id);
+  });
+
+  it('gives the object brush bar the terrain bar\'s keys for the commands it shares', () => {
+    for (const id of ['tool.brush', 'tool.erase', 'tool.shape_cycle']) expect(toolbarDefault('objects', id), id).toBe(toolbarDefault('terrain', id));
+    for (const [id, combo] of [['tool.brush', '1'], ['tool.erase', '2'], ['tool.shape_cycle', '5']] as const) expect(bindingIndex({}, 'objects').get(combo)).toBe(id);
   });
 
   it('gives a toolbar command its keys from the toolbar table alone', () => {
@@ -73,7 +78,7 @@ describe('contextual toolbar bindings', () => {
 });
 
 describe('the key context', () => {
-  const at = (over: Partial<KeyContextInputs>): KeyContextInputs => ({ selectingRegion: false, editMode: { mode: null }, annotationTool: 'none', ...over });
+  const at = (over: Partial<KeyContextInputs>): KeyContextInputs => ({ selectingRegion: false, objectBrushBar: false, editMode: { mode: null }, annotationTool: 'none', ...over });
 
   it('puts the region brush first, then the notes by their tool, then a terrain surface, then the map', () => {
     expect(keyContext(at({ selectingRegion: true, editMode: { mode: 'annotate' } }))).toBe('region');
@@ -81,6 +86,8 @@ describe('the key context', () => {
     expect(keyContext(at({ editMode: { mode: 'annotate' }, annotationTool: 'measure' }))).toBe('notes-other');
     expect(keyContext(at({ editMode: { mode: 'road' } }))).toBe('terrain');
     expect(keyContext(at({ editMode: { mode: 'object' } }))).toBe('map');
+    expect(keyContext(at({ editMode: { mode: 'object' }, objectBrushBar: true }))).toBe('objects');
+    expect(keyContext(at({ selectingRegion: true, editMode: { mode: 'object' }, objectBrushBar: true }))).toBe('region');
     expect(toolbarContextOf(at({ editMode: { mode: 'object' } }))).toBe('terrain');
   });
 

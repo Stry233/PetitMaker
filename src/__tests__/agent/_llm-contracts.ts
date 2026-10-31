@@ -1,9 +1,7 @@
 /**
- * Checks the six model-authored copy contracts over a completed session log. The scripted CI actor
- * and the opt-in gateway test share this reader, so both exercise the same measurements.
- *
- * Findings are returned as data because an external model may miss a copy constraint without making
- * the harness itself invalid. Each finding includes enough context to read without the source log.
+ * Checks the six model-authored copy contracts over a completed session log; the scripted CI actor and
+ * the opt-in gateway test share it. Findings are data, not failures: a live model may miss a copy bound
+ * without the harness being wrong.
  *
  * UI bounds:
  *   1 says line      point within about 90 characters; two lines before expansion
@@ -13,14 +11,13 @@
  *   5 suggest_reply  hard-clipped at about 30 Latin or 15 CJK characters
  *   6 quick answers  about 20 per pill; `GateOption.cap` about 40
  *
- * CJK text uses roughly twice the horizontal space of Latin text here. Only contract 5 truncates by
- * script, so the other bounds measure characters directly.
+ * Only contract 5 truncates by script; the other bounds count characters.
  */
 import { eventsOf, type SessionLog } from '../../agent/core/log';
 import type { SessionEvent } from '../../agent/core/types';
 
 export interface ContractFinding {
-  /** Which of the six, by its number and name. */
+  /** Which of the six, by number and name. */
   contract: string;
   /** What the model wrote, capped for a report. */
   text: string;
@@ -28,7 +25,7 @@ export interface ContractFinding {
   measured: string;
 }
 
-/** The bounds, in one place: a test that wants to report against them reads them here. */
+/** The bounds a report measures against. */
 export const CONTRACTS = {
   saysPoint: 90,
   summarySentencesMax: 4,
@@ -41,16 +38,14 @@ export const CONTRACTS = {
 } as const;
 
 const CJK = /[　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
-/** A sentence end in either script's punctuation: the panel's own reading (`loop.ts:QUESTION_END`
- *  takes both marks for the same reason). */
+/** A sentence end in Latin or CJK punctuation. */
 const SENTENCE_END = /[.!?。！？]/g;
 
 function isCjk(text: string): boolean {
   return CJK.test(text);
 }
 
-/** How many characters of room a string spends: a CJK glyph is a full em, so it costs about the two
- *  a Latin character does at the same box. Used only where the box truncates. */
+/** The character budget for a string: a CJK glyph is a full em, about two Latin characters wide. */
 function roomFor(text: string, latin: number, cjk: number): number {
   return isCjk(text) ? cjk : latin;
 }
@@ -72,11 +67,8 @@ function say(text: string): string {
 
 type Assistant = Extract<SessionEvent, { kind: 'assistant' }>;
 
-/**
- * Reads a finished log and reports every model-authored string that does not wear its designed
- * shape. `finalOnly` narrows contract 2 to the closing summary, which is the only text the receipt
- * sizes itself to.
- */
+/** Reports every model-authored string in a finished log that breaks its contract; contract 2 reads
+ *  the closing summary, the only text the receipt sizes itself to. */
 export function checkContracts(log: SessionLog): ContractFinding[] {
   const out: ContractFinding[] = [];
   const events = eventsOf(log);
@@ -139,8 +131,8 @@ function checkSays(ev: Assistant, out: ContractFinding[]): void {
     if (part.kind !== 'text') continue;
     const text = part.text.trim();
     if (text === '') continue;
-    // The point, not the length: the line is two-line clamped and expands on a tap, so a long say is
-    // fine and a say whose first sentence only lands on line three is not.
+    // The line is clamped to two lines and expands on a tap, so the first sentence is measured, not the
+    // whole say.
     const end = firstSentenceEnd(text);
     const point = end === -1 ? text.length : end + 1;
     if (point > CONTRACTS.saysPoint) {
@@ -172,8 +164,8 @@ function checkCalls(ev: Assistant, out: ContractFinding[]): void {
     if (part.name === 'delegate_task') {
       const label = typeof part.input.label === 'string' ? part.input.label.trim() : '';
       const task = typeof part.input.task === 'string' ? part.input.task : '';
-      // The lane names the helper by `label ?? firstLine(task)`, so a task with no label owes its
-      // first line the same shape a label has.
+      // The lane shows `label ?? firstLine(task)`, so an unlabelled task's first line is held to the
+      // label bound.
       const shown = label !== '' ? label : (task.split('\n')[0] ?? '');
       if (shown.trim() === '') {
         out.push({ contract: '4 delegate label', text: say(task), measured: 'the lane would have no name at all' });

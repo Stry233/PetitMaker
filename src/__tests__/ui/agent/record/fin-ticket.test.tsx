@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-/** Terminal-card variants and the content each outcome may render. Count-up assertions cover the
- * first and final frames; reduced-motion cases render the total immediately. */
+/** The terminal cards (flip ticket, stop card, archive card) and what each outcome may render. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -26,7 +25,7 @@ function renderWithI18n(node: React.ReactElement) {
   return render(node, { wrapper: Wrapper });
 }
 
-/** The same tree with framer told the reader wants no motion. */
+/** Rendered under reduced motion. */
 function renderReduced(node: React.ReactElement) {
   return render(<MotionConfig reducedMotion="always">{node}</MotionConfig>, { wrapper: Wrapper });
 }
@@ -78,7 +77,6 @@ function makeJob(over: Partial<JobView> = {}): JobView {
 
 /** A completed village job with several operations and checkpoints. */
 const VILLAGE = makeJob({
-  // Each call carries the plan stage it ran under, as the fold stamps one.
   ops: [
     makeOp({ name: 'view_map', isRead: true, stageIndex: 0 }),
     makeOp({ name: 'build_road', detail: { cells: 118 }, stageIndex: 0 }),
@@ -98,8 +96,6 @@ const VILLAGE = makeJob({
   },
   summary: 'A fishing village stands on the east shore. Boardwalk, six houses, a pine grove behind.',
 });
-
-/* ── hierarchy 1: done ────────────────────────────────────── */
 
 describe('done: the built thing leads', () => {
   it('shows actual operations under their undo checkpoints and keeps them in archived records', () => {
@@ -137,37 +133,25 @@ describe('done: the built thing leads', () => {
     expect(getByTestId('ticket-order').textContent).toBe('Build a fishing village on the east shore');
     expect(getByTestId('ticket-stats')).toBeTruthy();
     expect(getByTestId('ticket-summary').textContent).toContain('A fishing village stands');
-    // The ledger is the capped card's, and only the capped card's.
     expect(queryByTestId('ticket-ledger')).toBeNull();
     expect(queryByTestId('ticket-keep-going')).toBeNull();
   });
 
   /**
-   * A turn never grows the record's scrollbar. A perspective projection magnifies the near half of
-   * the rotating card past its own box, and a scroller counts a descendant's projected geometry as
-   * scrollable overflow — but only downward overflow is scrollable; above the scroll origin it is
-   * unreachable and adds nothing. So the perspective origin sits on the card's bottom edge: every
-   * point of both faces projects away from that line, upward, and the geometry below it is bounded
-   * by the box at every angle of the turn. jsdom does no layout, so what is pinned is the projection
-   * origin itself; the number is verified live (panel-harness, `state=done`, `motion=1`): with the
-   * centred origin the job zone's scrollHeight rose 390→424 through the turn and its clientWidth
-   * dropped 358→347 (a scrollbar seizing its 11px mid-flip, both directions, peaking edge-on); with
-   * the bottom origin both held flat through the whole turn.
+   * The projection magnifies the turning card past its box, and a scroller counts that as overflow,
+   * but only downward. With the origin on the bottom edge both faces project upward, so the record
+   * grows no scrollbar mid-flip. jsdom does no layout, so the origin itself is pinned.
    */
   it('projects the turn upward off the bottom edge, so a flip adds no scrollable overflow', () => {
     const { getByTestId } = renderWithI18n(<FlipTicket job={VILLAGE} onFileAway={() => {}} />);
     expect(getByTestId('flip-ticket').style.perspectiveOrigin).toBe('50% 100%');
   });
 
-  /**
-   * A turn is read from the top. The two faces share one box inside a zone that scrolls, so a front
-   * face read at an offset of 293px turned into a back face opened at 293px: the story's heading
-   * scrolled off above, and on a shorter back face the reader landed past its foot on empty plate.
-   */
+  /** Both faces share one box in a scrolling zone, so without a reset a face would open at the other's
+   *  scroll offset. */
   it('brings the card\'s own head back under the eye when it turns', () => {
     const calls: unknown[] = [];
-    // jsdom implements no scrolling at all; the call is the contract, and the shipped code guards on
-    // the method existing for exactly that reason.
+    // jsdom has no scrollIntoView; the shipped code guards on the method existing.
     Element.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement, arg?: unknown) {
       calls.push({ target: this.getAttribute('data-testid'), arg });
     };
@@ -189,13 +173,12 @@ describe('done: the built thing leads', () => {
       <FlipTicket job={VILLAGE} onFileAway={(seq) => filed.push(seq)} onKeepGoing={() => {}} />,
     );
     expect(getByTestId('flip-button')).toBeTruthy();
-    // `onKeepGoing` is wired and still draws nothing: the primary belongs to the capped hierarchy.
+    // Wired, yet drawn only on a capped card.
     expect(queryByTestId('ticket-keep-going')).toBeNull();
     fireEvent.click(getByTestId('ticket-file-away'));
     expect(filed).toEqual([1]);
   });
 
-  /** Only a capped job shows how far its plan progressed; a completed job needs no progress gauge. */
   it('draws no tape on a finished job, and the plan\'s own fraction on a capped one', () => {
     const done = renderReduced(<FlipTicket job={VILLAGE} />);
     expect(done.queryByTestId('tape-bar')).toBeNull();
@@ -227,7 +210,7 @@ describe('the stat row', () => {
       .toEqual(['cells', 'objects']);
   });
 
-  /** A zero is suppressed. "0 objects" reports a kind of work this job never set out to do. */
+  /** "0 objects" would report a kind of work the job never set out to do. */
   it('grows no cell for a figure that came back zero', () => {
     const roadOnly = makeJob({ ops: [makeOp({ name: 'build_road', detail: { cells: 36 } })] });
     const { getAllByTestId } = renderReduced(<FlipTicket job={roadOnly} />);
@@ -242,7 +225,6 @@ describe('the stat row', () => {
     expect(queryByTestId('ticket-stats')).toBeNull();
   });
 
-  /** Zeroed in the same frame it renders, then counted up to what was built. */
   it('mounts at zero and counts up to the figure', async () => {
     const { getAllByTestId } = renderWithI18n(<FlipTicket job={VILLAGE} />);
     const figures = () => getAllByTestId('ticket-stat-n').map((el) => el.textContent);
@@ -250,14 +232,11 @@ describe('the stat row', () => {
     await waitFor(() => { expect(figures()).toEqual(['118', '30']); }, { timeout: 4000 });
   });
 
-  /** Under reduced motion the figure is simply what was built, in the first frame. */
   it('stands at the figure outright under reduced motion', () => {
     const { getAllByTestId } = renderReduced(<FlipTicket job={VILLAGE} />);
     expect(getAllByTestId('ticket-stat-n').map((el) => el.textContent)).toEqual(['118', '30']);
   });
 });
-
-/* ── hierarchy 2: done at the cap ─────────────────────────── */
 
 describe('done.capped: the ledger leads and the decision owns the foot', () => {
   const capped = makeJob({
@@ -277,17 +256,15 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     const rows = getAllByTestId('ticket-ledger');
     expect(rows.map((el) => el.querySelector('[data-testid="ticket-ledger-name"]')!.textContent))
       .toEqual(['Lay the boardwalk', 'Raise the houses', 'Plant the pines']);
-    // The two that finished carry a tick; the one the cap stopped stands open.
     expect(rows.slice(0, 2).every((el) => el.querySelector('[data-testid="ticket-ledger-tick"]') !== null)).toBe(true);
     const open = rows[2]!;
     expect(open.getAttribute('data-unreached')).toBe('true');
     expect(open.style.border).toContain('dashed');
     expect(open.querySelector('[data-testid="ticket-ledger-tick"]')).toBeNull();
     expect(open.querySelector('[data-testid="ticket-ledger-stat"]')!.textContent).toBe('not reached');
-    // The revert amber, said once, at the rung it earns.
+    // The revert amber.
     const name = open.querySelector('[data-testid="ticket-ledger-name"]') as HTMLElement;
     expect(name.style.color).toBe('rgb(185, 127, 36)');
-    // No hero, no counting: the news is the stage that did not happen.
     expect(queryByTestId('ticket-postcard')).toBeNull();
     expect(queryByTestId('ticket-stats')).toBeNull();
   });
@@ -306,7 +283,6 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(filed).toEqual([1]);
   });
 
-  /** The read verb yields the foot to the decision and rides the header seat instead. */
   it('puts the flip control in the header seat rather than the foot', () => {
     const { getByTestId } = renderReduced(
       <FlipTicket job={capped} onKeepGoing={() => {}} onFileAway={() => {}} />,
@@ -317,12 +293,7 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
   });
 
-  /**
-   * A ledger row owes a figure. Which stages finished says nothing about what they did, and the
-   * job's own results carry it: the measure is the stage's own work — cells where it
-   * painted, objects where it placed, reads where it only looked — never a count of calls, which
-   * would be a figure about the assistant's method rather than about the map.
-   */
+  /** The measure is the stage's own work on the map (cells, objects, or reads), never a count of calls. */
   it('reports each finished stage\'s own measure beside its tick', () => {
     const { getAllByTestId } = renderReduced(
       <FlipTicket job={capped} onKeepGoing={() => {}} onFileAway={() => {}} />,
@@ -332,9 +303,6 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(stats).toEqual(['118 cells', '6 objects', 'not reached']);
   });
 
-  /** A stage that only looked still did something, and the dock's own words for it are reused rather
-   *  than a second copy kept here. A stage with nothing to report gets no figure at all — an empty
-   *  seat is a fact, "0 cells" is a claim about work nobody asked for. */
   it('falls back to the reads, and says nothing for a stage with nothing to report', () => {
     const job = makeJob({
       outcome: 'capped',
@@ -352,12 +320,6 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(stats).toEqual(['2 reads', null, 'not reached']);
   });
 
-  /**
-   * A capped run with no plan has no stage to lead with, and the card said nothing about the work
-   * instead: the live 40-turn run that hit the cap had placed 119 objects and painted a cell, and its
-   * receipt carried the flag, the order and two verbs. The ledger is what displaces the counts on a
-   * capped card, so where there is none the built thing is the hero, as it is on a done receipt.
-   */
   it('leads a planless capped run with the built thing and its counts, since it has no ledger to lead with', () => {
     const planless = makeJob({ outcome: 'capped', ops: VILLAGE.ops, checkpoints: VILLAGE.checkpoints });
     const { getByTestId, queryByTestId } = renderReduced(
@@ -366,13 +328,10 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(queryByTestId('ticket-ledger')).toBeNull();
     expect(getByTestId('ticket-postcard')).toBeTruthy();
     expect(getByTestId('ticket-stats').textContent).toContain('118');
-    // Still the capped hierarchy in every other respect: the flag, and the decision at the foot.
     expect(getByTestId('flip-ticket').getAttribute('data-shape')).toBe('capped');
     expect(getByTestId('ticket-keep-going')).toBeTruthy();
   });
 });
-
-/* ── hierarchy 3: aborted ─────────────────────────────────── */
 
 describe('aborted: one face, the fact at the headline rung, two answers', () => {
   const stopped = makeJob({
@@ -396,15 +355,12 @@ describe('aborted: one face, the fact at the headline rung, two answers', () => 
     expect(getByTestId('stop-note').textContent).toContain('Ctrl+Z');
   });
 
-  /** A stop that landed before anything was written has no kept-edits fact to state. */
   it('says nothing about edits where there were none', () => {
     const early = makeJob({ outcome: 'aborted', ops: [], checkpoints: [{ undoIndex: 0, label: 'job' }] });
     const { queryByTestId } = renderReduced(<StopCard job={early} onRewindAll={() => {}} />);
     expect(queryByTestId('stop-fact')).toBeNull();
   });
 
-  /** One edit reads as one, not as "1 edits": the fact wears the same singular/plural agreement the
-   *  dock's own stage count already carries (`dock_stages_left`). */
   it('says "1 edit", not "1 edits", where the job kept exactly one', () => {
     const one = makeJob({
       outcome: 'aborted',
@@ -453,8 +409,6 @@ describe('aborted: one face, the fact at the headline rung, two answers', () => 
   });
 });
 
-/* ── hierarchy 4: the compact settle ──────────────────────── */
-
 describe('done.question: the receipt compresses to a two-line settle', () => {
   const asked = makeJob({ ...VILLAGE, question: true, orderText: 'Carve the stream to the south end' });
 
@@ -472,7 +426,6 @@ describe('done.question: the receipt compresses to a two-line settle', () => {
     expect(queryByTestId('ticket-postcard')).toBeNull();
     expect(queryByTestId('ticket-stats')).toBeNull();
     expectAvailable(getByTestId('ticket-file-away'));
-    // The flip is intact: the story is still one press away.
     fireEvent.click(getByTestId('flip-button'));
     expect(getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
   });
@@ -496,8 +449,6 @@ describe('done.question: the receipt compresses to a two-line settle', () => {
   });
 });
 
-/* ── hierarchy 5: the opened past record ──────────────────── */
-
 describe('history.open: the archive dress', () => {
   it('stands the steps INLINE, with no flip, no counts and no postcard', () => {
     const { getByTestId, getAllByTestId, queryByTestId } = renderReduced(
@@ -515,7 +466,7 @@ describe('history.open: the archive dress', () => {
       .toEqual(['Map changes', 'Lay the boardwalk', 'Raise the houses']);
   });
 
-  /** Later jobs sit on top of a mid-job state, so a rewind into one would take their work with it. */
+  /** Later jobs sit on top of a mid-job state, so a rewind into one would take their work too. */
   it('offers no per-step rewind', () => {
     const { queryAllByTestId } = renderReduced(<ArchiveCard job={VILLAGE} onBack={() => {}} />);
     expect(queryAllByTestId('ticket-step-rewind').length).toBe(0);
@@ -530,7 +481,7 @@ describe('history.open: the archive dress', () => {
     const foot = getByTestId('archive-foot');
     const back = getByTestId('archive-back');
     const clear = getByTestId('archive-clear');
-    // Back reads first in the foot's DOM order, which is its tab order too.
+    // DOM order is tab order.
     const order = [...foot.querySelectorAll('button')].map((el) => el.getAttribute('data-testid'));
     expect(order.indexOf('archive-back')).toBeLessThan(order.indexOf('archive-clear'));
 
@@ -545,17 +496,10 @@ describe('history.open: the archive dress', () => {
   });
 });
 
-/* ── what binds all five ──────────────────────────────────── */
-
 /**
- * Every confirm on these cards opens without moving anything, and it is one assertion per site rather
- * than a rule stated once: a confirm rearranges its surroundings by what the surface puts around it —
- * a note that appears under the row, a sibling withdrawn to make room — so the primitive being
- * correct proves nothing about the card it is standing in.
- *
- * jsdom lays nothing out, so what is compared is the thing that makes the geometry stable: every
- * landmark is the same node, under the same parent, at the same index among that parent's children.
- * The seat's own contents are the one thing allowed to change, which is why they are excluded.
+ * One assertion per site, since what a surface puts around a confirm (a note under the row, a sibling
+ * withdrawn) can move the card even when the primitive is correct. jsdom lays nothing out, so every
+ * landmark outside the confirm seat must stay the same node, under the same parent, at the same index.
  */
 describe('a question opens without moving the card', () => {
   /** Every landmark outside the seats, as node + parent + index. */
@@ -613,7 +557,7 @@ describe('a question opens without moving the card', () => {
 });
 
 describe('the whole family', () => {
-  /** Nothing here invents a step count. A job with no checkpoint has no story to turn to. */
+  /** A job with no checkpoint has no story to turn to. */
   it('grows no flip and no back face for a job that recorded no checkpoint', () => {
     const readOnly = makeJob({ ops: [makeOp({ name: 'view_map', isRead: true })], checkpoints: [] });
     const { queryByTestId, getByTestId } = renderReduced(<FlipTicket job={readOnly} onRewind={() => {}} />);
@@ -622,7 +566,6 @@ describe('the whole family', () => {
     expect(getByTestId('flip-ticket').getAttribute('data-face')).toBe('front');
   });
 
-  /** Every take-back on a live receipt lives on the flip's back face. */
   it('keeps both rewinds off the front and puts them beside the story they undo', () => {
     const rewound: number[] = [];
     const all: number[] = [];
@@ -630,12 +573,11 @@ describe('the whole family', () => {
       <FlipTicket job={VILLAGE} onRewind={(c) => rewound.push(c.undoIndex)} onRewindAll={() => all.push(1)} />,
     );
     expect(queryAllByTestId('ticket-step-rewind').length).toBe(3);
-    // They are all inside the back face, never the front.
     const front = getByTestId('flip-face-front');
     expect(getAllByTestId('ticket-step-rewind').some((el) => front.contains(el))).toBe(false);
     expect(front.querySelector('[data-testid="ticket-rewind-all"]')).toBeNull();
 
-    // Both take-backs stand behind a confirm: the per-step one discards every later step too.
+    // The per-step take-back discards every later step too, so it confirms as well.
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getAllByTestId('ticket-step-rewind')[2]!);
     expect(rewound).toEqual([]);
@@ -678,7 +620,7 @@ describe('the whole family', () => {
       expect(plain.getByTestId(id).style.backfaceVisibility, id).toBe('hidden');
     }
     expect(plain.getByTestId('flip-face-back').style.transform).toBe('rotateY(180deg)');
-    // Nothing between the perspective box and the faces groups them out of the 3D context.
+    // An opacity between the perspective box and the faces would flatten the 3D context.
     expect(card.style.opacity).toBe('');
     expect(plain.getByTestId('flip-inner').style.opacity).toBe('');
     plain.unmount();
@@ -756,7 +698,7 @@ describe('the whole family', () => {
     expect(stop.getByTestId('ticket-stamp').querySelector('use')?.getAttribute('href')).toBe('#pw-stop');
   });
 
-  /** The flip is a real button, so Enter and Space work with no key handler of our own. */
+  /** A real button, so Enter and Space work with no key handler. */
   it('presses with the keyboard', () => {
     const { getByTestId } = renderReduced(<FlipTicket job={VILLAGE} />);
     const button = getByTestId('flip-button');
@@ -764,8 +706,6 @@ describe('the whole family', () => {
     expect(button.getAttribute('type')).toBe('button');
   });
 });
-
-/* ── the caller's own wiring ──────────────────────────────── */
 
 describe('a card offers only what its caller can answer', () => {
   it('grows no File it away, no Keep going and no rewind where the verb is unwired', () => {
@@ -782,8 +722,6 @@ describe('a card offers only what its caller can answer', () => {
     expect(queryByTestId('archive-foot')).toBeNull();
   });
 });
-
-/* ── the caller that never fabricates ─────────────────────── */
 
 describe('the numbers are the job\'s own', () => {
   it('sums the figures across every op that reported one', () => {
@@ -803,14 +741,11 @@ describe('the numbers are the job\'s own', () => {
     const { getByTestId, getAllByTestId } = renderReduced(<FlipTicket job={one} />);
     fireEvent.click(getByTestId('flip-button'));
     expect(getAllByTestId('ticket-step').length).toBe(1);
-    // The back stamp counts the job's ops, which is a different fact from its checkpoints and is
-    // read straight off the projection: one op, one step, nothing rounded up.
+    // The back stamp counts ops, not checkpoints.
     expect(getByTestId('ticket-back-stamp').textContent).toBe('1 step');
   });
 
-  /** And it counts nothing where there is nothing to count. A banked checkpoint with no op behind it
-   *  is the one shape that reaches the back face at zero, and "0 steps" there is a count of an
-   *  absence — the same rule the ticket's own kept-edits fact already follows. */
+  /** A banked checkpoint with no op behind it reaches the back face at zero; "0 steps" counts an absence. */
   it('prints no step stamp at all for a back face with no ops', () => {
     const none = makeJob({ checkpoints: [{ undoIndex: 0, label: 'job' }], ops: [] });
     const { getByTestId, queryByTestId } = renderReduced(<FlipTicket job={none} />);
@@ -820,15 +755,11 @@ describe('the numbers are the job\'s own', () => {
 });
 
 /**
- * The take-back says what it costs.
- *
- * A rewind pops the map's undo stack down to a depth, so it takes everything standing above that
- * depth — the user's own later edits included. These pin that the confirm names that number, and
- * names the user's share of it separately wherever the record can prove there is one (the job banks
- * its settle depth on `jobEnd`, so anything above it was laid down afterwards).
+ * A rewind pops the undo stack to a depth, taking the user's later edits too. The confirm names that
+ * number, and the user's share wherever the job banked its settle depth on `jobEnd`.
  */
 describe('the receipt: a rewind names what it would pop', () => {
-  /** The job wrote 4 (depth 0 -> 15), and 12 hand edits stand on top. */
+  /** The job settled at depth 15; at depth 27, twelve edits on top are the user's. */
   const SETTLED = makeJob({ ...VILLAGE, endUndoIndex: 15 });
 
   it('[ASST-09] names BOTH numbers on the whole-job confirm', () => {
@@ -879,7 +810,6 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getAllByTestId('ticket-step-rewind')[1]!);
     expect(rewound).toEqual([]);
-    // The question names the cost, since the glyph alone cannot say what a take-back takes.
     expect(question('ticket-step-rewind')).toBe('Rewind 11 steps?');
     expect(getAllByTestId('ticket-step-rewind')[1]!.textContent, 'the square itself does not change').toBe('');
     confirm('ticket-step-rewind');
@@ -934,7 +864,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
       <FlipTicket job={SETTLED} undoDepth={4} onRewind={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
-    // Depth 4 is exactly the second checkpoint's watermark: only the job's own first one can pop.
+    // Depth 4 is the second checkpoint's watermark, so only the first can pop.
     expect(queryAllByTestId('ticket-step-rewind').length).toBe(1);
   });
 });
@@ -955,7 +885,6 @@ describe('the stop card: its rewind names the same cost', () => {
   });
 });
 
-/** A rewound record suppresses completion claims that no longer describe the map. */
 describe('the rewound dress', () => {
   it('stops reading Built, and wears the take-back\'s own stamp', () => {
     const { getByTestId } = renderReduced(<FlipTicket job={VILLAGE} rolledBack />);
@@ -995,7 +924,6 @@ describe('the rewound dress', () => {
     expect(getByTestId('ticket-summary').textContent).toContain('A fishing village stands');
   });
 
-  /** The stop card's kept-edits fact is the whole reason that card exists. */
   it('takes the stop card\'s kept-edits fact away once the edits are off the map', () => {
     const stopped = makeJob({
       outcome: 'aborted',
@@ -1018,13 +946,8 @@ describe('the rewound dress', () => {
   });
 });
 
-/**
- * A held question survives the job that was asking it.
- *
- * The ask card belongs to the running job, so it goes when the job settles. A key revoked mid-ask
- * takes the loop down as an ordinary stop (which is correct), so without a record of its own a user
- * who re-keys comes back to a desk with no trace that anything was asked. The stop card holds it.
- */
+/** The ask card goes when its job settles, and a key revoked mid-ask stops the job, so the stop card
+ *  keeps the trace that something was asked. */
 describe('the stop card: a question that lapsed', () => {
   const stopped = makeJob({
     outcome: 'aborted',
@@ -1044,7 +967,6 @@ describe('the stop card: a question that lapsed', () => {
   });
 });
 
-/** Keep going files the same order again, and there is only one of it to file. */
 describe('the capped receipt: Keep going is pressed once', () => {
   const capped = makeJob({ ...VILLAGE, outcome: 'capped' });
 

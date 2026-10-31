@@ -4,11 +4,11 @@ import { CONTROL_CLEARANCE, useScrollRow, type Bleed } from '../../primitives/us
 import { pressable, z } from '../../design/styles';
 import { PLATE_INK } from '../../design/tokens';
 import { SCALE } from '../units';
-import { ACTIVE_PLATE, ROAD_STYLE } from './terrain-cells';
+import { ACTIVE_PLATE, ROAD_STYLE, SWATCH_TILE as TILE } from './terrain-cells';
 import { useFrameZoom } from '../use-frame-zoom';
 
-/** The tile as it lands on screen, and the air between two of them. */
-export const TILE = ROAD_STYLE.size * SCALE;
+/** The tile as it lands on screen (`terrain-cells.ts:SWATCH_TILE`), and the air between two of them. */
+export { TILE };
 export const GAP = (ROAD_STYLE.pitch - ROAD_STYLE.size) * SCALE;
 export const INNER = (ROAD_STYLE.size - 2 * ROAD_STYLE.inset) * SCALE;
 /** The drawing's corner as a proportion of the square it turns, so the inner one is not rounded

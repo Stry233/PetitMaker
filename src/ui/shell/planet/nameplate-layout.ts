@@ -1,10 +1,13 @@
 /**
  * Where the planet session's nameplate stands: its row on the mode row's ink line, the span it may
- * slide in across the window, and how far the toast band moves to clear it, all in the zooms given.
+ * slide in across the window, and how far the toast band moves to clear a plate over the map. The
+ * plate draws at its own zoom (`plateZoom`), the chrome's raised in touch mode; the toast band stays
+ * at the chrome's.
  */
 import { TOAST_BAND_TOP } from '../../chrome/floating/toast-band';
-import { MODE_ROW_INK_CENTRE, cornerArt, cornerWidth, modeRowRight, type FrameLayout } from '../frame';
-import { RAIL } from '../units';
+import { MODE_ROW_INK_CENTRE, cornerArt, cornerWidth, modeRowRight } from '../frame';
+import type { FrameLayout } from '../frame-plan';
+import { EDGE, RAIL } from '../units';
 
 /** The plate's height in css px; its ends are half-circles. */
 export const PLATE_ROW = 52;
@@ -17,14 +20,14 @@ export const NAME_LEAST = 2 * NAME_PAD + NAME_GAP + PEN;
 /** Space between the plate and the surfaces it opens, and between the plate and the toast band, in css px. */
 export const PANEL_GAP = 8;
 
-/** The plate's box top in chrome css px: its middle on the mode row's ink centre, converting the zooms. */
-export function nameplateTop(frameZoom: number, chromeZoom: number): number {
-  return (MODE_ROW_INK_CENTRE * frameZoom) / chromeZoom - PLATE_ROW / 2;
+/** The plate's box top in its own css px at `plateZoom`: its middle on the mode row's ink centre. */
+export function nameplateTop(frameZoom: number, plateZoom: number): number {
+  return (MODE_ROW_INK_CENTRE * frameZoom) / plateZoom - PLATE_ROW / 2;
 }
 
-/** Where the plate's box ends, in chrome css px. */
-function nameplateBottom(frameZoom: number, chromeZoom: number): number {
-  return nameplateTop(frameZoom, chromeZoom) + PLATE_ROW;
+/** Where the plate's box ends, in its own css px at `plateZoom`. */
+export function nameplateBottom(frameZoom: number, plateZoom: number): number {
+  return nameplateTop(frameZoom, plateZoom) + PLATE_ROW;
 }
 
 /** The span the plate may stand in and the centre it keeps while it fits there, in screen px. */
@@ -35,19 +38,21 @@ export interface NameplateSpan { left: number; right: number; centre: number }
  * with it, of the corner, each by the least gap between groups.
  */
 export function nameplateSpan(
-  viewportW: number, frameZoom: number, chromeZoom: number,
-  layout: Pick<FrameLayout, 'width' | 'edgeRight' | 'cornerTop'>, modes: number,
+  viewportW: number, frameZoom: number, plateZoom: number,
+  layout: Pick<FrameLayout, 'width' | 'edgeRight' | 'cornerTop' | 'modeRow'>, modes: number,
 ): NameplateSpan {
-  const level = layout.cornerTop < nameplateBottom(frameZoom, chromeZoom) * chromeZoom / frameZoom;
+  const level = layout.cornerTop < nameplateBottom(frameZoom, plateZoom) * plateZoom / frameZoom;
   const corner = level ? cornerWidth(cornerArt(true)) + RAIL.groupMin : 0;
   return {
-    left: (modeRowRight(modes) + RAIL.groupMin) * frameZoom,
+    // An upright window's row stands at the foot, which leaves the top line to the window's margin.
+    left: (layout.modeRow.placement === 'top' ? modeRowRight(modes, layout.modeRow) + RAIL.groupMin : EDGE) * frameZoom,
     right: (layout.width - layout.edgeRight - corner) * frameZoom,
     centre: viewportW / 2,
   };
 }
 
-/** How far the toast band moves down while the plate stands, in chrome css px: to clear the plate. */
-export function toastBandShift(frameZoom: number, chromeZoom: number): number {
-  return Math.max(0, nameplateBottom(frameZoom, chromeZoom) + PANEL_GAP - TOAST_BAND_TOP);
+/** How far the toast band moves down, in chrome css px, to clear by `PANEL_GAP` a plate whose box
+ *  ends `bottom` of its own css px down at `plateZoom`. */
+export function toastBandShift(bottom: number, plateZoom: number, chromeZoom: number): number {
+  return Math.max(0, (bottom * plateZoom) / chromeZoom + PANEL_GAP - TOAST_BAND_TOP);
 }

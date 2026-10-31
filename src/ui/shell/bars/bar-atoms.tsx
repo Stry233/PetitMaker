@@ -7,11 +7,31 @@ import { motion } from 'framer-motion';
 import { effectiveCombo } from '../../../state/keymap/resolve';
 import { useKeybinds } from '../../../state/keymap/store';
 import { prettyCombo } from '../../../platform/input/combo';
-import { MAP_LABEL, ON_DARK, ACTIVE, PLATE, PLATE_INK } from '../../design/tokens';
+import { MAP_LABEL, ON_DARK, ACTIVE, DARK_GROOVE, PLATE, PLATE_INK } from '../../design/tokens';
 import { SCALE, TEXT } from '../units';
 import { useTransition } from '../../design/motion/use-motion';
+import { useTouchMode } from '../../design/input-mode';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { BADGE, PLATE_ART, plateRight, CELL_BOX } from './terrain-cells';
+import { usePanelInk } from './bar-panel';
+import { useT } from '../../../i18n/context';
+
+/** The live key combo of a bar command in the toolbar's context, or null where it has none. */
+export function useCommandCombo(): (commandId: string) => string | null {
+  const overrides = useKeybinds((s) => s.overrides);
+  const context = useToolbarContext();
+  return (commandId) => effectiveCombo(overrides, commandId, context);
+}
+
+/** A bar control's hover title: its label, with its command's live shortcut where it has one. */
+export function useCommandTitle(): (label: string, commandId?: string) => string {
+  const t = useT();
+  const comboOf = useCommandCombo();
+  return (label, commandId) => {
+    const combo = commandId ? comboOf(commandId) : null;
+    return combo ? t('shortcut.with_combo', { label, combo: prettyCombo(combo) }) : label;
+  };
+}
 
 /** A plate or any other single drawn shape, filling the box its parent gives it. */
 export function Plate({ src, style }: { src: string; style: CSSProperties }) {
@@ -28,11 +48,11 @@ export function ShortcutBadge({ commandId, active = false, grown = false }: {
   active?: boolean;
   grown?: boolean;
 }) {
-  const overrides = useKeybinds((s) => s.overrides);
   const shape = useTransition('tool.plate.shape');
-  const context = useToolbarContext();
-  const combo = effectiveCombo(overrides, commandId, context);
-  if (!combo) return null;
+  const touch = useTouchMode();
+  const combo = useCommandCombo()(commandId);
+  // A keyboard shortcut is no help to a finger.
+  if (!combo || touch) return null;
   return (
     <motion.span
       initial={false}
@@ -52,9 +72,19 @@ export function ShortcutBadge({ commandId, active = false, grown = false }: {
   );
 }
 
+/** The stadium a control stands in on the dark plate, filling its positioned parent behind it: the
+ *  dark plate is the colour of the drawn tracks, which would vanish on it. */
+export function Groove() {
+  return <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: radii.pill, background: DARK_GROOVE, pointerEvents: 'none' }} />;
+}
+
+/** A bar word's line box, as a share of its type size. */
+export const BAR_LINE_HEIGHT = 1.15;
+
 /**
  * A label at a constant css-px size in a box as wide as its words, never shrunk to fit: the row flows,
- * wraps or scrolls instead. It sits on a plate (`color`, the plate's ink) or on the map (`onMap`).
+ * wraps or scrolls instead. It sits on a plate (`color`, the plate's ink) or on the map (`onMap`), which
+ * inside an upright panel is that panel's plate.
  */
 export function BarText({
   size, color, onMap, weight = 800, align = 'center', style, children,
@@ -69,6 +99,7 @@ export function BarText({
   children: ReactNode;
 }) {
   const weightAt = useFrameReadableWeight();
+  const panelInk = usePanelInk();
   return (
     <span
       style={{
@@ -79,8 +110,8 @@ export function BarText({
         fontSize: size,
         fontWeight: weightAt(weight, size),
         whiteSpace: 'nowrap',
-        lineHeight: 1.15,
-        ...(onMap ? MAP_LABEL : null),
+        lineHeight: BAR_LINE_HEIGHT,
+        ...(onMap ? (panelInk ? { color: panelInk } : MAP_LABEL) : null),
         ...(color ? { color } : null),
         ...style,
       }}

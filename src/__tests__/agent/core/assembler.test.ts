@@ -25,9 +25,8 @@ describe('turn assembler', () => {
     a.push({ t: 'tool-start', callId: 'c1', name: 'paint_terrain' });
     a.push({ t: 'tool-args', callId: 'c1', delta: '{"type":"mountain","cells":[[1,2],[1,' });
     const live = a.snapshot();
-    // `parsePartial`'s repair treats the trailing "1" as a complete number (a digit followed by a
-    // comma can't extend it) and closes the dangling inner array around it, so the best-effort
-    // read includes the started-but-incomplete second cell as `[1]` rather than dropping it.
+    // `parsePartial` reads the trailing "1" as a complete number and closes the open inner array
+    // around it, so the unfinished second cell appears as `[1]` instead of being dropped.
     expect(live[0]).toMatchObject({ kind: 'tool', input: { type: 'mountain', cells: [[1, 2], [1]] }, argsDone: false });
   });
 
@@ -114,8 +113,7 @@ describe('turn assembler', () => {
     expect([...deriveBadCallIds(turn)]).toEqual(['c9']);
   });
 
-  /** The marker rides the `done` event and belongs to the turn, so the log can record how the parts
-   *  beside it were arrived at. A turn the adapter had nothing to normalize carries no key at all. */
+  /** The marker rides the `done` event onto the turn; a turn the adapter did not normalize has no `quirks` key. */
   it('carries an adapter quirk through to the finished turn, and none where the wire was ordinary', () => {
     const marked = make();
     marked.push({ t: 'tool-start', callId: 'c1', name: 'find_flat_areas' });
@@ -137,8 +135,7 @@ describe('turn assembler', () => {
     a.push({ t: 'tool-start', callId: 'c1', name: 'undo' });
     a.push({ t: 'tool-args', callId: 'c1', delta: '{"a":1}' });
     const s1 = a.snapshot();
-    // A trailing space grows the raw buffer but JSON.parse tolerates it, so the parsed value is
-    // unchanged even though the buffer differs from the one that produced s1.
+    // A trailing space grows the raw buffer but parses to the same value.
     a.push({ t: 'tool-args', callId: 'c1', delta: ' ' });
     const s2 = a.snapshot();
     expect(s2[0]).toBe(s1[0]);

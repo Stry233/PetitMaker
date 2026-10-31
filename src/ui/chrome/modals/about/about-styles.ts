@@ -1,7 +1,7 @@
 /** The About view's styles: the brand band, the panes, the roster cards, the document grid and the footer. */
 import type { CSSProperties } from 'react';
 import { font, radii, modalRow, btnReset, cursors } from '../../../design/styles';
-import { skin } from '../../../design/window-skin';
+import { WINDOW_ICON_BUTTON, skin } from '../../../design/window-skin';
 import { MUTED } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 
@@ -13,12 +13,24 @@ export const brandBand: CSSProperties = {
   gap: 18,
 };
 
+/** How far the About window's close button stands in from the card's top and end edges, in css px. */
+export const ABOUT_CLOSE_INSET = 16;
+/** The wide layout's side padding, in css px. */
+export const ABOUT_WIDE_PAD_X = 32;
+/** The stacked layout's top padding, in css px. */
+export const ABOUT_STACK_PAD_TOP = 32;
+
+export const aboutCloseAt: CSSProperties = { position: 'absolute', top: ABOUT_CLOSE_INSET, insetInlineEnd: ABOUT_CLOSE_INSET, zIndex: 1 };
+
+/** The band's end column stands level with the close button, so it ends before the button with the
+ *  button's own inset between them. */
 export const bandRight: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'flex-end',
   gap: 6,
   minWidth: 0,
+  paddingInlineEnd: 2 * ABOUT_CLOSE_INSET + WINDOW_ICON_BUTTON - ABOUT_WIDE_PAD_X,
 };
 
 export const hairline: CSSProperties = { height: 1, background: skin.line };
@@ -44,10 +56,13 @@ export const paneDivider: CSSProperties = {
   paddingLeft: 28,
 };
 
+/** The stacked brand starts below the close button at every stacked width: on the narrowest cards the
+ *  button stands over the brand row's end. */
 export const brandBlock: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
+  paddingTop: ABOUT_CLOSE_INSET + WINDOW_ICON_BUTTON - ABOUT_STACK_PAD_TOP,
   gap: 4,
 };
 

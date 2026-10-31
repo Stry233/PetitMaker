@@ -46,7 +46,6 @@ describe('generateTerrain dispatch + clearAllTerrain', () => {
     const cleared = clearAllTerrain({ state, execute: simpleExecutor(state) });
     expect(cleared).toBeGreaterThan(0);
 
-    // Verify no terrain remains
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         const cell = getCell(state.cells, x, y);

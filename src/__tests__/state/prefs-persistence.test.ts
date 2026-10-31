@@ -10,9 +10,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';
 import { createPrefsSlice, type PrefsSlice } from '../../state/slices/prefs';
 
-/** A slice booted the way the store boots one at page load — reading prefs, holding defaults. */
+/** A slice booted as the store boots one at page load: prefs read, defaults held. */
 function boot(): PrefsSlice {
-  return createPrefsSlice((() => {}) as never, (() => ({})) as never, {} as never);
+  return createPrefsSlice('pc')((() => {}) as never, (() => ({})) as never, {} as never);
 }
 
 beforeEach(() => {
@@ -108,7 +108,7 @@ describe('the Settings tile cycles the grid modes', () => {
 
 describe('the cursor default is the painted set, everywhere', () => {
   // Held even on desktop Linux, where Wayland Chromium under fractional display scaling draws
-  // custom bitmaps at the wrong size (see cursor-css.ts's header) — a platform-keyed default
+  // custom bitmaps at the wrong size (see cursor-css.ts's header); a platform-keyed default
   // would trade one platform's defect for a split default. The Settings cursor choice is the way out.
   it('an unset preference reads as painted, and a stored choice reads as stored', () => {
     expect(boot().systemCursors).toBe(false);

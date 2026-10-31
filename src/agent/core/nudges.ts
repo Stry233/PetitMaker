@@ -43,6 +43,16 @@ export function reviewNudge(tools: GuideTools): string {
     + 'honestly; ask the user only when their decision is needed. Your next close is final.';
 }
 
+/** Sent once in place of a close after planning annotations were drawn and no plan was filed. */
+export function unfiledSketchNudge(tools: GuideTools): string {
+  return '(system) Planning annotations stand on the map, but no plan was filed. If this order calls '
+    + `for a plan or a build, read the drawing back with ${tools.sketch} and compare it with every item `
+    + 'the order names: repair a missing item, zones no path reaches, or ground the order wanted planned '
+    + `and left empty. Then file the plan with ${PROTOCOL.plan}, stages naming the zone numbers; its `
+    + 'approval is how the user answers, so do not ask in text whether to build. If the user only wanted '
+    + 'annotations or advice, close. Your next close is final.';
+}
+
 /** Sent once in place of a close that leaves plan stages unfinished. */
 export function unfinishedPlanNudge(
   tools: GuideTools,

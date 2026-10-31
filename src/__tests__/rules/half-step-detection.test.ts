@@ -1,14 +1,12 @@
 /**
- * Half-step span items at the detection level: bridge-span and
- * heightDrop walking the half grid. The reported cases are (a) a ramp that only
- * fits flush at a half anchor beside a mountain edge and (b) the 0.5 + 1 + 0.5
- * gap — half a block of mountain either side of a one-block gap — which the
+ * Half-step span items at the detection level: bridge-span and heightDrop walking the half grid.
+ * The cases are (a) a ramp that only fits flush at a half anchor beside a mountain edge and
+ * (b) the 0.5 + 1 + 0.5 gap (half a block of mountain either side of a one-block gap), which the
  * whole-cell grid cannot express.
  *
- * Terrain renders on the terrain grid, so a terrain cell's visual extent is
- * [c - 0.5, c + 0.5): a footprint anchored on a whole coordinate straddles one
- * extra cell on each axis (the dual-grid bleed), while a HALF-anchored one lands
- * exactly on the cells it covers. That is the whole of the unlock.
+ * Terrain renders on the terrain grid, so a terrain cell's visual extent is [c - 0.5, c + 0.5):
+ * a footprint anchored on a whole coordinate straddles one extra cell on each axis (the dual-grid
+ * bleed), while a half-anchored one lands exactly on the cells it covers.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -21,9 +19,8 @@ import { makeState, setTerrain, setZone } from '../_support/map-state';
 import { __setCatalogItem } from '../../state/catalog';
 import { ItemCategory } from '../../config/catalog/categories';
 
-// A bridge without the halfStep trait: the gate. Its detection must answer exactly
-// as the shipped (halfStep) bridges do on a whole anchor, and it must never reach
-// detection at all on a half one.
+// A bridge without the halfStep trait. Its detection must answer exactly as the shipped (halfStep)
+// bridges do on a whole anchor, and it must never reach detection on a half one.
 __setCatalogItem({
   id: 'hsd-plain-bridge', category: ItemCategory.Bridge, name: { en: 'Plain Bridge' },
   width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -46,8 +43,8 @@ function snap(id: string, x: number, y: number, state: GridState) {
   return { position, rotation, elevation, spanLength };
 }
 
-/** Same, through the whole pre-command registry — the snapped footprint then also
- *  faces V-ZONE-01 / V-PLACE-OVERLAP, which judge the command as it lands. */
+/** Same, through the whole pre-command registry: the snapped footprint then also faces
+ *  V-ZONE-01 and V-PLACE-OVERLAP, which judge the command as it lands. */
 function snapThroughRegistry(id: string, x: number, y: number, state: GridState) {
   const registry = createDefaultRegistry();
   const cmd = registry.resolve(place(id, x, y), state);
@@ -92,7 +89,7 @@ describe('heightDrop on the half grid', () => {
     expect(half!.position).toEqual({ x: 4.5, y: 9 });
     expect(half!.rotation).toBe(0);
     expect(half!.elevation).toBe(1);
-    // and it survives the rest of the pre-command rules (V-ZONE-01 reads the snapped position)
+    // It also passes the rest of the pre-command rules (V-ZONE-01 reads the snapped position).
     expect(snapThroughRegistry('ramp-teak-stair', 4.5, 10, build())).toEqual(half);
   });
 
@@ -170,10 +167,8 @@ describe('a doubly-half anchor (both axes on the half grid — a hover near a co
   }
 
   it('bridge: the along axis still resolves whole, the across axis keeps its half offset', () => {
-    // The gap walk's own induction (see bridge-span.ts's header) rescues a half along input: the
-    // first raised read can only land on a whole cell, whichever axis carries it. Anchoring at
-    // x = 6.5 (half on the span axis too, not just y) must reach the exact same span as the whole-
-    // and single-half-axis anchors already pinned above.
+    // The gap walk keeps both deck ends on whole coordinates (bridge-span.ts), so an anchor half on
+    // the span axis too (x = 6.5) reaches the same span as the anchors above.
     const state = channel([5]);
     const whole = snap('bridge-plank', 6, 4.5, state)!;
     expect(snap('bridge-plank', 6.5, 4.5, state)).toEqual(whole);
@@ -182,11 +177,9 @@ describe('a doubly-half anchor (both axes on the half grid — a hover near a co
   });
 
   it('ramp: the along axis rounds onto a whole cell instead of leaking the anchor\'s own half', () => {
-    // A ramp read from the high side (anchorIsHigh) takes the anchor's own coordinate as the
-    // along-axis position verbatim — so a hover that rounds both axes to the half grid can hand
-    // it a fractional along value the terrain-support sweep never actually validated at (it reads
-    // the same cell via floor(v + 0.5) regardless). The rule must round it to that cell, not store
-    // the half, while the across axis (x) keeps the offset the anchor supplied.
+    // A ramp read from the high side takes the anchor's along coordinate as its position, while the
+    // support sweep reads the cell it rounds to; the rule stores that cell, and the across axis (x)
+    // keeps the anchor's half offset.
     const build = () => {
       const state = plateauMap();
       for (let y = 10; y <= 14; y++) {
@@ -219,9 +212,8 @@ describe('granularity: nothing off the half grid gets in or out', () => {
   });
 
   it('a whole anchor never snaps onto a half cell', () => {
-    // Everything that reads a footprint by whole-cell key (the agent's region lock,
-    // the layer-number mask) only ever sees anchors from the generator and the agent,
-    // which are whole. The half grid must stay reachable only from a half anchor.
+    // Readers that key footprints by whole cell (the agent's region lock, the layer-number mask) get
+    // whole anchors from the generator and the agent, so only a half anchor may reach the half grid.
     const state = plateauMap();
     for (let y = 10; y <= 14; y++) setTerrain(state, 7, y, TerrainType.Mountain, 1);
     for (let x = 3; x <= 12; x++) {

@@ -115,8 +115,9 @@ describe('a cancelled click leaves the map as it was', () => {
     expect(s.executor.historyDepth()).toBe(1);
   });
 
+  // A touch press with an item armed places nothing until it lifts (EDIT-41), so it has no row here.
   it.each([
-    [ToolType.ObjectPlacer, 'mouse'], [ToolType.ObjectPlacer, 'touch'],
+    [ToolType.ObjectPlacer, 'mouse'],
     [ToolType.EdgeCut, 'mouse'], [ToolType.EdgeCut, 'touch'],
   ])('%s: the browser cancelling a %s press rolls it back', (tool, pointerType) => {
     const s = setup(tool);
@@ -128,8 +129,30 @@ describe('a cancelled click leaves the map as it was', () => {
     expect(s.executor.canRedo()).toBe(false);
   });
 
-  it.each([ToolType.ObjectPlacer, ToolType.EdgeCut])('%s: a second finger takes the click back without a redo step', (tool) => {
-    const s = setup(tool);
+  it('ObjectPlacer: the browser cancelling a waiting touch placement places nothing, and the next tap places', () => {
+    const s = setup(ToolType.ObjectPlacer);
+    press(s.canvas, 'touch');
+    pointer(window, 'pointercancel', 'touch', [52, 52]);
+    expect(s.unchanged()).toBe(true);
+    expect(s.executor.canUndo()).toBe(false);
+    press(s.canvas, 'touch');
+    pointer(window, 'pointerup', 'touch', [52, 52]);
+    expect(s.unchanged()).toBe(false);
+    expect(s.executor.historyDepth()).toBe(1);
+  });
+
+  it('ObjectPlacer: a second finger on a waiting touch placement leaves nothing placed and nothing to redo', () => {
+    const s = setup(ToolType.ObjectPlacer);
+    press(s.canvas, 'touch');
+    pointer(s.canvas, 'pointerdown', 'touch', [150, 150], 2);
+    for (const id of [1, 2]) pointer(window, 'pointerup', 'touch', [150, 150], id);
+    expect(s.unchanged()).toBe(true);
+    expect(s.executor.canUndo()).toBe(false);
+    expect(s.executor.canRedo()).toBe(false);
+  });
+
+  it('EdgeCut: a second finger takes the click back without a redo step', () => {
+    const s = setup(ToolType.EdgeCut);
     press(s.canvas, 'touch');
     pointer(s.canvas, 'pointerdown', 'touch', [150, 150], 2);
     expect(s.unchanged()).toBe(true);
@@ -140,7 +163,7 @@ describe('a cancelled click leaves the map as it was', () => {
   });
 
   it('a second finger on a map that already breaks a rule takes back only this touch', () => {
-    const s = setup(ToolType.ObjectPlacer);
+    const s = setup(ToolType.TerrainBrush);
     // A lone layer-4 column written straight into the grid, as a loaded save can hold, and one
     // earlier legal edit on the stack.
     setTerrain(s.state, 16, 16, TerrainType.Mountain, 4);

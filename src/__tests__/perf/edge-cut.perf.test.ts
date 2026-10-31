@@ -1,11 +1,7 @@
 /*
- * The edge-cut kernel and the road/terrain geometry it feeds.
- *
- * Covers the paths every trimmed cell and every road surface pay on a real map: the silhouette
- * primitive swept over every cell (what a full redraw reads), one reconcile pass over a changed
- * region (what a stroke/generation commit repairs), the auto-trim pass over a fresh large stroke
- * (what Auto Trim costs on a plateau, not a single dab), the connected road-surface union, the
- * per-tile road outline, and the per-corner cut backing (what a renderer asks for behind a cut).
+ * The edge-cut kernel and the road and terrain geometry it feeds: the silhouette swept over every
+ * cell (a full redraw), one reconcile pass over a changed region (a commit), auto-trim over a large
+ * fresh stroke, the road-surface union, the per-tile road outline and the per-corner cut backing.
  * See `_harness.ts` for the gate and methodology.
  */
 import { describe, it } from 'vitest';
@@ -28,8 +24,7 @@ import { ItemCategory } from '../../config/catalog/categories';
 
 const s = perfSuite('edge-cut');
 
-/** The road tiles standing on a world — the same category filter `object-layer.ts` /
- *  `road-mesh.ts` apply before handing a tile list to the road-region builder. */
+/** The road tiles on a world, filtered as `object-layer.ts` and `road-mesh.ts` filter them. */
 function roadObjectsOf(world: World): PlacedObject[] {
   const out: PlacedObject[] = [];
   for (const obj of world.state.objects.values()) {
@@ -39,11 +34,9 @@ function roadObjectsOf(world: World): PlacedObject[] {
 }
 
 /**
- * The dense map, cut: `generateDesigned` never edge-cuts its own terrain (that pass is a
- * stroke/stencil concern, not the designed methodology's), so the raw fixture carries zero
- * trimmed corners anywhere. A clone run through the same whole-map trim the stencil generator
- * calls (`edgeCutGeneratedTerrain`, 'round') gives the kernel a realistic, varied population of
- * outer bevels/fans and Γ-notch fillets to sweep — built once and cached for every bench below.
+ * The dense map, cut. `generateDesigned` never edge-cuts, so the raw fixture has no trimmed corners;
+ * the stencil generator's whole-map trim (`edgeCutGeneratedTerrain`, 'round') gives the kernel a
+ * varied population of bevels, fans and Γ-notch fillets. Built once and cached.
  */
 let cutIslandCache: World | null = null;
 function cutIsland(): World {
@@ -64,9 +57,8 @@ function cutIsland(): World {
   return world;
 }
 
-/** Every cell whose terrain carries an actual cut (some corner not square) — the population
- *  `cutBackingByCorner` is asked about, mirroring `layer-visibility.ts`'s and `surface-pieces.ts`'s
- *  per-cell sweep at full elevation (no hidden layers). */
+/** Every cell with a corner not square: what `cutBackingByCorner` is asked about in the per-cell
+ *  sweep of `layer-visibility.ts` and `surface-pieces.ts` with no layers hidden. */
 function cutCellsOf(world: World): { x: number; y: number; terrain: TerrainCell }[] {
   const { width, height } = world.state.template;
   const out: { x: number; y: number; terrain: TerrainCell }[] = [];
@@ -79,10 +71,8 @@ function cutCellsOf(world: World): { x: number; y: number; terrain: TerrainCell 
   return out;
 }
 
-/** The render tier `cutBackingByCorner` is asked at for a given cut cell — `patchOnly` reads its
- *  own elevation (the branch it special-cases), a ground-islet cut is asked at ground (0), and a
- *  real mountain/water cell is asked at its structural top, exactly as `surface-pieces.ts`'s
- *  non-patch, non-islet branch does. */
+/** The render tier `cutBackingByCorner` is asked at, as `surface-pieces.ts` picks it: a patch at its
+ *  own elevation, a ground islet at 0, a mountain or water cell at its structural top. */
 function renderTierFor(t: TerrainCell): number {
   if (t.patchOnly) return t.elevation;
   if (t.type === TerrainType.None) return 0;

@@ -1,10 +1,8 @@
 /**
- * The plan-notes tool, driven through a scripted HostedToolContext over the live store — the same
- * refresh-per-event shape ToolManager gives it. Cell coordinates only, so what passes here holds
- * in both views by construction. `point` is the pointer's map point, as the views
- * supply it. Zones and measurements step in half cells, centred on the half-cell point nearest the
- * pointer, so a press at a cell's centre (`mid`) lands on that whole cell and a press at its corner
- * lands half a cell up and left of it.
+ * The plan-notes tool through a HostedToolContext rebuilt per event over the live store, as
+ * ToolManager drives it. Coordinates are cells and map points only, so the results hold in both
+ * views. Zones and measurements step in half cells around the half-cell point nearest the pointer: a
+ * press at a cell's centre (`mid`) lands on that whole cell, one at its corner half a cell up-left.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -24,6 +22,8 @@ import { annotationInkScale } from '../../../../core/model/annotation/text-metri
 import { cell, point } from '../../../_support/grid';
 import { brushSizeOf } from '../../../../state/editing/edit-mode';
 import { armingOf } from '../../../../state/editing/arming';
+import { pressTravelled } from '../../../../tools/pointer/annotate/note-edits';
+import { GESTURE_TIMING } from '../../../../platform/input/gesture-timing';
 
 const s = () => useEditorStore.getState();
 
@@ -59,7 +59,7 @@ function liveCtx(over: ToolCtxOver = {}): HostedToolContext {
 const at = (x: number, y: number): MacroCoord => ({ x, y });
 /** The centre of cell (x, y). */
 const mid = (x: number, y: number): [number, number] => [x + 0.5, y + 0.5];
-/** The press at an exact point: the view's half-cell reading. */
+/** A context whose pointer stands at the exact map point (x, y). */
 const press = (x: number, y: number) => liveCtx({ point: point(at(x, y)) });
 const items = () => s().gridState?.annotations?.items ?? [];
 const zoneById = (id: string) => items().find((n) => n.id === id) as ZoneNote;
@@ -530,7 +530,7 @@ describe('the select state', () => {
   });
 
   it('moves a selected note on an engine with no structuredClone', () => {
-    // Safari before 15.4 has none. The drag snapshot is plain planning data either way.
+    // Safari before 15.4 has none.
     vi.stubGlobal('structuredClone', undefined);
     try {
       s().addAnnotation({ kind: 'chip', id: 'c2', x: 5.5, y: 15.5, tag: 'plaza', size: 'm', color: '#FFB347' });
@@ -546,8 +546,7 @@ describe('the select state', () => {
   });
 
   it('drags a zone from its own snapshot, so the offset is measured from where the press began', () => {
-    // The snapshot must be independent of the live items: reading them back mid-drag would add
-    // each frame's move to the last.
+    // Reading the live items mid-drag would add each frame's move to the last.
     s().setAnnotationSelection(['z1']);
     tool.onPointerDown(cell(at(4, 8)), point(at(0, 0)), press(4, 8));
     tool.onPointerMove(cell(at(6, 8)), point(at(0, 0)), press(6, 8));
@@ -747,7 +746,7 @@ describe('draft gesture history', () => {
 });
 
 describe('the road brush unit', () => {
-  /** A template large enough that its ink scale is well above 1, so no size reads it. */
+  /** A template whose ink scale is well above 1: the road brush footprint does not scale with it. */
   const BIG = 160;
   /** A press at the centre of cell (x, y). */
   const sized = (x: number, y: number, brushSize: number) => liveCtx({ point: point(at(...mid(x, y))), brushSize });
@@ -1241,5 +1240,16 @@ describe('note ghosts', () => {
     expect(hover(4, 4)).not.toBeNull();
     tool.onPointerDown(cell(at(4, 4)), point(at(4, 4)), ctx);
     expect(clear).toHaveBeenCalled();
+  });
+});
+
+describe('pressTravelled', () => {
+  it('measures a press on screen against its pointer drag threshold on either axis', () => {
+    const start = { x: 4, y: 4 };
+    const touch = { cellPixels: 20, dragThreshold: GESTURE_TIMING.touch.dragThreshold };
+    // A diagonal of 8 px on each axis is past no 10 px axis, though its length is over 10.
+    expect(pressTravelled(start, { x: 4.4, y: 4.4 }, touch)).toBe(false);
+    expect(pressTravelled(start, { x: 4.6, y: 4 }, touch)).toBe(true);
+    expect(pressTravelled(start, { x: 4.4, y: 4 }, { cellPixels: 20, dragThreshold: GESTURE_TIMING.pc.dragThreshold })).toBe(true);
   });
 });

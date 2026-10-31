@@ -11,8 +11,12 @@ let shiftHeld = false;
 let ctrlHeld = false;
 let altHeld = false;
 let spaceHeld = false;
-/** Held non-modifier key tokens. */
-const heldTokens = new Set<string>();
+/** The binding token of each physical key held, by `KeyboardEvent.code` (by token where the event
+ *  names no code): a key's release reports the code it went down with, while its `key` may have
+ *  changed since (Shift let go first turns '!' back into '1'). */
+const heldTokens = new Map<string, string>();
+/** The tokens of the modifier keys themselves, which macOS still releases with their own keyup. */
+const MODIFIER_TOKENS = new Set(['shift', 'control', 'alt', 'meta']);
 const changed = createSignal();
 let uninstall: (() => void) | null = null;
 
@@ -37,8 +41,13 @@ export function installKeyTracking(): void {
     altHeld = e.altKey;
     if (e.code === 'Space') spaceHeld = e.type === 'keydown';
     const tok = eventKeyToken(e);
-    if (e.type === 'keydown') heldTokens.add(tok);
-    else heldTokens.delete(tok);
+    const physical = e.code || tok;
+    if (e.type === 'keydown') heldTokens.set(physical, tok);
+    else heldTokens.delete(physical);
+    // macOS sends no keyup for a key released while Cmd is down, so letting Cmd go lets them go too.
+    if (e.type === 'keyup' && tok === 'meta') {
+      for (const [code, held] of heldTokens) if (!MODIFIER_TOKENS.has(held)) heldTokens.delete(code);
+    }
     if (!e.repeat) changed.emit();
   };
   // A window blur can swallow the keyup (alt-tab), so blur releases everything: a modifier stuck on
@@ -63,8 +72,15 @@ export function isKeyHeld(token: string): boolean {
     case 'ctrl': case 'control': case 'meta': case 'cmd': return ctrlHeld;
     case 'alt': case 'option': return altHeld;
     case 'space': return spaceHeld;
-    default: return heldTokens.has(token);
+    default:
+      for (const held of heldTokens.values()) if (held === token) return true;
+      return false;
   }
+}
+
+/** Whether any key, a modifier included, is held. */
+export function anyKeyHeld(): boolean {
+  return shiftHeld || ctrlHeld || altHeld || spaceHeld || heldTokens.size > 0;
 }
 
 export function __resetHeldKeys(): void {

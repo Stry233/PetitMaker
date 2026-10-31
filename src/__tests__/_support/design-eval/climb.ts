@@ -1,16 +1,10 @@
 /**
- * The walk must climb, and the planet must be visible from it.
+ * The walk must climb, and the planet must be visible from it: both principles read over the
+ * pavement, where a visitor stands, and `walkRhythm` reads the same sight casting along one route.
  *
- * The first two design principles read as numbers, and both are facts about where a visitor stands
- * rather than about what the map contains. Every reading below is taken over the pavement, because
- * that is where a visitor is; `walkRhythm` is the same family taken along one traced route instead,
- * which is why the sight casting the two share lives here.
- *
- * The reference's own numbers, measured on the decoded fixture: 2.65 bits of pavement elevation
- * entropy over six levels each carrying 5% or more, 47.1% of the pavement standing at level 4 or
- * above, 2.85 level-change events per 100 pavement cells, and a clear line of sight to mass at level
- * 5 or above from 70.8% of it. The floors beside each field sit under those numbers rather than at
- * them.
+ * The reference measures 2.65 bits of pavement elevation entropy over six levels of 5% or more, 47.1%
+ * of the pavement at level 4 or above, 2.85 level changes per 100 pavement cells, and a clear sight
+ * of mass at level 5 or above from 70.8% of it.
  */
 import type { GridState } from '../../../core/model/types';
 import { getCatalogItem } from '../../../state/catalog';
@@ -31,18 +25,13 @@ export interface ClimbReading {
   aboveMid: number;
   /** The largest share any one level holds: a single-storey walk reads near 1. */
   topLevelShare: number;
-  /** Ramps and bridges per 100 pavement cells over the whole map: how much of the map's circulation
-   *  is a level change at all. Not a reading of the primary walk — a walk of its own would have to be
-   *  handed the plan's line, and this is a fact about the finished map. */
+  /** Ramps and bridges per 100 pavement cells over the whole map, not along the primary walk. */
   eventsPer100: number;
   /** Share of the pavement with a clear line of sight to mass at `FORM_MASS_LEVEL` or above. */
   seesMass: number;
   /**
-   * Compression and release, reported and not gated: the entropy of how far a visitor can see, in bits.
-   *
-   * The principle is a rhythm of pinch and opening rather than any one state: the reference reads 1.98
-   * bits of view-length entropy against a generated map's 0.64 to 1.71. It verifies the climb and the
-   * planting rather than being a thing to build, so it is printed beside them and nothing is held to it.
+   * Compression and release, reported but never gated: the entropy of how far a visitor can see, in
+   * bits. The reference reads 1.98 against generated maps' 0.64 to 1.71.
    */
   viewEntropy: number;
   /** The map's tallest built elevation. */
@@ -52,23 +41,16 @@ export interface ClimbReading {
 /** A level carrying less than this share of the pavement is not a storey the walk uses. */
 const LEVEL_SHARE_MIN = 0.05;
 
-/** Where the map's upper half begins, and the mass a visitor is meant to be able to see. Both are read
- *  off the reference: its pavement stands above level 4 and its dominant form at 5. */
+/** Where the map's upper half begins, read off the reference's pavement. */
 export const ABOVE_MID_LEVEL = 4;
 
+/** The mass a visitor should be able to see: the reference's dominant form stands at this level. */
 export const FORM_MASS_LEVEL = 5;
 
-/** How far a view is cast, in macro cells. Casting to the map edge is the coarser convention; this
- *  stops at a distance a player's camera actually shows, about a quarter of the planet. */
+/** How far a view is cast, in macro cells: about a quarter of the planet, what the game camera shows. */
 export const FORM_SIGHT_REACH = 40;
 
-/**
- * The eight directions a view is cast along.
- *
- * Eight rather than four because a mass standing off the axes is a mass a visitor sees, and the
- * diagonals are what a four-ray cast misses. The conventional model is 4-direction or 36-ray flat
- * casting, and either is a coarse stand-in for a camera.
- */
+/** Eight directions, so a mass standing off the axes is still seen. */
 const SIGHT_RAYS = [
   [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
 ] as const;
@@ -124,14 +106,13 @@ export function climbReading(state: GridState, g = readMap(state)): ClimbReading
   };
 }
 
-/** How far the longest of the eight views from a cell reaches, in macro cells, and how those lengths
- *  are binned for the entropy above. Four cells to a bin over the same `FORM_SIGHT_REACH` the form
- *  probe casts to, so the reading tops out at `log2(10)` bits and a pinch and an open court fall in
- *  different bins. A cast to the map edge yields bits on another scale, not comparable with these. */
+/** View lengths are binned four cells to a bin over `FORM_SIGHT_REACH`, so `viewEntropy` tops out at
+ *  `log2(10)` bits and a pinch and an open court fall in different bins. */
 const VIEW_BIN = 4;
 
 const VIEW_BINS = Math.ceil(FORM_SIGHT_REACH / VIEW_BIN);
 
+/** The longest of the eight views from a cell, in macro cells. */
 function longestView(g: MapMasks, blocks: Uint8Array, x: number, y: number): number {
   const { W, H } = g;
   const eye = g.elev[y * W + x]!;
@@ -150,9 +131,8 @@ function longestView(g: MapMasks, blocks: Uint8Array, x: number, y: number): num
   return best;
 }
 
-/** What stops a view: a building, a facility or a tree. Water, flora and pavement do not, and ground
- *  is read by its own height rather than as a blocker, which is the model the reference numbers above
- *  were read with. */
+/** What stops a view: a structure or a tree. Water, flora and pavement do not; ground blocks by height
+ *  in the casts themselves. The reference numbers were measured with this model. */
 function sightBlockers(g: MapMasks): Uint8Array {
   const out = new Uint8Array(g.structure);
   for (let i = 0; i < out.length; i++) {
@@ -174,37 +154,30 @@ function seesMassFrom(g: MapMasks, blocks: Uint8Array, x: number, y: number): bo
       const j = cy * W + cx;
       if (g.mountain[j] && g.elev[j]! >= FORM_MASS_LEVEL) return true;
       if (blocks[j]) break;
-      // Ground standing above the viewer closes the view; ground at their own level or below, and
-      // water at any level, does not.
+      // Ground above the viewer closes the view; lower ground and water at any level do not.
       if (!g.water[j] && g.elev[j]! > eye) break;
     }
   }
   return false;
 }
 
-/** How near the walk has to pass a feature to be threading it, in cells, and how long a view has to be
- *  to read as open. A pinch reads at under 15 cells, and the reference's median longest view is 64. */
+/** How near the walk passes a feature to be threading it, in cells. */
 const WALK_NEAR = 3;
 
+/** A view shorter than this, in cells, is a pinch. */
 const WALK_TIGHT = 15;
 
+/** A view this long or longer, in cells, is open. */
 const WALK_OPEN = 30;
 
 /**
- * The walk's own rhythm: does the route thread a composed feature, and does it pinch and then open
- * while it does?
- *
- * Compression and release verifies the climb and the planting rather than being a feature to build, and
- * this is that reading taken along the primary walk instead of over all pavement: 4.5% of the
- * reference's pavement has a longest view under 15 cells while its median is 64, so the reference is
- * mostly open with real pinch points punctuating it. A route that never comes near a composed body has
- * nothing to be punctuated by, which is the half a generator can build.
- *
- * The trace is the caller's, because the walk is a plan and a finished map does not say where it ran.
+ * Compression and release along the primary walk: does the route pass a composed feature, and does it
+ * both pinch and open? The reference is mostly open, with 4.5% of its pavement under a 15-cell view.
+ * The caller supplies the trace, since a finished map does not record where the walk ran.
  */
 export interface WalkRhythm {
   cells: number;
-  /** Trace cells standing within `WALK_NEAR` of a feature body. */
+  /** Share of trace cells within `WALK_NEAR` of a feature body. */
   nearFeature: number;
   /** Distinct feature bodies the walk passes. */
   features: number;
@@ -222,8 +195,7 @@ export function walkRhythm(
   };
   if (trace.length === 0) return empty;
   const { W, H } = g;
-  // A feature is a body the figure pass would have drawn: the reading and the pass share `FIGURE_MIN`,
-  // so a map cannot be credited with threading a pool the pass would have called an accent.
+  // Shares `FIGURE_MIN` with the figure pass, so a pool the pass calls an accent is no feature here.
   const features = waterBodies(g, state).filter((b) => b.cells.length >= FIGURE_MIN);
   const owner = new Int32Array(W * H).fill(-1);
   for (const [k, body] of features.entries()) for (const i of body.cells) owner[i] = k;

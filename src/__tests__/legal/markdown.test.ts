@@ -4,7 +4,7 @@ import { renderedLink } from '../_support/legal-links';
 import type { Inline } from '../../legal/markdown';
 
 // Shorthand builders keep the expected-tree literals in the assertions below
-// readable — this file is deliberately full of exact node-tree objects.
+// readable; this file is deliberately full of exact node-tree objects.
 const txt = (text: string): Inline => ({ t: 'text', text });
 
 describe('parseLegalMarkdown — headings', () => {
@@ -182,13 +182,10 @@ describe('parseLegalMarkdown — inline spans', () => {
   });
 
   it('degrades malformed nesting ("**a *b** c*") to text without throwing', () => {
-    // No nesting inside inline spans (grammar rule): the em delimiter class
-    // ([^*]) can never bridge across a literal '*', so "**" here can't close
-    // a strong span past the intervening single '*'s — it falls back to two
-    // small em matches plus literal '*'/'b*' text runs. The important
-    // invariant under test is that this never throws and every character is
-    // accounted for (no silent truncation), not that it round-trips to a
-    // single strong node.
+    // No nesting inside inline spans: the em delimiter class ([^*]) cannot bridge a literal '*',
+    // so "**" cannot close a strong span past the single '*'s and the parse falls back to two small
+    // em matches plus literal '*' and 'b*' text runs. The invariant under test is that it never
+    // throws and every character is accounted for, not that it becomes one strong node.
     expect(() => parseLegalMarkdown('**a *b** c*')).not.toThrow();
     expect(parseLegalMarkdown('**a *b** c*')).toEqual([
       {

@@ -1,5 +1,5 @@
 import { EDITION_COPY } from '../../../../../platform/build/edition';
-import { WindowHeader, windowFrame } from '../../../../primitives/Window';
+import { WindowBody, WindowFooter, WindowHeader, windowFrame } from '../../../../primitives/Window';
 import { ActionButton } from '../../../../primitives/ActionButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
@@ -7,13 +7,15 @@ import { useT } from '../../../../../i18n/context';
 import { timedHint } from '../../../timed-hint';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { TimedButton } from '../../../../primitives/TimedButton';
-import { ScrollArea } from '../../../../primitives/ScrollArea';
-import { useScrollGeometry } from '../../../../primitives/scroll-geometry';
+import { readScrollGeometry, scrollTravel, type ScrollGeometry } from '../../../../primitives/scroll-geometry';
 import { cursors, UNAVAILABLE } from '../../../../design/styles';
 import { skin, windowFooterPrimary } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 
 const READING_MS = 7000;
+
+/** Whether a laid-out scroller shows its last line, within the tolerance its fades use. */
+const showsEnd = (g: ScrollGeometry): boolean => g.height > 0 && scrollTravel(g, 'y').end === 0;
 
 function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean }) {
   const t = useT();
@@ -48,7 +50,7 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
 
   const checkEnd = useCallback(() => {
     const node = content.current;
-    setAtEnd(!!node && node.clientHeight > 0 && node.scrollTop + node.clientHeight >= node.scrollHeight - 2);
+    setAtEnd(!!node && showsEnd(readScrollGeometry(node)));
   }, []);
   useEffect(() => {
     setAtEnd(false);
@@ -57,8 +59,6 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
     checkEnd();
   }, [open, entered, t, format, hasPetitGlyph, checkEnd]);
 
-  useScrollGeometry(content, checkEnd);
-
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
   const ready = open && entered && seconds === 0 && atEnd;
   return (
@@ -66,8 +66,8 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
       cardStyle={{ ...windowFrame, minHeight: 0 }} ariaLabel={t('export.notice.title')}>
       <WindowHeader title={<h2 style={{ margin: 0, font: 'inherit' }}>{t('export.notice.title')}</h2>} reserve
         close={{ label: t('hint.close'), onPress: () => onDecision(false) }} style={{ marginBottom: 16, flex: '0 0 auto' }} />
-      <ScrollArea ref={content} gutter="stable" surface={skin.plate} tabIndex={0} role="region" aria-label={t('export.notice.title')}
-        style={{ minHeight: 0, ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk }}>
+      <WindowBody ref={content} onGeometry={(g) => setAtEnd(showsEnd(g))} tabIndex={0} role="region" aria-label={t('export.notice.title')}
+        style={{ flex: '0 1 auto', ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk }}>
         <div>
           <p style={{ margin: '0 0 14px' }}>{t('export.notice.intro', { app: t('app.name') })}</p>
           <ol style={{ margin: 0, paddingInlineStart: 20, display: 'grid', gap: 12 }}>
@@ -78,18 +78,18 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
               : hasPetitGlyph && <li>{t('export.notice.image_attribution')}</li>}
           </ol>
         </div>
-      </ScrollArea>
-      <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 10, flex: '0 0 auto' }}>
-        <ActionButton appearance="secondary" style={{ flex: '1 0 140px' }} onClick={() => onDecision(false)}>{t('export.notice.cancel')}</ActionButton>
-        <TimedButton after={0} hint={timedHint(t, 0)} disabled={!ready} external={seconds > 0 ? {
+      </WindowBody>
+      <WindowFooter style={{ marginTop: 20 }}
+        cancel={<ActionButton appearance="secondary" onClick={() => onDecision(false)}>{t('export.notice.cancel')}</ActionButton>}
+        primary={<TimedButton after={0} hint={timedHint(t, 0)} disabled={!ready} external={seconds > 0 ? {
           fraction: (reduced ? Math.floor(elapsed / 1000) * 1000 : elapsed) / READING_MS,
           spanMs: open && entered && readingVisible ? READING_MS : 0,
         } : undefined}
           onPress={() => { if (ready) onDecision(true); }}
-          style={{ ...windowFooterPrimary, flex: '1 0 180px', minWidth: 0, opacity: ready ? 1 : UNAVAILABLE, cursor: ready ? cursors.clickable : cursors.default }}>
+          style={{ ...windowFooterPrimary, opacity: ready ? 1 : UNAVAILABLE, cursor: ready ? cursors.clickable : cursors.default }}>
           {seconds > 0 ? t('export.notice.wait', { seconds }) : !atEnd ? t('export.notice.scroll') : t('export.notice.confirm')}
-        </TimedButton>
-      </div>
+        </TimedButton>}
+      />
     </ModalShell>
   );
 }

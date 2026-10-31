@@ -71,11 +71,9 @@ img {
   background: transparent;
 }
 /* A touch bar is always visible, so it takes less of the edge. */
-@media (pointer: coarse) {
-  :root { --scrollbar-size: 8px; }
-  *::-webkit-scrollbar-thumb {
-    border-width: 2px;
-  }
+html[data-input-mode='touch'] { --scrollbar-size: 8px; }
+html[data-input-mode='touch'] *::-webkit-scrollbar-thumb {
+  border-width: 2px;
 }
 @supports not selector(::-webkit-scrollbar) {
   * {
@@ -97,20 +95,6 @@ img {
    Used by ui/agent/parts/panel-parts.tsx. The components supply the scale-dependent
    geometry (background image / size / travel distance) via --pw-* custom
    properties, so the keyframes stay scale-agnostic. */
-
-/* Traveling wavy underline (Wavy). One period per 1.2s; freezes when the
-   component adds .pw-dimmed (undone entries) and under reduced motion. */
-.pw-wavy {
-  display: inline-block;
-  background-repeat: repeat-x;
-  background-position: 0 bottom;
-  background-size: var(--pw-wave-size);
-  animation: pw-wavymove 1.2s linear infinite;
-}
-.pw-wavy.pw-dimmed { animation: none; }
-@keyframes pw-wavymove {
-  to { background-position-x: var(--pw-wave-period); }
-}
 
 /* Indeterminate work stripes (StripeBar): the 45° stripe field slides one
    tile per second. */
@@ -192,7 +176,6 @@ img {
    the rules below key off; the media query serves as the pre-hydration default
    and is scoped so an explicit "Full" opts out of it. */
 @media (prefers-reduced-motion: reduce) {
-  :root:not([data-reduced-motion='0']) .pw-wavy,
   :root:not([data-reduced-motion='0']) .pw-stripes,
   :root:not([data-reduced-motion='0']) .pw-stripe-drift,
   :root:not([data-reduced-motion='0']) .pw-caret-blink { animation: none; }
@@ -201,24 +184,40 @@ img {
   :root:not([data-reduced-motion='0']) .pw-zzz-mark { animation: none; opacity: 1; }
 }
 
-[data-reduced-motion='1'] .pw-wavy,
 [data-reduced-motion='1'] .pw-stripes,
 [data-reduced-motion='1'] .pw-stripe-drift,
 [data-reduced-motion='1'] .pw-caret-blink { animation: none; }
 [data-reduced-motion='1'] .pw-zzz-mark { animation: none !important; opacity: 1; }
+
+/* Between a morph's two measures (`primitives/morph.ts`) no transition inside a piece, or on a
+   group holding pieces, starts, so the second measure reads where each piece settles and the morph
+   alone carries it there. */
+[data-morphing] [data-morph],
+[data-morphing] [data-morph] *,
+[data-morphing] [data-morph-group],
+[data-morphing] [data-morph-piece],
+[data-morphing] [data-morph-piece] * { transition: none !important; }
+
+/* A layer a running morph stands on its old rung (`primitives/morph.ts`): over the inline z-index
+   React writes, which shows again once the attribute goes. */
+[data-morph-raised] { z-index: var(--morph-z) !important; }
 
 /* Catch-all. Components own a lot of plain CSS transitions inline (hover tints,
    rotating chevrons, panel fades); those are invisible to Framer's MotionConfig,
    so collapse them wholesale rather than chasing every `transition:` string and
    missing the next one. `.pw-busy` opts out: a progress indicator that stops
    reads as a hung UI, so the spinner keeps turning (WCAG 2.3.3 covers
-   NON-essential animation). */
+   NON-essential animation). A transition takes no time at all rather than a
+   moment: every element's transition-property defaults to `all`, so any
+   duration would leave a changed box measurable at its old size. Nothing
+   listens for transitionend. */
 [data-reduced-motion='1'] *:not(.pw-busy),
 [data-reduced-motion='1'] *:not(.pw-busy)::before,
 [data-reduced-motion='1'] *:not(.pw-busy)::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
   scroll-behavior: auto !important;
 }
 

@@ -1,5 +1,6 @@
 import { helpTargetAttr } from '../../../session/help-targets';
 import { ActionButton } from '../../../primitives/ActionButton';
+import { useNameReveal } from '../../../primitives/use-name-reveal';
 import { showToast } from '../../../../platform/channels/toast-bus';
 import { SUPPORTS_DOWNLOADS } from '../../../../platform/build/edition';
 /**
@@ -42,6 +43,8 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
   const chrome = useChromeScale();
   const { w: windowW, h: windowH } = useViewportSize();
   const t = useT();
+  const closeName = useNameReveal(t('view3d.preview_close'));
+  const imageName = useNameReveal(t('menu.image'));
   const reduced = useReducedMotionConfig();
   const [visible, setVisible] = useState(true);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -155,11 +158,12 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
           <ActionButton
             onClick={close}
             aria-label={t('view3d.preview_close')}
-            title={t('view3d.preview_close')}
+            {...closeName.bind}
             interaction="tile"
             style={{ ...floatBtn(18), zoom: chrome }}
          >
             <span aria-hidden>×</span>
+            {closeName.bubble}
           </ActionButton>
 
           {/* save a PNG of the current framing */}
@@ -167,11 +171,12 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
             <ActionButton
               onClick={onCapture}
               aria-label={t('menu.image')}
-              title={t('menu.image')}
+              {...imageName.bind}
               interaction="tile"
               style={{ ...floatBtn(74), zoom: chrome }}
            >
               <span aria-hidden>⤓</span>
+              {imageName.bubble}
             </ActionButton>
           )}
 

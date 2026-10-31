@@ -71,9 +71,9 @@ describe('the history pair while a region is painted', () => {
   const redo = () => screen.getByLabelText('Redo');
 
   it('steps the region, never the map', () => {
-    const executor = { undo: vi.fn(), redo: vi.fn() };
+    const executor = { undo: vi.fn(), redo: vi.fn(), canUndo: () => false, canRedo: () => false, attachAside: () => {} };
     const painted = [{ x: 2, y: 3 }];
-    // `INVALID STORE SEED:` an executor that only records whether the map's history was stepped.
+    // `INVALID STORE SEED:` a stub executor that only records whether the map's history was stepped.
     useEditorStore.setState({
       selectingRegion: true, commandExecutor: executor as never, region: painted, regionUndoLane: [[]], regionRedoLane: [],
     });

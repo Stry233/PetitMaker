@@ -28,7 +28,7 @@ function trip(cells: (CellFields | null)[], objects: SaveObject[], variant = 0, 
   return bytes;
 }
 
-/** Deterministic PRNG — a fuzz case that fails must be reproducible. */
+/** Deterministic PRNG: a fuzz case that fails must be reproducible. */
 function rng(seed: number) {
   let s = seed >>> 0;
   return () => (s = (s * 1664525 + 1013904223) >>> 0) / 0x100000000;
@@ -168,7 +168,7 @@ describe('map coder — what it refuses', () => {
     encodeMap(enc, template, cells, [], MODEL_VARIANTS[0]!);
     const full = enc.finish();
     for (const cut of [0, 1, 2, 8, Math.floor(full.length / 2), full.length - 1]) {
-      // Truncation yields a different map or a named refusal — never a hang, never a crash the
+      // Truncation yields a different map or a named refusal, never a hang, never a crash the
       // payload layer cannot describe. The content hash above this is what rejects the result.
       expect(() => {
         try { decodeMap(new RangeDecoder(full.slice(0, cut)), template, MODEL_VARIANTS[0]!); }

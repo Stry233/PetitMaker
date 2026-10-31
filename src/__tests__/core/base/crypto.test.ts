@@ -26,10 +26,9 @@ describe('sha256', () => {
     expect(bytesToHex(new Uint8Array([0, 1, 254, 255]))).toBe('0001feff');
   });
 
-  // The share code must build from a plain-http origin too, where crypto.subtle does not exist
-  // (#29): the pure-JS path is the one that runs there, so it must agree with Web Crypto bit
-  // for bit — across block boundaries (55/56/64 bytes bracket the padding edge) and payloads
-  // the size of a real map.
+  // The share code must build from a plain-http origin too, where crypto.subtle does not exist. The
+  // pure-JS path is the one that runs there, so it must agree with Web Crypto bit for bit, across
+  // block boundaries (55/56/64 bytes bracket the padding edge) and payloads the size of a real map.
   it('the pure-JS fallback matches Web Crypto on every padding edge and a large payload', async () => {
     const subtle = crypto.subtle;
     const viaSubtle = async (bytes: Uint8Array) => bytesToHex(new Uint8Array(await subtle.digest('SHA-256', bytes as unknown as ArrayBuffer)));

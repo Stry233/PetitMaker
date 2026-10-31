@@ -5,6 +5,7 @@ import { STATUS_CARD_HEIGHT } from './StatusCard';
 import { IconButton, PIN_KNOB_OUT } from '../parts/IconButton';
 import { PANEL_PAD } from '../panel-skin';
 import { PANEL_RADIUS } from './plate';
+import { useMorphPresence } from '../../primitives/morph';
 
 /**
  * The dock controls: a floating panel carries one pin disc on its top-right edge, riding the plate's
@@ -23,8 +24,11 @@ export function PinControls({ pinned, dockSide, blocked, carry, onTogglePin, onS
   const t = useT();
   const label = t(blocked ? 'agent.pin_no_room' : pinned ? 'agent.pin_undock' : 'agent.pin_dock');
   const icon = dockSide === 'left' ? 'pw-dock-left' : 'pw-dock-right';
+  // A bottom dock has none, so a turn to or from it fades them within the panel.
+  const presence = useMorphPresence('desk-pin');
   return (
     <motion.div
+      {...presence}
       data-testid="desk-pin"
       style={pinned
         ? {

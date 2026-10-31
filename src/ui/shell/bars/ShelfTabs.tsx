@@ -11,13 +11,25 @@ import { helpTargetAttr } from '../../session/help-targets';
 import type { HelpPageId } from '../../help/page-schema';
 import { SHELF_TABS, TEXT } from '../units';
 import { BarText } from './bar-atoms';
+import { TouchReach } from '../../primitives/TouchReach';
 import { reveal } from './row-scroll';
 import { useFrameZoom } from '../use-frame-zoom';
+import type { FrameLayout } from '../frame-plan';
 
 /** The row's own box, which the shelf places a sibling (a search field, a row of actions) into. */
 export const TAB_ROW: CSSProperties = {
   display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: SHELF_TABS.gap,
 };
+
+/** How far a tab reaches under its name: the gap and the mark, drawn on every tab. A control set
+ *  beside a row of tabs centres on the names by standing this half higher than the row's centre. */
+export const TAB_MARK_DEPTH = SHELF_TABS.underlineGap + SHELF_TABS.underline;
+
+/** How far right of a wide shelf's left padding (`SHELF_TABS.left`) its row of names starts: clear of
+ *  the character's seat where the plan says she reaches down to it. */
+export function namesIndent(bar: FrameLayout['bar']): number {
+  return bar.tabsLeft === undefined ? 0 : bar.tabsLeft - SHELF_TABS.left;
+}
 
 /** How far a cut name is softened at an end the row can still travel toward, in css px. A name
  *  sliced at a hard vertical edge — which on the object shelf is exactly where the search field
@@ -61,6 +73,7 @@ function ShelfTabButton({ label, active, onSelect, helpTarget }: {
   onSelect: () => void;
   helpTarget?: HelpPageId;
 }) {
+  const zoom = useFrameZoom();
   return (
     <ActionButton
       interaction="tile"
@@ -89,6 +102,7 @@ function ShelfTabButton({ label, active, onSelect, helpTarget }: {
           background: active ? ACTIVE : 'transparent',
         }}
       />
+      <TouchReach zoom={zoom} />
     </ActionButton>
   );
 }
@@ -101,9 +115,7 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const zoom = useFrameZoom();
-  // The hook's own binding effect carries no dependency list, so it re-measures on every render of
-  // this component — a locale change (new `tabs` labels, same row box) reaches it the same way a
-  // resize does, with no extra wiring needed here.
+  // The row re-measures on every render, so new labels in the same row box reach its fade.
   const fade = useScrollRow(rowRef, { zoom, bleed: CONTROL_CLEARANCE, pointerEvents: 'auto', fade: { fadeAt } });
 
   // The chosen tab is read from the row, not a ref: a persistent motion button's forwarded ref is never re-invoked.

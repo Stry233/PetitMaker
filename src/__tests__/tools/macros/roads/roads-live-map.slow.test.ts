@@ -1,10 +1,10 @@
 /**
  * The roads macro on a real map: hexia, its locked plaza standing, two houses placed by hand.
  *
- * This is the scenario the button exists for, and it laid nothing for as long as the network seed
- * was marked from the plaza's own fractional rect — `forEachFootprintCell` visited half-cell
- * coordinates, the seed became grid indices no integer lookup finds, and every route "failed to
- * reach the network". A square test map without a plaza could never see it.
+ * This is the scenario the button exists for. The network seed is marked from the plaza's fractional
+ * rect, so `forEachFootprintCell` has to visit whole cells: a fractional grid index is one no integer
+ * lookup finds, and every route would fail to reach the network. A square map without a plaza cannot
+ * show this.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';

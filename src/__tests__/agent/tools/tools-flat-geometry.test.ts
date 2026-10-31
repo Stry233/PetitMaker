@@ -4,7 +4,7 @@
  * rect/circle/line/cells forms, and both spellings resolve to the same edit.
  * The flat form exists because a guided decoder that compiles the tool schema
  * into a grammar can drop every optional compound property (nested object,
- * array, free string) from its emissions while optional scalars come through —
+ * array, free string) from its emissions while optional scalars come through,
  * so the geometry a tool needs must be reachable through required params and
  * optional scalars alone.
  */

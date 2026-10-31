@@ -5,7 +5,10 @@
  * The card is a header row that grows a details body away from the selection. The header is placed
  * where the opened card also fits, so opening the details never moves the row the pointer is on:
  * above the selection, else below it, else beside it, growing toward whichever end has more room.
- * The card draws under the frame, so it keeps to the map area the frame leaves clear.
+ * Where no side holds the opened card (a short map area on an upright screen), the header stands
+ * above or below, whichever has more room, and the details scroll in what is left; it stands over
+ * the selection only where not even the header fits there. The card draws under the frame, so it
+ * keeps to the map area the frame leaves clear.
  */
 
 export interface ScreenBounds { x: number; y: number; w: number; h: number }
@@ -43,6 +46,11 @@ const CARD_GAP = 14;
 /** Distance kept from the edge of the clear map area, in visual px. */
 const CARD_MARGIN = 8;
 
+/** The widest header the clear area holds, in visual px. */
+export function headerRoom(area: Area, margin = CARD_MARGIN): number {
+  return area.right - area.left - 2 * margin;
+}
+
 export function placeSelectionCard(
   bounds: ScreenBounds,
   size: CardSize,
@@ -68,15 +76,16 @@ export function placeSelectionCard(
   const clampX = (v: number) => Math.max(minX, Math.min(maxX - size.w, v));
   const clampY = (v: number, span: number) => Math.max(minY, Math.min(maxY - span, v));
 
-  const above = (): CardPlacement | null => {
-    if (t - gap - full < minY) return null;
+  // `span` is the height that must fit: the opened card, or only the header where the details scroll.
+  const above = (span = full): CardPlacement | null => {
+    if (t - gap - span < minY) return null;
     // A selection partly under the frame still gets its header in the clear area.
     const top = Math.min(t - gap - size.h, maxY - size.h);
     const left = clampX(cx - size.w / 2);
     return { visible: true, left, top, side: 'above', growUp: true, tail: { x: tailX(cx, left, size.w), y: top + size.h } };
   };
-  const below = (): CardPlacement | null => {
-    if (b + gap + full > maxY) return null;
+  const below = (span = full): CardPlacement | null => {
+    if (b + gap + span > maxY) return null;
     const top = Math.max(b + gap, minY);
     const left = clampX(cx - size.w / 2);
     return { visible: true, left, top, side: 'below', growUp: false, tail: { x: tailX(cx, left, size.w), y: top } };
@@ -98,7 +107,39 @@ export function placeSelectionCard(
     const kept = prefer === 'above' ? above() : below();
     if (kept) return kept;
   } else if ((prefer === 'right' && rightFits) || (prefer === 'left' && leftFits)) return beside(prefer === 'right');
-  return above() ?? below() ?? beside(rightFits || !leftFits);
+  const opened = above() ?? below();
+  if (opened) return opened;
+  if (rightFits || leftFits) return beside(rightFits);
+  const headers = t - minY >= maxY - b ? [above(size.h), below(size.h)] : [below(size.h), above(size.h)];
+  return headers[0] ?? headers[1] ?? beside(true);
+}
+
+/** The header row's parts, in visual px: the name at its natural width (up to its longest), and the rest. */
+export interface HeaderParts { title: number; others: number }
+
+/**
+ * Places the card with its name fitted to the room: placed at the name's natural width, the area
+ * widens to the columns level with the header row (`areaAt(rows)`), the name takes what that width
+ * leaves between `titleMin` and `titleMax`, and the card is placed again at that width, keeping its
+ * side. The result depends only on the natural widths, never on a fit made before, so re-reading a
+ * card whose header has just been resized lands where it stands.
+ */
+export function placeFittedCard(
+  bounds: ScreenBounds, header: HeaderParts, size: { h: number; body: number }, viewport: ViewportSize,
+  opts: { areaAt: (rows?: { top: number; bottom: number }) => Area; prefer?: CardSide; titleMin: number; titleMax: number },
+): { placement: CardPlacement; area: Area; titleCap: number; size: CardSize } {
+  const { areaAt } = opts;
+  const natural = Math.min(header.title, opts.titleMax);
+  const first = placeSelectionCard(bounds, { ...size, w: header.others + natural }, viewport, { area: areaAt(), prefer: opts.prefer });
+  let area = areaAt();
+  if (first.visible) {
+    const right = areaAt({ top: first.top, bottom: first.top + size.h }).right;
+    if (right > area.right) area = { ...area, right };
+  }
+  const titleCap = Math.max(opts.titleMin, Math.min(opts.titleMax, headerRoom(area) - header.others));
+  const fitted = { ...size, w: header.others + Math.min(natural, titleCap) };
+  const placement = placeSelectionCard(bounds, fitted, viewport, { area, prefer: first.visible ? first.side : opts.prefer });
+  return { placement, area, titleCap, size: fitted };
 }
 
 /** The tail keeps clear of the header's rounded ends. */

@@ -1,18 +1,9 @@
 /**
- * A gimmick is a testable thing: output that never varies, ignores its context, or is quietly
- * empty. These are the generator's own design-quality probes (`tools/generation/design-quality.slow.test.ts`)
- * applied to the macros.
+ * The generator's design-quality probes applied to the macros: a gimmick's output never varies,
+ * ignores its context, or is quietly empty.
  *
- * Seven of them were written failing and marked with vitest's `it.fails` rather than softened, which
- * is what specified the work that followed: the mound had no rng in the file at all and read the
- * surface only to skip a cell already high enough, the ecology could put a glade exactly where the
- * user pointed and plant nothing, and the stream carved the same ten cells at every dial setting.
- * All seven are ordinary tests now.
- *
- * One fixture: a terraced cone near the west shore with flat grass east of it. Each macro is aimed
- * where its own material is, because a probe that fails for want of ground says nothing about the
- * macro. A river is dragged from the cone's flank to the flat, since water has to fall from somewhere
- * and reach somewhere; everything else is pointed at the flat, which is where a person aims them.
+ * One fixture: a terraced cone near the west shore with flat grass east of it. A stream runs from the
+ * cone's flank to the flat, since water has to fall from somewhere; everything else aims at the flat.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
 import { makeToolCtx } from '../../_support/tool-ctx';
@@ -28,20 +19,18 @@ import type { EditContext } from '../../../core/commands/edit-context';
 import { makeState, makeExecutor } from '../../_support/map-state';
 import { cell, point } from '../../_support/grid';
 
-/** The macros that build where the user pointed. `roads` works over the whole region instead, so it
- *  takes no aim point and answers no dial. `road-link` and `stream` are aimed at a point pair rather
- *  than a disc around one cell, so they sit outside `AIMED` too: it has no ground to "read" under a radius, no
- *  dial that widens a footprint, and (by design — the same taps must lay the same road) no seed to
- *  vary by. Their endpoint gestures are pinned directly, in `road-link.test.ts` and `landforms.test.ts`. */
+/** The macros that build in a disc around the aim point. `roads` works over the whole region;
+ *  `road-link` and `stream` take a point pair and no seed, since the same taps must lay the same
+ *  course (`road-link.test.ts`, `landforms.test.ts`). */
 const AIMED: MacroId[] = ['raise', 'patch-tree', 'patch-flora'];
 const EVERY: MacroId[] = ['raise', 'stream', 'road-link', 'roads', 'patch-tree', 'patch-flora'];
 
 const SIZE = 40;
 /** Sea all the way round, so a course has a coast to reach. */
 const SHORE = 3;
-/** The relief on the map, set well west of centre so its flank is a short walk from the shore. */
+/** The relief, west of centre so its flank is a short walk from the shore. */
 const CONE = { at: { x: 14, y: 20 }, radius: 6, peak: 6 };
-/** Tier 2 on the cone's western flank: two terraces to fall down and then open ground to the sea. */
+/** Tier 2 on the cone's western flank. */
 const FLANK: MacroCoord = { x: 10, y: 20 };
 /** Open grass east of the cone, well clear of its radius (cone spans x in [8,20]). */
 const FLAT: MacroCoord = { x: 24, y: 20 };
@@ -54,8 +43,7 @@ const AIM: Record<MacroId, MacroCoord> = {
 const FROM: Partial<Record<MacroId, MacroCoord>> = { 'road-link': ROAD_FROM, stream: FLANK };
 const RADIUS = 5;
 
-/** `AIM`/`radius`, plus `from` for the ids whose gesture is a point pair. Every
- *  probe below reads its opts through this, so the endpoint shape rides along automatically. */
+/** `AIM` and `radius`, plus `from` for the point-pair macros. */
 function macroOpts(id: MacroId, seed: number, radius = RADIUS): MacroOpts {
   return { seed, at: AIM[id], radius, ...(FROM[id] ? { from: FROM[id] } : {}) };
 }
@@ -74,8 +62,8 @@ function makeKit(): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** A wedding cake written straight into the cells: one tier per ring, so every neighbour is within
- *  one tier and V-MTN-03 holds by construction without going through the executor. */
+/** A wedding cake written straight into the cells: one tier per ring, so V-MTN-03 holds without
+ *  the executor. */
 function raiseCone(state: GridState, at: MacroCoord, radius: number, peak: number): void {
   for (let y = at.y - radius; y <= at.y + radius; y++) {
     for (let x = at.x - radius; x <= at.x + radius; x++) {
@@ -89,15 +77,9 @@ function raiseCone(state: GridState, at: MacroCoord, radius: number, peak: numbe
 }
 
 /**
- * A staircase rising to the south-east across `at`'s neighbourhood, one tier every four cells and
- * never lowering what is already there. The ground the "reads its ground" probe changes, and it has
- * to sit under the aim point: relief somewhere else on the map is not the ground a macro lands on.
- *
- * Two things keep the result legal, and both are load-bearing: the ramp is feathered back down to
- * the edge of its own box, so no cell drops to bare ground from a tier V-MTN-03 owes a 3x3 base;
- * and a maximum of 1-Lipschitz fields is 1-Lipschitz, so laying it over the cone cannot open a step
- * neither of them had. An illegal fixture is not a hostile map for a macro to read, it is a map
- * where every post-stroke check fails and every macro reverts whole.
+ * A staircase rising south-east under the aim point, one tier every four cells, never lowering what
+ * stands. It stays legal, or every macro would revert whole: it feathers down to its box's edge so
+ * V-MTN-03's base holds, and the maximum of two 1-Lipschitz fields opens no step over the cone.
  */
 function raiseSlope(kit: Kit, at: MacroCoord, reach = 6, cap = 3): void {
   for (let y = at.y - reach; y <= at.y + reach; y++) {
@@ -131,9 +113,8 @@ function populatedKit(): { kit: Kit; mine: string[] } {
   return { kit, mine };
 }
 
-/** Terrain and objects, ids excluded. Every placement mints a new id and none is seed-derived, so
- *  leaving one in would make every "does it vary" comparison pass on its own. So
- *  would the provenance ledger, which carries the seed. */
+/** Terrain and objects without ids or provenance, which differ on every run and would make every
+ *  "does it vary" comparison pass on its own. */
 function shapeOf(state: GridState): string {
   const cells = state.cells.map((row) => row.map((c) => terrainMark(c.terrain)).join(' ')).join('\n');
   const objects = [...state.objects.values()]
@@ -191,14 +172,9 @@ describe('a macro is not a gimmick', () => {
   }
 
   /**
-   * A stamp is subtractive. Its shape was decided before the ground was read, so on higher ground it
-   * lays the same thing on a subset of the same cells: every cell it touches gets exactly what it
-   * would have got on the flat, and the ones already at that height are simply skipped. A macro that
-   * reads its ground breaks that pattern somewhere, by laying on a cell the flat run never touched or
-   * by leaving a different thing on one they share.
-   *
-   * Comparing the two finished maps instead would prove nothing: the sloped map differs before the
-   * macro runs at all.
+   * A stamp is subtractive: on higher ground it lays the same thing on a subset of the flat run's
+   * cells. A macro that reads its ground lays a new cell or a different thing somewhere. The changed
+   * cells are compared, since the two maps differ before the macro runs.
    */
   it.each(AIMED)('%s reads the ground it lands on', (id) => {
     expectReadsGround(id);
@@ -244,11 +220,7 @@ describe('a macro is not a gimmick', () => {
     for (const objectId of mine) expect(kit.state.objects.has(objectId), 'road-link removed hand-placed work').toBe(true);
   });
 
-  /**
-   * A held press over what a person built: several staged bursts must never rewrite a hand-placed
-   * tree or flower standing in the same disc, only grow the hold's own stand beside it. The single
-   * press above already proves placement leaves them alone; this proves ageing does too.
-   */
+  /** Ageing through a held press's bursts leaves hand-placed plants in the disc alone too. */
   it.each(['patch-tree', 'patch-flora'] as const)('%s: a held press does not destroy what a person built', (id) => {
     const kit = makeKit();
     const at = AIM[id];
@@ -264,7 +236,7 @@ describe('a macro is not a gimmick', () => {
       tool.onActivate();
       const ctx = makeToolCtx(kit.state, kit.executor, RADIUS - 3, 1, { armedMacro: id });
       tool.onPointerDown(cell(at as MacroCoord), point({ x: at.x, y: at.y }), ctx);
-      // Several bursts: enough to climb the succession ladder.
+      // Enough bursts to climb the succession ladder.
       vi.advanceTimersByTime(350 * 5);
       tool.onPointerUp(cell(at as MacroCoord), point({ x: at.x, y: at.y }), ctx);
     } finally {

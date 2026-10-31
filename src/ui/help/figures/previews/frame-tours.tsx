@@ -1,13 +1,13 @@
 /** The layer control and the Notes row walked through on the pictured shell, each press landing on the control's own target. */
+import { useReducedMotionConfig } from 'framer-motion';
 import { measureBox, measurePoint, PicturedShell, useWindowSnapshot, type Box } from './frame-overview';
 import { INERT } from './PreviewFrame';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { useScriptedWalk } from '../scripted-walk';
 import { cssMotion } from '../../../design/motion';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { drawCursorImg } from '../demo-cursor';
 import { useInView } from '../use-in-view';
-import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { FOCUS_RING } from '../../../design/tokens';
 import { radii, shadows, z } from '../../../design/styles';
 import { PressPulse } from '../caption';
@@ -22,58 +22,89 @@ export const NOTES_TAP: Record<NotesPress, readonly string[]> = {
   lock: ['[data-testid="shell-layer-annotation-lock"]'],
 };
 export const NOTES_WALK: readonly NotesPress[] = ['eye', 'eye', 'lock', 'lock'];
-export const NOTES_VIEW = { w: 560, h: 300, pad: 14 } as const;
+/** The Notes recording window, shifted right and up from the right-anchored placement the layer walk keeps. */
+export const NOTES_VIEW: WalkView = { w: 560, h: 300, pad: 14, reach: { right: 200, up: 60 } };
+
+/** The Notes row's own help mark, or the layer control where the row is not drawn yet. */
+const NOTES_ANCHOR: readonly string[] = ['[data-testid="shell-layer-annotation-help"]', '[data-help="layers"]'];
 
 export function NotesRowTour() {
-  const win = useWindowSnapshot();
-  const holdRef = useRef<HTMLDivElement>(null);
-  const near = useInView(holdRef);
-  const still = useRef(isMotionReduced());
-  const rootRef = useRef<HTMLDivElement>(null);
+  const walk = usePicturedWalk(NOTES_VIEW, NOTES_ANCHOR);
+  const { win, near, still, rootRef, readBox, readTap, clearTap } = walk;
   const [row, setRow] = useState({ visible: true, locked: false });
-  const [box, setBox] = useState<Box | null>(null);
-  const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
-  const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
-  const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
-  const readBox = () => {
-    const root = rootRef.current;
-    if (!root) return;
-    setBox((was) => {
-      if (was) return was;
-      const anchor = measureBox(root, ['[data-testid="shell-layer-annotation-help"]', '[data-help="layers"]'], win.w, 0);
-      if (!anchor) return was;
-      return { x: anchor.x + anchor.w + NOTES_VIEW.pad + 200 - NOTES_VIEW.w, y: anchor.y - NOTES_VIEW.pad - 60, w: NOTES_VIEW.w, h: NOTES_VIEW.h };
-    });
-  };
-  const readTap = (selectors: readonly string[]) => () => {
-    const root = rootRef.current;
-    const p = root ? measurePoint(root, selectors, win.w) : null;
-    setTap((was) => (was && p && Math.abs(was.x - p.x) < 1 && Math.abs(was.y - p.y) < 1 ? was : p));
-    if (p) setCur(p);
-  };
   // The settled pose reads its window and mark as the pictured shell lays out.
-  useObservedSize(() => (near && still.current ? rootRef.current : null), () => { readBox(); readTap(NOTES_TAP.eye)(); }, [near, win.w]);
-  useScriptedWalk(NOTES_WALK.length, LAYER_BEAT_MS, near && !still.current, (step) => {
+  useObservedSize(() => (near && still ? rootRef.current : null), () => { readBox(); readTap(NOTES_TAP.eye)(); }, [near, win.w]);
+  useScriptedWalk(NOTES_WALK.length, LAYER_BEAT_MS, near && !still, (step) => {
     const press = NOTES_WALK[step]!;
     return [
       [150, () => { readBox(); readTap(NOTES_TAP[press])(); }],
       [650, readTap(NOTES_TAP[press])],
       [1200, () => setRow((r) => (press === 'eye' ? { ...r, visible: !r.visible } : { ...r, locked: !r.locked }))],
-      [1500, () => { setTap(null); readBox(); }],
+      [1500, () => { clearTap(); readBox(); }],
     ];
   }, win.w);
 
-  const scale = 620 / NOTES_VIEW.w;
-  const view = box
-    ? { w: 620, h: Math.round(NOTES_VIEW.h * scale), dx: box.x, dy: box.y }
-    : { w: 620, h: Math.round(NOTES_VIEW.h * scale), dx: 0, dy: 0 };
+  return (
+    <PicturedCrop walk={walk} view={NOTES_VIEW}>
+      <PicturedShell win={win} zoom={1} layerPanel="column" notesRow={row} />
+    </PicturedCrop>
+  );
+}
+
+/** A walk's recording window in shell px: its size, its margin around the anchor, and how far it
+ *  reaches right of and above the anchor's right-anchored placement. */
+interface WalkView { w: number; h: number; pad: number; reach?: { right: number; up: number } }
+
+/** The width a walk figure draws at; its recording window scales to it. */
+const WALK_WIDTH = 620;
+
+/** The state a pictured walk shares: one fixed recording window read off a static anchor, so every
+ *  state of the walk plays inside it, the press mark and the pointer standing on its targets. */
+function usePicturedWalk(view: WalkView, anchor: readonly string[]) {
+  const win = useWindowSnapshot();
+  const holdRef = useRef<HTMLDivElement>(null);
+  const near = useInView(holdRef);
+  const still = useReducedMotionConfig() === true;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<Box | null>(null);
+  const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
+  /** Where the pictured pointer stands (shell px): the last press target it glided to. */
+  const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
+  const readBox = () => {
+    const root = rootRef.current;
+    if (!root) return;
+    setBox((was) => {
+      if (was) return was;
+      const at = measureBox(root, anchor, win.w, 0);
+      if (!at) return was;
+      const reach = view.reach ?? { right: 0, up: 0 };
+      return { x: at.x + at.w + view.pad + reach.right - view.w, y: at.y - view.pad - reach.up, w: view.w, h: view.h };
+    });
+  };
+  const readTap = (selectors: readonly string[]) => () => {
+    const root = rootRef.current;
+    const p = root ? measurePoint(root, selectors, win.w) : null;
+    // The same spot keeps the same mark, so a re-read does not restart its pulse.
+    setTap((was) => (was && p && Math.abs(was.x - p.x) < 1 && Math.abs(was.y - p.y) < 1 ? was : p));
+    if (p) setCur(p);
+  };
+  return { win, holdRef, near, still, rootRef, box, tap, cur, readBox, readTap, clearTap: () => setTap(null) };
+}
+
+/** The walk's frame: the pictured shell cropped to the recording window and scaled to the figure's
+ *  width, with the press mark and the pointer, which wears the app's own cursor art, over it. */
+function PicturedCrop({ walk, view, children }: { walk: ReturnType<typeof usePicturedWalk>; view: WalkView; children: ReactNode }) {
+  const { win, holdRef, near, still, rootRef, box, tap, cur } = walk;
+  const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
+  const scale = WALK_WIDTH / view.w;
+  const height = Math.round(view.h * scale);
   return (
     <div
       ref={holdRef}
       aria-hidden
       {...INERT}
       style={{
-        position: 'relative', width: 620, height: Math.round(NOTES_VIEW.h * scale), overflow: 'hidden',
+        position: 'relative', width: WALK_WIDTH, height, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none',
         opacity: box ? 1 : 0,
@@ -81,11 +112,11 @@ export function NotesRowTour() {
       }}
     >
       {near && (
-        <div style={{ position: 'relative', width: view.w, height: view.h, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', width: WALK_WIDTH, height, overflow: 'hidden' }}>
         <div style={{ zoom: scale }}>
-          <div style={{ marginLeft: -view.dx, marginTop: -view.dy }}>
+          <div style={{ marginLeft: -(box?.x ?? 0), marginTop: -(box?.y ?? 0) }}>
             <div ref={rootRef} style={{ position: 'relative', width: win.w }}>
-              <PicturedShell win={win} zoom={1} layerPanel="column" notesRow={row} />
+              {children}
               {tap && <TapMark x={tap.x} y={tap.y} />}
               {cur && (
                 <div
@@ -93,7 +124,7 @@ export function NotesRowTour() {
                   style={{
                     position: 'absolute', left: cur.x, top: cur.y, zIndex: z.unmissable,
                     pointerEvents: 'none',
-                    transition: still.current ? undefined : cssMotion('help.figure.pointer', ['left', 'top']),
+                    transition: still ? undefined : cssMotion('help.figure.pointer', ['left', 'top']),
                   }}
                 />
               )}
@@ -166,7 +197,10 @@ export function TapMark({ x, y }: { x: number; y: number }) {
 
 /** The recording window's size in shell px: wide and tall enough for the walk's largest state
  *  (the grid), read right-anchored off the readout control. */
-export const LAYERS_VIEW = { w: 560, h: 430, pad: 14 } as const;
+export const LAYERS_VIEW: WalkView = { w: 560, h: 430, pad: 14 };
+
+/** The readout pill, which stands still through every size the walk passes. */
+const LAYERS_ANCHOR: readonly string[] = ['[data-testid="shell-layer-readout"]', '[data-help="layers"]'];
 
 /** The layer control walked through its three sizes by pressing its own targets, on one pictured
  *  shell booted collapsed like the live app. Rail reads its pose only in the mode initializer
@@ -175,37 +209,10 @@ export const LAYERS_VIEW = { w: 560, h: 430, pad: 14 } as const;
  *  shared-layout resize. Each beat marks the next press target, lands the press a cue later, and
  *  re-reads the crop box on a stagger while the control springs to its new size. */
 export function LayersTour() {
-  const win = useWindowSnapshot();
-  const holdRef = useRef<HTMLDivElement>(null);
-  const near = useInView(holdRef);
-  const still = useRef(isMotionReduced());
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<Box | null>(null);
-  const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
-  /** Where the pictured pointer stands (shell px): the last press target it glided to. */
-  const [cur, setCur] = useState<{ x: number; y: number } | null>(null);
-  // The pointer wears the app's own cursor art; the host's position is the acting point.
-  const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
-  // One fixed recording window, anchored to the static readout pill: every state of the walk plays inside it.
-  const readBox = () => {
-    const root = rootRef.current;
-    if (!root) return;
-    setBox((was) => {
-      if (was) return was;
-      const anchor = measureBox(root, ['[data-testid="shell-layer-readout"]', '[data-help="layers"]'], win.w, 0);
-      if (!anchor) return was;
-      return { x: anchor.x + anchor.w + LAYERS_VIEW.pad - LAYERS_VIEW.w, y: anchor.y - LAYERS_VIEW.pad, w: LAYERS_VIEW.w, h: LAYERS_VIEW.h };
-    });
-  };
-  const readTap = (selectors: readonly string[]) => () => {
-    const root = rootRef.current;
-    const p = root ? measurePoint(root, selectors, win.w) : null;
-    // The same spot keeps the same mark, so a re-read does not restart its pulse.
-    setTap((was) => (was && p && Math.abs(was.x - p.x) < 1 && Math.abs(was.y - p.y) < 1 ? was : p));
-    if (p) setCur(p);
-  };
-  useObservedSize(() => (near && still.current ? rootRef.current : null), () => { readBox(); readTap(LAYER_TAP_STILL)(); }, [near, win.w]);
-  useScriptedWalk(LAYER_WALK.length, LAYER_BEAT_MS, near && !still.current, (step) => {
+  const walk = usePicturedWalk(LAYERS_VIEW, LAYERS_ANCHOR);
+  const { win, near, still, rootRef, readBox, readTap, clearTap } = walk;
+  useObservedSize(() => (near && still ? rootRef.current : null), () => { readBox(); readTap(LAYER_TAP_STILL)(); }, [near, win.w]);
+  useScriptedWalk(LAYER_WALK.length, LAYER_BEAT_MS, near && !still, (step) => {
     const press = LAYER_WALK[step]!;
     const firePress = (phase: 'down' | 'up') => () => {
       const root = rootRef.current;
@@ -222,51 +229,15 @@ export function LayersTour() {
       [650, readTap(LAYER_TAP[press])],
       [1150, firePress('down')],
       [1300, firePress('up')],
-      [1500, () => { setTap(null); readBox(); }],
+      [1500, () => { clearTap(); readBox(); }],
       [2050, readBox],
       [2600, readBox],
     ];
   }, win.w);
 
-  const scale = 620 / LAYERS_VIEW.w;
-  const view = box
-    ? { w: 620, h: Math.round(LAYERS_VIEW.h * scale), dx: box.x, dy: box.y }
-    : { w: 620, h: Math.round(LAYERS_VIEW.h * scale), dx: 0, dy: 0 };
   return (
-    <div
-      ref={holdRef}
-      aria-hidden
-      {...INERT}
-      style={{
-        position: 'relative', width: 620, height: Math.round(LAYERS_VIEW.h * scale), overflow: 'hidden',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none',
-        opacity: box ? 1 : 0,
-        transition: cssMotion('help.figure.fade', ['opacity']),
-      }}
-    >
-      {near && (
-        <div style={{ position: 'relative', width: view.w, height: view.h, overflow: 'hidden' }}>
-        <div style={{ zoom: scale }}>
-          <div style={{ marginLeft: -view.dx, marginTop: -view.dy }}>
-            <div ref={rootRef} style={{ position: 'relative', width: win.w }}>
-              <PicturedShell win={win} zoom={1} layerPanel={still.current ? 'column' : undefined} />
-              {tap && <TapMark x={tap.x} y={tap.y} />}
-              {cur && (
-                <div
-                  ref={cursorHost}
-                  style={{
-                    position: 'absolute', left: cur.x, top: cur.y, zIndex: z.unmissable,
-                    pointerEvents: 'none',
-                    transition: still.current ? undefined : cssMotion('help.figure.pointer', ['left', 'top']),
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-        </div>
-      )}
-    </div>
+    <PicturedCrop walk={walk} view={LAYERS_VIEW}>
+      <PicturedShell win={win} zoom={1} layerPanel={still ? 'column' : undefined} />
+    </PicturedCrop>
   );
 }

@@ -1,14 +1,6 @@
-// The water story, read on ground the test itself shapes.
-//
-// Two kinds of claim. The geometry claims are read off the pure shape functions: a pond shape is
-// symmetric about its own box, which is what makes it read as composed rather than as a blob.
-//
-// The course claims are read off a synthetic terraced map — a staircase of tiers with nothing
-// standing on it — because that is the one place the story's own arguments can be checked without a
-// whole designed map in the way: the course has a source and an arrival, it bends, its width varies,
-// it never runs straight for longer than the bound it declares, and the terrain it leaves behind
-// commits through the live rules with no violation. The last is the only proof that matters for the
-// falls: V-WTR-02's caps and V-WTR-03's uniform landing are claims about a finished map.
+// The water story: pond shapes read off the pure shape functions, and the course carved on a bare
+// terraced staircase so its source, bends, widths and falls can be checked without a designed map.
+// Committing through the live rules is what proves the falls (V-WTR-02 caps, V-WTR-03 landings).
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { flatIndex } from '../../../../../core/grid/rect';
@@ -36,12 +28,8 @@ function emptyPlan(template: MapTemplate): DesignPlan {
 }
 
 /**
- * A staircase map: the buildable land terraced in bands from tier 3 down to 0 along y, which is
- * the shape the composition's own plates make and the one a course has to descend.
- *
- * Three tiers rather than eight because V-MTN-03 auto-passes at and below layer 3: a synthetic
- * plateau at layer 4 running to the coast has no 3x3 support at its rim and would fail the rule on
- * ground the test drew, not on anything the story cut.
+ * The buildable land terraced in bands from tier 3 down to 0 along y. It stops at 3 because
+ * V-MTN-03 passes at and below layer 3; a layer-4 plateau running to the coast would fail it.
  */
 function staircase(template: MapTemplate): { t: TerrainPlan; grass: Uint8Array; flat: Uint8Array } {
   const W = template.width, H = template.height;
@@ -63,8 +51,8 @@ function carve(seed: number, richness = 1): { story: WaterStory | null; t: Terra
   return { story, t, grass };
 }
 
-/** The longest run of the spine that keeps one heading, in cells — a fall moves the head two cells
- *  at once — and how many times the heading changes. */
+/** The longest run of the spine that keeps one heading, in cells (a fall moves the head two cells
+ *  at once) and how many times the heading changes. */
 function spineShape(spine: readonly MacroCoord[]): { straight: number; bends: number } {
   let run = 0, longest = 0, bends = 0;
   let last: string | null = null;
@@ -132,7 +120,7 @@ describe('the course, on a staircase map', () => {
       const last = story!.reaches[story!.reaches.length - 1]!;
       expect(story!.source.tier, `seed ${seed}`).toBeGreaterThan(last.tier);
       expect(story!.falls.filter((f) => f.main).length, `seed ${seed} falls`).toBeGreaterThan(0);
-      // A fall never pours onto nothing: its landing is water at the level it lands on.
+      // Every fall lands below the tier it leaves.
       for (const fall of story!.falls) expect(fall.landsAt).toBeLessThan(fall.tier);
     }
   });
@@ -141,7 +129,7 @@ describe('the course, on a staircase map', () => {
     for (const seed of SEEDS) {
       const { story } = carve(seed);
       const { straight, bends } = spineShape(story!.spine);
-      expect(straight, `seed ${seed} straight run`).toBeLessThanOrEqual(14);   // no stretch runs straight past fourteen cells
+      expect(straight, `seed ${seed} straight run`).toBeLessThanOrEqual(14);
       expect(bends, `seed ${seed} bends`).toBeGreaterThan(2);
     }
   });
@@ -170,7 +158,7 @@ describe('the course, on a staircase map', () => {
       const { story, t } = carve(seed);
       const water = new Set<number>();
       for (let i = 0; i < t.water.length; i++) if (t.water[i]! >= 0) water.add(i);
-      // Flood-fill from the source, 4-connected and elevation-blind, exactly as a body is read.
+      // Flood-fill from the source, 4-connected and elevation-blind, as a water body is read.
       const start = flatIndex(story!.source.at.x, story!.source.at.y, t.width);
       const seen = new Set([start]);
       const stack = [start];
@@ -205,8 +193,7 @@ describe('the course, on a staircase map', () => {
 
   it('the course never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
-    // A reserved band across half the map, the shape a trunk street leaves: the course has to
-    // route around it rather than through it.
+    // A reserved band across half the map, as a trunk street leaves.
     for (let y = Math.floor(HEXIA.height / 2); y < Math.floor(HEXIA.height / 2) + 3; y++) {
       for (let x = 0; x < Math.floor(HEXIA.width / 2); x++) flat[flatIndex(x, y, HEXIA.width)] = 1;
     }
@@ -219,8 +206,7 @@ describe('the course, on a staircase map', () => {
   });
 });
 
-/** The widths a reach was laid at, read as the run lengths of its own cells per row and per column —
- *  a stream that never changes width answers one value. */
+/** A reach's cell count in each row and each column; a stream of one width gives one value. */
 function sectionWidths(cells: readonly MacroCoord[]): number[] {
   const rows = new Map<number, number>(), cols = new Map<number, number>();
   for (const c of cells) {

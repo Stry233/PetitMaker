@@ -6,11 +6,12 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import type { GridState } from '../../../core/model/types';
 import { onTextVerdicts, textVerdictsVersion } from '../../../state/text-verdicts';
 import { useEditorStore } from '../../../state/store';
+import { onFontsSettled } from '../../../assets/fonts/settled';
 
 /**
  * Calls `redraw` with the live map whenever a fact the notes are drawn from changes (the notes'
  * epoch, since their data mutates in place; the draft, selection and dimension switch; the map; the
- * locale; a custom tag's text verdict), and `rebakeText` once the app's fonts land, since a label
+ * locale; a custom tag's text verdict), and `rebakeText` whenever the app's fonts finish loading, since a label
  * rasterised before its face loaded keeps the fallback otherwise.
  */
 export function useAnnotationRedraw(
@@ -34,9 +35,5 @@ export function useAnnotationRedraw(
     if (gs) latest.current.redraw(gs);
   }, [annotationsEpoch, annotationDraft, annotationSelection, annotationDimensions, gridState, locale, tagVerdicts]);
 
-  useEffect(() => {
-    let live = true;
-    void document.fonts?.ready?.then(() => { if (live) latest.current.rebakeText(); });
-    return () => { live = false; };
-  }, []);
+  useEffect(() => onFontsSettled(() => latest.current.rebakeText()), []);
 }

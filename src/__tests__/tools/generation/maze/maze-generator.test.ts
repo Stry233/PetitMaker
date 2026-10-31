@@ -22,8 +22,7 @@ function simpleExecutor(state: ReturnType<typeof makeState>) {
   };
 }
 
-/** Rect region whose extent is a whole number of cells at both corridor widths under test, so the
- *  maze footprint is exactly this rect and the test never has to re-derive the lattice arithmetic. */
+/** A rect that fits the lattice exactly at every corridor width tested, so the maze footprint is this rect. */
 const GATE_REGION = { x0: 2, y0: 2, x1: 18, y1: 18 };
 function gateRegionCells(): MacroCoord[] {
   const cells: MacroCoord[] = [];
@@ -54,11 +53,11 @@ function openings(state: ReturnType<typeof makeState>): MacroCoord[][] {
     if (!run) { run = []; runs.push(run); }
     run.push(ring[i]!);
   }
-  // The walk starts mid-side, but a gate never touches a corner, so no run wraps the seam.
+  // The ring starts at a corner and a gate never touches one, so no run wraps the seam.
   return runs;
 }
 
-/** Plain 4-way flood fill over unpainted cells from a corner well outside the maze. */
+/** 4-way flood fill over unpainted cells from a corner outside the maze. */
 function reachableFromOutside(state: ReturnType<typeof makeState>, w: number, h: number): Set<string> {
   const seen = new Set<string>(['0,0']);
   const queue: MacroCoord[] = [{ x: 0, y: 0 }];
@@ -87,7 +86,6 @@ describe('Maze gates', () => {
     } });
 
     const reached = reachableFromOutside(state, 24, 24);
-    // The reported gates are the cells the walker actually comes through.
     for (const gate of [gates.entrance, gates.exit]) {
       expect(gate).not.toBeNull();
       expect(getCell(state.cells, gate!.x, gate!.y)?.terrain ?? null).toBeNull();
@@ -104,8 +102,7 @@ describe('Maze gates', () => {
     expect(stranded, `unreachable passages: ${stranded.slice(0, 5).map(c => `(${c.x},${c.y})`).join(' ')}`).toEqual([]);
   });
 
-  /** With nothing asked for and no plaza to head for, the default is edge to edge at the longest
-   *  walk the carve holds — which is a pair of ends the run finds, not a side it picks. */
+  /** With no gates asked for and no plaza, the ends default to the longest edge-to-edge walk the carve holds. */
   it('opens exactly two ways in when none are supplied, and reports both', () => {
     const state = makeState(24, 24);
     const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, { seed: 42, maxElevation: 1, corridorWidth: 1, region: gateRegionCells() });
@@ -113,11 +110,9 @@ describe('Maze gates', () => {
     const runs = openings(state);
     expect(runs.length).toBe(2);
     expect(runs.every(r => r.length === 1)).toBe(true);
-    // Both defaulted ends are reported, so a caller can mark them without having picked them, and
-    // each is one of the two openings.
+    // Both defaulted ends are reported, each at one of the openings.
     const cut = runs.map(r => `${r[0]!.x},${r[0]!.y}`).sort();
     expect([gates.entrance, gates.exit].map(g => `${g!.x},${g!.y}`).sort()).toEqual(cut);
-    // Still enterable without a caller asking for it.
     const reached = reachableFromOutside(state, 24, 24);
     expect(reached.has(`${runs[0]![0]!.x},${runs[0]![0]!.y}`)).toBe(true);
   });
@@ -138,11 +133,7 @@ describe('Maze gates', () => {
     expect(gates.entrance).not.toBeNull();
   });
 
-  /**
-   * An interior end is a destination, not a badly-aimed gate: the drop decides, and a place inside is a
-   * place to reach, which costs no terrain at all since a corridor is already walkable. Snapping the
-   * coordinate to the border ring instead would silently move the end to the map's edge.
-   */
+  /** An interior end is a destination inside the maze, not a gate snapped to the border. */
   it('takes an interior coordinate as a destination, cutting no hole for it', () => {
     const state = makeState(24, 24);
     const { gates } = generateMaze(
@@ -152,15 +143,14 @@ describe('Maze gates', () => {
 
     expect(openings(state)).toEqual([]);
     const landed = gates.entrance!;
-    // Inside the maze, on a cell a walker can stand on, and near what was asked for.
     expect(landed.x).toBeGreaterThan(GATE_REGION.x0);
     expect(landed.x).toBeLessThan(GATE_REGION.x1);
     expect(getCell(state.cells, landed.x, landed.y)?.terrain ?? null).toBeNull();
     expect(Math.abs(landed.x - 6) + Math.abs(landed.y - 5)).toBeLessThanOrEqual(2);
   });
 
-  /** A hole is one cell at every corridor width: a doorway into a wide corridor, and the cell the
-   *  end's own marker stands on. The wall it is cut in is one cell thick whatever the corridors are. */
+  /** The border wall is one cell thick at any corridor width, so a gate is one cell: the doorway the
+   *  end's marker stands on. */
   it('cuts a one-cell hole whatever the corridor width', () => {
     const state = makeState(24, 24);
     const { gates } = generateMaze({ state, execute: simpleExecutor(state) }, {
@@ -264,9 +254,7 @@ describe('Maze generator', () => {
     expect(result.placed).toBeGreaterThan(0);
   });
 
-  // Through the real rule executor on a map with a non-grass (beach) border: no command is rejected and
-  // the committed state is rule-clean at every elevation. The failure this catches is an edge wall
-  // tripping V-ZONE-01 (zone not buildable) and then floating a higher layer onto the bare cell.
+  // An edge wall on the beach border would trip V-ZONE-01 and leave a higher layer floating.
   it('produces rule-valid terrain on a bordered map at every elevation (no zone / floating errors)', () => {
     for (const maxElev of [1, 2, 3]) {
       const state = makeState(40, 40);
@@ -293,10 +281,8 @@ describe('Maze generator', () => {
 });
 
 /**
- * The way is drawn over the corridor, not down the middle of it. The route between the ends is one
- * cell wide because a search over cells is; the corridor is as wide as the recipe asked for, and a
- * line drawn down a three-wide corridor reads as a road painted on its floor rather than as the
- * floor. So the generator widens the route over the lattice bands the carve actually filled.
+ * The way between the ends covers the corridor's whole width, not a one-cell line down its middle: the
+ * generator widens the route over the lattice bands the carve filled.
  */
 describe('the way between the ends', () => {
   const key = (c: MacroCoord): string => `${c.x},${c.y}`;
@@ -326,8 +312,7 @@ describe('the way between the ends', () => {
 
     for (const c of walk!) expect(getCell(state.cells, c.x, c.y)?.terrain ?? null).toBeNull();
 
-    // Three cells across, everywhere but the gate cut through the ring, which is one cell of wall
-    // taken out and stays one: every drawn cell stands inside a full three-by-three of the drape.
+    // Off the one-cell gate in the ring, every drawn cell lies inside a full 3x3 of the drawn way.
     const inBlock = (c: MacroCoord): boolean =>
       [0, -1, -2].some((ox) => [0, -1, -2].some((oy) =>
         [0, 1, 2].every((dx) => [0, 1, 2].every((dy) => shown.has(key({ x: c.x + ox + dx, y: c.y + oy + dy }))))));

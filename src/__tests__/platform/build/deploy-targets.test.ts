@@ -22,7 +22,7 @@ describe('every target', () => {
 
   it('titles each deployment in ITS language, not both', () => {
     // Two sites means each has an audience. A bilingual tab title reads as a mistake to whichever
-    // reader you actually have, and it is the first thing they see — before the app has loaded and
+    // reader you actually have, and it is the first thing they see, before the app has loaded and
     // retitled for their locale.
     expect(DEPLOY_TARGETS.global.title).toContain('Petit Planet Map Editor & Planet Planner');
     for (const target of Object.values(DEPLOY_TARGETS)) expect(target.title).not.toMatch(/[\u2014\u00b7\u2022]/);
@@ -35,8 +35,8 @@ describe('every target', () => {
   });
 
   it('still names both products, each in the deployment\'s own language', () => {
-    // One page switches language in place, so there is no second URL for either name to be found
-    // at — both have to be on this one.
+    // One page switches language in place, so there is no second URL for either name: both have to
+    // be on this one.
     for (const t of ALL) {
       const zh = t.htmlLang.startsWith('zh');
       expect(t.title).toContain(zh ? '谷地工坊' : 'PetitMaker');   // the app

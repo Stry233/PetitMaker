@@ -5,8 +5,8 @@ import { mapGrid } from '../../../core/grid/rect';
 /**
  * Cells the anchor landmark reaches over `mask`. The mask and the landmark's own footprint (`anchor`)
  * conduct, and a bridge or ramp footprint conducts through its whole 3x3, because a deck meets the
- * street at its ends without being 4-adjacent to it. Cells in `cut` conduct nothing, so a caller can ask what the
- * walk loses without them.
+ * street at its ends without being 4-adjacent to it. Cells in `cut` conduct nothing, so a caller can
+ * ask what the walk loses without them.
  */
 export function anchorReach(
   mask: Uint8Array, anchor: Uint8Array, crossing: Uint8Array, { W, H }: { W: number; H: number },

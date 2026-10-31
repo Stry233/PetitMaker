@@ -1,17 +1,7 @@
 /**
- * The active-view signal and the selection sync that rides it.
- *
- * A 2D↔3D switch is an explicit signal, never an implicit consequence of a setter. A `setActiveView`
- * that re-points the ToolManager and tells nobody leaves the selection ring in the overlay of the
- * view that just went hidden (the visible one shows none) and leaves anything that has to follow the
- * projection guessing at the moment of the swap from `viewMode`. These pin the signal and its
- * listener: it fires
- * in both directions, it fires when the lazily-built 3D scene registers itself (after the store flip,
- * so `viewMode` cannot stand in for it), the newly active overlay gets the rings, and the outgoing
- * one keeps none.
- *
- * The same listener carries the ring for a selection change, so every path that edits the selection
- * draws it without arranging the repaint itself, including the store dropping a selection the active mode cannot hold.
+ * A 2D/3D switch is an explicit signal, so the selection ring moves to the visible view's overlay.
+ * The lazily built 3D scene registers after the store flips `viewMode`, so `viewMode` cannot stand in
+ * for the signal. The same listener repaints the ring on any selection change.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActiveView, getActiveView, onActiveViewChange } from '../../../view/active-view';
@@ -80,15 +70,12 @@ describe('active-view: the change signal', () => {
   });
 
   it('fires when the lazily-built 3D scene registers, AFTER the store already flipped to 3d', () => {
-    // The cold switch: viewMode goes '3d' first (the store flip), and the scene registers a lazy
-    // import later. A listener keyed on viewMode would have run against the 2D view; the signal is
-    // what tells it the projection is actually 3D's now.
     const two = makeFakeView(), three = makeFakeView(true);
     setActiveView(two.view);
     const seen: ActiveView[] = [];
     const off = onActiveViewChange((v) => { if (v) seen.push(v); });
     setStoreState({ viewMode: '3d' });
-    expect(seen).toEqual([]);          // the flip alone is not the swap
+    expect(seen).toEqual([]);
     setActiveView(three.view);         // the scene, once built
     expect(seen).toEqual([three.view]);
     off();
@@ -133,8 +120,7 @@ describe('selection-view-sync: the ring follows the active view', () => {
     setActiveView(two.view);
     expect(two.overlay.showSelection).not.toHaveBeenCalled();
 
-    // A re-registration of the same view (2D hands out a fresh view object per call) must not clear
-    // the overlay it is repainting — the repaint owns that.
+    // 2D hands out a fresh view object per call over the same overlay, which the repaint owns.
     setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'object', id: 'a' }] });
     const again = { overlay: two.overlay } as unknown as ActiveView;
     setActiveView(again);

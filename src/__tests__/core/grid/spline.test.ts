@@ -1,8 +1,8 @@
 /**
  * The multi-anchor curve's path.
  *
- * It runs through its anchors rather than being pulled toward control points — that is the property
- * that makes a long curve aimable, because a click lands the path where it was clicked.
+ * It runs through its anchors rather than being pulled toward control points, which makes a long
+ * curve aimable: a click lands the path where it was clicked.
  */
 import { describe, it, expect } from 'vitest';
 import { splineCells, splinePath } from '../../../core/grid/shapes';
@@ -10,7 +10,7 @@ import { anchorHandles } from '../../../core/base/spline';
 import type { MacroCoord } from '../../../core/model/types';
 
 const at = (path: MacroCoord[], p: MacroCoord) => path.some((c) => c.x === p.x && c.y === p.y);
-/** Every step shares an edge with the last — never a diagonal-only link. */
+/** Every step shares an edge with the last, never a diagonal-only link. */
 const fourConnected = (path: MacroCoord[]) =>
   path.every((c, i) => i === 0 || Math.abs(c.x - path[i - 1]!.x) + Math.abs(c.y - path[i - 1]!.y) === 1);
 

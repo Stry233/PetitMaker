@@ -27,14 +27,19 @@ export function isFullscreen(): boolean {
   return (document.fullscreenElement ?? doc().webkitFullscreenElement) != null;
 }
 
-/** Enters or leaves fullscreen; a refused request leaves the page as it is. */
-export async function toggleFullscreen(): Promise<void> {
-  if (!SUPPORTS_FULLSCREEN) return;
+/** Whether the page runs as an installed app (a home-screen or desktop install) rather than in a tab. */
+export function isInstalledApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  const shown = (mode: string) => typeof window.matchMedia === 'function' && window.matchMedia(`(display-mode: ${mode})`).matches;
+  // iOS reports a home-screen app through `navigator.standalone` alone before 16.4.
+  return shown('standalone') || shown('fullscreen') || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+/** Enters fullscreen; it needs a user gesture, and a refused request leaves the page as it is. */
+export async function enterFullscreen(): Promise<void> {
+  if (!SUPPORTS_FULLSCREEN || isFullscreen()) return;
   try {
-    if (isFullscreen()) {
-      if (typeof document.exitFullscreen === 'function') await document.exitFullscreen();
-      else await doc().webkitExitFullscreen?.();
-    } else if (typeof document.documentElement.requestFullscreen === 'function') {
+    if (typeof document.documentElement.requestFullscreen === 'function') {
       await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
     } else {
       // The prefixed call takes no options; Safari hides its own navigation anyway.
@@ -42,6 +47,18 @@ export async function toggleFullscreen(): Promise<void> {
     }
   } catch {
     // The engine refused, or the gesture did not qualify.
+  }
+}
+
+/** Enters or leaves fullscreen; a refused request leaves the page as it is. */
+export async function toggleFullscreen(): Promise<void> {
+  if (!SUPPORTS_FULLSCREEN) return;
+  if (!isFullscreen()) { await enterFullscreen(); return; }
+  try {
+    if (typeof document.exitFullscreen === 'function') await document.exitFullscreen();
+    else await doc().webkitExitFullscreen?.();
+  } catch {
+    // The engine refused.
   }
 }
 

@@ -50,8 +50,6 @@ function makeJob(over: Partial<JobView> = {}): JobView {
 
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-/* ── the grouping seam ─────────────────────────────────────────────────────── */
-
 describe('deckRuns: which entries deck', () => {
   it('stacks a run of consecutive answered asks at the minimum, and not below it', () => {
     const two = deckRuns([answered(), answered()]);
@@ -94,8 +92,6 @@ describe('deckRuns: which entries deck', () => {
   });
 });
 
-/* ── the face's two facts ──────────────────────────────────────────────────── */
-
 /** What a deck whose newest ask is `newest` shows on its face: the verdict chip's mark and words. */
 function faceMark(newest: AskRecord): { mark: string; text: string } | undefined {
   const view = renderWithI18n(<AskDeck asks={[newest]} open={false} onOpenChange={() => {}}>{null}</AskDeck>);
@@ -129,8 +125,6 @@ describe('the deck face: the newest verdict, refined the way the card refines it
     expect(faceMark(ask())).toBeUndefined();
   });
 });
-
-/* ── the deck component ────────────────────────────────────────────────────── */
 
 /** The deck with its open flag held the way `PanelShell` holds it. */
 function HeldDeck({ asks }: { asks: AskRecord[] }) {
@@ -180,8 +174,6 @@ describe('the deck, collapsed and expanded', () => {
     expect(getAllByTestId('ask-deck-edge').length).toBe(2);
   });
 });
-
-/* ── the record wearing it ─────────────────────────────────────────────────── */
 
 describe('the record decks its answered asks and never the standing one', () => {
   function gatedView(answeredCount: number) {

@@ -23,13 +23,26 @@ describe('ActionButton', () => {
     const activate = vi.fn();
     const { getByRole, rerender } = render(<ActionButton {...{ [state]: true }} onClick={activate}>Apply</ActionButton>);
     const button = getByRole('button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
     if (state === 'busy') expect(button.getAttribute('aria-busy')).toBe('true');
+    else expect(button.disabled).toBe(true);
     fireEvent.click(button);
     expect(activate).not.toHaveBeenCalled();
     rerender(<ActionButton onClick={activate}>Apply</ActionButton>);
     fireEvent.click(button);
     expect(activate).toHaveBeenCalledOnce();
+  });
+
+  it('[UI-10] a busy button keeps its colour, size and focus, shows the loading dots in place of its label and wears the busy cursor', () => {
+    const { getByRole } = render(<ActionButton appearance="primary" busy>Export</ActionButton>);
+    const button = getByRole('button') as HTMLButtonElement;
+    expect(button.style.opacity).toBe('');
+    expect(button.style.cursor).toContain('--pw-cursor-busy');
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const label = Array.from(button.querySelectorAll('span')).find((span) => span.textContent === 'Export')!;
+    expect(label.style.visibility).toBe('hidden');
+    button.focus();
+    expect(document.activeElement).toBe(button);
   });
 
   it('returns a hover to the current fill, not to the one it started from', async () => {

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { FloatMenu } from '../../../ui/primitives/FloatMenu';
 import { ModalShell } from '../../../ui/primitives/ModalShell';
 import { useSurfaceScope } from '../../../ui/primitives/surface-scope';
+import { InputModeProvider } from '../../../ui/design/input-mode';
 
 function Fixture({ close, pick = () => {} }: { close(): void; pick?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -92,6 +93,21 @@ describe('a press outside a floating surface', () => {
     fireEvent.click(map);
     expect(close).toHaveBeenCalledOnce();
     expect(beneath).not.toHaveBeenCalled();
+  });
+
+  it('[UI-12] in touch mode lets a press through a hint bubble only while no other dismissible surface is open', () => {
+    function Notice({ close }: { close(): void }) {
+      const root = useRef<HTMLDivElement>(null);
+      useSurfaceScope({ open: true, root, onClose: close, outside: 'notice' });
+      return <div ref={root}>Hint</div>;
+    }
+    const menuClose = vi.fn();
+    const noticeClose = vi.fn();
+    const beneath = vi.fn();
+    render(<InputModeProvider inputMode="touch"><Floating close={menuClose} beneath={beneath} /><Notice close={noticeClose} /></InputModeProvider>);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Map' }));
+    expect(noticeClose).toHaveBeenCalledOnce();
+    expect(beneath, 'the menu under the bubble still stands, so the press stops').not.toHaveBeenCalled();
   });
 
   it('leaves a press inside the surface alone', () => {

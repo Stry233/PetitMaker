@@ -4,6 +4,7 @@ import { DOM_CURSORS } from '../../assets/cursors/cursor-spec';
 import { roleFont } from './text-weight';
 import { FOCUS_RING, OVERLAY_DIM, inkTint, rgbaOf } from './tokens';
 import { hexChannels } from '../../core/base/color';
+import type { InputMode } from '../../platform/device/input-mode';
 
 /* ── Colours ─────────────────────────────────────────────── */
 
@@ -17,7 +18,7 @@ export function mixHex(a: string, b: string, share: number): string {
 }
 
 /* ── Cursors ─────────────────────────────────────────────────
- * The four DOM cursors, as the custom properties `ui/design/cursors/cursor-vars` writes onto <html>;
+ * The DOM cursors, as the custom properties `ui/design/cursors/cursor-vars` writes onto <html>;
  * components style a cursor only through these (`cursor-tokens.test.ts`), except the canvas, whose
  * cursor `view/interaction/cursor-controller` writes per pointer move.
  *
@@ -38,6 +39,8 @@ export const cursors = {
   /** The what's-this pick mode. Resolves to the OS help arrow until the painted set gains a
    *  question-mark drawing of its own. */
   help: `var(${DOM_CURSORS.help}, help)`,
+  /** A control whose run is in flight; the DOM shows the ring's first frame, still. */
+  busy: `var(${DOM_CURSORS.busy}, progress)`,
 } as const;
 
 /**
@@ -109,20 +112,28 @@ export const z = {
                      // assistant's panel. What is simply there while the map is being built.
   column: 120,       // the right-hand column. It is the way out of whatever a bar is showing, and a
                      // bar is as wide as the window, so it stands over one.
+  uprightBar: 125,   // the upright frame's bar, its panel and the clusters veiled with them: over the
+                     // right-hand column, which a panel the handle draws tall covers, since that
+                     // panel is what is being used.
   opened: 140,       // what a control just opened, and only for as long as it is open: the menu
                      // sheet, the layer stack. Over the column, because the column is what it was
                      // opened from and a press cannot produce a thing its own button covers.
+  notice: 190,       // what speaks about the map from over it (the arrival greeting, the menu's speech
+                     // bubbles, a toast posted while no window stands): over the standing chrome and
+                     // what it opened, under every window, which is what is being used once one is up.
   overlay: 200,      // modal backdrop (cozyOverlay)
   takeover: 250,     // a full-screen surface reached from inside a window (the stylize window, the 3D
                      // preview), so it stands above that window's overlay rather than inside it.
-  toast: 300,        // toasts, above modals
+  toast: 300,        // a toast posted while a window stands, about what was done in it: above modals
   popover: 400,      // dropdowns/bubbles anchored to a control, above a modal's own content
   tour: 500,         // first-launch tour scrim/spotlight/bubble, above a popover so an open
                      // dropdown can never paint over the tour that is teaching someone to use it
   contextMenu: 9990, // right-click menu + delete popover, above everything
   helpWindow: 9992,  // contextual Help stays above the surface being explained
   helpPicker: 9994,  // picks controls above dialogs and their portaled menus
-  guard: 10000,      // the portrait-lock blocker, above every other layer including contextMenu
+  heldName: 9996,    // a held control's name bubble: above every surface that can hold a named
+                     // control, Help included. It takes no pointer and stands only while a finger
+                     // holds the control, so it can cover nothing a press needs.
   splash: 10005,     // the boot splash: the app is not ready to be used, so it stands over every
                      // surface a user could reach, under only the unmissable build mark
   unmissable: 10010, // the top of the ladder: a mark that must be readable whatever is open, and
@@ -192,6 +203,8 @@ export const font = {
 export const easing = {
   springBouncy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
   springStiff: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+  /** `springs.gentle` (damping ratio 0.71, a 4% overshoot) over its 0.5 s settle, within 2% of the spring. */
+  springGentle: 'cubic-bezier(0.29, 0.32, 0.12, 1.27)',
   punchy: 'cubic-bezier(0.2, 0, 0, 1)',
   /** Still gaining speed when it goes: for something leaving, which has no mark to settle on. */
   accel: 'cubic-bezier(0.4, 0, 1, 1)',
@@ -202,6 +215,10 @@ export const easing = {
   breathing: 'cubic-bezier(0.45, 0, 0.55, 1)',
   roll: 'cubic-bezier(0.16, 1, 0.3, 1)',
   fade: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  /** A body falling under gravity: leaves its height at rest and is fastest as it lands. */
+  gravity: 'cubic-bezier(0.55, 0, 1, 0.45)',
+  /** A body thrown upward: leaves fastest and comes to rest at the top of its arc. */
+  toss: 'cubic-bezier(0, 0.55, 0.45, 1)',
 } as const;
 
 /** The same four control points as an `easing` entry, for a Framer keyframe `ease` array. Derived
@@ -233,12 +250,11 @@ export const springs = {
  */
 export const scaleRest = { restDelta: 0.0002, restSpeed: 0.02 } as const;
 
-/* Shared button press feedback (Framer Motion props) so every interactive
- * control reacts the same way. Spread onto a motion element: <motion.button
- * {...pressable} />. Important: the element must be positioned by layout
- * (flex / left+top), not a CSS `transform` — Framer Motion owns `transform`
- * for the scale and would clobber a centering translate (button-jump bug). */
-export const interactionProfiles = {
+/* Shared button press feedback (Framer Motion props) so every interactive control reacts the same
+ * way, read for the live input mode through `input-mode.tsx:useInteractionProfiles` and spread onto a
+ * motion element. The element must be positioned by layout (flex / left+top), not a CSS `transform`:
+ * Framer Motion owns `transform` for the scale and would clobber a centering translate. */
+const PC_PROFILES = {
   tile: { whileHover: { scale: 1.08 }, whileTap: { scale: 0.9 }, transition: springs.stiff },
   action: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
   choice: { whileHover: { scale: 1.05 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
@@ -260,12 +276,32 @@ export const interactionProfiles = {
   still: { transition: springs.stiff },
 } as const;
 
-export type InteractionProfile = keyof typeof interactionProfiles;
+export type InteractionProfile = keyof typeof PC_PROFILES;
+
+/** One profile in either mode: a hover entry exists only in PC mode. */
+export type InteractionProfiles = {
+  readonly [K in InteractionProfile]: Omit<(typeof PC_PROFILES)[K], 'whileHover'>
+    & { readonly whileHover?: (typeof PC_PROFILES)[K] extends { whileHover: infer H } ? H : never };
+};
+
+/** A finger gets press feedback on contact and nothing for a hover it cannot make. */
+const TOUCH_PROFILES = Object.fromEntries(Object.entries(PC_PROFILES).map(([id, profile]) => {
+  const { whileHover: _hover, ...press } = profile as { whileHover?: unknown };
+  return [id, press];
+})) as unknown as InteractionProfiles;
+
+/** The interaction profiles for an input mode. */
+export function interactionProfilesFor(mode: 'pc'): typeof PC_PROFILES;
+export function interactionProfilesFor(mode: InputMode): InteractionProfiles;
+export function interactionProfilesFor(mode: InputMode): InteractionProfiles {
+  return mode === 'touch' ? TOUCH_PROFILES : PC_PROFILES;
+}
+
+/** The tile's PC profile: how far a hover grows a control, for the room a layout keeps around it. */
+export const pressable = PC_PROFILES.tile;
 
 /** Inline style that also carries the `--pw-*` custom properties `animations.css` reads. */
 export type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;
-export const pressable = interactionProfiles.tile;
-export const buttonMotion = interactionProfiles.action;
 
 /* ── Helpers ─────────────────────────────────────────────── */
 

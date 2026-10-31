@@ -58,6 +58,9 @@ function Welcome({ entered }: { entered: boolean }) {
   );
 }
 
+/** A figure's illustration, the first thing in the row that scrolls inside the figure's plate. */
+const illustration = (figure: Element) => figure.firstElementChild!.firstElementChild as HTMLElement;
+
 describe('Help illustration work', () => {
   it('keeps unseen generation and map captures idle while preserving the article and figure dimensions', async () => {
     const { container, rerender } = render(<Welcome entered={false} />);
@@ -65,7 +68,7 @@ describe('Help illustration work', () => {
     const figures = container.querySelectorAll('figure');
     const checklist = figures[1]!;
     const save = figures[3]!;
-    const height = (checklist.firstElementChild as HTMLElement).style.height;
+    const height = illustration(checklist).style.height;
     expect(container.querySelector('h2')?.textContent).toBeTruthy();
     expect(height).toBe('430px');
     expect(observers.size).toBe(0);
@@ -83,7 +86,7 @@ describe('Help illustration work', () => {
     approach(checklist);
     await act(async () => { vi.advanceTimersByTime(1); });
     expect(generate).toHaveBeenCalledTimes(1);
-    expect((checklist.firstElementChild as HTMLElement).style.height).toBe(height);
+    expect(illustration(checklist).style.height).toBe(height);
     expect(thumbnail).not.toHaveBeenCalled();
 
     approach(save);

@@ -9,17 +9,14 @@ import { defaultConfig } from '../../../tools/generation/recipe';
 import { exportable } from '../../_support/exportable';
 
 /**
- * Full loop: real executor edits → serializeWithSections (every section on) →
- * JSON.parse → deserialize(json, template) → applyOptionalSections over a fresh
- * executor → undo() reverts the imported edit. Proves the whole spec end to end
- * rather than each half in isolation (sections.test.ts / sections-restore.test.ts /
- * history-codec.test.ts already cover the unit-level behaviour).
+ * Full loop: real executor edits, serializeWithSections (every section on), JSON.parse,
+ * deserialize(json, template), applyOptionalSections over a fresh executor, then undo() reverts
+ * the imported edit. The unit-level halves are covered by sections.test.ts, sections-restore.test.ts
+ * and history-codec.test.ts.
  */
 describe('sectioned save e2e: build → export all sections → import → undo', () => {
   it('round-trips cells/objects/notes and restores an undoable history', () => {
-    // 1. Build a real edited state via the executor (5 separate PaintTerrain
-    //    commands, then commitStroke — matches the CommandExecutor usage pattern
-    //    in src/__tests__/io/save/history-codec.test.ts).
+    // Five PaintTerrain commands, then commitStroke.
     const state = makeState(16, 16);
     const exec = makeExecutor(state);
     const startSize = exec.beginStroke();
@@ -34,14 +31,12 @@ describe('sectioned save e2e: build → export all sections → import → undo'
     }
     const violations = startSize.commit();
     expect(violations).toEqual([]);
-    // commitStroke folds the whole stroke into one undo entry (policy: a gesture is
-    // one atomic undo step) — the 5 paints collapse to a single history entry.
+    // commitStroke folds the five paints into one undo entry: a gesture is one atomic undo step.
     expect(exec.historyDepth()).toBe(1);
 
     state.notes = { title: 'E2E Island', description: 'built by the e2e test' };
     state.generation = defaultConfig('designed', { maxElevation: 8, seed: 123 });
 
-    // 2. Export with every optional section on.
     const entries = exec.getUndoEntries();
     expect(entries.length).toBe(1);
     const json = serializeWithSections(exportable(state), {
@@ -61,8 +56,7 @@ describe('sectioned save e2e: build → export all sections → import → undo'
     expect(raw.manifest).toBeDefined();
     expect(raw.provenance).toBeDefined();
 
-    // 3. Plain deserialize (today's loader, ignoring every extra top-level key) —
-    //    cells/objects/notes must match the source state exactly.
+    // A plain deserialize ignores every extra top-level key; cells, objects and notes match the source.
     const back = deserialize(json, state.template);
     expect(back.notes).toEqual(state.notes);
     expect(back.cells[3]![2]!.terrain).toEqual({ type: TerrainType.Mountain, elevation: 1 });
@@ -73,8 +67,7 @@ describe('sectioned save e2e: build → export all sections → import → undo'
       expect(back.objects.get(id)).toEqual(obj);
     }
 
-    // 4. applyOptionalSections over a fresh executor on the deserialized state —
-    //    generation/session/history all restore, and undo() reverts the last edit.
+    // applyOptionalSections restores generation, session and history on a fresh executor.
     const freshExec = makeExecutor(back);
     const locked: number[] = [];
     let camera: PersistedCamera | null = null;
@@ -96,8 +89,7 @@ describe('sectioned save e2e: build → export all sections → import → undo'
 
     expect(freshExec.canUndo()).toBe(true);
     freshExec.undo();
-    // The stroke collapsed to one undo entry (commitStroke's atomic-gesture policy), so a
-    // single undo reverts every painted cell, including the last one written (x=6, y=3).
+    // The stroke is one undo entry, so a single undo reverts every painted cell, including the last (x=6, y=3).
     expect(back.cells[3]![6]!.terrain).toBeNull();
     expect(back.cells[3]![2]!.terrain).toBeNull();
   });
@@ -124,7 +116,7 @@ describe('sectioned save e2e: build → export all sections → import → undo'
     expect(raw.session).toBeUndefined();
     expect(raw.stats).toBeUndefined();
     expect(raw.catalogInfo).toBeUndefined();
-    expect(raw.manifest).toBeDefined(); // always-on
+    expect(raw.manifest).toBeDefined(); // always written
 
     expect(() => deserialize(json, state.template)).not.toThrow();
     const back = deserialize(json, state.template);

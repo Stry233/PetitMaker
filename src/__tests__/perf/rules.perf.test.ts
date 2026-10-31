@@ -1,13 +1,7 @@
 /*
- * The two-phase validation system's operation costs.
- *
- * Post-stroke rules validate the whole state after a stroke commits, so
- * they are the expensive half by construction; pre-command rules gate one command at a time, but a
- * generation run or an agent tool call issues thousands of them, and the spatial-index-backed ones
- * (placement traits, overlap, terrain-blocks) are the paths that scale with the map's own object
- * count. This suite times both against the dense map: `commitStroke`'s own post-stroke call
- * (`core/commands/command-executor.ts`) and `execute`'s own pre-command call, read verbatim rather
- * than re-implemented. See `_harness.ts` for the gate and methodology.
+ * Times both validation phases on the dense map: a post-stroke pass over the whole state, and
+ * pre-command checks, which a generation run issues by the thousand and whose index-backed rules
+ * scale with the object count.
  */
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
@@ -21,11 +15,8 @@ import { ItemCategory } from '../../config/catalog/categories';
 
 const s = perfSuite('rules');
 
-/** The first cell `executor.validatePre` accepts a bare-ground repaint of, scanning in a fixed
- *  raster order — deterministic across runs on the same fixture. Every pre-command rule that
- *  applies to PaintTerrain (layer-lock, elevation-range, floating-block x2, object-blocks-terrain,
- *  zone-restriction) genuinely runs and passes here, rather than a hand-built cell that happens to
- *  dodge one of them. */
+/** The first cell in raster order that `executor.validatePre` accepts a bare-ground repaint of, so
+ *  every PaintTerrain pre-command rule runs and passes rather than being dodged by a hand-picked cell. */
 function findLegalPaintCell(world: World): MacroCoord {
   const { state, executor } = world;
   const { width, height } = state.template;
@@ -40,9 +31,8 @@ function findLegalPaintCell(world: World): MacroCoord {
   throw new Error('perf fixture: no legal paint cell found on the dense map');
 }
 
-/** Every water cell on the map, raster order, evenly sampled down to `limit` — the bridge trait's
- *  span detection looks for two flat equal-height ends around a gap, and a water cell is the most
- *  plausible anchor to probe near one (most still refuse: a real span needs the far bank too). */
+/** Water cells in raster order, evenly sampled down to `limit`: the likeliest bridge anchors, though
+ *  most still refuse because a span needs flat equal-height banks on both sides. */
 function sampleWaterCells(world: World, limit: number): MacroCoord[] {
   const { state } = world;
   const { width, height } = state.template;

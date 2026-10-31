@@ -17,6 +17,8 @@ interface Binding {
   shift: boolean;
   alt: boolean;
   action: () => void;
+  /** Leave the key's default to the browser (a clipboard key, whose event must still fire). */
+  keepDefault: boolean;
 }
 
 export class ShortcutManager {
@@ -26,15 +28,16 @@ export class ShortcutManager {
    * Register a keyboard shortcut.
    * @param combo  Key combo string, e.g. "t", "ctrl+z", "ctrl+shift+z"
    * @param action Callback to invoke when the combo is matched.
+   * @param keepDefault Leave the key's default action to the browser.
    */
-  register(combo: string, action: () => void): void {
+  register(combo: string, action: () => void, keepDefault = false): void {
     const { key, ctrl, shift, alt } = splitCombo(combo);
-    this.bindings.push({ key, ctrl, shift, alt, action });
+    this.bindings.push({ key, ctrl, shift, alt, action, keepDefault });
   }
 
   /**
    * Handle a keydown event: match against registered bindings and fire
-   * the action if a match is found. Calls e.preventDefault() on match.
+   * the action if a match is found. Calls e.preventDefault() on match, unless the binding keeps it.
    * Ignores events whose target is a form field or editable content.
    */
   handleKeyDown(e: KeyboardEvent): void {
@@ -50,7 +53,7 @@ export class ShortcutManager {
         binding.shift === e.shiftKey &&
         binding.alt === e.altKey
       ) {
-        e.preventDefault();
+        if (!binding.keepDefault) e.preventDefault();
         binding.action();
         return;
       }

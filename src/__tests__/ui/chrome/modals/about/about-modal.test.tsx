@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
-// About modal — two-view drill-in host + lazy legal doc viewer.
+// About modal: the two-view drill-in host and the lazy legal document viewer.
 //
-// `LEGAL` config: the filing/origin fields are mutated in-place per test (the export
-// is a plain, non-frozen object; the component reads `LEGAL` at render). We snapshot
-// the launch-default values once and restore them in afterEach so tests stay
-// order-independent and never leak the placeholder state into other suites. The
-// registry + docBody read the same module, so the "row count / filing rows follow
-// config" matrix is exercised by mutation rather than by a mock they would both lose.
-//
-// Assertions use plain DOM checks (getAttribute / toBeTruthy / toBeNull) — this
-// repo does not register @testing-library/jest-dom, matching sibling UI tests.
+// The filing and origin fields of `LEGAL` (a plain object read at render) are mutated per test and
+// restored from a snapshot in afterEach, so the component and the document registry see one config.
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
@@ -40,8 +33,8 @@ const snapshot = {
   psbUrl: LEGAL.psbUrl,
 };
 
-// The modal loads the legal document view lazily; loading it once up front keeps the first
-// document case from spending its query budget on the module transform.
+// Loading the lazy document view up front keeps the first document case's query budget off the
+// module transform.
 beforeAll(async () => { await import('../../../../../ui/chrome/modals/about/LegalDocView'); });
 
 beforeEach(() => {
@@ -59,8 +52,7 @@ afterEach(() => {
   delete (navigator as unknown as { clipboard?: unknown }).clipboard;
 });
 
-// jsdom has no Clipboard API by default — define it fresh per test so each
-// suite gets its own vi.fn() spy without leaking into siblings.
+// jsdom has no Clipboard API; each test defines its own spy, removed in afterEach.
 function stubClipboard(writeText: (text: string) => Promise<void>) {
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText: vi.fn(writeText) },
@@ -80,8 +72,7 @@ describe('AboutModal — view A (About)', () => {
     const people = screen.getByTestId('about-people');
     const documents = screen.getByTestId('about-documents');
     const grid = screen.getByTestId('legal-grid');
-    // 8 drill-in doc rows (privacy…changelog; the About doc is view A itself).
-    // There is no origin-gated "open the About page" row — it would duplicate view A.
+    // Eight document rows; the About document is view A itself, so it has no row.
     expect(within(grid).getAllByRole('button')).toHaveLength(8);
     expect(screen.queryByTestId('legal-open-page-row')).toBeNull();
     const team = screen.getByTestId('team-grid');
@@ -141,7 +132,7 @@ describe('AboutModal — view A (About)', () => {
     const link = within(icp).getByRole('link');
     expect(link.getAttribute('href')).toBe('https://beian.miit.gov.cn/');
     expect(link.textContent).toContain('京ICP备2026000000号-1');
-    // PSB is an incomplete pair (number null) → absent.
+    // PSB has a null number, so its row is absent.
     expect(screen.queryByTestId('filing-psb')).toBeNull();
   });
 });
@@ -151,9 +142,8 @@ describe('AboutModal — team avatar cards', () => {
     renderModal();
     const cards = screen.getAllByTestId('team-member');
     expect(cards).toHaveLength(LEGAL.team.length);
-    // Cards follow the alphabet, not LEGAL.team's array order — the roster must
-    // never read as a ranking (the same helper orders the About doc's table, so
-    // the two surfaces cannot disagree).
+    // Alphabetical, not array order, so the roster never reads as a ranking; the About document's
+    // table uses the same helper.
     const ordered = teamInReadingOrder(LEGAL.team);
     cards.forEach((card, i) => {
       const member = ordered[i]!;
@@ -192,9 +182,8 @@ describe('AboutModal — team avatar cards', () => {
   it('runs A to Z by romanized name, with Han and Latin names interleaved', () => {
     const keys = teamInReadingOrder(LEGAL.team).map((m) => m.sort);
     expect(keys).toEqual([...keys].sort());
-    // The point of romanizing: a locale collator cannot produce this sequence.
-    // ICU zh sorts Han by pinyin but puts Latin script after all of it, and en
-    // orders Han by code point, so neither interleaves by leading letter.
+    // No locale collator interleaves these: ICU zh puts Latin after all Han, en orders Han by code
+    // point.
     expect(keys.map((k) => k[0])).toEqual(['h', 'j', 's', 'y']);
     const byZhCollator = [...LEGAL.team].sort((a, b) => a.name.localeCompare(b.name, 'zh'));
     expect(byZhCollator.map((m) => m.sort[0])).toEqual(['h', 'j', 'y', 's']);
@@ -213,7 +202,6 @@ describe('AboutModal — team avatar cards', () => {
     for (const member of LEGAL.team) {
       const img = screen.getByAltText(member.name) as HTMLImageElement;
       expect(img.tagName).toBe('IMG');
-      // Vite resolves the static import to a non-empty URL at build time.
       expect(img.getAttribute('src')).toBeTruthy();
     }
     const grid = screen.getByTestId('team-grid');
@@ -281,7 +269,7 @@ describe('AboutModal — drill-in to the doc view', () => {
     renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
     await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
-    // The static /privacy page still exists: what the modal does not carry is a link out to it.
+    // The static /privacy page exists, but the modal does not link out to it.
     expect(screen.queryByRole('link', { name: /open as page/i })).toBeNull();
   });
 
@@ -337,10 +325,8 @@ describe('AboutModal — build info and repository link', () => {
   });
 
   it('never rewrites the row\'s own text — a floating bubble carries the "Copied" confirmation, then unmounts after ~1.2s', async () => {
-    // Animations globally skipped (same idiom as a11y.test.tsx's view-swap
-    // tests) so the AnimatePresence enter/exit settle in one microtask flush
-    // instead of racing framer-motion's real spring/rAF physics under fake
-    // timers.
+    // Skipped animations let AnimatePresence settle in one flush instead of racing framer-motion's
+    // rAF physics under fake timers.
     MotionGlobalConfig.skipAnimations = true;
     vi.useFakeTimers();
     try {
@@ -351,17 +337,14 @@ describe('AboutModal — build info and repository link', () => {
 
       expect(screen.queryByText('Copied')).toBeNull();
 
-      // Flush the click + the awaited writeText() microtask so setCopied(true)
-      // commits and the bubble mounts.
+      // Flush the click and the awaited writeText() so the bubble mounts.
       await act(async () => {
         fireEvent.click(row);
         await vi.advanceTimersByTimeAsync(0);
       });
       expect(screen.getByText('Copied')).toBeTruthy();
-      // The row underneath is untouched throughout.
       expect(row.textContent).toBe(originalText);
 
-      // Advance past the ~1.2s auto-dismiss timer.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1200);
       });
@@ -373,13 +356,10 @@ describe('AboutModal — build info and repository link', () => {
   });
 
   it('never throws when the Clipboard API is unavailable (insecure context / denied) — silent no-op, no bubble', async () => {
-    // No navigator.clipboard stub at all in this test — mirrors an insecure
-    // context where the property is simply absent.
+    // No clipboard stub: in an insecure context the property is absent.
     renderModal();
     const row = screen.getByRole('button', { name: 'Copy version info' });
     expect(() => fireEvent.click(row)).not.toThrow();
-    // Give the rejected/absent-clipboard microtask a tick to settle; no
-    // confirmation bubble should ever mount.
     await waitFor(() => {
       expect(screen.queryByText('Copied')).toBeNull();
     });
@@ -389,12 +369,8 @@ describe('AboutModal — build info and repository link', () => {
     const writeText = stubClipboard(() => Promise.resolve());
     renderModal();
     const row = screen.getByRole('button', { name: 'Copy version info' });
-    // A real <button> (not a div/span with onClick) gets Enter/Space→click for
-    // free from the browser's native semantics; jsdom doesn't synthesize that
-    // mapping (and firing a raw keydown trips framer-motion's own internal
-    // PointerEvent-based press handling, which jsdom also lacks), so the
-    // meaningful, non-flaky assertion is the semantic guarantee plus the same
-    // click path a keyboard Enter would dispatch natively.
+    // jsdom does not map Enter to click (and a raw keydown trips framer-motion's PointerEvent press
+    // handling), so the test asserts a real <button> and the click Enter would dispatch.
     expect(row.tagName).toBe('BUTTON');
     row.focus();
     expect(document.activeElement).toBe(row);

@@ -1,5 +1,5 @@
 /**
- * `buildChecklistText` — the "copy as text" payload. Pinned against a fixed, hand-built
+ * `buildChecklistText`: the "copy as text" payload. Pinned against a fixed, hand-built
  * `BuildChecklist` fixture (not a real map) so a change in the exact text shape shows up as a
  * one-line diff here rather than a fuzzy prose assertion.
  */

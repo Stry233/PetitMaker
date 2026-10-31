@@ -42,11 +42,22 @@ export const host = {
     zoomOut(): void { getActiveView()?.camera.zoomStepAnimated(-1); },
     /** Turns the camera as a drag of `dx`, `dy` screen px would, in the views that turn. */
     orbit(dx: number, dy: number): void { getActiveView()?.camera.orbit?.(dx, dy); },
-    fit(): void { getActiveView()?.camera.fitToMap(); },
+    fit(): void {
+      getActiveView()?.camera.fitToMap();
+      useEditorStore.getState().eventBus.emit('camera-fit', {});
+    },
     get2d(): View2dCamera | undefined {
       const vp = getMapRenderer()?.viewport;
       if (!vp) return undefined;
       const v = vp.getView();
+      return { x: v.offsetX, y: v.offsetY, zoom: v.zoom };
+    },
+    /** The 2D camera Fit lands on for the map shown. */
+    fitted2d(): View2dCamera | undefined {
+      const vp = getMapRenderer()?.viewport;
+      const template = useEditorStore.getState().gridState?.template;
+      if (!vp || !template) return undefined;
+      const v = vp.fittedView(template.width, template.height);
       return { x: v.offsetX, y: v.offsetY, zoom: v.zoom };
     },
     set2d(c: View2dCamera): void {

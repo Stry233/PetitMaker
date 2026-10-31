@@ -1,6 +1,4 @@
-// gen-eval's scorers, pinned on synthetic states with known properties: a hand-built mirrored
-// region must read symmetric, a 1-wide road must fail the ledger and a 3-wide one pass it, a
-// terraced slope must score monotone, and a missing facility must be named.
+// The evaluator's scorers on synthetic states whose properties are known by construction.
 import { describe, it, expect } from 'vitest';
 import { makeState } from '../map-state';
 import { TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
@@ -114,8 +112,7 @@ describe('hard ledger: roads', () => {
 });
 
 describe('methodology scores', () => {
-  // Near-low-far-high is read from the plaza, so the same terrain scores differently depending on
-  // where the map is stood in. These three states hold one slope and move only the plaza.
+  // Near-low-far-high is read from the plaza, so these states keep one slope and move only the plaza.
   it('scores a slope rising away from the plaza monotone, and a flat map not', () => {
     const slope = makeState(40, 40);
     for (let y = 0; y < 40; y++) paintRow(slope, y, [8, 5, 2, 0][Math.floor(y / 10)]!);
@@ -130,8 +127,7 @@ describe('methodology scores', () => {
   });
 
   it('scores a wall on the wrong side of the plaza at nothing', () => {
-    // The same slope, read from its high end: the ground now falls away from the plaza, which is the
-    // opposite of what the methodology asks for and must not score like the map above.
+    // The same slope with the plaza at its high end: the ground falls away from it.
     const backwards = makeState(40, 40);
     for (let y = 0; y < 40; y++) paintRow(backwards, y, [8, 5, 2, 0][Math.floor(y / 10)]!);
     plaza(backwards, 18, 1, 4, 3);
@@ -183,15 +179,14 @@ describe('methodology scores', () => {
 });
 
 describe('ramp discipline', () => {
-  // A 2x2 ramp. Its footprint is read by cell centres, so a whole-grid ramp covers exactly its own
-  // width and height in cells.
+  // A 2x2 ramp; footprints are read by cell centres, so it covers exactly 2x2 cells.
   const RAMP = 'ramp-green-steps';
 
   it('fails a ramp standing on the pavement', () => {
     const state = makeState(30, 30);
     for (let y = 4; y <= 6; y++) for (let x = 2; x < 20; x++) place(state, 'path-overgrown-dirt', x, y);
     place(state, RAMP, 8, 4);
-    // One ramp, and it is the one on the street: the share is 1, well over the reference's margin.
+    // The only ramp stands on the street, so the on-pavement share is 1.
     const read = rampDiscipline(state);
     expect(read.ramps).toBe(1);
     expect(read.onPavement).toBe(1);
@@ -320,8 +315,7 @@ describe('the climb and the form a walker sees', () => {
 
   it('reads four equal storeys as two bits, and the share standing above mid-height', () => {
     const state = makeState(40, 40);
-    // Four rows of equal length at four levels: entropy is log2(4) exactly, and half of the pavement
-    // stands at level 4 or above.
+    // Four equal rows at four levels: entropy is log2(4), and two rows stand at `ABOVE_MID_LEVEL` or above.
     pavedRow(state, 5, 1);
     pavedRow(state, 9, 3);
     pavedRow(state, 13, ABOVE_MID_LEVEL);
@@ -335,7 +329,7 @@ describe('the climb and the form a walker sees', () => {
 
   it('counts a level change per ramp and per bridge, over a hundred pavement cells', () => {
     const state = makeState(60, 40);
-    pavedRow(state, 5, 0, 2, 51);   // fifty cells
+    pavedRow(state, 5, 0, 2, 51);
     place(state, 'ramp-park-steps', 6, 6);
     place(state, 'bridge-plank', 10, 6);
     const climb = climbReading(state);
@@ -352,14 +346,13 @@ describe('the climb and the form a walker sees', () => {
         }
       }
     };
-    // The walk at ground level with the mass ten cells east of it: every cell of it sees the mass.
+    // The mass stands ten cells east of a ground-level walk.
     const open = makeState(40, 40);
     pavedRow(open, 5, 0, 2, 8);
     mass(open, 18, 24, 2, 12);
     expect(climbReading(open).seesMass).toBe(1);
 
-    // The same mass behind a ridge that stands above the walk and below the mass: the ridge closes
-    // the view and is not itself the form the reading is looking for.
+    // A ridge above the walk but below `FORM_MASS_LEVEL` closes the view without counting as the mass.
     const walled = makeState(40, 40);
     pavedRow(walled, 5, 0, 2, 8);
     mass(walled, 18, 24, 2, 12);
@@ -369,7 +362,7 @@ describe('the climb and the form a walker sees', () => {
     }
     expect(climbReading(walled).seesMass).toBe(0);
 
-    // And out of reach: the same mass, cast further than a view is read.
+    // The same mass beyond `FORM_SIGHT_REACH`.
     const far = makeState(40 + FORM_SIGHT_REACH, 40);
     pavedRow(far, 5, 0, 2, 8);
     mass(far, 8 + FORM_SIGHT_REACH + 2, 8 + FORM_SIGHT_REACH + 6, 2, 12);
@@ -399,7 +392,7 @@ describe('composition variety', () => {
 
   it('holds its verdict until the batch is big enough to mean it', () => {
     const four: CompositionSample[] = Array.from({ length: 4 }, () => ({ direction: 'north' as const }));
-    // Four sides drawn at random land on one 1.6% of the time at n=4, so a 4-batch is reported only.
+    // Four random sides all agree 1.6% of the time, so a batch of four is reported, not judged.
     expect(compositionVariety(four).applicable).toBe(false);
     expect(compositionVariety(four).pass).toBe(true);
     const five: CompositionSample[] = Array.from({ length: 5 }, () => ({ direction: 'north' as const }));

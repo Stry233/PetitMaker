@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** An edition that reads no planet files and no videos treats both as files it cannot import, as it always has. */
+/** An edition that reads no planet files and no videos treats both as files it cannot import. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';

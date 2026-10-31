@@ -166,8 +166,9 @@ export const GAP = {
   sliderPart: 10,
 } as const;
 
-/** Extra separation between the batch and clear controls. */
-export const PAIR_GAP = GAP.card * 2;
+/** Between the batch and clear controls, side by side or stacked: the card gap, so stacked the two
+ *  share the card row's height rather than standing apart. */
+export const PAIR_GAP = GAP.card;
 
 /** Content padding; the right side reserves the rail while the backing remains full width. */
 export const PAD = {
@@ -177,14 +178,16 @@ export const PAD = {
 /** Candidate-card height ceiling in CSS pixels. */
 const CARD_MAX_H = CARD.h * SHELF_SCALE;
 
-/** Available candidate height after the settings strip and shelf spacing. */
-export const CARD_H = Math.min(
-  CARD_MAX_H,
-  SHELF_TABS.floor - PAD.bottom - STRIP.h - STRIP.gap - GAP.row,
-);
+/** Candidate height under a shelf body whose top stands `tabsTop` above its foot
+ *  (`frame-plan.ts:FrameLayout.bar`), after the settings strip and shelf spacing. */
+export function cardHeight(tabsTop: number): number {
+  return Math.min(CARD_MAX_H, tabsTop - PAD.bottom - STRIP.h - STRIP.gap - GAP.row);
+}
 
-/** Fixed body height derived from its card and settings-strip parts. */
-export const BODY_H = CARD_H + STRIP.gap + STRIP.h;
+/** The body's height under that top: its card and settings strip. */
+export function bodyHeight(tabsTop: number): number {
+  return cardHeight(tabsTop) + STRIP.gap + STRIP.h;
+}
 
 /** Shared generator slider geometry, in design pixels. */
 const sliderAt = (y: number): SliderShape => ({

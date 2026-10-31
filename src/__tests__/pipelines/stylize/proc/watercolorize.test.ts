@@ -1,5 +1,5 @@
 // The structure-blind pass: deterministic in the seed, lightens a flat mid tone toward paper, and
-// deepens tone along colour boundaries — the dried rim, in image space.
+// deepens tone along colour boundaries (the dried rim, in image space).
 import { describe, it, expect } from 'vitest';
 import { watercolorize, type Bitmap } from '../../../../pipelines/stylize/proc/watercolorize';
 

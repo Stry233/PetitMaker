@@ -4,7 +4,7 @@
  * The load-bearing fact is fingerprint parity: a worker computes `mapFingerprint` over the
  * revived grid and the main thread compares it against the live one, so any field the codec
  * dropped or invented would make every off-thread build land as "stale" and silently fall back
- * to the main thread — the exact cost the codec exists to remove.
+ * to the main thread: the exact cost the codec exists to remove.
  */
 import { describe, it, expect } from 'vitest';
 import { decodeCells, decodeGridState, encodeCells, encodeGridState } from '../../../core/model/grid-wire';

@@ -4,12 +4,12 @@ import { DEPLOY_TARGETS } from '../../platform/build/deploy-targets';
 import { webManifest } from '../../../scripts/site-html.mts';
 
 describe('web app manifest', () => {
-  it('describes each deployment as an installable landscape app under its own name', () => {
+  it('[UI-44] describes each deployment as an installable app under its own name that turns with the screen', () => {
     const global = JSON.parse(webManifest(DEPLOY_TARGETS.global));
     expect(global.name).toBe('PetitMaker');
     expect(global.lang).toBe('en');
     expect(global.display).toBe('standalone');
-    expect(global.orientation).toBe('landscape');
+    expect(global.orientation).toBe('any');
     expect(global.start_url).toBe('./');
     expect(global.scope).toBe('./');
     expect(global.icons.map((i: { sizes: string }) => i.sizes)).toContain('256x256');

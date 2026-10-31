@@ -58,7 +58,7 @@ describe('README share-map artifacts', () => {
         if (c.terrain) terrain++;
         if (c.terrain?.type === TerrainType.Water) water++;
       }
-      // The plaza now covers 8 of the 3218 placed objects and some of the terrain; the load takes
+      // The plaza covers 8 of the 3218 placed objects and some of the terrain; the load takes
       // them off with that terrain, lays the layer-1 mountain Hexia keeps under the plaza (this older
       // code never stored it), lowers what then stands unsupported a layer at a time, and takes off
       // the 37 more objects the current placement rules refuse where they stand (the spacing homes and

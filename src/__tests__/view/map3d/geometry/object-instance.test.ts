@@ -43,7 +43,7 @@ describe('objectInstance', () => {
       const match = bulkFlat.find((e) => e.k === single!.groupKey && JSON.stringify(e.inst) === JSON.stringify(single!.inst));
       expect(match, `bulk builder contains ${obj.id}'s instance`).toBeTruthy();
     }
-    // bulk emits exactly the two instanced objects — both roads live in the road mesh
+    // bulk emits exactly the two instanced objects: both roads live in the road mesh
     expect(bulkFlat).toHaveLength(2);
   });
 

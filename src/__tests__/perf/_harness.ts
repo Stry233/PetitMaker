@@ -1,18 +1,12 @@
 /*
- * The perf tier's measurement harness.
+ * The perf tier's measurement harness. The `*.perf.test.ts` suites time operations as plain
+ * functions, run only with PETIT_PERF=1 (`npm run test:perf`, which also passes
+ * `--no-file-parallelism`: sibling workers saturating the cores would measure the scheduler). Each
+ * suite writes `<suite>.json` into PETIT_PERF_OUT (default /tmp/petit-perf), one BenchRecord per op.
  *
- * The perf suites (`*.perf.test.ts`, this directory) time the app's operation layer — generation,
- * commands, indexes, codecs, geometry builders — as plain functions, no browser. They form the
- * `perf` Vitest project and are skipped unless PETIT_PERF=1; `npm run test:perf` sets it and adds
- * `--no-file-parallelism`, which matters: numbers taken while sibling workers saturate the cores
- * measure the scheduler, not the code. Each suite writes `<suite>.json` into PETIT_PERF_OUT (default
- * /tmp/petit-perf), one BenchRecord per operation; `scripts` tooling folds two such directories
- * into a before/after table. Run outputs are not committed.
- *
- * Methodology. Each bench auto-calibrates: one untimed warmup pass, then enough samples to fill a
- * time budget (bounded both ways), reporting median/p95 — median for the headline (stable against
- * GC pauses), p95 for the stutter a user actually feels. An op that mutates its input takes a
- * `setup` callback, run untimed before every sample, so every sample measures the same work.
+ * Each bench runs an untimed warmup, then enough samples to fill a bounded time budget, and reports
+ * the median (stable against GC pauses) and p95 (the stutter a user feels). An op that mutates its
+ * input takes a `setup` callback, run untimed before every sample.
  */
 import { afterAll } from 'vitest';
 
@@ -68,10 +62,8 @@ export interface PerfSuite {
   bench(name: string, fn: () => unknown, opts?: BenchOpts): Promise<BenchStats>;
 }
 
-/**
- * One suite = one output file. Register in the suite module's top level (the `afterAll` writer
- * needs a vitest context), then call `s.bench(...)` from inside `it` blocks.
- */
+/** One suite writes one file. Call at module top level (the `afterAll` writer needs a Vitest
+ *  context), then `s.bench(...)` inside `it` blocks. */
 export function perfSuite(suite: string): PerfSuite {
   const records: BenchRecord[] = [];
 

@@ -3,8 +3,8 @@
  *
  * `state/` is where every "what is here?" question resolves without a scan:
  * the object index, the whole-map stats, the layer panel's derivation and the footprint geometry
- * underneath all three. Each is memoized and patched from a mutation's delta rather than rebuilt —
- * this suite times both halves of that contract: the cold rebuild a missing/untrustworthy delta
+ * underneath all three. Each is memoized and patched from a mutation's delta rather than rebuilt.
+ * This suite times both halves of that contract: the cold rebuild a missing/untrustworthy delta
  * falls back to, and the incremental patch a normal edit takes instead. See `_harness.ts` for the
  * gate and methodology.
  */

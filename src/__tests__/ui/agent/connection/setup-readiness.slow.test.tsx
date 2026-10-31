@@ -29,8 +29,8 @@ const emptyModels = () =>
   Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>;
 
 /** A key of each shape the machine tells apart, so no test spells one inline and drifts from
- *  `readKeyShape`. The gateway key is the reported shape: a bare
- *  `sk-<32hex>`, the shape DeepSeek and every self-hosted gateway share. */
+ *  `readKeyShape`. The gateway key is a bare `sk-<32hex>`, the shape DeepSeek and every
+ *  self-hosted gateway share. */
 const KEY = {
   claude: 'sk-ant-api03-abcdefghijkl',
   gateway: 'sk-9f2c0123456789abcdef0123456789ab',
@@ -58,19 +58,14 @@ beforeEach(() => {
     provider: 'claude', model: emptyModels(), oversight: 'checkpoint',
     customBaseUrl: '', keyed: [], providerPinned: false, hydrated: true,
   });
-  // The keyring is a module global and no test may inherit another's key: the store's own verb is
-  // the only way in or out of it.
+  // The keyring is a module global; the store's own verb is the only way to empty it.
   for (const id of PROVIDER_IDS) store().forgetKey(id);
   useAgentConnection.setState({ provider: 'claude', providerPinned: false, customBaseUrl: '' });
   backing.clear();
 });
 
-/**
- * Nothing here reaches the network, and the two panel-level cases are why this is a stub rather than
- * an injected prop: `PanelShell` mounts both connection surfaces itself, so the request they make on
- * a mount over a half-made connection is the real adapter's. It answers an empty catalogue, which is
- * the gateway case those cases are about.
- */
+/** A fetch stub rather than an injected prop, because `PanelShell` mounts the connection surfaces
+ *  itself and their requests go through the real adapter. It answers an empty catalogue. */
 const realFetch = globalThis.fetch;
 beforeEach(() => {
   globalThis.fetch = (() => Promise.resolve(new Response(
@@ -84,8 +79,7 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-/** Lets a request that reaches an adapter land: the module is imported dynamically, so the answer is
- *  two macrotasks away rather than one microtask. */
+/** Lets an adapter request land: the module is imported dynamically, so the answer takes macrotasks. */
 const settle = async () => {
   for (let i = 0; i < 8; i += 1) {
     await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 20); }); });
@@ -93,22 +87,16 @@ const settle = async () => {
 };
 
 
-/** The panel at rest, for the two assertions that are about the panel's own choice of surface. */
+/** The panel at rest. */
 const IDLE_VIEW: PanelView = {
   phase: 'idle', jobs: [], queuedSteers: [],
   vitals: { cells: 0, objects: 0, reverts: 0, jobs: 0 }, suggestion: null, lastEventAt: 0,
 };
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-/* ── the custom-provider walk ──────────────────────────────── */
-
-/**
- * The walk, end to end. The settings card's provider row names `custom`, which arms a
- * provider with no address anywhere behind it; the panel drops back to the connection screen; the
- * gateway key goes in. The walk must end at the connection screen asking for the address, never at
- * idle: a pin read as the answer files the key against a server nobody has named, sends the model
- * request to whatever host the SDK defaults to, and offers Done over three quarters of a connection.
- */
+/** The settings card arms `custom` with no address; the panel drops back to the connection screen
+ *  and the gateway key goes in. The walk ends asking for the address, never at idle, or the key
+ *  would be filed against a server nobody named. */
 describe('the walk must not reach idle with no endpoint and no model', () => {
   it('arms custom from the settings card with no address behind it', () => {
     store().connectKey('claude', KEY.claude);
@@ -118,7 +106,7 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     fireEvent.click(screen.getByTestId('manage-prov-row'));
     fireEvent.click(screen.getByText(PROVIDER_META.custom.name));
 
-    // The trap: a pinned provider whose address is nowhere on this card.
+    // A pinned provider with no address.
     expect(store().provider).toBe('custom');
     expect(store().providerPinned).toBe(true);
     expect(store().customBaseUrl).toBe('');
@@ -135,14 +123,13 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.gateway } });
     await act(async () => { vi.advanceTimersByTime(IDLE * 4); });
 
-    // Nothing was filed and nothing was asked. There was no host to ask, and the key is still the
-    // user's to place.
+    // Nothing is filed and no host is asked.
     expect(phaseOf(), 'the quiet must not commit a server nobody named').toBe('key');
     expect(listModels).not.toHaveBeenCalled();
     expect(store().keyed).toEqual([]);
     expect(onDone).not.toHaveBeenCalled();
 
-    // And the step says so, with the address as its own verb. The key stays in the field.
+    // The step asks for the address as its own action; the key stays in the field.
     expect(screen.getByTestId('setup-note').textContent).toBe(translations.en['agent.setup_say_custom']);
     expect(screen.getByTestId('setup-act-address').textContent).toBe(translations.en['agent.setup_give_address']);
     expect(screen.getByTestId('setup-prov-sub').textContent).toBe(translations.en['agent.setup_row_pinned']);
@@ -172,9 +159,8 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  /** And the gateway that names nothing goes to the card that takes a typed ID, by itself: setup
-   *  keeps no dead-end step for a listless endpoint, so the flow routes to the card whose model row
-   *  already handles the state, with no press in between and no way out to idle. */
+  /** Setup has no step for an endpoint that lists no model; the flow routes by itself to the settings
+   *  card, whose model row takes a typed id. */
   it('hands a gateway that lists no model to the settings card, and never to idle', async () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
@@ -203,8 +189,6 @@ describe('the walk must not reach idle with no endpoint and no model', () => {
   });
 });
 
-/* ── the traversal, as a table ─────────────────────────────── */
-
 interface Row {
   /** The case, as the table reads it. */
   name: string;
@@ -213,10 +197,9 @@ interface Row {
   list?: () => Promise<string[]>;
   /** The events, in order. */
   drive: () => Promise<void> | void;
-  /** The face that must be standing at the end: the phase, the step reported to the desk, and the
-   *  one foot control the step offers. */
+  /** What stands at the end: the phase, the step reported to the desk, and the step's foot control. */
   face: { phase: string; step: string | null; control: string };
-  /** Whether the walk may have left setup, and what must be true of the connection if it did. */
+  /** Whether the walk left setup, stayed, or handed over to the manage card. */
   exit: 'left' | 'stayed' | 'manage';
 }
 
@@ -230,8 +213,7 @@ const quiet = async (times = 1) => {
   await act(async () => { vi.advanceTimersByTime(IDLE * times + 50); });
 };
 const press = (id: string) => { fireEvent.click(screen.getByTestId(id)); };
-/** The chooser, by the entry's own row: the label also stands on the face of the closed row, so a
- *  plain text query finds two of it the moment the key's shape names the same platform. */
+/** Picks a provider by its menu entry; a plain text query would also find the closed row's label. */
 const pick = (label: string) => {
   // The row toggles, so a press on an already-open one puts the list away.
   if (screen.getByTestId('setup-prov-row').getAttribute('aria-expanded') !== 'true') {
@@ -308,9 +290,7 @@ const ROWS: Row[] = [
     exit: 'stayed',
   },
   {
-    // The custom journey's end is the manage card, never a confirmation of its own: the address and
-    // the model are both that card's, and a step reporting a model beside a provider name is read as
-    // the step that chose it.
+    // A custom connection ends on the manage card, which owns the address and the model.
     name: 'the endpoint filed, then listing: the card takes over',
     list: LISTS.named,
     drive: async () => {
@@ -345,8 +325,7 @@ const ROWS: Row[] = [
     exit: 'stayed',
   },
   {
-    // Naming nothing is not a step: the model row on the settings card owns that state, so the flow
-    // routes there with the model as the one thing owed.
+    // The settings card's model row owns this state, so the flow routes there owing the model.
     name: 'the endpoint filed, naming nothing',
     list: LISTS.empty,
     drive: async () => {
@@ -359,8 +338,7 @@ const ROWS: Row[] = [
     exit: 'manage',
   },
   {
-    // A check nothing answered still hands the connection to the card: an unavailable list proves
-    // nothing about generation, so the model stays enterable by hand.
+    // An unavailable list proves nothing about generation, so the card still takes a typed model.
     name: 'the endpoint filed, unreachable',
     list: LISTS.unreachable,
     drive: async () => {
@@ -398,9 +376,8 @@ const ROWS: Row[] = [
     exit: 'manage',
   },
   {
-    // The pin does not survive a page load and the armed provider does. Read off the shape alone, the
-    // typed gateway key went to whichever platform its format matched (or to a probe of platforms
-    // that never held it) and the address was never asked for at all.
+    // The armed provider survives a page load and the pin does not. Read off its shape alone, a
+    // gateway key would go to whichever platform its format matched and the address would never be asked.
     name: 'a session that comes back armed on custom, with the pin gone and no address',
     before: () => {
       store().pinProvider('custom');
@@ -411,9 +388,7 @@ const ROWS: Row[] = [
     exit: 'stayed',
   },
   {
-    // And the same session with an address filed reads the key again, which is what keeps a user on a
-    // configured gateway from being unable to paste a platform's key: the address is the standing
-    // question, and it has an answer.
+    // With an address filed the key's shape is read again, so a platform key can still be pasted.
     name: 'a session that comes back armed on custom with its address, pin gone',
     before: () => {
       store().setCustomBaseUrl(GATEWAY_URL);
@@ -432,9 +407,7 @@ const ROWS: Row[] = [
     exit: 'stayed',
   },
   {
-    // The key stands where it was and the reading is off: stepping back off a pick is not the shape
-    // being read again, so the desk says the field is being typed into rather than that anyone is
-    // being asked.
+    // Stepping back off a pick does not re-read the key's shape, so the desk reports typing.
     name: 'Back off the endpoint step',
     drive: () => {
       type(KEY.unknown);
@@ -504,8 +477,7 @@ describe('every case the machine can be in', () => {
       expect(onDone, 'this walk has not finished the connection').not.toHaveBeenCalled();
       if (row.exit === 'manage') {
         expect(onManage, 'a custom connection is reviewed on the card, not confirmed here').toHaveBeenCalled();
-        // The hand-off leaves nothing the card cannot repair: at most the model, which its own row
-        // takes as a typed id, so the two screens cannot pass the panel back and forth.
+        // At most the model is owed, which the card's own row takes, so the screens cannot ping-pong.
         const owed = connectionGaps(store());
         expect(owed.every((gap) => gap === 'model'), `handed over owing ${owed.join('+')}`).toBe(true);
         expect(screen.queryByTestId('manage-screen'), 'the parent mounts management once').toBeNull();
@@ -520,8 +492,6 @@ describe('every case the machine can be in', () => {
     });
   }
 });
-
-/* ── no door out lands on a panel that cannot carry an order ── */
 
 describe('the exits', () => {
   it('keeps management open until the user chooses a model', async () => {
@@ -563,8 +533,7 @@ describe('the exits', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  /** The panel asks the same question, and this is the state no walk through the screen can produce
-   *  but a reload can: the key is sealed in the vault and the model was never filed. */
+  /** A reload can leave a sealed key with no model filed, which no walk through the screen produces. */
   it('puts the connection screen up over a panel that holds half a connection', () => {
     store().connectKey('claude', KEY.claude);
 
@@ -579,12 +548,8 @@ describe('the exits', () => {
     expect(screen.queryByTestId('composer')).toBeTruthy();
   });
 
-  /**
-   * And the hand-off lands, which is the other half of the report: the words pointed at the settings
-   * card and no press did. The panel takes the form down for the card, the card takes the typed id,
-   * and its Done gives the session back — the connection screen returning only while something is
-   * still owed.
-   */
+  /** The panel swaps the form for the card with no press, the card takes the typed id, and its Done
+   *  gives the session back. */
   it('hands the panel to the settings card and takes it back once the model stands', async () => {
     store().setCustomBaseUrl(GATEWAY_URL);
     store().pinProvider('custom');
@@ -605,9 +570,8 @@ describe('the exits', () => {
     }
     renderWithI18n(<Panel />);
 
-    // The form stood up by itself over the half-made connection and asked the endpoint what it
-    // runs: an empty catalogue leaves the model as the one thing owed, which routes the panel to the
-    // card that takes a typed id — no press in between.
+    // The form checks the endpoint by itself; an empty catalogue leaves the model owed and routes to
+    // the card.
     expect(screen.getByTestId('setup-screen').getAttribute('data-phase')).toBe('checking');
     await settle();
     expect(screen.queryByTestId('setup-screen'), 'the card has the zone now').toBeNull();
@@ -625,9 +589,7 @@ describe('the exits', () => {
   });
 });
 
-/* ── the sweep ─────────────────────────────────────────────── */
-
-/** A seeded generator, so a failing walk is a failing walk every time it is run. */
+/** A seeded generator, so a failing walk reproduces. */
 function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -638,8 +600,7 @@ function rng(seed: number): () => number {
   };
 }
 
-/** Every event a user has at a given moment, read off what is actually on screen: the walk only ever
- *  takes moves the screen offers, which is what makes a stuck state a stuck state. */
+/** Every move the screen offers at this moment; the walk takes nothing else, so a stuck state is real. */
 function moves(next: () => number): { name: string; run: () => void | Promise<void> }[] {
   const out: { name: string; run: () => void | Promise<void> }[] = [];
   const keys = [KEY.claude, KEY.gateway, KEY.unknown, KEY.perplexity, KEY.partial, ''];
@@ -658,8 +619,7 @@ function moves(next: () => number): { name: string; run: () => void | Promise<vo
       },
     });
   }
-  // The row and the entry are two presses, and they stay two here: a walk that opened the list and
-  // picked from it inside one event would be asserting nothing about the state in between.
+  // Opening the row and picking an entry stay two moves, so the state between them is checked too.
   const row = screen.queryByTestId('setup-prov-row');
   if (row && row.getAttribute('aria-expanded') !== 'true') {
     out.push({ name: 'open the roster', run: () => { fireEvent.click(row); } });
@@ -678,7 +638,7 @@ function moves(next: () => number): { name: string; run: () => void | Promise<vo
   return out;
 }
 
-/** Whatever the screen is claiming, checked against what is actually standing. Returns the lies. */
+/** Claims on screen that the store contradicts. */
 function lies(): string[] {
   const bad: string[] = [];
   const state: AgentConnectionState = store();
@@ -712,12 +672,9 @@ function lies(): string[] {
 }
 
 /**
- * The sweep. Each run picks its own gateway answers and its own starting store, then walks the moves
- * the screen offers, one at a time, asserting all three properties after every single one of them.
- *
- * (a) idle is unreachable without a ready connection — the door fired only with nothing missing.
- * (b) no stuck state — every face standing offers at least one live control.
- * (c) no face lies — every claim on screen matches what the store actually holds.
+ * Each run picks its gateway answers and starting store, then walks the offered moves one at a time,
+ * checking after each: (a) idle is reached only with nothing missing, (b) every face offers a live
+ * control, (c) every claim on screen matches the store.
  */
 describe('a sweep over event sequences', () => {
   const STARTS: (() => void)[] = [
@@ -730,11 +687,9 @@ describe('a sweep over event sequences', () => {
   const RUNS = 40;
   const STEPS = 16;
 
-  // A walk per run and an assertion per event: the whole sweep is one test, and it is a long one by
-  // construction, so it carries its own ceiling rather than the suite's five seconds.
+  // The whole sweep is one long test, so it carries its own timeout.
   it('never leaves for idle unready, never strands, never lies', async () => {
-    /** Which faces the walk actually stood on. A sweep that reached three of them would pass while
-     *  proving nothing, so the ground it covers is asserted at the end. */
+    /** The faces the walk stood on; coverage is asserted at the end. */
     const visited = new Set<string>();
     for (let run = 0; run < RUNS; run += 1) {
       const next = rng(run * 7919 + 13);
@@ -794,8 +749,7 @@ describe('a sweep over event sequences', () => {
       vi.useRealTimers();
     }
 
-    // The ground the sweep has to have covered for its silence to mean anything: all three steps, a
-    // hand-off to the card, a dead end, a way back, and at least one walk that finished.
+    // Coverage: all three steps, a hand-off to the card, a dead end, a way back, a finished walk.
     for (const face of ['phase:key', 'phase:custom', 'phase:manage', 'manage-done', 'managed',
       'setup-act-address', 'setup-row-cross', 'setup-leave', 'left']) {
       expect([...visited], `the sweep never reached ${face}`).toContain(face);

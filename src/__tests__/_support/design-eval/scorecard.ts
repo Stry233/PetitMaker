@@ -1,20 +1,16 @@
 /**
  * The scorecard: one finished map read into three ranked ledgers.
  *
- *  1. Hard rules (pass/fail) — every distinct anchor building/facility placed exactly once; the
+ *  1. Hard rules (pass/fail): every distinct anchor building/facility placed exactly once; the
  *     road network reachable from the plaza with no dead ends; no 1-wide road network; every street
  *     end arriving at something; every body of water belonging to the map's water system.
- *  2. Methodology scores (0..1) — backing behind the door, near-low-far-high along the map's main
+ *  2. Methodology scores (0..1): backing behind the door, near-low-far-high along the map's main
  *     axis, local symmetry, per-region palette unity, road hierarchy, decoration density.
- *  3. Raw metrics — the distributions reference distance is measured with.
+ *  3. Raw metrics: the distributions reference distance is measured with.
  *
- * `evaluateMap` is the whole reading, and it is the only thing here that composes: the readings it
- * gathers are each a sibling module's (`streets.ts`, `districts.ts`, `climb.ts`, `water.ts`), and
- * what this file owns is the four scores nothing else needs — the elevation profile and its
- * correlation, the door's backing, the paved connectivity, the anchor tally — plus the ledger
- * shapes they are reported in.
- *
- * Deterministic and pure: same state in, same numbers out, no commands and no randomness.
+ * `evaluateMap` composes readings owned by sibling modules (`streets.ts`, `districts.ts`, `climb.ts`,
+ * `water.ts`); this file owns the elevation profile, the door's backing, paved connectivity, the
+ * anchor tally and the ledger shapes. Pure and deterministic: no commands, no randomness.
  */
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { categoryOf, getCatalogItem } from '../../../state/catalog';
@@ -56,8 +52,6 @@ const PROFILE_BAND_MIN = 4;
  *  door against the same sector in front, higher by more than 0.25. */
 const BACKING_SECTOR = { near: 2, far: 8, half: 3, delta: 0.25 };
 
-// --- ledgers ---------------------------------------------------------------------------------
-
 export interface HardLedger {
   pass: boolean;
   allAnchorsPlaced: { pass: boolean; expected: number; missing: string[]; repeated: { id: string; count: number }[] };
@@ -65,29 +59,21 @@ export interface HardLedger {
   /** No road is one cell wide. Scoped to the network: a 1-wide garden walk hanging off one street
    *  inside a region is the third road grade and is not charged (`networkOneWide`). */
   noOneWideRoads: { pass: boolean; oneWideCells: number; gardenCells: number; oneWideShare: number };
-  /** Every street end arrives at something (`streetArrivals`). The tip-cell reading above stays
-   *  beside it: the two ask different questions and both must hold. */
+  /** Every street end arrives at something (`streetArrivals`); both this and the dead-end count in
+   *  `roadsConnected` must hold. */
   streetsArrive: StreetArrivals;
   /** Every body of water belongs to the map's water system, and no tofu lake stands anywhere. */
   waterStory: WaterStoryLedger;
   /**
-   * No street spans the planet (`networkShape.fullSpanShare`): the anti-grid rule.
-   *
-   * Reported here, gated by the harness at full richness, and it is the only ledger row that works
-   * that way. The rule is a fact about the finished map, but how hard it can be held depends on the
-   * knob: at the quiet end of the richness axis the planet is a flat garden town whose grid is the
-   * only thing partitioning it, and staggering its thinner lines costs blocks their frontage and
-   * their branch, which can leave a district short and part of the pavement 2 wide. So `pass` is not folded into the ledger's own result; the harness and the
-   * design-quality batch hold it at richness 1, the end of the axis the rule is aimed at.
+   * No street spans the planet (`networkShape.fullSpanShare`): the anti-grid rule. Not folded into
+   * `pass`; callers gate it at richness 1, because at the quiet end of the axis the grid is the only
+   * thing partitioning a flat garden town and staggering it costs blocks their frontage.
    */
   noLattice: { pass: boolean; fullSpanShare: number; longestSpan: number };
   /**
-   * At least one of the map's set pieces is what a walk finishes at (`placeArrivals`).
-   *
-   * Reported here, gated by the harness and the design probes at full richness, for the same reason
-   * `noLattice` is: what a map can be held to depends on the knob. The quiet end of the richness axis
-   * is a flat garden town that carries no composed figure at all below the set-piece floor, so there
-   * is nothing for a street to end at and the row would fail a map that is exactly what was asked for.
+   * At least one set piece is what a walk finishes at (`placeArrivals`). Not folded into `pass`;
+   * callers gate it at full richness, because a quiet map below the set-piece floor has nothing for a
+   * street to end at.
    */
   arrivesAtPlace: { pass: boolean; places: number; arrivedAt: number };
 }
@@ -129,9 +115,8 @@ export interface MapMetrics {
   backing: { buildings: number; backed: number };
 }
 
-/** Whether the map reads as laid out: ramp discipline, street straightness, district legibility.
- *  Beside the ledgers rather than inside them — the ramp reading is a hard rule the harness enforces,
- *  the other two are measures a gate can be set on. */
+/** Whether the map reads as laid out. Kept beside the ledgers: the harness enforces the ramp reading
+ *  as a hard rule, the rest are measures a gate can be set on. */
 export interface LegibilityReadings {
   ramps: RampDiscipline;
   streets: StreetStraightness;
@@ -154,15 +139,14 @@ export interface MapEvaluation {
 
 /** What a caller knows about the map that the map itself cannot say. */
 export interface EvalOptions {
-  /** The composition axis the map was planned along: the direction its mass was meant to rise
-   *  toward. Given, `heightMonotonicity` reads that axis and that side only. Absent, the score
-   *  takes the best axis and side it can find, which is the weaker reading of the two. */
+  /** The direction the map's mass was planned to rise toward. Given, `heightMonotonicity` reads
+   *  that axis and side only; absent, it takes the best axis and side it finds. */
   compositionAxis?: Direction;
 }
 
-/** Every catalog item the hard rule requires on a finished map: each placeable
- *  Building and Facility, exactly once. `getPlaceableByCategory` drops the rule-TBD items, and the
- *  plaza is off-catalog, so neither can be demanded of a generator. */
+/** Every catalog item the hard rule requires on a finished map, exactly once: each placeable home and
+ *  amenity (`anchorCatalogItems`). Rule-TBD items are not placeable and the plaza is off-catalog, so
+ *  neither can be demanded of a generator. */
 export function anchorCatalogIds(): string[] {
   return anchorCatalogItems().map((i) => i.id);
 }
@@ -189,11 +173,10 @@ function weightedPearson(xs: number[], ys: number[], ws: number[]): number {
   return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : 0;
 }
 
-/** One band of the profile: where it sits along the axis, its mean surface elevation, and how much
- *  land it is measured over. */
+/** One profile band: position along the axis, mean surface elevation, land cells measured. */
 interface ProfileBand { centre: number; mean: number; cells: number }
 
-/** Mean surface elevation per band of `band` rows (or columns) of land. */
+/** Mean surface elevation per band of rows (or columns) of land. */
 function profile(g: MapMasks, axis: 'north-south' | 'east-west'): ProfileBand[] {
   const along = axis === 'north-south' ? g.H : g.W;
   const across = axis === 'north-south' ? g.W : g.H;
@@ -254,9 +237,8 @@ function monotonicity(
   return best;
 }
 
-/** Where the map is read from: the centre of the plaza standing on it, or the template's own plaza
- *  where none has been placed. The locked object is preferred because it is the hub the map was
- *  actually built around, and a hand-built state can stand one anywhere. */
+/** Where the map is read from: the centre of the placed plaza, else the template's plaza. The placed
+ *  one wins because a hand-built state can stand it anywhere. */
 function hubCentreOf(state: GridState, g: MapMasks): { x: number; y: number } {
   let n = 0, sx = 0, sy = 0;
   for (let i = 0; i < g.anchor.length; i++) {
@@ -296,11 +278,9 @@ function backing(state: GridState, g: MapMasks): { buildings: number; backed: nu
   return { buildings: anchors.length, backed };
 }
 
-/** Paved connectivity from the plaza. Bridge and ramp footprints conduct (a ramp is how pavement
- *  climbs a terrace) and are dilated by one cell, because a deck meets the street at its ends
- *  without being 4-adjacent to it: on the target, folding the footprints in raw reads 48% of the
- *  pavement as cut off from the plaza and folding them in with their approach reads 95.8%, which is the
- *  figure the reference is known to read. */
+/** Paved connectivity from the plaza. Bridge and ramp footprints conduct and are dilated by one cell,
+ *  because a deck meets the street at its ends without being 4-adjacent to it; undilated, about half
+ *  of the reference map's pavement reads as cut off. */
 function connectivity(g: MapMasks): { reachableShare: number; components: number; deadEnds: number } {
   const { W, H } = g;
   const reach = anchorReach(g.paved, g.anchor, g.crossing, g);
@@ -326,7 +306,6 @@ function connectivity(g: MapMasks): { reachableShare: number; components: number
     }
     if (n <= 1 && !terminates) deadEnds++;
   }
-  // Paved-only components, for the metrics table.
   const pavedComponents = labelComponents(g.paved, W, H).sizes.length - 1;
   return { reachableShare: paved ? reached / paved : 1, components: pavedComponents, deadEnds };
 }
@@ -501,7 +480,7 @@ function hardLedger(
   return hard;
 }
 
-/** The whole reading of one finished map. Deterministic: same state in, same numbers out. */
+/** The whole reading of one finished map. */
 export function evaluateMap(state: GridState, options: EvalOptions = {}): MapEvaluation {
   const g = readMap(state);
   const land = Math.max(1, g.landCells);

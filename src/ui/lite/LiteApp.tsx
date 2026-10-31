@@ -7,6 +7,7 @@ import { Editor3DCanvas } from '../../view/map3d/Editor3DCanvas';
 import { useEditorSession } from '../app/use-editor-session';
 import { EditorRoot } from '../app/EditorRoot';
 import { fadeVisibilityCss } from '../design/motion';
+import { NO_DOCK } from '../design/scale';
 import { useLocale } from '../../i18n/context';
 
 export default function LiteApp() {
@@ -15,7 +16,7 @@ export default function LiteApp() {
   const view = useEditorStore(s => s.viewMode);
   const restore = useEditorSession();
   return (
-    <EditorRoot dockRef={0} onRestoreSession={restore}>
+    <EditorRoot dockRef={NO_DOCK} onRestoreSession={restore}>
       <div style={{ visibility: view === '3d' ? 'hidden' : 'visible' }}><PixiCanvas /></div>
       <Editor3DCanvas fade={(visible) => fadeVisibilityCss('map.view.crossfade', visible)} />
     </EditorRoot>

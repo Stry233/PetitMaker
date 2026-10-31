@@ -63,7 +63,7 @@ const close = (a: DrawnRect, b: DrawnRect) => {
   for (const k of ['x', 'y', 'w', 'h'] as const) expect(a[k]).toBeCloseTo(b[k], 5);
 };
 
-/** One drawn rect in cells at the given grid — what the user sees it cover. */
+/** One drawn rect in cells at the given grid: what the user sees it cover. */
 function macro(r: DrawnRect, grid: GridId): Rect {
   const off = gridOffsetPx(grid);
   return { x: (r.x - off.x) / TILE_SIZE, y: (r.y - off.y) / TILE_SIZE, w: r.w / TILE_SIZE, h: r.h / TILE_SIZE };
@@ -76,7 +76,7 @@ function soleRect(rects: DrawnRect[], grid: GridId): Rect {
   return macro(rects[0]!, grid);
 }
 
-/** One rAF turn — the ghost build and the flash fade both run there. */
+/** One rAF turn: the ghost build and the flash fade both run there. */
 const frame = (): Promise<void> => new Promise((r) => { requestAnimationFrame(() => r()); });
 
 const err = (cells: { x: number; y: number }[], grid: GridId): ValidationError =>
@@ -108,7 +108,7 @@ describe('overlay shades: a rect-shaped shade covers its body exactly', () => {
       const exact = c.grid === 'terrain';
       overlay.showSelection(c, c.grid, { exact });
       if (exact) {
-        // Its exact outline, edge and ink both on the cell.
+        // Two rects, the edge and the ink, both exactly on the cell.
         const rects = drawn(overlay, 'selectionGraphics');
         expect(rects).toHaveLength(2);
         for (const r of rects) expect(macro(r, 'terrain')).toEqual({ x: c.x, y: c.y, w: c.w, h: c.h });
@@ -141,7 +141,7 @@ describe('overlay shades: a rect-shaped shade covers its body exactly', () => {
   it('the rubber band draws the raw placement rect (a band only ever selects objects)', () => {
     const overlay = new OverlayLayer(() => {});
     overlay.showBand({ x: 2.5, y: 3, w: 4, h: 1.5 });
-    // fill + four dashed edges; the fill is the shade.
+    // The fill is the one rect; the dashed edges are line work.
     expect(soleRect(drawn(overlay, 'bandGraphics'), 'object')).toEqual({ x: 2.5, y: 3, w: 4, h: 1.5 });
   });
 });

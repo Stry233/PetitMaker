@@ -1,6 +1,6 @@
 /**
  * Group delete: the one group operation that applies partially and reports the rest. The case
- * pinned here is Ctrl+A then Delete, which always includes the locked plaza — refusing the whole
+ * pinned here is Ctrl+A then Delete, which always includes the locked plaza; refusing the whole
  * delete would make that flow fail every time.
  *
  * The register split is on the counts, not on group-vs-single: something removed + something kept

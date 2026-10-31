@@ -17,7 +17,6 @@ import { useViewportEpoch } from '../primitives/use-viewport-epoch';
 import { DOCK_CHROME_W } from '../shell/panel-frame';
 import { zoneEnter } from './parts/panel-parts';
 import { setDeskSeat, setPanelCarriage } from './character/seat';
-import { useCelebrateEdge } from './character/use-celebrate-edge';
 import { Composer } from './composer/Composer';
 import { DeskHeader } from './desk/DeskHeader';
 import {
@@ -64,7 +63,7 @@ export function PanelShell({ panel, connection, records = {}, region: area = {},
   const { connected, ready = true } = connection;
   const { filed = NONE_FILED, cleared = NONE_FILED, storageNotice, restored = false, undoDepth } = records;
   const { bounds: region = null, marking = false, onMarkRegion, onClearRegion } = area;
-  const { pinned = false, dockSide = 'left', away } = dock;
+  const { pinned = false, edge = 'left', away } = dock;
   const { onStop, onResume, onFileAway, onRepair } = verbs;
   const { regionShot } = pictures;
   const t = useT();
@@ -112,7 +111,6 @@ export function PanelShell({ panel, connection, records = {}, region: area = {},
   const managing = zone.kind === 'manage';
   const viewport = useViewportEpoch();
   const preserveReading = useFollowNewest(jobZoneRef, view, `${viewport}|${[...openDecks].sort().join(',')}`, !notReady);
-  const celebrate = useCelebrateEdge(view);
   const rolledBack = useMemo(() => rolledBackSeqs(view.jobs, undoDepth), [view.jobs, undoDepth]);
   const ticked = useSecondClock(PHASE[view.phase].inFlight && now === undefined);
   const isRunning = panel.running ?? !PHASE[view.phase].atRest;
@@ -174,7 +172,6 @@ export function PanelShell({ panel, connection, records = {}, region: area = {},
     <ZoneScreen
       screen={screen}
       setupRef={setupRef}
-      pictured={pictured}
       pinned={pinned}
       jobCount={view.jobs.filter((job) => !cleared.has(job.orderSeq)).length}
       running={isRunning}
@@ -233,10 +230,10 @@ export function PanelShell({ panel, connection, records = {}, region: area = {},
   );
 
   const plateTransition = pinned || away === 'folded' ? REVEALED : framerMotion(away === 'leaving' ? 'panel.close' : 'panel.open');
-  const controls = dock.onTogglePin ? (
+  const controls = dock.onTogglePin && edge !== 'bottom' ? (
     <PinControls
       pinned={pinned}
-      dockSide={dockSide}
+      dockSide={edge}
       blocked={dock.pinBlocked ?? false}
       carry={carry}
       onTogglePin={dock.onTogglePin}
@@ -264,19 +261,18 @@ export function PanelShell({ panel, connection, records = {}, region: area = {},
         variants={plateVariants}
         // Framer transitions are not inherited, so the plate repeats the holder's.
         transition={plateTransition}
-        style={{ ...(pinned ? dockedStyle(maxHeight, dockSide) : panelStyle(maxHeight, notReady)), clipPath: wipe }}
+        style={{ ...(pinned ? dockedStyle(maxHeight, edge) : panelStyle(maxHeight, notReady)), clipPath: wipe }}
         onKeyDown={escapeFolds}
       >
         {/* One hidden sprite supplies every symbol the panel's glyphs reference. */}
         <IconSprite />
         {pinned ? controls : null}
         {/* Only the desk band reserves the dock controls' gutter. */}
-        <div data-testid="desk-band" style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column', paddingRight: pinned ? DOCK_CHROME_W : 0 }}>
+        <div data-testid="desk-band" style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column', paddingRight: pinned && edge !== 'bottom' ? DOCK_CHROME_W : 0 }}>
           <DeskHeader
             view={view}
             // Setup owns the connection's status while it stands.
             connected={connected && !showSetup}
-            {...(celebrate ? { pose: celebrate } : {})}
             {...pick(panel, 'mapName')} {...pick(connection, 'providerName', 'modelName', 'connectionMeta')} {...pick(verbs, 'onRetryNow')}
             now={now ?? ticked}
             onPause={verbs.onPause}

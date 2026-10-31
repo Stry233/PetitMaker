@@ -14,6 +14,8 @@ import { PanZoomResetHint } from '../../../../primitives/pan-zoom-stage';
 import { MAP_ASPECT } from './sample-art';
 import { entering } from './stylize-parts';
 import { amplitude, framerMotion } from '../../../../design/motion';
+import { useHover } from '../../../../design/input-mode';
+import { useNameReveal } from '../../../../primitives/use-name-reveal';
 
 export interface Picture {
   /** What is being shown, for a viewer and for a test alike: 'original', or a version's id. */
@@ -30,7 +32,9 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
   enterIndex?: number;
 }) {
   const t = useT();
+  const swapName = useNameReveal(t('stylize.swap_hint'));
   const pz = usePanZoom();
+  const swapHover = useHover({ scale: 1 + amplitude('stylize.pip.swap') });
   return (
     <motion.div
       {...entering(enterIndex)}
@@ -72,12 +76,12 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
         <motion.button
           type="button"
           onClick={onSwap}
+          {...swapName.bind}
           aria-label={t('stylize.swap_hint')}
-          title={t('stylize.swap_hint')}
           animate={{ scale: 1 }}
           // Both halves of the answer are the swap's own declared travel: the corner picture rises
           // by it under the pointer and sinks by it under the press.
-          whileHover={{ scale: 1 + amplitude('stylize.pip.swap') }}
+          whileHover={swapHover}
           whileTap={{ scale: 1 - amplitude('stylize.pip.swap') }}
           transition={framerMotion('stylize.pip.swap')}
           style={{
@@ -95,6 +99,7 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
             }}
           />
           <span style={pipTag}>{corner.label}</span>
+          {swapName.bubble}
         </motion.button>
       ) : null}
     </motion.div>

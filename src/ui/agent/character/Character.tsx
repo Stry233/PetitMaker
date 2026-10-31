@@ -15,6 +15,8 @@ import { onCharacterCue, useCharacterIntent } from './intent';
 import { PoseEngine } from './pose-engine';
 import { cursors } from '../../design/styles';
 import { useUiPreview } from '../../design/preview';
+import { useHover } from '../../design/input-mode';
+import { useMorph } from '../../primitives/morph';
 
 /** The live character's element and parts, for the seat module to place. */
 export interface CharacterHandle {
@@ -49,6 +51,9 @@ const HOVER = { scale: 1 + (amplitude('panel.character.hover') ?? 0) };
  */
 export function Character({ pose, size, press }: { pose: PoseName; size: number; press?: CharacterPress }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  // The one live character is a piece of the chrome's morph; the chip pinned to her reads her drawn box
+  // only once the morph has settled (`CharacterHost.tsx`). A pictured one marks nothing.
+  const morph = useMorph('character');
   const flipRef = useRef<HTMLDivElement>(null);
   const poseRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -58,6 +63,7 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
   const lidRRef = useRef<HTMLDivElement>(null);
   const [shownBadge, setShownBadge] = useState<BadgeId | null>(null);
   const reduced = useReducedMotionConfig() === true;
+  const hover = useHover(HOVER);
   const pictured = useUiPreview();
   const live = useCharacterIntent();
   const dream = pictured ? 'off' : live.dream;
@@ -96,11 +102,12 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
     <motion.div
       ref={rootRef}
       data-testid="pw-character"
+      {...morph}
       data-pose={pose}
       {...(press
         ? {
           onClick: () => { engine.current?.acknowledge(); press.onPress(); },
-          whileHover: HOVER,
+          whileHover: hover,
           transition: framerMotion('panel.character.hover'),
           // The block underneath carries the label and the focus ring, so the drawing is not a second control.
           'aria-hidden': true,

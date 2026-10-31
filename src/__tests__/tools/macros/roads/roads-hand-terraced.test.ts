@@ -1,18 +1,8 @@
 /**
- * The roads press on a hand-built terraced map, the one shape none of its other fixtures had.
- * Every earlier road pin builds its planet with the generator, and a generated planet has a
- * handful of broad rooms with the plaza sitting in the middle of the largest of them. A person
- * terraces instead: many small rectangular plateaus with sharp edges, houses standing on raised
- * ground, and a plaza in a court of its own.
- *
- * `hand-terraced-hexia.json` is a real such map, in the app's own save format (its provenance ledger
- * stripped, its object ids renamed), loaded through the ordinary `deserialize`. It decomposes into
- * 38 open regions, and the one fact the press turns on is asserted below before any press is made: the
- * plaza's own court is not the map's largest region. A hub node that answers that question with
- * `rankedRegions[0]` plans every portal chain out of a region the plaza cannot reach, and each realized
- * ramp then A*-es toward a network on the far side of a cliff — which on this map lays 55 tiles in one
- * box around the plaza, scatters 12 crossings joined to nothing, serves none of the 8 houses, and leaves
- * the next press reporting that it can find no open ground.
+ * The roads press on a hand-built terraced map, a shape generated planets lack: many small sharp-edged
+ * plateaus, houses on raised ground, and the plaza in a court of its own rather than in the largest
+ * region. `hand-terraced-hexia.json` is a real save (provenance stripped, ids renamed); the fact the
+ * press turns on, that the plaza's court is not `rankedRegions[0]`, is asserted before any press.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';
@@ -39,7 +29,7 @@ const FIXTURE = 'src/__tests__/fixtures/road-maps/hand-terraced-hexia.json'; // 
 interface Kit extends EditContext { executor: CommandExecutor }
 
 function loadMap(): Kit {
-  // The map was built around the plaza where the planet laid it then.
+  // The map was built around the plaza where the earlier layout put it.
   const template = earlierLayout('hexia');
   const state = deserialize(readFileSync(FIXTURE, 'utf8'), template) as unknown as GridState;
   const executor = makeExecutor(state);
@@ -63,9 +53,8 @@ function pavedNear(state: GridState, o: PlacedObject, pad: number): boolean {
   return false;
 }
 
-/** The walk a finished network offers: road surfaces, crossing decks, and each deck's one-cell
- *  apron (the `flat` trait refuses a tile at a transition often enough that a bare cell there is
- *  the design's own documented neck, not a break). Returns the component id per cell. */
+/** The component id per cell of the walk a network offers: road surfaces, crossing decks, and each
+ *  deck's one-cell apron, since the `flat` trait may leave a bare cell at a transition. */
 function pavementComponents(state: GridState, W: number, H: number): Map<number, number> {
   const walk = new Set<number>();
   const inB = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H;
@@ -120,8 +109,8 @@ describe('the fixture, a hand-terraced map', () => {
     expect(houses(kit.state).every((h) => h.elevation > 0), 'every house stands on raised ground').toBe(true);
     expect([...kit.state.objects.values()].some((o) => o.locked), 'the plaza stands').toBe(true);
 
-    // The structural fact the press turns on: the plaza's court is not the map's largest region, so a
-    // hub whose region is `rankedRegions[0]` names ground the plaza cannot reach.
+    // The plaza's court is not the largest region, so a hub placed in `rankedRegions[0]` would name
+    // ground the plaza cannot reach.
     const hub = standingNodes(kit.state, a).nodes[0]!;
     expect(hub.kind).toBe('hub');
     expect(hub.region).not.toBe(a.rankedRegions[0]);
@@ -143,8 +132,7 @@ describe('one whole-map roads press on a hand-terraced map', () => {
     expect(roads.length, 'a network, not a plaza ring').toBeGreaterThan(200);
     expect(crossings.length, 'a terraced map is crossed by ramps').toBeGreaterThan(0);
 
-    // Every house is served. Not "most": a press that reaches seven of eight has skipped one in
-    // silence, which is the failure this pin exists for.
+    // Every house, not most: reaching seven of eight skips one in silence.
     const unserved = houses(kit.state).filter((h) => !pavedNear(kit.state, h, 2)).map(name);
     expect(unserved).toEqual([]);
 
@@ -158,12 +146,10 @@ describe('one whole-map roads press on a hand-terraced map', () => {
       expect(shared, `${name(h)} is on the plaza's own network`).toBe(true);
     }
 
-    // No orphan crossing: a ramp or bridge with no pavement at either end is a staircase in a
-    // field. A hub blind to its own region leaves all twelve exactly that.
+    // No ramp or bridge without pavement at either end.
     const orphans = crossings.filter((c) => !pavedNear(kit.state, c, 1)).map(name);
     expect(orphans).toEqual([]);
 
-    // Nothing a hand placed is taken away.
     for (const id of standing) expect(kit.state.objects.has(id), `${id} survived the press`).toBe(true);
   }, 60000);
 
@@ -178,8 +164,8 @@ describe('one whole-map roads press on a hand-terraced map', () => {
 });
 
 describe('a house the network cannot reach is named, not skipped', () => {
-  /** Flat buildable ground with a sea border, and a moat too wide for any catalog bridge cutting
-   *  an islet out of it: two houses on the mainland for the press to join, one marooned. */
+  /** Flat ground with a sea border and a moat no catalog bridge spans: two buildings on the mainland,
+   *  one marooned on the islet. */
   function marooned(): Kit {
     const SIZE = 60, SHORE = 3, MOAT_X0 = 30, MOAT_X1 = 43;
     const state = makeState(SIZE, SIZE);

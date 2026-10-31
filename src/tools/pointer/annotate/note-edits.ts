@@ -9,13 +9,24 @@ import { cellCentre } from '../../../core/grid/grid-convert';
 import { cellKey } from '../../../core/grid/rect';
 import { HALF_GRID } from '../../../core/game/profile';
 import type { CurveAnchor } from '../../../core/base/spline';
+import { travelledPast } from '../../../platform/input/gesture-timing';
 import type { AnnotateContext } from './channel';
 
 /** The id every note ghost wears; a ghost never enters the notes, so it never meets a real id. */
 export const NOTE_GHOST_ID = 'note-ghost';
 
-/** Pointer travel, in cells, below which a press is a click. */
-export const CLICK_SLOP = 0.2;
+/** Pointer travel, in cells, below which a press is a click where no screen facts reach the tool. */
+const CLICK_SLOP = 0.2;
+
+/** Whether a press has travelled from `start` to `p` far enough to be a drag: past its pointer's drag
+ *  threshold on screen (`gesture-timing.ts:travelledPast`), or `CLICK_SLOP` cells on either axis in a
+ *  context that carries no cell size or threshold. */
+export function pressTravelled(start: MacroCoord, p: MacroCoord, ctx: Pick<AnnotateContext, 'cellPixels' | 'dragThreshold'>): boolean {
+  const dx = p.x - start.x;
+  const dy = p.y - start.y;
+  if (ctx.cellPixels === undefined || ctx.dragThreshold === undefined) return travelledPast(dx, dy, CLICK_SLOP);
+  return travelledPast(dx * ctx.cellPixels, dy * ctx.cellPixels, ctx.dragThreshold);
+}
 
 /** The step under map point `p`. */
 export function stepAt(p: MacroCoord): MacroCoord {

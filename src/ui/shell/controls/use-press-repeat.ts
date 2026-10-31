@@ -9,14 +9,12 @@
  */
 import { useEffect, useRef } from 'react';
 
+/** How long a press stands before it starts repeating, in ms. */
+const REPEAT_DELAY_MS = 350;
+
 interface PressRepeatOptions {
   /** The action to fire on press and on each repeat tick. */
   action: () => void;
-  /** Optional gate: when it returns false the action is skipped / repeating stops
-   *  (e.g. nothing left to undo). Read fresh on every tick. */
-  canRepeat?: () => boolean;
-  /** Delay before the first repeat after the initial press fire. */
-  delayMs?: number;
   /** Steady interval between repeats once repeating has begun. */
   intervalMs: number;
 }
@@ -31,24 +29,16 @@ interface PressRepeatHandlers {
 
 /**
  * Press-and-hold to repeat a button action: fires once on press, then after an
- * initial delay repeats at a steady interval until release / leave / cancel.
- * Stops early if canRepeat() turns false (e.g. nothing left to undo). Returns
+ * initial delay repeats at a steady interval until release / leave / cancel; a
+ * control with nothing left to do is disabled, which ends the press. Returns
  * handlers to spread on a <button>; keyboard activation (Enter/Space -> click)
  * still fires once via the deduped onClick.
  */
-export function usePressRepeat({
-  action,
-  canRepeat,
-  delayMs = 350,
-  intervalMs,
-}: PressRepeatOptions): PressRepeatHandlers {
-  // Keep the latest predicates so timers read fresh values, not a stale closure.
+export function usePressRepeat({ action, intervalMs }: PressRepeatOptions): PressRepeatHandlers {
+  // The timers read the latest action, not the one of the render that started them.
   const actionRef = useRef(action);
-  const canRepeatRef = useRef(canRepeat);
   actionRef.current = action;
-  canRepeatRef.current = canRepeat;
 
-  // Other code in this project treats timer ids as numbers; mirror that.
   const delayTimer = useRef<number>(0);
   const intervalTimer = useRef<number>(0);
   // True between a pointerdown and its synthetic click, so onClick can dedupe.
@@ -65,14 +55,10 @@ export function usePressRepeat({
   const onPointerDown = (e: { button: number }) => {
     if (e.button !== 0) return; // primary button only
     pointerHandled.current = true;
-    if (canRepeatRef.current?.() === false) return;
     actionRef.current();
     delayTimer.current = window.setTimeout(() => {
-      intervalTimer.current = window.setInterval(() => {
-        if (canRepeatRef.current && !canRepeatRef.current()) { stop(); return; }
-        actionRef.current();
-      }, intervalMs);
-    }, delayMs);
+      intervalTimer.current = window.setInterval(() => actionRef.current(), intervalMs);
+    }, REPEAT_DELAY_MS);
   };
 
   const onClick = () => {

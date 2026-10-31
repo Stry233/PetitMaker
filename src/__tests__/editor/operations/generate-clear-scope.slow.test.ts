@@ -5,7 +5,7 @@
  * region the last run was given, and the authorship the run left behind. Reading the current
  * painted region instead reads one a finished run has already dropped, so a Clear right after
  * generating into a region falls back to the whole map and scrubs everything, the person's own work
- * included. A caller therefore passes the region it was given (today's shell always passes null),
+ * included. A caller therefore passes the region it was given (the shell always passes null),
  * never the one the store is holding now.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
@@ -61,7 +61,7 @@ describe('Generate → Clear', () => {
     const wholeMap = gs().objects.size;
     expect(wholeMap, 'the full generation placed something').toBeGreaterThan(50);
 
-    // Then a region run. Nothing remembers the painted region afterwards — Clear must still know
+    // Then a region run. Nothing remembers the painted region afterwards, yet Clear must still know
     // the scope.
     const region = westRegion(gs(), 12);
     const inRegion = new Set(region.map((c) => `${c.x},${c.y}`));

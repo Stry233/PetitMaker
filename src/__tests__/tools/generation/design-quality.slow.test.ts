@@ -1,8 +1,6 @@
-// Design-quality probes — the planet generator's promises to the player, pinned as tests.
-//
-// The promises come from the expert methodology and the two decoded reference maps: the hard rules
-// are failures, the soft preferences are scored floors, and the map's distance to the style target
-// has a ceiling.
+// The designed generator's promises, drawn from the design methodology and the two decoded reference
+// maps: hard rules fail outright, soft preferences have score floors, and the distance to the style
+// target has a ceiling.
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch; several seconds per case on an idle machine.
@@ -52,29 +50,21 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
 /** Pinned, so a probe that fails names a map that can be rebuilt and looked at. */
 const DESIGNED_SEEDS = [12345, 777, 42];
-/** The seed set the score floors are read over. It carries the two seeds a ten-seed sweep found at
- *  the bottom of the range on purpose — 7 for unity and 1024 for symmetry — so a floor cannot pass
- *  by standing on a lucky batch. */
+/** Includes the lowest seeds of a ten-seed sweep (7 for unity, 1024 for symmetry), so a floor cannot
+ *  pass on a lucky batch. */
 const SCORE_SEEDS = [12345, 777, 7, 1024];
 /**
- * The seed set the batch symmetry floor is read over: the score seeds and four more, fixed. A
- * planet's symmetry share is read over the runs of one-level open ground its own terrace cut and
- * street grid leave, so a single seed swings widely (0.44 to 0.70 across these eight at richness
- * 0.6) and moves with a one-cell shift of the plaza or a plate edge. The floor claims a property of
- * the generator, not of one map, so it is read as a mean: a one-cell plaza move took the mean over
- * four seeds from 0.62 to 0.51 while the mean over twenty stayed at 0.58 to 0.59.
+ * The batch symmetry floor is a mean over eight seeds. Symmetry is read over the one-level runs of
+ * open ground a planet's terraces and streets leave, so one seed swings widely (0.44 to 0.70 at
+ * richness 0.6) and moves with a one-cell shift of the plaza; a four-seed mean moves almost as much.
  */
 const SYMMETRY_SEEDS = [...SCORE_SEEDS, 42, 2026, 314, 271];
 
 /**
- * The per-seed floors, and the measured spread each one leaves slack against.
- *
- * A floor here says the operator ran on this map, not that the map is the average one: how many of
- * a planet's regions can carry a mirror, hold one colour family or stand a door against high ground
- * is decided by how that planet's own terrain cut its open ground. The batch means below are where
- * the reference shares are claimed. Every number is set under the worst of a ten-seed sweep across
- * the axis (hexia, richness 0.2 / 0.6 / 1), and the sweep's own figures are quoted so a later drift
- * reads as drift rather than as a fresh measurement.
+ * Per-seed floors: each says the operator ran on this map, since how many regions can carry a mirror,
+ * one colour family or a backed door depends on how the planet's terrain cut its open ground. The
+ * reference shares are claimed by the batch means instead. Each sits under the worst of a ten-seed
+ * sweep on hexia at richness 0.2, 0.6 and 1, whose figures are quoted.
  */
 const FLOOR = {
   /** Sweep minimum 0.25 (quiet and mid), 0.42 at full richness; means 0.36 / 0.41 / 0.58. */
@@ -83,27 +73,18 @@ const FLOOR = {
    *  full richness). The compositions that claim no direction are read, not floored. */
   monotonic: 0.45,
   /**
-   * Sweep minimum 0.40 (both templates, three richness levels, ten seeds), means 0.77 to 0.83; worst
-   * 0.33 at full richness over this batch, which is what the floor sits under.
-   *
-   * Two constructions hold it down, and neither is a defect the score can see: the movement line is a
-   * third rank and the widest, so it shifts pavement out of the branch band into the trunk one, and a
-   * staggered street is laid as two legs and a link, so a leg the ground cuts short is laid at branch
-   * width rather than trunk. The score measures the mix against the references, and the references
-   * have no primary walk. So the per-seed floor catches the hierarchy disappearing and the batch floor
-   * below is where the claim lives.
+   * Sweep minimum 0.40 (both templates), means 0.77 to 0.83; worst 0.33 at full richness over this
+   * batch. Two constructions lower it: the movement line is a third, widest rank that moves pavement
+   * into the trunk band, and a staggered street's leg the ground cuts short is laid at branch width.
+   * The references have no primary walk, so this floor only catches the hierarchy vanishing.
    */
   hierarchy: 0.30,
-  /** What the family must read: a mix genuinely near the references' own. Measured at full richness:
-   *  0.54 over this batch, 0.68 over twenty-five seeds. */
+  /** The batch mean at full richness: 0.54 over this batch, 0.68 over twenty-five seeds. */
   hierarchyBatch: 0.52,
   /**
    * Sweep minimum 0.43 at full richness, means 0.76 / 0.67 / 0.56; 0.29 to 0.71 at full richness over
-   * this batch.
-   *
-   * A terraced planet reads its own mirrors low, because a mirrored composition is read over a run of
-   * open ground at one level: a place cut by a terrace step is two runs, and the mirror the kit laid
-   * is accounted in neither. What the floor still catches is the operator not running at all.
+   * this batch. A terrace step splits a place into two one-level runs and its mirror counts in
+   * neither, so terraced planets read low; the floor catches the operator not running.
    */
   symmetry: 0.25,
   /** Sweep minimum 0.45, at full richness; means 0.91 / 0.90 / 0.77. */
@@ -111,11 +92,8 @@ const FLOOR = {
 } as const;
 
 /**
- * How far outside the reference's own decor-density band a single seed may read: Zero. Every seed over
- * these richness levels reads inside the band, so there is no slack to grant. The pressure on it is
- * the water share (7% to 12% of the planet, the figure alone flooding a panel of a few hundred cells):
- * a planet that spends less of its ground on water has that much more of it to plant, and a seed
- * planting into the top of the band is the one this would fail.
+ * How far above the reference's decor-density band a seed may read: every seed reads inside it. The
+ * pressure is the water share (7% to 12% of the planet): less water leaves more ground to plant.
  */
 const DENSITY_EDGE = 0;
 
@@ -131,9 +109,8 @@ describe('the designed generator', () => {
         expect(hard.roadsConnected.reachableShare, where).toBeGreaterThanOrEqual(REACHABLE_MIN);
         expect(hard.roadsConnected.deadEndShare, where).toBeLessThanOrEqual(DEAD_END_MAX);
         expect(hard.noOneWideRoads.oneWideShare, where).toBeLessThanOrEqual(ONE_WIDE_MAX);
-        // Rule-validity is a hard rule too, and it is the one the other three cannot stand in for:
-        // the pipeline commits through the live registry, so a violation left standing at the end
-        // means what the map holds is not what the plan drew.
+        // The pipeline commits through the live registry, so a standing violation means the map is
+        // not what the plan drew.
         expect(violations, where).toBe(0);
         expect(refused, where).toBe(0);
       }
@@ -141,10 +118,8 @@ describe('the designed generator', () => {
   }, 120_000);
 
   it('SOFT PREFERENCES: the methodology scores hold their floors across the richness range', () => {
-    // One reading per richness, never pooled across the axis. The two composition scores fall as the
-    // knob rises — a terraced, watery planet cuts its open ground into smaller and more ragged runs
-    // than a garden town does — so a floor averaged over the whole axis would let the rich end
-    // collapse behind the quiet end's headroom, which is exactly the end the style target is at.
+    // Read per richness, never pooled: the composition scores fall as richness rises, so a pooled
+    // floor would let the rich end, where the style target is, hide behind the quiet end.
     for (const richness of [0.2, 0.6, 1]) {
       const symmetry = SYMMETRY_SEEDS.filter((seed) => !SCORE_SEEDS.includes(seed))
         .map((seed) => evaluateMap(designed(seed, HEXIA, richness).state).scores.symmetryShare);
@@ -154,19 +129,12 @@ describe('the designed generator', () => {
         const { state } = designed(seed, HEXIA, richness);
         const where = `hexia/${seed}/r${richness}`;
         const { scores, metrics } = evaluateMap(state);
-        // Both height claims are claims about a map with height, so both are read against what the
-        // richness knob asked for. A quiet planet is the garden-town reference, which measures
-        // 0 of 12 buildings backed and no north-south profile at all; what it still owes is the
-        // strip behind each lot's own door, which is where its floor comes from.
+        // The garden-town reference backs 0 of 12 buildings; a quiet planet's backing floor comes
+        // from the strip behind each lot's own door.
         expect(scores.backingCoverage, where).toBeGreaterThanOrEqual(FLOOR.backing);
-        // The score multiplies the gradient's direction by how much of the reference's own
-        // 5.56-layer spread the map spends, so a garden town scores low for being a garden town —
-        // which is what the quiet end of the axis is for, and what the axis probe pins from the
-        // other side.
-        // Near-low-far-high is a claim about a wall, and the archetype is drawn per seed: a raised
-        // rim, a set of scattered massifs or a low-relief planet is not monotone along any one axis,
-        // and lowering the floor until they pass would only make the score stop measuring. So the
-        // floor holds only where the composition claims a direction.
+        // Monotonicity scales with how much of the reference's 5.56-layer spread a map spends, and
+        // a rim, scattered massifs or low relief is monotone along no axis, so the floor holds only
+        // for a wall archetype at richness 0.5 or more.
         const archetype = planComposition({ seed, template: HEXIA, richness }).archetype;
         const walled = archetype === 'north-wall' || archetype === 'south-wall'
           || archetype === 'east-wall' || archetype === 'west-wall';
@@ -174,11 +142,8 @@ describe('the designed generator', () => {
           expect(scores.heightMonotonicity, `${where} (${archetype})`)
             .toBeGreaterThanOrEqual(FLOOR.monotonic);
         }
-        // The band is the reference's own reading and a seed is held inside it with no slack
-        // (`DENSITY_EDGE` is zero). The batch means below are where the volume is claimed.
         expect(metrics.objects.decorDensity, where).toBeGreaterThanOrEqual(DECOR_DENSITY_BAND[0]);
         expect(metrics.objects.decorDensity, where).toBeLessThanOrEqual(DECOR_DENSITY_BAND[1] + DENSITY_EDGE);
-        // A road hierarchy at all: the references' own bands for the two widths, scored.
         expect(scores.roadHierarchyMix, where).toBeGreaterThanOrEqual(FLOOR.hierarchy);
         expect(scores.symmetryShare, where).toBeGreaterThanOrEqual(FLOOR.symmetry);
         expect(scores.unityShare, where).toBeGreaterThanOrEqual(FLOOR.unity);
@@ -187,19 +152,13 @@ describe('the designed generator', () => {
         unity.push(scores.unityShare);
       }
       const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
-      // The batch is where the reference shares are claimed.
       const hierarchyMean = mean(hierarchy);
       expect(hierarchyMean, `r${richness} batch road mix ${hierarchyMean.toFixed(2)}`)
         .toBeGreaterThanOrEqual(FLOOR.hierarchyBatch);
-      // Symmetry and unity both read lower the richer the planet, and for one reason: each is read
-      // over a run of open ground at one level, and the rich end cuts a place into more runs. The
-      // planet is terraced to its summit, so a mirror laid across a step is accounted in neither run,
-      // and a staggered street cuts a place into runs that share a boundary, so a run's dominant
-      // colour family carries less of it. Symmetry also pays for marks the composition did not draw:
-      // the fountain court stands at a place's street corner where the ground allows and at its middle
-      // where it does not, and the mirror cannot account for it. Symmetry is read as the mean over
-      // `SYMMETRY_SEEDS`, which measures 0.50 at richness 1, 0.55 at 0.6 and 0.66 at the quiet end;
-      // unity over the score seeds measures 0.65 at richness 1 and 0.70 at 0.6.
+      // Both read per one-level run of open ground, and a richer planet cuts a place into more runs
+      // (terrace steps, staggered streets), so both fall with richness. Symmetry over
+      // `SYMMETRY_SEEDS` measures 0.50 at richness 1, 0.55 at 0.6 and 0.66 at 0.2; unity over the
+      // score seeds 0.65 at richness 1 and 0.70 at 0.6.
       const symFloor = richness >= 1 ? 0.42 : 0.52;
       const uniFloor = richness >= 1 ? 0.64 : 0.70;
       expect(mean(symmetry), `r${richness} batch symmetry ${mean(symmetry).toFixed(2)}`).toBeGreaterThanOrEqual(symFloor);
@@ -208,13 +167,9 @@ describe('the designed generator', () => {
   }, 180_000);
 
   /**
-   * The walk climbs, and the planet is visible from it.
-   *
-   * Both are facts about where a visitor stands. The reference reads 2.65 bits of level entropy over
-   * six levels, 47% of its pavement above level 4, 2.85 level changes per 100 pavement cells and 70.8%
-   * of it with sight of the mass; the floors here are what this batch achieves, stated so the distance
-   * left is readable rather than hidden. The max-height reach is the hard half: the shelf's cap is a
-   * promise to the player, so a map asked for the top layer has to come back reaching it.
+   * The reference reads 2.65 bits of level entropy over six levels, 47% of its pavement above level 4,
+   * 2.85 level changes per 100 pavement cells and 70.8% with sight of the mass; the floors are what
+   * this batch reaches. A map asked for the top layer must reach it.
    */
   it('THE CLIMB: the asked height is built, the walk stands on it and can see it', () => {
     for (const template of [HEXIA, TAFA]) {
@@ -222,47 +177,33 @@ describe('the designed generator', () => {
       const where = `${template.id}`;
       const mean = (pick: (c: typeof rows[number]) => number): number =>
         rows.reduce((a, c) => a + pick(c), 0) / rows.length;
-      // The cap the harness asks for, reached rather than merely permitted. Two of three, because the
-      // low-relief archetype has its own ceiling and any seed may draw it.
+      // Two of three: the low-relief archetype has its own ceiling and any seed may draw it.
       expect(rows.filter((c) => c.peak >= ELEVATION_MAX).length, `${where}: peaks ${rows.map((c) => c.peak).join(',')}`)
         .toBeGreaterThanOrEqual(2);
-      // A single-storey walk is what this is here to catch: no seed may stand more than four fifths of
-      // its pavement on one level (the analysis's own bar is 70%, which this batch's worst seed sits
-      // exactly on).
+      // Catches a single-storey walk; the methodology's bar is 70%, which the worst seed sits on.
       for (const c of rows) {
         expect(c.topLevelShare, `${where}: top level ${(100 * c.topLevelShare).toFixed(0)}%`)
           .toBeLessThanOrEqual(0.8);
       }
-      // Measured over this batch: 1.82 bits on hexia and 2.17 on tafa, 4.7 and 5.7 levels carrying
-      // real pavement, 0.92 and 1.56 level changes per 100 cells, 21.7% and 25.9% with sight of the
-      // mass. The sight floor is 0.12 rather than the 0.15 those two clear easily, because the TEN-seed
-      // gate batch reads exactly 15% on hexia: a floor at its own measurement has no headroom, and this
-      // probe's three seeds are not the batch the number came from.
+      // This batch measures 1.82 and 2.17 bits (hexia, tafa), 4.7 and 5.7 paved levels, 0.92 and
+      // 1.56 level changes per 100 cells, 21.7% and 25.9% sight of the mass. The sight floor is 0.12
+      // because the ten-seed gate batch reads exactly 15% on hexia.
       expect(mean((c) => c.entropy), `${where}: entropy ${mean((c) => c.entropy).toFixed(2)}`).toBeGreaterThan(1.3);
       expect(mean((c) => c.levels), `${where}: levels`).toBeGreaterThanOrEqual(3);
       expect(mean((c) => c.eventsPer100), `${where}: level changes / 100`).toBeGreaterThan(0.7);
       expect(mean((c) => c.seesMass), `${where}: sees mass ${(100 * mean((c) => c.seesMass)).toFixed(1)}%`)
         .toBeGreaterThan(0.12);
-      // The residual, stated as a floor rather than hidden: the reference stands 47% of its pavement
-      // above level 4 where this batch stands 7.8% (hexia) to 21.4% (tafa) and the ten-seed gate batch
-      // 4% to 11%. Raising the composition's own floor reaches 22% on both templates and starves two
-      // seeds of twenty of a street network entirely — a terrace narrower than a stamp carries no
-      // pavement at all — so what closes the gap is wider terraces, not more height.
+      // The reference stands 47% of its pavement above level 4, this batch 7.8% (hexia) to 21.4%
+      // (tafa). Raising the composition's floor starves some seeds of streets (a terrace narrower than
+      // a stamp carries no pavement), so the gap closes with wider terraces, not more height.
       expect(mean((c) => c.aboveMid), `${where}: above mid ${(100 * mean((c) => c.aboveMid)).toFixed(1)}%`)
         .toBeGreaterThan(0.03);
     }
   }, 180_000);
 
   /**
-   * The map's one set piece, and the two grains of its planting.
-   *
-   * "A composition has a primary set piece, two or three secondary ones, and ordinary ground for the
-   * rest; when every place is equally elaborate, none of them is the point." So every planet from the
-   * set-piece richness up carries exactly one figure, drawn as the largest panel its ground offers, with
-   * a calm band reserved around it and paved where the network reaches.
-   *
-   * The floors here are the gate's own, and both are measured rather than chosen: `gen-eval` runs the
-   * batch the numbers come from.
+   * From the set-piece richness up, a planet carries one figure drawn as the largest panel its ground
+   * offers, with a calm band reserved around it. The floors are the generation gate's own measurements.
    */
   it('THE SET PIECE: one composed figure per planet, framed, and the walk reaches it', () => {
     for (const template of [HEXIA, TAFA]) {
@@ -272,21 +213,16 @@ describe('the designed generator', () => {
       });
       for (const { seed, figure } of rows) {
         const where = `${template.id}/${seed}`;
-        // In the hundreds of cells: the reference's own two figures are 772 and 330 cells, and this
-        // reading measures its water at 1010. Ours run 100 to 467 over the gate batch, so the floor is
-        // under the smallest of those rather than at the ambition.
+        // The reference's figures are 772 and 330 cells (its water reads 1010); ours run 100 to 467
+        // over the gate batch, and the floor sits under the smallest.
         expect(figure.largest, `${where}: figure ${figure.largest} cells`)
           .toBeGreaterThanOrEqual(SET_PIECE_CELLS_MIN);
-        // Framed, which is what makes a figure read as figure against ground: the reference frames its
-        // banner on four sides with a road border. Read as the calm share of the band around it — paved
-        // or bare — the two references read 1.00 and 0.92 and our worst seed 0.73.
+        // The calm (paved or bare) share of the band around the figure: references 1.00 and 0.92,
+        // our worst seed 0.73.
         expect(figure.framed, `${where}: framed ${figure.framed.toFixed(2)}`).toBeGreaterThanOrEqual(0.7);
       }
-      // The walk relates to it. Pavement stands within a dozen cells of the figure, and a dozen is the
-      // price of drawing the figure at the scale of a terrace floor (252 to 1012 cells): the largest
-      // clear one-tier panel a planet has is the ground the streets never climbed. Measured over these
-      // seeds, 4, 9 and 12 cells on hexia and 3, 4 and 5 on tafa. So this is a batch claim at what it
-      // measures, with the reach named rather than assumed.
+      // Pavement within a dozen cells of the figure: the largest clear one-tier panel is often ground
+      // the streets never climbed. These seeds measure 4, 9 and 12 on hexia and 3, 4 and 5 on tafa.
       const reached = rows.filter((r) => r.figure.toPavement >= 0 && r.figure.toPavement <= 12);
       expect(reached.length, `${template.id}: ${rows.map((r) => r.figure.toPavement).join(', ')} cells to pavement`)
         .toBeGreaterThanOrEqual(rows.length - 1);
@@ -294,12 +230,8 @@ describe('the designed generator', () => {
   });
 
   /**
-   * Where the streets stop, and the fountain court that gives them somewhere.
-   *
-   * Both claims are about a full-richness planet and neither belongs in the hard ledger's own verdict:
-   * the quiet end of the richness axis is a flat garden town with no composed figure to end at and no
-   * room for a large court, which is what it was asked for. They are held here and by `gen-eval`, the
-   * same arrangement `noLattice` has.
+   * Full-richness claims only, so they stay out of the hard ledger's verdict: a quiet garden town has no
+   * figure to end at and no room for a large court.
    */
   it('ARRIVALS: a walk finishes at one of the planet\'s set pieces, and a court is one of them', () => {
     for (const template of [HEXIA, TAFA]) {
@@ -311,28 +243,21 @@ describe('the designed generator', () => {
       for (const { seed, place, courts } of rows) {
         const where = `${template.id}/${seed}`;
         expect(place.places, `${where}: the planet carries a set piece at all`).toBeGreaterThan(0);
-        // A court is on the map and the reading can see it. The two halves are separate claims: the
-        // grammar carves one on nearly every planet, and a moat drawn one level deep would shatter
-        // under the 4-connected decomposition every reading takes, leaving the court invisible on a
-        // map that carries it.
+        // Separate claims: a court exists, and the reading sees it (a moat one level deep would
+        // shatter under the 4-connected decomposition every reading takes).
         expect(courts.courts, `${where}: formal courts read on the map`).toBeGreaterThan(0);
         expect(courts.related, `${where}: courts composed against a space`).toBeGreaterThan(0);
         expect(courts.perRegion, `${where}: main fountains in one region`).toBeLessThanOrEqual(1);
       }
-      // And a walk finishes at one of them. A batch claim with the residual named, like the figure's
-      // own reach above: a court the streets run through is a court on the way somewhere rather than
-      // a place, and a figure standing on the terrace no street climbs has nothing to be arrived
-      // from. Measured over the sixty-map gate, one seed of twenty at full richness (`tafa/777`)
-      // carries neither, and `gen-eval` names it per seed.
-      // And no deck lies across the street it meets. Hard at every seed: nothing about a map makes a
-      // turned deck acceptable, and both references read zero. `aligned` is not gated — the terraced
-      // reference reads 0 of its 5, because its decks cross open water between banks whose streets run
-      // along them.
+      // No deck lies across the street it meets, at every seed; both references read zero. `aligned`
+      // is not gated: the terraced reference's decks cross water between banks whose streets run
+      // along them, reading 0 of 5.
       for (const { seed, decks } of rows) {
         expect(decks.crossways,
           `${template.id}/${seed}: ${decks.crossways} of ${decks.bridges} decks lie across a street`)
           .toBe(0);
       }
+      // A batch claim: at full richness one seed in twenty (`tafa/777`) arrives at no place.
       const ended = rows.filter((r) => r.place.pass);
       expect(ended.length,
         `${template.id}: arrivals ${rows.map((r) => `${r.place.arrivedAt}/${r.place.places}`).join(', ')}`)
@@ -341,21 +266,19 @@ describe('the designed generator', () => {
   });
 
   /**
-   * The two grains, as a claim about direction rather than a parity bar: the reference has both flora
-   * masses and specimen trees. The element grammar reaches for the mass end (the cover knob walks a
-   * flower block up to a solid bed). Cluster counts still track the number of open-ground runs,
-   * since a rich planet's open ground comes in pieces of a few dozen cells that clip a bed.
+   * A claim about direction, not parity: the reference has both flora masses and specimen trees. A
+   * rich planet's open ground comes in runs of a few dozen cells that clip a bed, so cluster counts
+   * track the run count.
    */
   it('TWO GRAINS: flowers land as beds and trees as specimens, not all at one middling size', () => {
     for (const template of [HEXIA, TAFA]) {
       const rows = DESIGNED_SEEDS.map((seed) => decorGrain(designed(seed, template, 1).state));
       const mean = (pick: (g: typeof rows[number]) => number): number =>
         rows.reduce((a, g) => a + pick(g), 0) / rows.length;
-      // The tree grain is the specimen extreme and it is already the reference's: a lattice plants one
-      // cell in four, so a tree cluster's median runs 3 to 4 against the reference's 1.
+      // A lattice plants one cell in four, so a tree cluster's median runs 3 to 4 against the
+      // reference's 1.
       expect(mean((g) => g.treeMedian), `tree median ${mean((g) => g.treeMedian)}`).toBeLessThanOrEqual(6);
-      // And the mass extreme is present rather than absent, which is what the two-rung ladder buys.
-      // Floors under the batch's own measurement (masses 7% to 25%, middle 69% to 87%).
+      // This batch measures masses at 7% to 25% and the middle at 69% to 87%.
       expect(mean((g) => g.massShare), `mass share ${mean((g) => g.massShare).toFixed(2)}`)
         .toBeGreaterThan(0.05);
       expect(mean((g) => g.middleShare), `middle share ${mean((g) => g.middleShare).toFixed(2)}`)
@@ -364,15 +287,8 @@ describe('the designed generator', () => {
   });
 
   /**
-   * The ground is landform and the water is dressed, as two numbers.
-   *
-   * Tofu terrain is the first: how much of its own bounding box the median terrace component fills, read
-   * against 0.58 on the decoded terraced reference (a map of boxes reads 1.00). The dressing is the
-   * second: the share of the map's real water bodies carrying a composed bank row.
-   *
-   * The fill floor is measured against the references (0.58 terraced, 1.00 garden town). The dressing
-   * floor is not: this reading answers 13% on the terraced reference and 0% on the garden town, so it is
-   * a ratchet on our own grammar rather than a bar derived from the target.
+   * Fill is how much of its bounding box the median terrace component covers: 0.58 on the terraced
+   * reference, 1.00 for a map of boxes. Dressing is the share of water bodies with a composed bank row.
    */
   it('THE LANDFORM AND THE DRESSING: terraces are not boxes, and a body is composed against (I5.3)', () => {
     for (const template of [HEXIA, TAFA]) {
@@ -382,26 +298,19 @@ describe('the designed generator', () => {
         const shape = terraceShape(state);
         expect(shape.medianFill, `${where}: median terrace box fill ${shape.medianFill.toFixed(2)}`)
           .toBeLessThanOrEqual(TERRACE_FILL_MAX);
-        // A map of boxes reads 1.00 here; the terraced reference reads 0.24 (9 of 38) and this batch
-        // 0.20 to 0.55.
+        // The terraced reference reads 0.24 (9 of 38), this batch 0.20 to 0.55.
         expect(shape.boxyShare, `${where}: boxy share ${shape.boxyShare.toFixed(2)}`)
           .toBeLessThan(0.7);
-        // And the figure is the one big thing. The floor lives in `_support/design-eval/figure.ts`, the same number the
-        // harness gates on, with the argument for its value stated there. The ladder ratio is not gated:
-        // the reference's own two figures read 1010 and 971, so a bar on the ratio would fail the map it
-        // was derived from.
+        // The floor and its argument live in `_support/design-eval/figure.ts`. The figure ladder ratio
+        // is not gated: the reference's own two figures read 1010 and 971.
         const figure = figureReading(state);
         expect(figure.largest, `${where}: set piece ${figure.largest} cells`)
           .toBeGreaterThanOrEqual(SET_PIECE_FLOOR);
         const dressing = bankDressing(state);
         expect(dressing.bodies, `${where}: bodies of 15 cells or more`).toBeGreaterThan(5);
-        // A self-ratchet, not a reference bar, and the difference matters: read by this code the
-        // terraced reference dresses 5 of its 40 bodies (13%) and the garden town 0 of 10, because the
-        // reference's own waterside planting is beds and step-2 lattices rather than the orthogonal
-        // same-species row this reading looks for. So the reading measures our grammar's reach, and the
-        // floor is under our own worst full-richness seed (31% to 81% at full richness, 14% to 83%
-        // across the range). A looser definition — runs at step 1 or 2 among plants within 4 cells —
-        // reads 41% on that reference, and adopting it would change what this floor means.
+        // A ratchet on our own grammar, not a reference bar: the references plant their banks as beds
+        // and step-2 lattices, not the same-species row this reading finds, so they read 13% and 0%.
+        // Our full-richness seeds read 31% to 81%.
         expect(dressing.dressedShare, `${where}: ${dressing.dressed} of ${dressing.bodies} dressed`)
           .toBeGreaterThanOrEqual(0.25);
       }
@@ -414,19 +323,15 @@ describe('the designed generator', () => {
     const mean = (rows: typeof quiet, pick: (m: typeof quiet[number]) => number): number =>
       rows.reduce((a, m) => a + pick(m), 0) / rows.length;
 
-    // The two references sit at the ends of this axis: the garden town is 99% ground level with 15%
-    // water and one tree per 6.6 flowers, the target planet terraces almost everything, carries water
-    // on every layer and runs 1 : 1.12.
-    // The quiet bound is 0.35 rather than 0.30 because no water bed is cut into a terrace, so ground
-    // that could read as water reads as the mountain it stands on: measured 0.32 over this batch. The
-    // claim the axis is for is unaffected — a quiet map is a third mountain where a full one is most
-    // of the way to two thirds.
+    // The references sit at the ends: the garden town is 99% ground level with 15% water and 6.6
+    // flowers per tree; the target terraces almost everything, has water on every layer and runs
+    // 1 : 1.12. The quiet mountain bound is 0.35 (measured 0.32) because no water bed is cut into a
+    // terrace, so that ground reads as mountain.
     expect(mean(quiet, (m) => m.elevation.mountainShare)).toBeLessThan(0.35);
     expect(mean(full, (m) => m.elevation.mountainShare)).toBeGreaterThan(0.45);
     expect(mean(quiet, (m) => m.elevation.waterShare)).toBeLessThan(mean(full, (m) => m.elevation.waterShare));
     expect(mean(quiet, (m) => m.elevation.quarterMeans[1]!)).toBeLessThan(0.6);
     expect(mean(full, (m) => m.elevation.quarterMeans[1]!)).toBeGreaterThan(1.2);
-    // The ratio runs the right way along the axis, which is the whole of what it is for.
     expect(mean(quiet, (m) => m.objects.treeToFlora)).toBeGreaterThan(3);
     expect(mean(full, (m) => m.objects.treeToFlora)).toBeLessThan(2);
   }, 120_000);
@@ -438,13 +343,9 @@ describe('the designed generator', () => {
       const d = referenceDistance(evaluateMap(state).metrics);
       totals.push(d.total);
     }
-    // A ceiling, not a target, and a loose one: One reference is one composition, not the composition.
-    //
-    // A per-seed distance as tight as 0.12 is reachable only by making every map the same composition —
-    // a wall across the north, which is the shape the reference's own profile term measures — so a
-    // west-wall or corner-highland planet scores that term against a north-heavy reference and is right
-    // to differ. What the distance still catches is a map that has stopped being kin to the target at
-    // all: no relief, no water, a road mix out of band.
+    // A loose ceiling: the reference's profile term favours a north wall, so a tight bound would
+    // force every map into that one composition. It catches a map with no relief, no water or a road
+    // mix out of band.
     const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
     for (const [i, total] of totals.entries()) {
       expect(total, `hexia/${DESIGNED_SEEDS[i]}`).toBeLessThanOrEqual(0.30);
@@ -463,10 +364,10 @@ describe('the designed generator', () => {
   }, 60_000);
 });
 
-// --- the painted region ----------------------------------------------------------------------------
+// The painted region.
 
-/** One designed run confined to `region`, on a fresh map (the template's own terrain and plaza),
- *  through the app's own run: the scope cleared, the generator, the seam repair and one commit. */
+/** One designed run confined to `region` on a fresh map, through the app's own run (scope cleared,
+ *  generator, seam repair, one commit). */
 async function generateDesignedIn(seed: number, template: MapTemplate, richness: number, region: MacroCoord[]): Promise<{
   state: GridState; violations: number;
 }> {
@@ -498,10 +399,8 @@ function rectRegion(x0: number, y0: number, x1: number, y1: number): MacroCoord[
 }
 
 describe('a designed run inside a painted region', () => {
-  // Three rectangles over three different parts of the planet's own design: the backing band it
-  // raises in the north, the town it builds around the plaza, and the southern ground. What each one
-  // comes back holding is the design's business; that it comes back holding nothing elsewhere is
-  // this suite's.
+  // Three parts of the planet's design: the northern backing band, the town around the plaza and the
+  // southern ground.
   const REGIONS: readonly (readonly [string, MacroCoord[]])[] = [
     ['the wall', rectRegion(40, 12, 96, 40)],
     ['the town', rectRegion(50, 62, 104, 96)],
@@ -515,15 +414,13 @@ describe('a designed run inside a painted region', () => {
         const inside = new Set(region.map((c) => `${c.x},${c.y}`));
         const where = `${what}/seed ${seed}`;
 
-        // Every written cell: one whose terrain differs from the fresh map's was written by this run.
         for (let y = 0; y < HEXIA.height; y++) {
           for (let x = 0; x < HEXIA.width; x++) {
             if (!written(state, x, y)) continue;
             expect(inside.has(`${x},${y}`), `${where}: terrain at ${x},${y}`).toBe(true);
           }
         }
-        // Every object, by its whole footprint — the unit a stray is measured in, and the one a
-        // corner check would miss for a building, a deck or a half-grid ramp.
+        // By whole footprint: a corner check would miss a building, a deck or a half-grid ramp.
         for (const o of state.objects.values()) {
           if (o.locked) continue;   // the template's own plaza was there before the run
           const r = objectRect(o);
@@ -549,9 +446,7 @@ describe('a designed run inside a painted region', () => {
       else if (cat === ItemCategory.Tree || cat === ItemCategory.Flora) plants++;
     }
     for (let y = 0; y < HEXIA.height; y++) for (let x = 0; x < HEXIA.width; x++) if (written(state, x, y)) terrain++;
-    // How much is the design's business, not the region's: what these numbers pin is that a scope
-    // over the built part of the planet comes back with all three kinds of thing on it, which is the
-    // failure mode a confinement gate that simply built nothing would otherwise pass.
+    // A confinement gate that built nothing would pass the previous test; this one would not.
     expect(paved, 'streets inside the region').toBeGreaterThan(25);
     expect(plants, 'planting inside the region').toBeGreaterThan(25);
     expect(terrain, 'terrain inside the region').toBeGreaterThan(25);
@@ -562,9 +457,8 @@ describe('a designed run inside a painted region', () => {
     const inside = new Set(town.map((c) => `${c.x},${c.y}`));
     const whole = designed(777, HEXIA, 1).state;
     const scoped = (await designedIn(777, HEXIA, 1, town)).state;
-    // The plan is the planet's, and the region only crops what lands: the ground inside a scoped
-    // run is the ground the unscoped run put there. Terrain only — an object is placed against the
-    // map as it stands, so a scoped run's neighbours differ and its own placements legitimately do.
+    // Terrain only: objects are placed against the map as it stands, and a scoped run's
+    // neighbours differ.
     let compared = 0, same = 0;
     for (let y = 0; y < HEXIA.height; y++) {
       for (let x = 0; x < HEXIA.width; x++) {
@@ -574,9 +468,8 @@ describe('a designed run inside a painted region', () => {
         if ((a?.type ?? null) === (b?.type ?? null) && (a?.elevation ?? 0) === (b?.elevation ?? 0)) same++;
       }
     }
-    // Not every cell: the crop cuts a terrace off the support standing outside it, so the rules
-    // legitimately refuse a handful at the boundary. The claim is that the two runs designed the
-    // same planet, not that a crop is free.
+    // The crop cuts some terraces off their support outside it, so the rules refuse a few boundary
+    // cells.
     expect(same / compared, `terrain agreement ${same}/${compared}`).toBeGreaterThan(0.9);
   }, 90_000);
 });

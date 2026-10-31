@@ -1,8 +1,7 @@
 /*
- * The Help Center's catalog held together: every page of the union present exactly once, every
- * cross-reference resolving, every referenced string present in the reference tables, and every
- * figure naming a scene or mock that exists. This is the test that makes the catalog a contract:
- * a descriptor cannot point at prose, a page or a drawing that is not there.
+ * The Help Center's catalog holds together: every page present exactly once, every cross-reference
+ * resolving, every referenced string in the reference tables, and every figure naming a scene or mock
+ * that exists.
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -38,6 +37,7 @@ import { NOTE_LIMITS } from '../../../core/model/notes';
 import { BASE_SUPPORT } from '../../../core/game/profile';
 import type { TextKey } from '../../../i18n/keys';
 import { illustrationProviderName } from '../../../i18n/terms/providers';
+import { readingKey } from '../../../i18n/terms/device-readings';
 
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'tour',
@@ -150,9 +150,9 @@ describe('the help catalog', () => {
   });
 
   it('references only strings the en and zh tables carry', () => {
-    // A key a page reads that no table carries renders as the raw key. That is what this pins.
-    // A page may also quote a MAIN-table string (the tour page's replay action reuses the
-    // Settings row's own label), so either table answers.
+    // A key a page reads that no table carries renders as the raw key. A page may also quote a
+    // main-table string (the tour page's replay action reuses the Settings row's own label), so
+    // either table answers.
     const missing: string[] = [];
     for (const id of HELP_PAGE_ORDER) {
       for (const key of keysOf(HELP_PAGES[id]!)) {
@@ -199,9 +199,14 @@ describe('the help tables and the facts they quote', () => {
       || ['help.fig.plan_job', 'help.fig.plan_s1', 'help.fig.plan_s2', 'help.fig.plan_s3', 'help.fig.undo_job', 'help.fig.undo_job2', 'help.fig.steer_job', 'help.fig.steer_note', 'help.fig.trail_job', 'help.fig.pic_title', 'help.fig.pic_desc',
         'help.camera.fig_orbit', 'help.camera.fig_tilt', 'help.camera.fig_dolly', 'help.camera.fig_hturn', 'help.camera.fig_pan'].includes(key)
       || key === 'help.summary_label' || key === 'help.notes.entry_layer'
-      || key === 'help.qa_title' || key === 'help.see_also' || key === 'help.search_placeholder'
+      || key === 'help.qa_title' || key === 'help.see_also' || key === 'help.search_placeholder' || key === 'help.back_to_pages'
       || key.startsWith('help.steps.')
       || key.startsWith('help.whats_this') || key === 'help.fig.built_title';
+    // A key written for a mouse in the wide arrangement is read another way in touch mode or upright.
+    for (const key of [...used]) {
+      used.add(readingKey(key as TextKey, { inputMode: 'touch', shape: 'landscape' }));
+      used.add(readingKey(key as TextKey, { inputMode: 'pc', shape: 'portrait' }));
+    }
     const orphans = enKeys.filter((key) => !used.has(key) && !componentRead(key));
     expect(orphans).toEqual([]);
   });

@@ -8,8 +8,9 @@ import { motion, useReducedMotionConfig, AnimatePresence } from 'framer-motion';
 import type { PanelView } from '../../../agent/panel';
 import { useT } from '../../../i18n/context';
 import { Character } from '../character/Character';
-import { poseForPhase, type PoseName } from '../character/poses';
-import { setIntentPose } from '../character/intent';
+import { characterPose, type PoseName } from '../character/poses';
+import { useCelebrateEdge } from '../character/use-celebrate-edge';
+import { useCharacterChannel } from '../character/intent';
 import { StatusCard } from './StatusCard';
 import { useLastActivity } from '../hooks/use-clock';
 import { buildFace, deskFaceKey, deskPose, deskSeat, showsAllowAll, type DeskContext } from '../derive/desk-face';
@@ -40,8 +41,6 @@ interface DeskHeaderProps {
   providerName?: string;
   /** The armed model's display name, the unserved-model face's own datum (`DeskContext`). */
   modelName?: string;
-  /** One-shot pose override; the phase decides when absent. */
-  pose?: PoseName;
   /** Clock source for elapsed time and retry countdowns. */
   now?: number;
   onPause?: () => void;
@@ -86,7 +85,6 @@ export function DeskHeader({
   mapName,
   providerName,
   modelName,
-  pose,
   now = Date.now(),
   onPause,
   onAskStop,
@@ -135,10 +133,11 @@ export function DeskHeader({
 
   // Publish surface-specific poses to the externally hosted live character.
   const surfacePose = deskPose(view, ctx);
+  const character = useCharacterChannel();
   useEffect(() => {
-    setIntentPose(surfacePose);
-    return () => setIntentPose(null);
-  }, [surfacePose]);
+    character.setPose(surfacePose);
+    return () => character.setPose(null);
+  }, [character, surfacePose]);
 
   const seat = deskSeat(view, ctx);
   const face = buildFace(view, ctx, now, activeAt, t);
@@ -199,7 +198,7 @@ export function DeskHeader({
         }}
       >
         {characterSlot
-          ?? <Character pose={pose ?? deskPose(view, ctx) ?? poseForPhase(view.phase, { connected })} size={56} />}
+          ?? <DeskCharacter view={view} surface={surfacePose} connected={connected} />}
       </div>
       {/* Face changes run sequentially; reduced motion renders the incoming state immediately. */}
       {reduced ? card : (
@@ -224,4 +223,10 @@ export function DeskHeader({
       )}
     </div>
   );
+}
+
+/** The character in the desk's own seat, where no host stands the live one over it (Help figures). */
+function DeskCharacter({ view, surface, connected }: { view: PanelView; surface: PoseName | null; connected: boolean }) {
+  const celebrate = useCelebrateEdge(view);
+  return <Character pose={characterPose({ celebrate, surface, phase: view.phase, connected })} size={56} />;
 }

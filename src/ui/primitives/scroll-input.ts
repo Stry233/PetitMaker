@@ -1,10 +1,8 @@
-import { MOTIONS } from '../design/motion/registry';
+import { followToward, frameDt } from '../design/motion';
 
 interface WheelInput { deltaX: number; deltaY: number; deltaMode: number; ctrlKey?: boolean }
 interface WheelPush { by: number }
 const WHEEL_LINE = 40;
-const GLIDE_TAU_MS = MOTIONS['shelf.row.wheel-glide'].duration * 1000;
-const GLIDE_DT_CAP_MS = 64;
 
 /** Wheel deltas are visual pixels; scrollLeft and page-sized steps use the row's local pixels. */
 function toLocal(delta: number, mode: number, page: number, zoom: number): number {
@@ -23,6 +21,17 @@ export function wheelSideways(event: WheelInput, page: number, zoom: number): Wh
   if (event.ctrlKey || Math.abs(event.deltaX) < Math.abs(event.deltaY)) return null;
   const by = toLocal(event.deltaX, event.deltaMode, page, zoom);
   return by === 0 ? null : { by };
+}
+
+/** A wheel's sideways travel for a row that only scrolls sideways, in the row's local px, or null to
+ *  leave the wheel alone. A sideways-dominant gesture always travels; a vertical-dominant one is
+ *  redirected only when `verticalTaken()` says no vertical scroller (the row, one inside it under the
+ *  pointer, or one around it) would take it; pinch (ctrl+wheel) never travels. */
+export function rowWheel(event: WheelInput, page: number, zoom: number, verticalTaken: () => boolean): (WheelPush & { redirected: boolean }) | null {
+  const sideways = wheelSideways(event, page, zoom);
+  if (sideways) return { ...sideways, redirected: false };
+  const push = wheelPush(event, page, zoom);
+  return push && !verticalTaken() ? { ...push, redirected: true } : null;
 }
 
 interface WheelGlider {
@@ -44,13 +53,12 @@ export function wheelGlider(): WheelGlider {
   const drive = (row: HTMLElement) => {
     raf = requestAnimationFrame((time) => {
       if (target == null || !row.isConnected || Math.abs(row.scrollLeft - written) > 2) { stop(); return; }
-      // A frame timestamp can precede the event's performance.now(), and background gaps are unbounded.
-      const dt = Math.max(0, Math.min(GLIDE_DT_CAP_MS, time - at));
+      const dt = frameDt(at, time);
       at = time;
       const left = target - row.scrollLeft;
       if (Math.abs(left) < 0.5) { row.scrollLeft = target; stop(); return; }
       const before = row.scrollLeft;
-      const step = left * (1 - Math.exp(-dt / GLIDE_TAU_MS));
+      const step = followToward(row.scrollLeft, target, dt, 'shelf.row.wheel-glide') - row.scrollLeft;
       row.scrollLeft += step;
       written = row.scrollLeft;
       // CSS zoom can make the browser's actual scroll limit smaller than scrollWidth - clientWidth.

@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Two seats, one character, and a step between them. The character is one `fixed` element placed
- * from a seat's measured rect, so the placement follows window resizes and UI zoom. Opening the
- * panel moves her a little: the desk's seat sits at the plate's padding beside the dock card, so
- * her walk from the folded box is bounded by her own size and runs on a declared motion.
- *
- * jsdom lays nothing out, so seat rects are stubbed and the inline `left`/`top`/`transition` the
- * placement writes is asserted.
+ * The character is one `fixed` element placed from a seat's measured rect, so she follows window
+ * resizes and UI zoom between her folded box and the desk seat. jsdom lays nothing out, so seat rects
+ * are stubbed and the inline styles the placement writes are asserted.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEffect, useRef } from 'react';
@@ -35,7 +31,7 @@ function place(seat: Parameters<typeof parkCharacter>[0], step: ReturnType<typeo
 
 /** How far inside the seat she stands, at the box's own declared size. */
 const PAD = CHARACTER_SEAT.pad;
-/** She travels at most her own folded width between her seats, both of which the frame places. */
+/** The most she may travel between her two seats: her own folded width. */
 const SEAT_TRAVEL_MAX = CHARACTER_SEAT.w;
 const SEAT = CHARACTER_SEAT.w;
 
@@ -49,8 +45,7 @@ function stubRect(el: Element, left: number, top: number, size: number): void {
   });
 }
 
-/** The host every mount here stands: her seat as an empty box, and the one live Character beside it
- *  in a layer of its own, exactly as `CharacterHost` mounts the pair. */
+/** Her seat as an empty box with the one live Character beside it, as `CharacterHost` mounts them. */
 function Host({ room }: { room: string }) {
   const seat = useRef<HTMLDivElement>(null);
   useEffect(() => { parkCharacter(seatBox(seat.current)); }, [room]);
@@ -62,8 +57,7 @@ function Host({ room }: { room: string }) {
   );
 }
 
-/** The desk at rest, which is all the rendered seat assertion needs: reduced motion keeps the card's
- *  flip and the character's own WAAPI calls (which jsdom has no engine for) out of the way. */
+/** The desk at rest; reduced motion keeps the card's flip and her WAAPI calls, which jsdom lacks, away. */
 function renderDesk() {
   return render(
     <MotionConfig reducedMotion="always">
@@ -84,7 +78,7 @@ describe('the character stands in her seat', () => {
   const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
 
   beforeEach(() => {
-    // jsdom has no Web Animations API; the placement is what is under test, not the choreography.
+    // jsdom has no Web Animations API.
     (Element.prototype as any).animate = () => ({ cancel: () => {}, finish: () => {}, playState: 'idle' });
   });
   afterEach(() => {
@@ -116,9 +110,7 @@ describe('the character stands in her seat', () => {
     expect(her.style.top).toBe(`${128.5 + PAD}px`);
   });
 
-  /** The pad rides the box. The seat is declared in the frame's own px and measured in the window's,
-   *  which differ by the frame's zoom, so a pad written raw would stand her off-centre at any zoom
-   *  but one. */
+  /** The seat is declared in frame px and measured in window px, so the pad scales with the frame's zoom. */
   it('reads the seat in screen pixels on an engine that measures zoomed subtrees in their own pixels', () => {
     const view = render(<div data-testid="frame"><Host room="boot" /></div>);
     const frame = view.getByTestId('frame');
@@ -147,13 +139,8 @@ describe('the character stands in her seat', () => {
 });
 
 /**
- * The seat is re-read after the room finishes moving, and a resize's own dispatch is too early.
- *
- * The frame's zoom is React state flushed in batches between the window's resize listeners, so a
- * placement made during the dispatch — a listener's own, or one in the flush's re-render — measures
- * the seat where the previous layout put it. The contract is therefore about the frame after the
- * event: whatever any listener saw, she wears the placement of the layout the resize produced, with
- * no interaction.
+ * The frame's zoom is React state flushed between the window's resize listeners, so anything measured
+ * during the dispatch sees the old layout. One frame after the event she wears the new layout's placement.
  */
 describe('the seat survives a window resize', () => {
   const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
@@ -181,15 +168,13 @@ describe('the seat survives a window resize', () => {
     const her = getCharacterHandle()!.el;
     expect(her.style.left).toBe(`${88 + PAD}px`);
 
-    // The window narrows. Every listener that runs in this dispatch still measures the old layout:
-    // the box only moves when the frame re-renders at its new fit, after the event.
+    // The box moves only when the frame re-renders at its new fit, after the event.
     act(() => {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1040 });
       window.dispatchEvent(new Event('resize'));
     });
     stubRect(entrance, 71, 135, SEAT);
 
-    // One frame later, with nothing pressed, she sits where the new layout put her seat.
     await act(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     });
@@ -224,27 +209,20 @@ describe('the seat survives a window resize', () => {
 });
 
 /**
- * The panel stands on the frame's grid, and she is the one who moves.
- *
- * Two facts hold the alignment together and neither is the other's consequence: the column's own edges
- * are the frame's (the block rows' left margin, the mode row's clearance), and the desk's seat inside
- * it is at the plate's padding beside the dock card. What is left over is her walk between the folded
- * box and that seat, and what is asserted about it is that it stays inside her own size.
+ * The column's edges are the frame's and the desk seat sits at the plate's padding beside the dock card,
+ * so her walk from the folded box to the desk seat is what remains, and it stays within her own size.
  */
 describe('the panel stands on the grid and she steps to the desk', () => {
-  /** The panel's own least height, as `PanelColumn` derives it — from the same two constants rather
-   *  than typed, so a taller dock moves this with it. */
+  /** The panel's least height, from the same two constants `PanelColumn` uses. */
   const LEAST = PINNED_HEIGHT + JOB_ZONE_FLOOR;
 
-  /** Where the desk's seat lands at a window, in frame px: the column's top edge wherever the clamp
-   *  put it, plus the plate's padding the desk stands inside, on both axes. */
+  /** The desk seat at a window, in frame px: the column's clamped top-left plus the plate's padding. */
   const deskSeatAt = (w: number, h: number, ui: number) => ({
     left: PANEL_LEFT + PANEL_PLATE_PAD,
     top: resolveCss(panelTop(LEAST), h, frameZoom(w, h, ui)) + PANEL_PLATE_PAD,
   });
 
-  /** The seat carries no offset of its own. The desk's row is top-aligned, so an empty box with no
-   *  margins stands on the dock card's own top edge, which is what being aligned with the dock is. */
+  /** The desk's row is top-aligned, so a seat with no margins is flush with the dock card's top edge. */
   it('reserves the seat flush with the status card, with no offset of its own', () => {
     const view = renderDesk();
     const slot = view.getByTestId('desk-header-char-slot');
@@ -254,11 +232,8 @@ describe('the panel stands on the grid and she steps to the desk', () => {
   });
 
   /**
-   * The fold's travel is bounded by her own box, at every window the frame is judged in and every zoom
-   * the preference reaches. The column's top yields to a short window at a large UI zoom while her
-   * folded box does not, so the distance is not a constant — what makes the collapse read as one form
-   * gathering onto her button rather than a card flying across the frame is that it never grows past
-   * her.
+   * The column's top yields to a short window at a large UI zoom while her folded box does not, so the
+   * travel varies; it must never exceed her size, or the collapse reads as a card flying across.
    */
   it('keeps the fold inside her own size at every window and zoom', () => {
     for (const [w, h] of [
@@ -272,9 +247,7 @@ describe('the panel stands on the grid and she steps to the desk', () => {
     }
   });
 
-  /** And the desk seat is down and to the right of her folded box at the frame's own reference window,
-   *  which is the direction the design asks for: the desk beside the card stands below and inside the
-   *  block she was pressed in. */
+  /** At the frame's reference window. */
   it('puts the desk seat down and to the right of her folded box', () => {
     const seat = deskSeatAt(1280, 800, 1);
     expect(seat.left).toBeGreaterThan(CHARACTER_SEAT.left);
@@ -283,12 +256,9 @@ describe('the panel stands on the grid and she steps to the desk', () => {
 });
 
 /**
- * The floating panel and the character are one object, and here that is arithmetic rather than a claim.
- *
- * One number says how far the collapse still has to travel; the carriage takes it as a transform and she
- * is placed at her seat plus the same remainder, in the same call. So her offset inside the panel is the
- * difference of the two seats at every value that number can take — which is what two animations of the
- * same length on the same curve do not give, one running on the compositor and one through layout.
+ * One number says how far the collapse has left to travel; in the same call the carriage takes it as a
+ * transform and she is placed at her seat plus the same remainder. Two animations on one curve would
+ * drift (one runs on the compositor, the other through layout).
  */
 describe('the panel and the character are one object', () => {
   afterEach(() => {
@@ -320,8 +290,6 @@ describe('the panel and the character are one object', () => {
     expect(step.top).toBeCloseTo((FOLDED.top - SEAT.top) / step.scale, 6);
   });
 
-  /** The one invariant, sampled the whole way along: if the two halves were ever written from different
-   *  numbers this is what would drift. */
   it('holds her offset inside the panel at every point of the gesture', () => {
     render(<Character pose="idle" size={40} />);
     const box = carriage();
@@ -335,8 +303,6 @@ describe('the panel and the character are one object', () => {
     }
   });
 
-  /** Both ends are the places the two forms actually stand: at rest the carriage takes no transform at
-   *  all, and folded her seat lands exactly on the box the press was made in. */
   it('lands the panel at rest and her seat on her button at the two ends', () => {
     render(<Character pose="idle" size={40} />);
     const box = carriage();
@@ -353,8 +319,7 @@ describe('the panel and the character are one object', () => {
     expect(parseFloat(her.style.top)).toBeCloseTo(FOLDED.top, 6);
   });
 
-  /** A translate and nothing else. A scale on the carriage would change the seat's measured rect while
-   *  the travel was being read off it, and the desk's seat is inside the carriage. */
+  /** A scale would change the measured rect of the desk seat inside the carriage while travel is read off it. */
   it('never scales the carriage', () => {
     const box = carriage();
     const step = carryStep(SEAT, FOLDED);
@@ -364,21 +329,15 @@ describe('the panel and the character are one object', () => {
     }
   });
 
-  /**
-   * The seat is read with the collapse taken back out of it, because the desk's slot travels inside the
-   * carriage. Read raw while it was travelling, the distance left shortened every frame and the panel
-   * folded a diminishing series that stopped half way, with the character walking the whole of it.
-   */
+  /** Read raw, the travelling slot would shrink the remaining distance every frame and stop half way. */
   it('takes the carriage\'s own displacement back out of a seat inside it', () => {
     const step = carryStep(SEAT, FOLDED);
     place(SEAT, step, 0);
-    // Fully folded, the slot's measured rect is her folded box, and the seat behind it is the resting one.
     const rest = restingSeat({ ...SEAT, left: FOLDED.left, top: FOLDED.top })!;
     expect(rest.left).toBeCloseTo(SEAT.left, 6);
     expect(rest.top).toBeCloseTo(SEAT.top, 6);
   });
 
-  /** Silent with no carriage registered: a headless mount has no panel for the gesture to carry. */
   it('places her alone where no carriage has been handed in', () => {
     render(<Character pose="idle" size={40} />);
     setPanelCarriage(null);
@@ -388,11 +347,8 @@ describe('the panel and the character are one object', () => {
 });
 
 /**
- * The docked ground takes no gesture travel. The fold's displacement belongs to the floating form;
- * docked, the sheet is the whole motion and the fraction is simply home — whatever the panel's own
- * open intent says. A collapse pressed over a docked panel reads as open=false with the stage still
- * at the ground, and handing the carriage the fold's travel there teleported the window-tall ground
- * its full step on the press (measured live: 472 x 119 px, at full opacity).
+ * Docked, the sheet is the whole motion. A collapse over a docked panel reads open=false with the stage
+ * still at the ground, and the fold's travel there would jump the window-tall ground on the press.
  */
 describe('the docked ground takes no gesture travel', () => {
   const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
@@ -431,7 +387,6 @@ describe('the docked ground takes no gesture travel', () => {
       </MotionConfig>,
     );
     expect(box.style.transform === '' || box.style.transform === 'none').toBe(true);
-    // She goes down with the desk she is sitting at, covered by the returning sheet.
     const her = getCharacterHandle()!.el;
     expect(her.style.left).toBe(`${100 + PAD}px`);
     expect(her.style.top).toBe(`${200 + PAD}px`);
@@ -439,14 +394,9 @@ describe('the docked ground takes no gesture travel', () => {
 });
 
 /**
- * She leaves and arrives at a change of form, and only there.
- *
- * The floating panel and the docked ground are different layers and neither pretends to be the other, so
- * a change of dock is not a crossing she makes: she goes from the form being replaced and comes to the
- * one replacing it, on a beat of her own. Free there is no beat at all — the panel carries her.
- *
- * A zoom with weight in it rather than a fade (`panel.character.pop`): the arrival passes her own size
- * and comes back to it, the departure goes straight down and out.
+ * The floating panel and docked ground are separate layers, so at a change of dock she leaves one and
+ * arrives at the other on her own beat (`panel.character.pop`), a zoom rather than a fade. The floating
+ * panel carries her otherwise.
  */
 describe('the character leaves and arrives at a change of form', () => {
   let frames: Keyframe[] | null = null;
@@ -477,9 +427,8 @@ describe('the character leaves and arrives at a change of form', () => {
     (Element.prototype as any).animate = realAnimate;
   });
 
-  /** Both ends are named, because coming back she is arriving from invisible and a transition needs a
-   *  painted frame at the old value to interpolate from. The destination is on the element from the same
-   *  frame, so the animation needs no fill. */
+  /** Arriving from invisible needs a painted start frame; the destination is written on the element,
+   *  so no fill is needed. */
   it('names both ends and writes the destination itself', () => {
     popCharacter(0, POP);
     expect(frames?.[0]).toEqual({ opacity: 1, transform: 'scale(1)', easing: POP.easing });
@@ -493,16 +442,13 @@ describe('the character leaves and arrives at a change of form', () => {
     expect(getCharacterHandle()?.el.style.transform).toBe('none');
   });
 
-  /** The arrival passes her own size and the departure does not: the overshoot is what says the arrival
-   *  is staying, and one on the way out would say she was about to come back. It sits where the entry
-   *  puts it rather than half way, or the settle gets as long as the whole approach. */
+  /** The overshoot sits past half way, or the settle would last as long as the approach. */
   it('overshoots on the way in and never on the way out', () => {
     popCharacter(1, POP);
     const middle = frames?.[1] as { transform: string; offset: number; easing: string };
     expect(parseFloat(/scale\(([\d.]+)\)/.exec(middle.transform)?.[1] ?? '0')).toBeGreaterThan(1);
     expect(middle.offset).toBe(POP.past);
     expect(POP.past).toBeGreaterThan(0.5);
-    // The settle has its own shape, on the keyframe the interval starts at.
     expect(middle.easing).toBe(POP.land);
 
     popCharacter(0, POP);
@@ -513,15 +459,13 @@ describe('the character leaves and arrives at a change of form', () => {
     }
   });
 
-  /** The leave is the length of the form's own. The dock hands one form to the other over the floating
-   *  exit's beat, so a departure of hers that ran longer would be cut off part-played by the arrival. */
+  /** The dock swaps forms over the floating exit's beat, so a longer departure would be cut off. */
   it('leaves in the time the form leaving has, and arrives in longer', () => {
     expect(outSeconds('panel.character.pop')).toBeCloseTo(seconds('panel.close'), 6);
     expect(seconds('panel.character.pop')).toBeGreaterThan(outSeconds('panel.character.pop'));
   });
 
-  /** The beat nobody can see is not played: under a sheet covering the whole window, and under reduced
-   *  motion, her presence is simply written. */
+  /** Under a full-window sheet or reduced motion the beat is not played. */
   it('writes her presence outright where there is no beat to play', () => {
     popCharacter(0, POP);
     frames = null;
@@ -531,8 +475,6 @@ describe('the character leaves and arrives at a change of form', () => {
     expect(frames).toBeNull();
   });
 
-  /** The scale grows about her feet, so a character popping in stands on the desk rather than drifting
-   *  up out of it. */
   it('scales her about the ground she stands on', () => {
     popCharacter(1, POP);
     expect(getCharacterHandle()?.el.style.transformOrigin).toBe('50% 100%');
@@ -540,8 +482,7 @@ describe('the character leaves and arrives at a change of form', () => {
 
 });
 
-/** The host chooses the beat, so the length is read where she is really popped: pinning an open
- *  floating panel lands the form on the dock ground, and she arrives there. */
+/** Pinning an open floating panel lands the form on the dock ground, and the host pops her there. */
 describe('the host pops her on the declared beat at a change of form', () => {
   let played: KeyframeAnimationOptions[] = [];
   const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;

@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The ghost promises the shape the stroke will leave, so auto-trim is one of its inputs — and the
- * pointer is not the only thing that can change it. Turning the trim on with the cursor standing
- * over the map has to redraw it: a square-cornered preview left where it was until the mouse moves
- * promises a shape the click does not do, since a stroke started from that same standing position
- * commits a trimmed one.
- *
- * Driven through the store, which is the half the tool-level pins miss: they hand the tool a
- * context with `autoEdgeCut` already set, so nothing in them exercises the toggle reaching the
- * ghost's redraw at all.
+ * Auto-trim is an input of the ghost, so toggling it under a still pointer redraws the ghost rather
+ * than leaving a square preview until the mouse moves. Driven through the store: tool-level tests
+ * hand the tool a context with `autoEdgeCut` already set, so they never exercise the toggle.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -61,7 +55,7 @@ let el: HTMLElement;
 let gs: GridState;
 let overlay: ReturnType<typeof makeView>['overlay'];
 
-/** The brush armed the way the bar arms it: the store, which the tools read through `armingOf`. */
+/** Arms the brush through the store, as the bar does; tools read it through `armingOf`. */
 function armBrush(surface: 'mountain' | 'road'): void {
   gs = makeState(20, 20);
   const executor = createExecutor(gs, createDefaultRegistry(), useEditorStore.getState().eventBus);
@@ -134,8 +128,8 @@ describe('the ghost trims when the stroke will', () => {
     expect(lastTrim()).toBeUndefined();
   });
 
-  // A road ghost carries its own trim too: a road's cut follows which sides it connects on, and the
-  // preview shadows the coating lookup so the ghost's own tiles answer that question.
+  // A road's cut follows the sides it connects on; the preview shadows the coating lookup so the
+  // ghost's own tiles count as connections.
   it('redraws the road ghost on the toggle, and it arrives carrying its cuts', () => {
     armBrush('road');
     el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
@@ -147,13 +141,11 @@ describe('the ghost trims when the stroke will', () => {
     expect(overlay.showGhost).toHaveBeenCalled();
     const trim = lastTrim() ?? [];
     expect(trim.length, 'the dab’s end-caps and bends').toBeGreaterThan(0);
-    // A road cut is named against the side it connects on — the field is what tells a view to draw
-    // the road shape rather than four quadrants.
+    // The `road` field tells a view to draw the road shape rather than four quadrants.
     expect(trim.every((t) => !!t.road)).toBe(true);
   });
 
-  // Same class of staleness, same one list: the road material is what the ghost is coloured by and
-  // what a tile click places, and nothing else asks for a redraw when it changes.
+  // The road material colours the ghost, and only the store change can ask for a redraw.
   it('redraws when the road material changes under a still pointer', () => {
     armBrush('road');
     el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));

@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The shared size glide: what it does when the box it watches becomes a different size.
- *
- * jsdom lays nothing out, so the sizes are stubbed and what is pinned is the decision and the
- * Bookkeeping — that a first measurement never glides, that a change of size does, that the axis
- * asked for is the one written, and above all that nothing is left behind once the box has arrived
- * (a stale inline size is what would make the next measurement lie). How the travel feels is carried
- * by the comment on the hook.
- *
- * Real timers throughout: the glide runs on Framer's own frame loop, which stops running for the
- * rest of any file that has installed fake timers even once.
+ * The shared size glide, on stubbed sizes since jsdom has no layout. No inline size may remain once
+ * the box arrives, or the next measurement would read it. Real timers throughout: Framer's frame
+ * loop stops for the rest of a file once fake timers are installed.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
@@ -57,7 +50,7 @@ function mount(change: unknown, axis: GlideAxis, reduced = false) {
 
 const box = () => screen.getByTestId('box');
 const gliding = () => box().dataset.gliding === 'true';
-/** The same reading taken off the owner, for the box that is not always there to carry it. */
+/** The gliding flag read off the owner, for a box that comes and goes. */
 const owning = () => screen.getByTestId('owner').dataset.gliding === 'true';
 
 afterEach(() => {
@@ -72,7 +65,6 @@ afterEach(() => {
 describe('the size glide', () => {
   it('takes the first size it measures without travelling to it', () => {
     mount('a', 'width');
-    // There is nothing to glide from: a surface arriving is simply its own size.
     expect(gliding()).toBe(false);
     expect(box().style.width).toBe('');
   });
@@ -83,8 +75,6 @@ describe('the size glide', () => {
     show('b');
     expect(gliding()).toBe(true);
     expect(box().style.width).toBe('100px');
-    // And the box arrives carrying nothing: a leftover inline size is what would make the next
-    // measurement describe the last glide instead of the content.
     await waitFor(() => expect(box().style.width).toBe(''), { timeout: 3000 });
     expect(gliding()).toBe(false);
   });
@@ -116,9 +106,8 @@ describe('the size glide', () => {
 
   it('eases the change after a glide too, and the one after that', async () => {
     const { show } = mount('a', 'width');
-    // Re-reading the bookkeeping when a landed glide's effect is torn down — which happens as the
-    // Next change commits — records the box's new size as the size to start from, so every second
-    // change snaps. Three in a row is what tells a fix from an alternation.
+    // A landed glide's effect is torn down as the next change commits; re-reading the size there
+    // would make every second change snap, so three in a row rule out alternation.
     for (const [next, size2] of [['b', 260], ['c', 180], ['d', 420]] as const) {
       size = size2;
       show(next);
@@ -129,11 +118,8 @@ describe('the size glide', () => {
   });
 
   /**
-   * The target is measured when the glide is planned, and the content can settle under it while it
-   * flies: a web font arrives, an image decodes, a line finishes its crossfade. Landing on that
-   * stale number and then clearing the inline size steps the remaining distance in one frame, which
-   * is the jump this hook exists to remove — and it also leaves the bookkeeping describing a size
-   * the box never had, so the next change travels from the wrong place.
+   * Content can settle mid-flight (a font arrives, an image decodes). Landing on the planned size
+   * and then clearing it would jump the rest in one frame and record a size the box never had.
    */
   it('lands on the size the box is, not the size it set off for', async () => {
     const { show } = mount('a', 'width');
@@ -148,17 +134,14 @@ describe('the size glide', () => {
     writes.disconnect();
     expect(box().style.width).toBe('');
 
-    // The last width it drew is one it travelled to, not the one it was aimed at.
     expect(Number.parseFloat(drawn.filter((w) => w !== '').pop()!)).toBeGreaterThan(261);
-    // And it knows where it landed: a change to the size the box already is has nothing to travel.
+    // It recorded where it landed, so the same size again does not glide.
     show('c');
     expect(gliding()).toBe(false);
   });
 
   it('takes its own size when the box it watches is a different box', async () => {
-    // The owner stays mounted while the box comes and goes, which is the shape that makes this a
-    // question at all (a modal card between opens, a notice between arrivals): the hook and its
-    // bookkeeping survive, and only the element it measures is replaced.
+    // The owner stays mounted while the box comes and goes, as a modal card between opens does.
     stubLayout();
     const draw = (change: unknown, box: boolean) => (
       <MotionConfig reducedMotion="never"><Owner change={change} axis="height" box={box} /></MotionConfig>
@@ -171,7 +154,6 @@ describe('the size glide', () => {
     view.rerender(draw('b', false)); // the box goes away, the hook does not
     size = 500;
     view.rerender(draw('c', true));
-    // Whatever the box that went away had settled at is not a size the new one can travel from.
     expect(owning()).toBe(false);
     expect(box().style.height).toBe('');
   });
@@ -187,7 +169,6 @@ describe('the size glide', () => {
     const { show } = mount('a', 'height', true);
     size = 260;
     show('b');
-    // The change has already said what it had to say, so the travel is decoration and is dropped.
     expect(gliding()).toBe(false);
     expect(box().style.height).toBe('');
   });

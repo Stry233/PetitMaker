@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AnchorChain, ShapeGesture } from '../../../../tools/pointer/paint/gestures';
+import { GESTURE_TIMING } from '../../../../platform/input/gesture-timing';
 
 /** The longest gap, in ms between releases, that still reads as a double click. */
-const CHAIN_DOUBLE_CLICK_MS = 400;
+const CHAIN_DOUBLE_CLICK_MS = GESTURE_TIMING.pc.doubleTapMs;
 
 const at = (x: number, y: number) => ({ x, y });
 
@@ -51,6 +52,16 @@ describe('AnchorChain', () => {
     c.down(at(5, 1)); c.up(at(5, 1), 100);
     c.down(at(5, 1));
     expect(c.up(at(5, 1), 100 + CHAIN_DOUBLE_CLICK_MS + 1)).toBe('standing');
+  });
+
+  it('reads the double-click window the release passes, so a touch pair uses the touch window', () => {
+    const { c } = chain();
+    c.down(at(1, 1)); c.up(at(1, 1), 0);
+    c.down(at(5, 1)); c.up(at(5, 1), 100);
+    c.down(at(5, 1));
+    expect(c.up(at(5, 1), 100 + 350, 300), 'outside a 300 ms window, inside the default').toBe('standing');
+    c.down(at(5, 1));
+    expect(c.up(at(5, 1), 450 + 250, 300)).toBe('finish');
   });
 
   it('drops the second anchor where a press dragged out from the first is released', () => {

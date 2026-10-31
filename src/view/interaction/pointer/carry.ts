@@ -6,11 +6,13 @@
  * gesture as a press of its own. Each mounted pointer machine registers a target instead, and the
  * carry hands every move and the release to the one whose map is under the pointer: the move is the
  * active tool's hover there (its ghost and the cursor's refusal badge) and the release is a press and
- * release there, so a drop is the tool's own click. What the carry arms, and what it puts back, is
- * its caller's (`end`).
+ * release there, so a drop is the tool's own click. What the carry arms, and what it keeps or puts
+ * back, is its caller's (`end`, told whether the release landed on a map, or came without the pointer
+ * ever reaching one).
  */
 import { clearCursorFacts } from './hover-probe';
 import { pushCursorSurface, setCursorDrag } from '../cursor-controller';
+import { holdEditInFlight } from '../../../state/edits-in-flight';
 
 /** One pointer position of the carry: a real `PointerEvent` satisfies it. `clientX`/`clientY` are
  *  the event's native coordinates. */
@@ -32,7 +34,7 @@ export interface CarryTarget {
   leave(): void;
   /** The release landed on this map: one press and release of the tool here. */
   drop(at: CarrySample): void;
-  /** The carry is over and its caller has put the arming back: the still pointer is sampled again
+  /** The carry is over and its caller has settled the arming: the still pointer is sampled again
    *  against what is armed now. */
   settle(at: CarrySample): void;
 }
@@ -50,8 +52,12 @@ interface LiveCarry {
   pointerId: number;
   /** The target the pointer is over, the one showing the preview. */
   under: CarryTarget | null;
-  end: () => void;
+  /** The pointer has been over a map since the carry began. */
+  reached: boolean;
+  end: (dropped: boolean, stayed: boolean) => void;
   releaseCursor: () => void;
+  /** Lets go of the carry's hold on the live map (`state/edits-in-flight.ts`), whose cancel puts the entry back. */
+  releaseMap: () => void;
 }
 
 const targets = new Set<CarryTarget>();
@@ -71,6 +77,16 @@ export function isCarried(pointerId: number): boolean {
   return live !== null && live.pointerId === pointerId;
 }
 
+/** A release at `at` meant for `target`: one press and release of its tool when its map is what
+ *  the point hits, nothing over anything else (a panel, the object bar, off the map). The carry's
+ *  release and the release of a touch drag or hold with an item armed both end here; a quick tap
+ *  places through the click path instead. True when the drop ran. */
+export function dropAt(target: CarryTarget, at: CarrySample): boolean {
+  if (!target.over(at.clientX, at.clientY)) return false;
+  target.drop(at);
+  return true;
+}
+
 function targetAt(at: CarrySample): CarryTarget | null {
   for (const t of targets) if (t.over(at.clientX, at.clientY)) return t;
   return null;
@@ -83,30 +99,34 @@ function retarget(c: LiveCarry, next: CarryTarget | null): void {
   if (c.under === next) return;
   c.under?.leave();
   c.under = next;
+  if (next) c.reached = true;
   setCursorDrag(next ? 'none' : 'object');
 }
 
-/** Ends `c` with `end` run before the targets hear it, so they settle against the arming it puts
- *  back. */
-function finish(c: LiveCarry): void {
+/** Ends `c` with `end` run before the targets hear it, so they settle against the arming it leaves;
+ *  `dropped` is whether the release ran a target's drop, `released` whether a release ended it. */
+function finish(c: LiveCarry, dropped: boolean, released = false): void {
   if (live === c) live = null;
+  c.releaseMap();
   setCursorDrag('none');
   clearCursorFacts();
   c.releaseCursor();
-  c.end();
+  c.end(dropped, released && !c.reached);
 }
 
 /**
  * Starts carrying for `pointerId`; `surface` is the element holding the capture, which shows the
- * cursor while it does. `end` runs once, however the carry ends, before the map settles. A carry
- * already live is abandoned first.
+ * cursor while it does. `end` runs once, however the carry ends, before the map settles, with
+ * `dropped` true only when the release landed on a map and ran its drop, and `stayed` true when a
+ * release ended a carry whose pointer never reached a map. A carry already live is abandoned first.
  */
 export function startCarry({ pointerId, surface, end }: {
-  pointerId: number; surface: HTMLElement | null; end: () => void;
+  pointerId: number; surface: HTMLElement | null; end: (dropped: boolean, stayed: boolean) => void;
 }): Carry {
   cancelCarry();
-  const c: LiveCarry = { pointerId, under: null, end, releaseCursor: pushCursorSurface(surface) };
+  const c: LiveCarry = { pointerId, under: null, reached: false, end, releaseCursor: pushCursorSurface(surface), releaseMap: () => {} };
   live = c;
+  c.releaseMap = holdEditInFlight(() => { if (live === c) cancelCarry(); }, 'hand');
   setCursorDrag('object');
   const owns = (at: CarrySample) => live === c && at.pointerId === c.pointerId;
   return {
@@ -120,26 +140,27 @@ export function startCarry({ pointerId, surface, end }: {
       if (!owns(at)) return;
       const t = targetAt(at);
       retarget(c, t);
+      let dropped = false;
       try {
-        t?.drop(at);
+        if (t) dropped = dropAt(t, at);
       } finally {
-        finish(c);
+        finish(c, dropped, true);
         if (t) t.settle(at);
       }
     },
     cancel() {
       if (live !== c) return;
       retarget(c, null);
-      finish(c);
+      finish(c, false);
     },
   };
 }
 
-/** Abandons the live carry with nothing changed (Escape); false when nothing is carried. */
-export function cancelCarry(): boolean {
+/** Abandons the live carry with nothing changed; false when nothing is carried. */
+function cancelCarry(): boolean {
   const c = live;
   if (!c) return false;
   retarget(c, null);
-  finish(c);
+  finish(c, false);
   return true;
 }

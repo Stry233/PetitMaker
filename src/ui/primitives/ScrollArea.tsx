@@ -2,8 +2,8 @@ import { forwardRef, useImperativeHandle, useRef, useState, type CSSProperties, 
 import { useReducedMotionConfig } from 'framer-motion';
 import { cssMotion } from '../design/motion';
 import { PLATE } from '../design/tokens';
-import { useScrollGeometry, type ScrollGeometry } from './scroll-geometry';
-import { SCROLL_FADE, STOP_EPS } from './scroll-fade';
+import { scrollTravel, useScrollGeometry, type ScrollChange, type ScrollGeometry } from './scroll-geometry';
+import { SCROLL_FADE } from './scroll-fade';
 
 type ScrollGutter = 'auto' | 'stable' | 'stable both-edges';
 
@@ -14,7 +14,7 @@ interface ScrollAreaProps extends HTMLAttributes<HTMLDivElement> {
   /** Pinned headings retain an opaque start edge; fades never mask the viewport or its scrollbar. */
   fade?: 'both' | 'end' | 'none';
   surface?: string;
-  onGeometry?: (geometry: ScrollGeometry) => void;
+  onGeometry?: (geometry: ScrollGeometry, change: ScrollChange) => void;
 }
 
 /** The ref and native scroll/keyboard attributes belong to the viewport; style sizes the outer box. */
@@ -25,9 +25,10 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(function S
   useImperativeHandle(ref, () => viewport.current!);
   const reduced = useReducedMotionConfig() === true;
   const [edges, setEdges] = useState({ start: false, end: false, width: 0, left: 0 });
-  useScrollGeometry(viewport, (g) => {
-    onGeometry?.(g);
-    const next = { start: g.top > STOP_EPS, end: g.scrollHeight - g.top - g.height > STOP_EPS, width: g.width, left: g.insetLeft };
+  useScrollGeometry(viewport, (g, change) => {
+    onGeometry?.(g, change);
+    const travel = scrollTravel(g, 'y');
+    const next = { start: travel.start > 0, end: travel.end > 0, width: g.width, left: g.insetLeft };
     setEdges(old => old.start === next.start && old.end === next.end && old.width === next.width && old.left === next.left ? old : next);
   });
   const shade: CSSProperties = {

@@ -1,10 +1,7 @@
 import ts from 'typescript';
 /**
- * The motion registry's own contract.
- *
- * The tier a motion belongs to decides what it must declare, and the type system carries most of
- * that. What a type cannot carry is that the declared value is meaningful: a `says` of '' compiles,
- * and an amplitude below the floor compiles. Those are what these assert.
+ * The motion registry's contract beyond its types: a declared value is meaningful (a `says` of '' and
+ * an amplitude below the floor both compile).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -16,9 +13,8 @@ function sources(dir: string): { path: string; text: string }[] {
   return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 }
 
-/** The table is `as const satisfies`, so each entry's inferred type is its own literal shape and an
- *  optional field it happens not to set is absent from it. These assertions are about the contract,
- *  which is what a new entry will be written against. */
+/** Widened to `Motion`: the `as const satisfies` table infers each entry's literal shape, which omits
+ *  optional fields it does not set. */
 const entries = Object.entries(MOTIONS) as [string, Motion][];
 
 /** Below this a displacement reads as jitter rather than as motion. */
@@ -35,8 +31,7 @@ describe('the motion registry', () => {
     expect(ids.length).toBeGreaterThan(0);
   });
 
-  /** The dock's state-identity flip is its own motion, distinct from `panel.dock.paper`'s in-place
-   *  crossfade (a clock tick, a countdown digit, a mid-state word repainting the standing face). */
+  /** The dock's state flip is its own motion, distinct from `panel.dock.paper`'s in-place crossfade. */
   it('declares the dock flip as an informing motion', () => {
     expect(MOTIONS['panel.dock.flip'].tier).toBe('inform');
   });
@@ -47,8 +42,6 @@ describe('the motion registry', () => {
     }
   });
 
-  /** A motion whose only answer is "looks nice" is ambient or it is not registered. An inform entry
-   *  states the fact it underlines, or it is not one. */
   it('makes every informing motion say what it says', () => {
     for (const [id, m] of entries) {
       if (m.tier !== 'inform') continue;
@@ -56,10 +49,6 @@ describe('the motion registry', () => {
     }
   });
 
-  /**
-   * An idle bob under this amplitude reads as sub-pixel font jitter rather than as liveness. Below
-   * the floor a motion is a rendering fault, so an ambient entry clears it or it is not one.
-   */
   it('keeps every decorative motion above the amplitude it stops reading at', () => {
     for (const [id, m] of entries) {
       if (m.tier !== 'ambient') continue;
@@ -70,13 +59,8 @@ describe('the motion registry', () => {
     }
   });
 
-  /**
-   * `linear` is the one curve that declines to have a shape, so a motion may only name it where the
-   * shape is not the registry's to choose (`curves.ts` states the two cases). Those two are
-   * distinguishable here: a seamless loop has to travel at a constant rate, and a sampled track
-   * carries its shape in frames whose travel is measured at run time, so it declares no amplitude.
-   * A motion that is neither has simply skipped choosing a curve.
-   */
+  /** A seamless loop travels at a constant rate, and a sampled track carries its shape in frames (so
+   *  declares no amplitude); `curves.ts` names these as the two uses of `linear`. */
   it('lets only a loop or a sampled track decline to have a shape', () => {
     for (const [id, m] of entries) {
       if (m.curve !== 'linear') continue;
@@ -85,8 +69,7 @@ describe('the motion registry', () => {
     }
   });
 
-  /** A bezier is a shape with no length until something gives it one, and a spring already carries
-   *  its timing in its physics. Either mistake makes a motion that does not run as written. */
+  /** A bezier has no length of its own, and a spring carries its timing in its physics. */
   it('gives a duration to every tween and to no spring', () => {
     for (const [id, m] of entries) {
       if (isTween(m.curve)) expect(m.duration, `${id} is a tween with no length`).toBeGreaterThan(0);
@@ -96,13 +79,12 @@ describe('the motion registry', () => {
 });
 
 /**
- * A setting sample is the one motion allowed past the reduced-motion gate: Framer's nearest
- * `MotionConfig` wins, so a nested `reducedMotion` override lifts the gate for its subtree. Only the
- * editor root both editions mount and `MotionSample` may set one, and `MotionSample` plays only
- * sample entries.
+ * A setting sample is the one motion allowed past the reduced-motion gate. Framer's nearest
+ * `MotionConfig` wins, so only the editor root may set `reducedMotion`; `MotionSample` plays its
+ * loops as Web Animations, which no gate reaches, and plays only sample entries.
  */
 describe('setting samples and the reduced-motion gate', () => {
-  const GATE_OWNERS = ['src/ui/app/EditorRoot.tsx', 'src/ui/design/motion/MotionSample.tsx'];
+  const GATE_OWNERS = ['src/ui/app/EditorRoot.tsx'];
   const sampleIds = new Set(entries.filter(([, m]) => m.tier === 'sample').map(([id]) => id));
   const tsx = sources('src').filter(({ path }) => !path.startsWith('src/__tests__/'));
 
@@ -113,7 +95,7 @@ describe('setting samples and the reduced-motion gate', () => {
     }
   });
 
-  it('lets only the root config and MotionSample set reducedMotion', () => {
+  it('lets only the root config set reducedMotion', () => {
     const setters = tsx.filter(({ text }) => /<MotionConfig\b[^>]*\breducedMotion=/.test(text)).map(({ path }) => path).sort();
     expect(setters).toEqual([...GATE_OWNERS].sort());
   });

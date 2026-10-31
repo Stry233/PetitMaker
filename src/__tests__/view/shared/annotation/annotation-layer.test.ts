@@ -2,8 +2,8 @@
 /**
  * The 2D plan-notes layer, headless: every note kind builds its own node without a GPU, the eye
  * hides the layer, an unchanged note keeps the node it has (its label raster included), an edited
- * one rebuilds only itself, and an arriving or leaving note fades rather than popping — skipped to
- * the end state under reduced motion, which is also what makes removal synchronous here.
+ * one rebuilds only itself, and an arriving or leaving note fades rather than popping (skipped to
+ * the end state under reduced motion, which also makes removal synchronous here).
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -141,7 +141,7 @@ describe('AnnotationLayer', () => {
     const d = data();
     layer.draw(d, OPTS);
     layer.draw({ ...d, items: d.items.filter((n) => n.id !== 't1') }, OPTS);
-    // Still mounted mid-fade — the tick, not the draw, is what retires it.
+    // Still mounted mid-fade: the tick, not the draw, retires it.
     expect(passes(layer).label.children).toHaveLength(3);
     layer.destroy();
   });

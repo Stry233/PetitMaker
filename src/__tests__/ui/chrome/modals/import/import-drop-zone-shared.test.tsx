@@ -1,34 +1,16 @@
 // @vitest-environment jsdom
-// SSOT pin: the Import modal and the window-level drag overlay must render the exact same
-// `ImportDropZone` component, not each their own dashed box. Mocking the module rather than
-// asserting on rendered text/colour is what catches a fork: a re-hand-rolled copy would never call
-// this mock, and would fail here even while still looking identical.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, act } from '@testing-library/react';
+// Import map and the page drop overlay show one drop zone: the same box and import note, which offers
+// a click to pick a file only where there is something to click.
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, act, screen, cleanup } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../../../i18n/context';
 import { makeState } from '../../../../_support/map-state';
-
-const dropZoneSpy = vi.fn();
-vi.mock('../../../../../ui/chrome/modals/import/ImportDropZone', async (importOriginal) => {
-  // Keep the real `IMPORT_CARD_WIDTH`/`IMPORT_CARD_PADDING` exports (DropImportOverlay reads them
-  // at module scope) — only the component itself is swapped for the spy.
-  const actual = await importOriginal<typeof import('../../../../../ui/chrome/modals/import/ImportDropZone')>();
-  return {
-    ...actual,
-    ImportDropZone: (props: Record<string, unknown>) => {
-      dropZoneSpy(props);
-      return null;
-    },
-  };
-});
-
 import { ImportModal } from '../../../../../ui/chrome/modals/import/ImportModal';
 import { DropImportOverlay } from '../../../../../ui/chrome/modals/import/DropImportOverlay';
 import { setStoreState, setStoreModal } from '../../../../_support/store';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  // reducedMotion="always": only the mock call matters here, not animation timing.
   return <MotionConfig reducedMotion="always"><I18nProvider>{children}</I18nProvider></MotionConfig>;
 }
 
@@ -38,32 +20,32 @@ function dragEnterWithFile(): void {
   act(() => { window.dispatchEvent(e); });
 }
 
-describe('ImportModal and DropImportOverlay share ImportDropZone', () => {
+/** The drop zone's box and the note the window shows under it. */
+function dropZone(): { box: HTMLElement; note: string } {
+  const box = screen.getByTestId('import-drop-zone');
+  return { box, note: box.nextElementSibling?.textContent ?? '' };
+}
+
+describe('Import map and the drop overlay share one drop zone', () => {
   beforeEach(() => {
-    dropZoneSpy.mockReset();
     setStoreState({ locale: 'en', gridState: makeState() });
     setStoreModal('import', false);
   });
 
-  it('ImportModal renders the shared drop zone with click-to-pick wired up', () => {
+  it('shows the same note in both, and only the Import window offers a click to pick a file', () => {
     setStoreModal('import');
-    render(<ImportModal />, { wrapper: Wrapper });
+    const { unmount } = render(<ImportModal />, { wrapper: Wrapper });
+    const inWindow = dropZone();
+    expect(inWindow.box.getAttribute('role')).toBe('button');
+    expect(inWindow.note).not.toBe('');
+    unmount();
+    setStoreModal('import', false);
+    cleanup();
 
-    expect(dropZoneSpy).toHaveBeenCalled();
-    const props = dropZoneSpy.mock.calls[0]?.[0] as { onClick?: () => void; dragOver: boolean; busy: boolean };
-    expect(typeof props.onClick).toBe('function'); // the modal has something to pick a file over
-    expect(props.dragOver).toBe(false);
-    expect(props.busy).toBe(false);
-  });
-
-  it('DropImportOverlay renders the SAME shared drop zone, lit and with no click-to-pick, while a file drags over the window', () => {
     render(<DropImportOverlay />, { wrapper: Wrapper });
     dragEnterWithFile();
-
-    expect(dropZoneSpy).toHaveBeenCalled();
-    const calls = dropZoneSpy.mock.calls;
-    const last = calls[calls.length - 1]?.[0] as { onClick?: () => void; dragOver: boolean };
-    expect(last.dragOver).toBe(true); // the whole point: lit the moment it's visible at all
-    expect(last.onClick).toBeUndefined(); // nothing to pick a file over mid-drag — omitted, not a no-op
+    const overlay = dropZone();
+    expect(overlay.box.getAttribute('role')).toBeNull();
+    expect(overlay.note).toBe(inWindow.note);
   });
 });

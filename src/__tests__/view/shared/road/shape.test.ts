@@ -1,17 +1,10 @@
 /**
- * The drawn shape of a trimmed road, pinned to literal coordinates.
+ * The drawn shape of a trimmed road, pinned to literal coordinates worked out by hand.
+ * `view/shared/road/shape.ts` is behind 2D's `drawRoadShape`, 3D's `buildRoadTrimMeshes` and both
+ * ghost previews, so a drift in it shows in every view at once and no downstream test notices.
  *
- * `view/shared/road/shape.ts` is the one implementation behind 2D's `drawRoadShape`, 3D's
- * `buildRoadTrimMeshes` and both ghost previews. Before it existed each view carried its own copy, so
- * a drift in one had a chance of showing up as the two views disagreeing; now nothing downstream
- * can notice, and a test that derives its expectation from the function it is testing notices even
- * less. So every number below is worked out by hand from the canonical states and the four
- * connection-side mappings, and compared as a number.
- *
- * Two things in particular have no other guard: the arc radius (the fans are quarter circles of
- * canonical radius 2, i.e. a full cell half-extent — a shrunken one is a subtly wrong curve
- * everywhere at once) and the 'N'/'S' mappings (the end-to-end tool pins only ever produce
- * 'W' and 'E', because a road stroke laid along x connects along x).
+ * Nothing else guards the arc radius (canonical 2, a full cell edge) or the 'N'/'S' mappings: the
+ * tool tests lay strokes along x, which connect only 'W' and 'E'.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -49,8 +42,7 @@ describe('roadTxPt: the four connection-side frames', () => {
       near(roadTxPt(0, 0, { side, x: 0, y: 0, hw: 0.5, hh: 0.5 }), a[0], a[1]);
       near(roadTxPt(2, 0, { side, x: 0, y: 0, hw: 0.5, hh: 0.5 }), b[0], b[1]);
       near(roadTxPt(0, 2, { side, x: 0, y: 0, hw: 0.5, hh: 0.5 }), c[0], c[1]);
-      // The centre is the centre in every frame — a mapping that is not a rigid placement of the
-      // square would move it.
+      // A rigid placement of the square keeps its centre.
       near(roadTxPt(1, 1, { side, x: 0, y: 0, hw: 0.5, hh: 0.5 }), 0.5, 0.5);
     });
   }
@@ -96,9 +88,8 @@ describe('the straight canonical states, per connection side', () => {
 });
 
 describe('the fan states, per connection side', () => {
-  // Apex, then the arc from its first point to its last, and the 45° point in between. The arc is a
-  // quarter circle of canonical radius 2 — half a cell in each direction — so in a unit cell every
-  // arc point is exactly 1 away from the apex, and the 45° one sits at √2/2 along both axes from it.
+  // Apex, the arc's endpoints and its 45° point. Canonical radius 2 is a full cell edge, so in a unit
+  // cell every arc point is 1 from the apex and the 45° one √2/2 along both axes.
   const EXPECTED: Record<number, Record<RoadConnSide, { apex: RoadPt; first: RoadPt; mid: RoadPt; last: RoadPt }>> = {
     1: { // BR fan: apex (0,0), arc (2,0) → (0,2)
       W: { apex: [0, 0], first: [1, 0], mid: [D, D], last: [0, 1] },
@@ -179,10 +170,8 @@ describe('the polygon covers the fraction of the cell its state claims', () => {
     }
     return Math.abs(a) / 2;
   };
-  // A fan keeps a quarter disc of radius 1 (area π/4), drawn as ROAD_ARC_STEPS chords — an
-  // inscribed fan of n triangles, so exactly (n/2)·sin(θ/n) and a hair under π/4. Stating it
-  // exactly rather than approximately is what makes this sensitive to the radius: the area goes
-  // with its square, so a 1.5% shrink of the curve is a 3% miss here.
+  // A fan's quarter disc of radius 1 is drawn as ROAD_ARC_STEPS chords, so its area is exactly
+  // (n/2)·sin(θ/n), a hair under π/4; area goes with the radius squared, so a 1.5% shrink misses by 3%.
   const QUARTER_DISC = (ROAD_ARC_STEPS / 2) * Math.sin(Math.PI / 2 / ROAD_ARC_STEPS);
   const WANT: Record<number, number> = { 1: QUARTER_DISC, 2: QUARTER_DISC, 3: 0.5, 4: 0.5, 5: 0.25 };
   for (const idx of [1, 2, 3, 4, 5]) {

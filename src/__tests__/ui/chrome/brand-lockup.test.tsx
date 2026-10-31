@@ -32,9 +32,7 @@ describe('BrandLockup', () => {
     expect(screen.getByText('Map Editor')).toBeTruthy();
   });
 
-  it('drops the name for the tour, keeping it as what a screen reader announces', () => {
-    // The welcome step already has a title and a body; a third piece of text in that small card is
-    // the name, and the logo carries it.
+  it('drops the name for a page titled under it, keeping it as what a screen reader announces', () => {
     const { container } = render(<BrandLockup size={54} logoOnly />, { wrapper });
     expect(screen.queryByText(APP_NAME)).toBeNull();
     const img = container.querySelector('img') as HTMLImageElement;

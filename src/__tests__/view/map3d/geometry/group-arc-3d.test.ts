@@ -2,10 +2,10 @@
  * A group rotation must animate every member in 3D, whatever draws its body.
  *
  * The 3D view splits object bodies two ways: most ride an InstancedMesh, but a road whose corners
- * were edge-cut is meshed by buildRoadTrimMeshes and deliberately skipped by the instancer. The tween
- * resolved members through the instance registry alone, so a trimmed road had nothing to move and sat
- * still while the rest of the body turned around it. These pin the model-side facts the tween now
- * routes on, plus the displacement that carries a trim-meshed road along its arc.
+ * were edge-cut is meshed by buildRoadTrimMeshes and deliberately skipped by the instancer. A tween
+ * that resolved members through the instance registry alone would leave a trimmed road still while
+ * the rest of the body turned around it. These pin the model-side facts the tween routes on, plus
+ * the displacement that carries a trim-meshed road along its arc.
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
@@ -56,7 +56,7 @@ describe('3D body routing for a group rotation', () => {
     expect(turn.members.map((m) => m.id)).toEqual(['r1', 'r2', 'r3']);
     expect(bodyRoute(gs, 'r1')).toBe('roadTrim');
     expect(bodyRoute(gs, 'r2'), 'every road is meshed now, feather and all').toBe('roadTrim');
-    // The bug: a member the view has no body for is skipped without a trace.
+    // A member the view has no body for would be skipped without a trace.
     for (const m of turn.members) expect(bodyRoute(gs, m.id), m.id).not.toBe('none');
   });
 

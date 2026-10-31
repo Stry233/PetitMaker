@@ -25,7 +25,7 @@ describe('chunkVisible', () => {
   it('keeps intersecting chunks and culls the rest', () => {
     expect(chunkVisible(0, 0, rect)).toBe(true);
     expect(chunkVisible(1, 0, rect)).toBe(true);
-    expect(chunkVisible(2, 0, rect)).toBe(false);  // starts exactly at rect.right — open interval
+    expect(chunkVisible(2, 0, rect)).toBe(false);  // starts exactly at rect.right: open interval
     expect(chunkVisible(0, 1, rect)).toBe(false);
     expect(chunkVisible(-1, 0, rect)).toBe(false); // ends exactly at rect.left
     expect(chunkVisible(-1, -1, rect)).toBe(false);

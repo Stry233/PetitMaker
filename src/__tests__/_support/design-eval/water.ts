@@ -1,11 +1,7 @@
 /**
- * Is the water a system: the ledger, the fountain courts, the shape of the course, and how the
- * whole of it is distributed over shapes.
- *
- * The hard half is `waterStoryLedger` — every body of more than an accent belongs to the map's water
- * system or the map cannot explain it, and a solid mountain-framed rectangle among them is a tofu lake.
- * The rest is reported rather than gated: what a composition class is worth is a matter of taste, and
- * the ladder of classes is authored rather than discovered.
+ * Whether the water is a system: the story ledger, the fountain courts, the shape of the course and
+ * the distribution over shapes. Only `waterStoryLedger` gates; the rest is reported, since what a
+ * composition class is worth is a matter of taste.
  */
 import { stepDistance } from '../../../core/grid/cell-sets';
 import { NEIGHBORS4 } from '../../../core/grid/directions';
@@ -16,61 +12,48 @@ import { bandScore } from './reference';
 import { readMap, segmentRegions, waterBodies, type MapMasks, type WaterBody } from '../../../tools/reading';
 import { bodiesTouch, COMB_FLIPS_MIN, bandFlips, extentOf, mirrors, mountainFrame, spannedByCrossing, streamLike, touchesOffLand, WATER_ACCENT_MAX } from './water-shapes';
 
-/** A tofu lake: a solid rectangle of this many cells or more, framed by mountain on three of its four
- *  sides, with nothing to say for itself. One of these on a map is a failure. */
+/** A tofu lake: an unaccounted solid rectangle of at least this many cells, at least `TOFU_FILL` full
+ *  and framed by mountain on `TOFU_FRAME` sides. One on a map fails the ledger. */
 const TOFU_MIN = 15;
 
 const TOFU_FILL = 0.85;
 
 const TOFU_FRAME = 3;
 
-/**
- * Share of a map's water that may stand outside its system: on the references, the small compact
- * pools that read as a trough or a bed. The bar is the worse of the two with room. Terraces push the
- * reading up (a cut accent has steps on two or three sides) and composed water pushes it down.
- */
+/** Share of a map's water that may stand outside its system: the worse reference's small compact
+ *  pools (troughs and beds), with room. */
 const UNACCOUNTED_MAX = 0.12;
 
 /** How far a fountain court looks for the space it is composed against. */
 const COURT_REACH = 6;
 
 /**
- * What makes a court a main fountain rather than an ornament, which is the distinction the whole
- * per-region rule rests on: one clear main fountain per region, never several at once, and in the
- * same breath small fountains may stand in gardens and at street corners. A garden or street-corner
- * fountain standing beside the main one is allowed.
- *
- * It is the span and not the cell count. A cell floor conflates the two: a large court drawn as a
- * thin ring round a wide platform holds 32 water cells and a small solid cruciform basin holds 20, so
- * a floor that admits the second admits neither or both. The span separates them by construction —
- * the grammar draws a garden court at half-span 2 to 3 and a large one at 5 to 7 — and it is what a
- * reader means by a fountain that commands its space.
+ * The span that makes a court a main fountain rather than an ornament (one main fountain per region;
+ * small ones may stand beside it). A cell floor cannot separate them: a large court drawn as a thin
+ * ring holds 32 water cells and a small solid cruciform basin 20. The grammar draws garden courts at
+ * half-span 2 to 3 and large ones at 5 to 7.
  */
 const COURT_MAIN_SPAN = 9;
 
 const COURT_MAIN_MIN = 12;
 
-/** The widest a formal court can be and still be a court: past this it is a pond that happens to
- *  hold an islet. The reference's own is 14 across. */
+/** Past this span a court is a pond that happens to hold an islet. The reference's own is 14 across. */
 const COURT_SPAN_MAX = 17;
 
 /** How closely a body has to mirror itself about the better of its box's two axes to read as composed. */
 const COURT_MIRROR_MIN = 0.9;
 
 /**
- * The stream-shape floors, from the game's own guidance on watercourses (a directed curve, no long
- * straight runs, gentle and sharp bends, local widening and narrowing).
- *
- * Measured by this code on the two fixtures: the style target's own course reads 7.6 bends per 10
- * cells of length, 17 distinct local widths and a longest straight run of 3; the garden town's is
- * the flat map's raised channel and reads 0, 1 and 17. So a bar has to separate them, and both
- * numbers sit where they do for that reason — `STREAM_STRAIGHT_MAX` is also the planner's own
- * declared bound plus the two cells a fall moves the head.
+ * The stream-shape bounds, from the game's guidance on watercourses (a directed curve, no long
+ * straight runs, varied bends and widths). The style target's course reads 7.6 bends per 10 cells, 17
+ * widths and a longest straight run of 3; the garden town's flat raised channel reads 0, 1 and 17, and
+ * the bounds separate the two. `STREAM_STRAIGHT_MAX` is also the planner's declared bound plus the two
+ * cells a fall moves the head.
  */
 export const STREAM_STRAIGHT_MAX = 16;
 
-/** How many of a map's largest bodies the distribution reading takes. Seven is the count the style
- *  target's 63% is measured over. */
+/** How many of a map's largest bodies the distribution reading takes: the style target's 63% is
+ *  measured over seven. */
 const TOP_BODIES = 7;
 
 /** Surface levels a body must span to read as a cascade stair rather than as a fall on one step. */
@@ -80,35 +63,27 @@ const STAIR_TIERS_MIN = 3;
 export const CONGRUENT_MAX = 3;
 
 /**
- * The size a body must reach to be counted in the congruence reading: the same cut the reference's own
- * coarse signatures are taken over, its 45 bodies of 20 cells or more.
- *
- * The tail below it repeats far more often than three times on the style target itself — 8 bodies of
- * 3x1 and 7 of 2x1 — so a cap read over the tail would fail the reference. The cap is about the
- * Features: a map whose composed bodies are copies of each other reads as machine output.
+ * The smallest body the congruence reading counts (the reference has 45 at this size). Below it the
+ * style target itself repeats shapes often (8 bodies of 3x1, 7 of 2x1), so the cap applies to
+ * features only.
  */
 const CONGRUENT_MIN_CELLS = 20;
 
 const STREAM_BENDS_PER_10 = 0.6;
 
-/** The water story ledger: does every body of water on the map belong to the map's water system?
- *
- *  A body is accounted for when it is part of a course (it spans more than one surface level), a
- *  cascade (it presents a capped waterfall face), a formal court or islet pond (it holds an enclosed
- *  islet and mirrors about the better of its own axes), a crossing the walk steps over (a bridge or a
- *  ramp stands at it), or a stream (a long thin shape rather than a compact one) — or when it touches a
- *  body that is. Everything else of more than `WATER_ACCENT_MAX` cells is water the map cannot
- *  explain, and a solid mountain-framed rectangle among them is the tofu lake by name. */
+/** The water story ledger: whether every body larger than `WATER_ACCENT_MAX` belongs to the map's
+ *  water system. A body is accounted for when it spans more than one surface level, presents a capped
+ *  waterfall face, holds islets (two, or one with mirror symmetry), forms a comb, has a crossing at it,
+ *  is stream-like, or touches an accounted body. */
 export interface WaterStoryLedger {
   pass: boolean;
-  /** Bodies larger than an accent. */
   bodies: number;
   accounted: number;
   unaccountedCells: number;
   unaccountedShare: number;
-  /** Solid mountain-framed rectangles with no story: the failure this reading exists for. */
+  /** Unaccounted solid mountain-framed rectangles. */
   tofu: number;
-  /** Where the first few unaccounted bodies stand, so a log entry can name them. */
+  /** Where the first four unaccounted bodies stand, so a log entry can name them. */
   where: { x: number; y: number; cells: number }[];
 }
 
@@ -117,8 +92,8 @@ export function waterStoryLedger(state: GridState, g = readMap(state)): WaterSto
   const big = bodies.filter((b) => b.cells.length > WATER_ACCENT_MAX);
   const accounted = new Set<WaterBody>();
   for (const body of big) if (selfAccounts(g, body)) accounted.add(body);
-  // A body touching an accounted one is the same water: a pond at the foot of a cascade, a bay off a
-  // reach that the 4-connected reading cut apart at a diagonal.
+  // A body touching an accounted one is the same water: a pond at a cascade's foot, or a bay the
+  // 4-connected reading cut off at a diagonal.
   for (let pass = 0; pass < 2; pass++) {
     for (const body of big) {
       if (accounted.has(body)) continue;
@@ -144,22 +119,19 @@ export function waterStoryLedger(state: GridState, g = readMap(state)): WaterSto
 /** Whether a body explains itself, without help from its neighbours. */
 function selfAccounts(g: MapMasks, body: WaterBody): boolean {
   if (body.tiers.size > 1 || body.faced) return true;
-  // Two or more enclosed islets is a figure: the panel a landmark writes its phrase into, whose ink
-  // is retained ground inside the flooded field. The style target's own banner reads exactly this
-  // way, and a shape test cannot recover the semantics any other way.
+  // Two or more enclosed islets is a figure: a banner whose letters are retained ground inside a
+  // flooded panel, as on the style target.
   if (body.holes >= 2) return true;
   if (body.holes > 0 && mirrors(g, body) >= COURT_MIRROR_MIN) return true;
-  // A comb is a composed class of its own (6 of the style target's 83 bodies, 9 of them with four or
-  // more band flips): water bars alternating with dry ridges, which is what the target's
-  // own planted water gardens are built from. A solid rectangle has no flips at all, so this cannot
-  // account for the tofu the ledger exists to catch.
+  // A comb (water bars alternating with dry ridges) is the style target's water-garden class. A solid
+  // rectangle has no flips, so this never accounts for a tofu lake.
   if (bandFlips(g, body) >= COMB_FLIPS_MIN) return true;
   if (spannedByCrossing(g, body)) return true;
   return streamLike(body);
 }
 
-/** Fountain presence: the formal nested courts standing on the map, and whether each is composed
- *  against something a visitor walks to. One main fountain per region and never several. */
+/** Fountain presence: the map's formal courts, whether at least one is composed against something a
+ *  visitor walks to, and at most one main fountain per region. */
 export interface FountainPresence {
   pass: boolean;
   courts: number;
@@ -187,18 +159,16 @@ export function fountainPresence(state: GridState, g = readMap(state)): Fountain
   return { pass: related >= 1 && perRegion <= 1, courts: courts.length, related, perRegion };
 }
 
-/** The boxes the map's formal courts stand in, nested annuli merged. The arrival reading asks for
- *  them by the same test that counts them here, so the two cannot disagree about what a court is. */
+/** The boxes of the map's formal courts, nested annuli merged, by the same test that counts them. */
 export function courtBoxes(state: GridState, g = readMap(state)): Rect[] {
   return nestedAsOne(waterBodies(g, state).filter((b) => isCourt(g, b)))
     .map((b) => ({ x: b.x0, y: b.y0, w: b.x1 - b.x0 + 1, h: b.y1 - b.y0 + 1 }));
 }
 
 /**
- * One nested composition is one court. `waterBodies` is 4-connected, so a moat, its basin and what
- * stands between are separate bodies, each reading as a court; counted that way one fountain of
- * nesting depth 3 counts as 2. Overlapping boxes merge, which is exact for concentric annuli; courts
- * genuinely apart have disjoint boxes (dry margins and `COURT_SPACING`). `figure.ts` does the same.
+ * One nested composition is one court: `waterBodies` is 4-connected, so a moat and its basin are
+ * separate bodies. Overlapping boxes merge, which is exact for concentric annuli; separate courts have
+ * disjoint boxes (dry margins and the generator's `COURT_SPACING`).
  */
 function nestedAsOne(courts: readonly WaterBody[]): WaterBody[] {
   const out: WaterBody[] = [];
@@ -213,16 +183,15 @@ function nestedAsOne(courts: readonly WaterBody[]): WaterBody[] {
   return out;
 }
 
-/** A formal court: a regular nested composition, small enough to read as one and mirrored about the
- *  better of its own axes, holding an islet (its platform or its centre figure). */
+/** A formal court: larger than an accent, holding an islet, within `COURT_SPAN_MAX` and mirrored
+ *  about the better of its axes. */
 function isCourt(g: MapMasks, body: WaterBody): boolean {
   if (body.cells.length <= WATER_ACCENT_MAX || body.holes === 0) return false;
   if (body.x1 - body.x0 + 1 > COURT_SPAN_MAX || body.y1 - body.y0 + 1 > COURT_SPAN_MAX) return false;
   return mirrors(g, body) >= COURT_MIRROR_MIN;
 }
 
-/** Whether pavement, the plaza or a building stands within reach of the court: the relation a
- *  fountain is composed with. */
+/** Whether pavement, the plaza or a building stands within `COURT_REACH` of the court. */
 function relatedToSpace(g: MapMasks, body: WaterBody): boolean {
   const { W, H } = g;
   for (let y = body.y0 - COURT_REACH; y <= body.y1 + COURT_REACH; y++) {
@@ -235,8 +204,7 @@ function relatedToSpace(g: MapMasks, body: WaterBody): boolean {
   return false;
 }
 
-/** The region a court stands in, read at the cells around it: a court is water, so it is never
- *  inside a region itself. */
+/** The region a court stands in, read at the cells around it, since water is never inside a region. */
 function nearestRegionOf(g: MapMasks, regionOf: Int32Array, body: WaterBody): number {
   const { W, H } = g;
   for (let r = 1; r <= COURT_REACH; r++) {
@@ -251,10 +219,8 @@ function nearestRegionOf(g: MapMasks, regionOf: Int32Array, body: WaterBody): nu
   return -1;
 }
 
-/** Stream shape: how the map's own watercourse is drawn. Read on the largest body that reads as a
- *  course, so a map with no stream reports zeros rather than a shape it does not have. */
+/** Stream shape of the map's watercourse; a map with no course reports zeros. */
 export interface StreamShape {
-  /** Whether a course was found at all. */
   present: boolean;
   cells: number;
   bends: number;
@@ -268,14 +234,9 @@ export interface StreamShape {
 }
 
 export function streamShape(state: GridState, g = readMap(state)): StreamShape {
-  // The course is the most-descending body that reads as a channel, and both halves of that are needed.
-  // Neither cell count nor extent finds it — a cascade's band and its landing are two tiers and can
-  // outweigh a modest course on both while being three cells long — and descent alone does not find it
-  // either on a map carrying cascade stairs: a stair spans as many terraces as a course and is ten times
-  // as wide, so it wins a descent-ordered sort and the map's own watercourse is never read (by descent
-  // alone the share of courses showing both ends reads 4 of 10 rather than 6). A channel is thin over its
-  // own length, which is what `streamLike` says and what a stair is not.
-  // A descending channel first, then a body that merely descends, then one that merely runs.
+  // The course is the most-descending body that is also a channel. Size alone picks a cascade's band and
+  // landing; descent alone picks a cascade stair, which spans as many terraces and is ten times as wide.
+  // Order: a descending channel, then a body that only descends, then one that only runs.
   const kind = (b: WaterBody): number => (b.tiers.size > 1 ? 2 : 0) + (streamLike(b) ? 1 : 0);
   const course = waterBodies(g, state)
     .filter((b) => b.cells.length > WATER_ACCENT_MAX && (b.tiers.size > 1 || streamLike(b)))
@@ -313,14 +274,11 @@ export function streamShape(state: GridState, g = readMap(state)): StreamShape {
   const widths = new Set(width.filter((w) => w > 0)).size;
   const length = hi - lo + 1;
   const bendsPer10 = length ? (10 * bends) / length : 0;
-  // A source is high ground the course comes down from; a destination is where it arrives — a body
-  // three times its own median width, or the coast.
   const run = [...width].filter((w) => w > 0).sort((a, b) => a - b);
   const median = run[Math.floor(run.length / 2)] ?? 1;
-  // A finished map does not say which way the water runs, so the two ends are read for what they
-  // are rather than for which is which. A source is high ground the course comes down from, or a
-  // pool at one end of it; an arrival is the coast, or a widening of at least twice the channel that
-  // feeds it — the pond a course ends in is the widest thing on it.
+  // A finished map does not say which way the water runs, so the ends are read without direction. A
+  // source is descent or a pool at either end; a destination is the coast or a widening to twice the
+  // median width.
   const third = Math.max(1, Math.floor(width.length / 3));
   const pooled = width.slice(0, third).some((w) => w >= 2 * median)
     || width.slice(width.length - third).some((w) => w >= 2 * median);
@@ -338,60 +296,44 @@ export function streamShape(state: GridState, g = readMap(state)): StreamShape {
   };
 }
 
-/** How much of a map's water is composed, in the same vocabulary the references were read with.
- *  Reported, never gated: what a composition class is worth is a matter of taste, and the ladder of
- *  classes is authored rather than discovered. */
+/** How much of a map's water is composed, in the vocabulary the references were read with. Reported,
+ *  never gated. */
 export interface WaterComposition {
   bodies: number;
   cells: number;
   share: number;
   /** Bodies holding an enclosed dry islet: the pool-with-islet class. */
   withIsland: number;
-  /** Bodies whose bounding box alternates wet and dry bands four times or more on one axis: a comb,
-   *  which is the shape a water garden's bars and beds make. */
+  /** Bodies whose box alternates wet and dry bands `COMB_FLIPS_MIN` times or more on one axis. */
   combs: number;
-  /** Bodies standing on more than one tier, which is a cascade rather than a pool. */
+  /** Bodies standing on more than one tier. */
   multiTier: number;
   /** Water cells presenting at least one capped waterfall face. */
   facedCells: number;
-  /** Distinct surface tiers carrying water. The style target carries water on all nine of its. */
+  /** Distinct surface tiers carrying water. The style target carries water on all nine of its tiers. */
   tiers: number;
-  /** Cells of the largest body, as a share of all water. On the style target 7 bodies hold 63%. */
+  /** Cells of the largest body, as a share of all water. */
   largestShare: number;
-  /** Share of the water standing in the largest `TOP_BODIES` bodies: the headline reading of the style
-   *  target's distribution (7 bodies hold 63%), and the one that separates a few composed figures from
-   *  an even sprinkle. */
+  /** Share of the water in the largest `TOP_BODIES` bodies (63% on the style target): it separates a
+   *  few composed figures from an even sprinkle. */
   topShare: number;
-  /** The most congruent feature bodies on the map: same bounding box and the same coarse 3x3 wet
-   *  signature. The cap is 3, which is exactly what the style target reads. */
+  /** The largest group of feature bodies with the same box size and coarse 3x3 wet signature. */
   congruent: number;
-  /** Bodies that are a cascade stair: they span three or more surface levels and present a capped
-   *  waterfall face, so the water is a vertical system rather than a pool. */
+  /** Cascade stairs: bodies spanning `STAIR_TIERS_MIN` or more surface levels with a capped waterfall
+   *  face. */
   stairs: number;
-  /**
-   * Share of the bodies larger than an accent whose rim stands against a terrace step: ground on their
-   * bank standing higher than the water's own surface.
-   *
-   * The reference's water is cut into its terraces rather than laid on them — majority-water terraces,
-   * moats round a platform — and this is that claim as one number. Reported, never gated: a coastal
-   * lagoon and a pond on a plain are
-   * both legitimate water, and what the number says is whether the planet's water was composed with
-   * its landform or dropped onto it.
-   */
+  /** Share of bodies larger than an accent with bank ground higher than their surface: whether the
+   *  water is cut into the terraces, as on the reference, or laid on them. Ungated, since a lagoon or a
+   *  pond on a plain is legitimate water. */
   inTerrain: number;
-  /** Plants whose footprint stands within 2 and within 4 cells of a water cell, as a share of all
-   *  planting (the style target reads 50% and 69%, the garden town 8% and 26%). It is the reading that
-   *  says whether the planting was gathered at the banks or merely
-   *  laid on a map that happens to hold water. Reported, never gated. */
+  /** Share of planting within 2 and within 4 cells of water (style target 50% and 69%, garden town 8%
+   *  and 26%): whether planting gathers at the banks. */
   nearWater2: number;
   nearWater4: number;
 }
 
 export function waterComposition(state: GridState): WaterComposition {
   const g = readMap(state);
-  // One decomposition, read by every column below. It is shared with the ledger too, so the two answer
-  // the same question about the same bodies: this pass counts shapes over them, the ledger counts what
-  // each one belongs to.
   const bodies = waterBodies(g, state);
   const cells = bodies.reduce((a, b) => a + b.cells.length, 0);
   const top = bodies.slice(0, TOP_BODIES).reduce((a, b) => a + b.cells.length, 0);
@@ -408,11 +350,7 @@ export function waterComposition(state: GridState): WaterComposition {
   for (const body of bodies) {
     for (const l of body.tiers) tiers.add(l);
     if (body.tiers.size > 1) multiTier++;
-    // An islet is dry ground inside the box that cannot reach the box's border without crossing the
-    // body: the hole test the reference's own islet class is read by.
     if (body.holes > 0) withIsland++;
-    // Band flips: rows (then columns) of the box counted as wet at half or more, the number of times
-    // the reading changes. Four or more is a comb.
     if (bandFlips(g, body) >= COMB_FLIPS_MIN) combs++;
   }
   let facedCells = 0;
@@ -432,15 +370,8 @@ export function waterComposition(state: GridState): WaterComposition {
   };
 }
 
-/**
- * A body's shape for the congruence reading: its bounding box, plus which of the nine coarse blocks of
- * that box are more than half wet.
- *
- * Box dimensions alone would call a comb and a solid rectangle of the same extent the same shape. Read
- * this way the style target returns the solid signature ten times and then twenty distinct signatures,
- * none repeated more than three times, which is the numeric form of a map that does not reuse one blob
- * shape.
- */
+/** A body's shape for the congruence reading: its box size plus which of the nine coarse blocks are
+ *  at least half wet, so a comb and a solid rectangle of one extent differ. */
 function coarseSignature(g: MapMasks, body: WaterBody): string {
   const { W } = g;
   const bw = body.x1 - body.x0 + 1, bh = body.y1 - body.y0 + 1;
@@ -463,9 +394,8 @@ function coarseSignature(g: MapMasks, body: WaterBody): string {
   return `${bw}x${bh}:${bits}`;
 }
 
-/** Whether any cell on a body's bank stands above the body's own surface: the body is cut into a
- *  step rather than lying on top of a terrace. A step down is not the same claim — that is a
- *  waterfall lip, which the story ledger reads on its own terms. */
+/** Whether any bank cell stands above the body's surface. A step down is a waterfall lip, which the
+ *  ledger reads separately. */
 function rimAgainstStep(g: MapMasks, body: WaterBody): boolean {
   const { W, H } = g;
   const own = new Set(body.cells);
@@ -482,8 +412,8 @@ function rimAgainstStep(g: MapMasks, body: WaterBody): boolean {
   return false;
 }
 
-/** Share of the map's planting standing within 2 and within 4 cells of water, Chebyshev, measured
- *  from a plant's own cell — the same distance the references are measured at. */
+/** Share of planting within 2 and within 4 cells of water, Chebyshev from the plant's own cell, as
+ *  the references are measured. */
 function plantsNearWater(g: MapMasks): { within2: number; within4: number } {
   const { W, H } = g;
   const seeds: number[] = [];

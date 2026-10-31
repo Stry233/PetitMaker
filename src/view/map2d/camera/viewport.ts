@@ -163,21 +163,27 @@ export class Viewport {
    * fits within the canvas.
    */
   fitToMap(mapWidth: number, mapHeight: number, originX = 0, originY = 0): void {
-    const worldWidth = mapWidth * TILE_SIZE;
-    const worldHeight = mapHeight * TILE_SIZE;
-    this.worldWidth = worldWidth;
-    this.worldHeight = worldHeight;
+    this.worldWidth = mapWidth * TILE_SIZE;
+    this.worldHeight = mapHeight * TILE_SIZE;
     this.worldX = originX * TILE_SIZE;
     this.worldY = originY * TILE_SIZE;
-    const scaleX = this.canvasWidth / worldWidth;
-    const scaleY = this.canvasHeight / worldHeight;
-    const idealZoom = Math.min(scaleX, scaleY);
-    this.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, idealZoom));
+    const fitted = this.fittedView(mapWidth, mapHeight, originX, originY);
+    this.zoom = fitted.zoom;
+    this.offsetX = fitted.offsetX;
+    this.offsetY = fitted.offsetY;
+  }
 
-    const renderedWidth = worldWidth * this.zoom;
-    const renderedHeight = worldHeight * this.zoom;
-    this.offsetX = this.worldX * this.zoom - (this.canvasWidth - renderedWidth) / 2;
-    this.offsetY = this.worldY * this.zoom - (this.canvasHeight - renderedHeight) / 2;
+  /** The view `fitToMap` lands on for the same map, leaving this one as it stands. */
+  fittedView(mapWidth: number, mapHeight: number, originX = 0, originY = 0): { zoom: number; offsetX: number; offsetY: number } {
+    const worldWidth = mapWidth * TILE_SIZE;
+    const worldHeight = mapHeight * TILE_SIZE;
+    const idealZoom = Math.min(this.canvasWidth / worldWidth, this.canvasHeight / worldHeight);
+    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, idealZoom));
+    return {
+      zoom,
+      offsetX: originX * TILE_SIZE * zoom - (this.canvasWidth - worldWidth * zoom) / 2,
+      offsetY: originY * TILE_SIZE * zoom - (this.canvasHeight - worldHeight * zoom) / 2,
+    };
   }
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {

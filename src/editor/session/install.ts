@@ -13,9 +13,12 @@ import { installSelectionViewSync } from '../../view/shared/overlay/selection-vi
 import { installOverlayViewSync } from '../../view/shared/overlay/overlay-view-sync';
 import { DOM_STENCIL_BROWSER } from '../host/stencil-dom';
 import { startRegionBrush } from '../editing/region-brush';
+import { watchCappedArming } from '../editing/object-shelf';
+import { installClipboardBridge } from '../editing/clipboard';
 import { newMap } from '../operations/map';
 import { reviewCustomTags, reviewPlanetNames } from '../review/edition-review';
 import { autosave } from './autosave';
+import { installDeviceWiring } from './device-wiring';
 import { editorPort } from './context';
 import { startEditorTools } from './editor-tools';
 import { installPlanetOverlays } from './planet-overlays';
@@ -23,10 +26,11 @@ import { installRepairWatch } from './landmark-repair';
 import { onSessionLibraryChange, sessionLibraryPlace } from './planet-editing';
 
 /** Readies the page before the first render: the DOM stencil browser every shelf draws stencils
- *  with, and the first map when none is live, so the views mount over a map rather than installing
- *  one themselves. */
+ *  with, the device detectors' store mirror (page-wide, never stopped), and the first map when none
+ *  is live, so the views mount over a map rather than installing one themselves. */
 export function prepareEditor(): void {
   installStencilBrowser(DOM_STENCIL_BROWSER);
+  installDeviceWiring();
   if (!editorPort.live()) newMap(editorPort, DEFAULT_MAP);
 }
 
@@ -67,7 +71,9 @@ function watchSessionPlanetName(): () => void {
  * Schedules an autosave after every map edit and every change of the map, its notes or its
  * annotations, never while a planet session holds the scratch canvas or a landmark repair is under
  * way, and not for the map a cancelled repair brings back, which the autosave already holds. The map
- * live at install, or the first one installed after none, is saved as `initialize`.
+ * live at install, or the first one installed after none, is saved as `initialize`. The autosave is
+ * held while a Show me has the map on loan (`tourBorrow`), so a try is never saved, and let go as
+ * the Show me gives the map back.
  */
 function installAutosaveTriggers(): () => void {
   const bus = useEditorStore.getState().eventBus;
@@ -78,10 +84,12 @@ function installAutosaveTriggers(): () => void {
   bus.on('cells-changed', save);
   bus.on('objects-changed', save);
   const initial = useEditorStore.getState();
+  autosave.setHeld(initial.tourBorrow !== null);
   if (initial.gridState && !initial.planetSession) autosave.schedule(initial.gridState, 'initialize');
   // The live map's notes are replaced on the map itself, so the last ones seen are kept here.
   let notes = initial.gridState?.notes;
   const offStore = useEditorStore.subscribe((next, previous) => {
+    if (next.tourBorrow !== previous.tourBorrow) autosave.setHeld(next.tourBorrow !== null);
     const notesChanged = next.gridState?.notes !== notes;
     notes = next.gridState?.notes;
     if (!next.gridState || next.planetSession || next.repairSession) return;
@@ -92,7 +100,7 @@ function installAutosaveTriggers(): () => void {
       else autosave.schedule(next.gridState, 'initialize');
     }
   });
-  return () => { bus.off('cells-changed', save); bus.off('objects-changed', save); offStore(); };
+  return () => { bus.off('cells-changed', save); bus.off('objects-changed', save); offStore(); autosave.setHeld(false); };
 }
 
 /** The region brush collects strokes for as long as region selection is on, wherever the control that arms it lives. */
@@ -115,14 +123,15 @@ function watchRegionBrush(): () => void {
 /**
  * Installs the editor around the live map: the session's tools, the selection and region view
  * syncs, the background checks of a map's custom tags and the session planet's name, the autosave
- * triggers, the region brush, the planet session's overlays, and the retirement of illustration
- * takes a map edit made stale, open window or not. Returns the stop, which removes them in reverse
- * order.
+ * triggers, the clipboard's page listeners, the region brush, the planet session's overlays, and
+ * the retirement of illustration takes a map edit made stale, open window or not. Returns the
+ * stop, which removes them in reverse order.
  */
 export function installEditorSession({ frameFlashMs }: EditorSessionOptions): () => void {
   const stops = [
     startEditorTools(),
     watchRegionBrush(),
+    watchCappedArming(),
     installPlanetOverlays(frameFlashMs),
     installRepairWatch(),
     installSelectionViewSync(),
@@ -130,6 +139,7 @@ export function installEditorSession({ frameFlashMs }: EditorSessionOptions): ()
     watchSessionPlanetName(),
     installOverlayViewSync(),
     installAutosaveTriggers(),
+    installClipboardBridge(),
     versionStore.bindMapEvents(useEditorStore.getState().eventBus),
   ];
   return () => { for (const stop of stops.reverse()) stop(); };

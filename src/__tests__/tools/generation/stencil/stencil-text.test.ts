@@ -1,13 +1,7 @@
 /**
- * Text is one layer on the ground it stands on.
- *
- * Two failure modes are pinned here (#34), and they are one mistake seen from two sides. Laying a
- * glyph ring by ring — the outline at tier 1, each ring inward three tiers higher — gives a letter a
- * layer-1 skirt around a taller core (the edging band) and leaves the parts too thin to hold a second ring
- * down at the skirt's own tier, which reads as a hole in the middle of the stroke. And painting tier 1
- * into a region that already stands on a mountain carves the plateau instead of writing on it.
- *
- * A stencil is plain numbers, so all of this runs with no browser.
+ * Text is one layer on the ground it stands on. Laying a glyph ring by ring would give it a layer-1
+ * skirt and leave parts too thin for a second ring as holes; painting tier 1 over a mountain would
+ * carve the plateau instead of writing on it.
  */
 import { describe, it, expect } from 'vitest';
 import { TerrainType, type Command, type GridState, type ValidationResult } from '../../../../core/model/types';
@@ -34,7 +28,7 @@ function stencilOf(rows: string[]): Stencil {
   return { width, height, coverage, color };
 }
 
-/** A solid block: the shape whose interior a ring-by-ring terracing would climb through. */
+/** A solid block, whose interior ring-by-ring terracing would climb. */
 const slab = (n: number): Stencil => stencilOf(Array.from({ length: n }, () => '#'.repeat(n)));
 
 function tiers(state: GridState): Map<number, number> {
@@ -79,8 +73,7 @@ describe('text stands one layer above the surface it is written on', () => {
     const state = makeState(24, 24);
     const e = exec(state);
     const whole = e.beginStroke();
-    // A letter's shapes: a 1-cell stem, a 2-cell bar, a wide blob. A ring-by-ring terracing lays these
-    // at three different tiers, and the thinnest of them is the hole.
+    // A 1-cell stem, a 2-cell bar and a wide blob, which ring-by-ring terracing lays at three tiers.
     const stencil = stencilOf([
       '#.####',
       '#.####',
@@ -112,16 +105,15 @@ describe('text stands one layer above the surface it is written on', () => {
     const whole = e.beginStroke();
     const res = layTerrain(state, { origin: { x: 8, y: 8 }, stencil: slab(8) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(res.base).toBe(1);
-    expect(res.offBase).toBe(8 * 3);              // the three columns standing on the ground shelf
+    expect(res.offBase).toBe(8 * 3);              // the three columns on the ground shelf
     expect(state.cells[10]![10]!.terrain?.elevation).toBe(2);
-    expect(state.cells[10]![13]!.terrain).toBeNull();  // and nothing was written there
+    expect(state.cells[10]![13]!.terrain).toBeNull();
     expect(whole.commit()).toEqual([]);
   });
 
   it('refuses to write where the surface cannot carry the layer', () => {
-    // A glyph filling a plateau whose edge falls to the ground: a rim cell raised to 4 would need a
-    // 3x3 base at layer 1 and the sea-level ground beside it cannot give one (V-MTN-03 is
-    // post-stroke, so an unchecked lay commits and then takes the whole run down in the revert).
+    // A rim cell raised to 4 beside the drop to the ground would break V-MTN-03, which runs after
+    // the stroke, so an unchecked lay would revert the whole run.
     const state = makeState(24, 24);
     plateau(state, { x0: 8, y0: 8, w: 8, h: 8 }, 3);
     const e = exec(state);
@@ -129,8 +121,7 @@ describe('text stands one layer above the surface it is written on', () => {
     const res = layTerrain(state, { origin: { x: 8, y: 8 }, stencil: slab(8) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(res.base).toBe(3);
     expect(res.placed).toBe(6 * 6);              // the interior; the rim is left standing at 3
-    // Counted apart from the cells that crossed a step: this word did not cross anything, it reached
-    // the edge of the ground it stands on, and those are two different things to be told.
+    // Reaching the edge of the ground is counted apart from crossing a step.
     expect(res.unsupported).toBe(8 * 8 - 6 * 6);
     expect(res.offBase).toBe(0);
     expect(whole.commit()).toEqual([]);
@@ -155,7 +146,7 @@ describe('text stands one layer above the surface it is written on', () => {
     const whole = e.beginStroke();
     const res = layTerrain(state, { origin: { x: 6, y: 6 }, stencil: slab(9) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(res.base).toBe(0);
-    expect(res.offBase).toBe(9);                          // the pond, counted rather than filled in
+    expect(res.offBase).toBe(9);                          // the pond's cells
     expect(state.cells[10]![10]!.terrain?.type).toBe(TerrainType.Water);
     expect(state.cells[7]![7]!.terrain?.elevation).toBe(1);
     expect(whole.commit()).toEqual([]);

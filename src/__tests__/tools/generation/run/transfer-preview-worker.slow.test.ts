@@ -3,8 +3,9 @@
  *
  * `Worker` does not exist here, so the worker's own entry is loaded as a module with a stand-in
  * `self` and handed a structured clone of the message the pool posts; its answer is cloned and
- * revived exactly the way the pool revives it. Both ends run `transferPreviewOf`, so what this pins is the wire between them:
- * the source map and its plan notes on the way in, the destination, its notes and the loss report on the way out.
+ * revived exactly the way the pool revives it. Both ends run `transferPreviewOf`, so what this pins is
+ * the wire between them: the source map and its plan notes on the way in, the destination, its notes
+ * and the loss report on the way out.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { generateMap, newMap } from '../../../../editor/operations';

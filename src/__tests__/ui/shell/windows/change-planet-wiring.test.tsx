@@ -31,8 +31,7 @@ const linesFor = (dropped: { cells: number; objects: number }): readonly Arrival
   transferArrival({ moved: { cells: 1, objects: 0 }, dropped }).detail ?? [];
 const TAFA = MAP_TEMPLATES['tafa']!;
 
-// The two verbs are the operations layer's, and they are exercised on their own elsewhere: what is
-// under test here is which one the window reaches for and what it says afterwards.
+// The verbs are tested on their own elsewhere; here it is which one the window calls and what it says.
 vi.mock('../../../../editor/operations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../editor/operations')>()),
   newMap: vi.fn(),
@@ -72,7 +71,7 @@ function heard(): Arrival[] {
   return seen;
 }
 
-// By testid: the verb is named for what it will do, and starting over does not say "switch".
+// By testid, since the button's label changes with what it will do.
 const press = async () => {
   await act(async () => {
     fireEvent.click(screen.getByTestId('planet-switch'));
@@ -91,32 +90,25 @@ afterEach(() => {
 });
 
 describe('what the notice says a transfer cost', () => {
-  /* Ground and pieces are different nouns at different scales: a moved coastline routinely costs a
-     couple of hundred terrain cells while every object arrives, so one number over both would
-     report that as a catastrophe against a card that counts pieces. */
+  // A moved coastline routinely costs a couple of hundred cells while every object arrives, so cells
+  // and objects are never summed into one number.
   it('names only what was actually lost, on a line of its own', () => {
     const came = { key: 'arrival.transferred' };
-    // What came along and what did not are two facts, so they are two lines: chained into one row
-    // they were a sentence read over a map, which is a sentence not read.
+    // What came along and what did not are two lines.
     expect(linesFor({ cells: 174, objects: 2 }))
       .toEqual([came, { key: 'arrival.transferred_both', params: { cells: 174, objects: 2 } }]);
     expect(linesFor({ cells: 174, objects: 0 }))
       .toEqual([came, { key: 'arrival.transferred_ground', params: { cells: 174 } }]);
     expect(linesFor({ cells: 0, objects: 2 }))
       .toEqual([came, { key: 'arrival.transferred_pieces', params: { objects: 2 } }]);
-    // Nothing lost is one line and then silence.
     expect(linesFor({ cells: 0, objects: 0 })).toEqual([came]);
   });
 
-  /* The greeting is about what travelled, not about which button was pressed: an island with
-     nothing on it arrives on the new planet like any other boot. */
+  // The greeting follows what travelled: an empty island arrives like any boot.
   it('greets a transfer that moved nothing as a plain arrival', () => {
     expect(transferArrival({ moved: { cells: 0, objects: 0 }, dropped: { cells: 0, objects: 0 } }))
       .toEqual({ kind: 'boot' });
-    // A build that went and did not land is the moment the report exists for, so it says that
-    // instead of the greeting for a journey nothing made.
-    // What the coast did, and what became of the build: the fact stands last, on its own row, where
-    // it is what the notice is left saying.
+    // A build that left and did not land is reported, with that fact last on its own row.
     expect(transferArrival({ moved: { cells: 0, objects: 0 }, dropped: { cells: 4, objects: 0 } }))
       .toEqual({
         kind: 'transferred',
@@ -190,8 +182,7 @@ describe('switching planet', () => {
     fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
     await press();
 
-    // No carry row is on screen for an empty island, so the default it still holds is not an answer
-    // anyone gave — and a replay that moves an empty grid is 200ms spent on nothing.
+    // An empty island shows no carry row, so its default is not an answer anyone gave.
     expect(transferMap).not.toHaveBeenCalled();
     expect(newMap).toHaveBeenCalledWith(editorPort, TAFA.id);
     expect(seen).toEqual([{ kind: 'boot' }]);
@@ -235,13 +226,13 @@ describe('saved planets', () => {
   };
   beforeEach(() => { localStorage.clear(); });
 
-  /** `verb` as the editor runs it, for its next call: these tests read the map that opens. */
+  /** Runs the real `verb` for its next call, since these tests read the map that opens. */
   const realVerb = async (verb: 'newMap' | 'transferMap') => {
     const real = await vi.importActual<typeof import('../../../../editor/operations')>('../../../../editor/operations');
     if (verb === 'newMap') vi.mocked(newMap).mockImplementationOnce(real.newMap);
     else vi.mocked(transferMap).mockImplementationOnce(real.transferMap);
   };
-  /** The cells standing as the one painted in `world`. */
+  /** Cells painted as `world` paints them. */
   const paintedCells = (state: GridState) => state.cells.flat()
     .filter((c) => c.terrain?.type === TerrainType.Mountain && c.terrain.elevation === 1).length;
 
@@ -278,7 +269,7 @@ describe('saved planets', () => {
   it('New planet closes the window and opens the planet editor', () => {
     world();
     vi.mocked(startPlanetEditing).mockImplementationOnce(() => {
-      // `INVALID STORE SEED:` only the session's presence matters to the window wiring
+      // `INVALID STORE SEED:` only the session's presence matters to the window.
       useEditorStore.setState({ planetSession: { entryId: null } as never });
       return true;
     });
@@ -308,7 +299,7 @@ describe('saved planets', () => {
     act(() => { useEditorStore.getState().returnToPlanets(entry.entryId); });
     expect(useEditorStore.getState().modals.newProject).toBe(true);
     expect(screen.getByTestId(`planet-${entry.entryId}`).getAttribute('aria-pressed')).toBe('true');
-    // Closing the window lets the planet go, so the next opening chooses for itself.
+    // Closing the window releases the planet.
     act(() => { useEditorStore.getState().setModal('newProject', false); });
     expect(useEditorStore.getState().planetReturn).toBeNull();
   });

@@ -27,8 +27,8 @@ describe('classify', () => {
     expect(classify({ status: 403, message: 'forbidden' }).cls).toBe('auth');
   });
   it('a timed-out connection is a network fault: the SDK carries no status for one', () => {
-    // `APIConnectionTimeoutError` (both SDKs) rejects with this wording and no status at all, so a
-    // status-only ladder drops it into the unretryable `unknown` and a transient stall ends the job.
+    // `APIConnectionTimeoutError` (both SDKs) carries this wording and no status; a status-only ladder
+    // would file it under the unretryable `unknown`.
     expect(classify({ message: 'Request timed out.' }).cls).toBe('network');
     expect(classify({ message: 'The operation timed out' }).cls).toBe('network');
     expect(classify({ message: 'upstream timeout' }).cls).toBe('network');

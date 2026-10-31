@@ -124,7 +124,7 @@ describe('runEngine', () => {
 
     await runEngine(deps, 'watercolor', undefined, recipe);
 
-    // 400x200 captured into a forced 1:1, 400-edge frame: offsetY 100, drawW/H 400x200 — the exact
+    // 400x200 captured into a forced 1:1, 400-edge frame: offsetY 100, drawW/H 400x200, which is the exact
     // region `cropBackRect` recovers once the provider hands back a 400x400 (frame-sized) result.
     const cropDraw = drawCalls[drawCalls.length - 1]!;
     expect(cropDraw.slice(1)).toEqual([0, 100, 400, 200, 0, 0, 400, 200]);

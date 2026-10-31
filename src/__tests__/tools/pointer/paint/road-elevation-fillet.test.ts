@@ -1,16 +1,9 @@
 /**
- * A road coats the surface it sits on, not a neighbour's cosmetic fillet.
- *
- * `core/domain/edge-cut/silhouette.ts` warns that a raw `terrain.elevation` read sees a Γ patch's
- * cosmetic tier as a full block (phantom-block). Both places that assign a tile/road's own
- * elevation must read through the patch: `paint-plan.ts:planTile` (fresh placement — also the
- * ghost's own preview, since the ghost reuses `planPaint`) and `road-reconcile.ts` (re-elevating an
- * existing road after a nearby terrain paint). A flat plateau with one corner filleted by a taller
- * neighbour (auto-trim-is-cosmetic: the fillet rests one tier above what it decorates,
- * `patchBase`) is common and entirely legal ground for a road — the flat-trait rule already reads
- * through the structural surface, so placement succeeds; a raw read leaves only the stored
- * elevation wrong, which is what both 2D and 3D render directly (`object-meshes.ts`:
- * `surfaceY(obj.elevation)`), so the road renders one tier above the ground around it.
+ * A road records the surface it coats, not a neighbour's cosmetic fillet tier. A raw
+ * `terrain.elevation` read sees a Γ patch's cosmetic tier as a full block, so both places that assign
+ * a road's elevation read through the patch: `paint-plan.ts:planTile` (placement and the ghost's
+ * preview) and `road-reconcile.ts` (re-elevating a road after nearby terrain paint). Placement
+ * succeeds either way; a raw read leaves the stored elevation wrong.
  */
 import { describe, it, expect } from 'vitest';
 import { applyAutoEdgeCut } from '../../../../tools/trim/auto-edge-cut';
@@ -28,10 +21,8 @@ function exec(state: any): CommandExecutor {
   return makeExecutor(state);
 }
 
-/** A flat tier-1 plateau (4,4)-(5,5), one corner (4,4) wrapped by a taller tier-2 L — the exact
- *  fixture from auto-edge-cut.test.ts's "rounds a lower real block in a Γ notch" case, sized so
- *  the plateau covers a 2x2 road footprint. (4,4) ends up `patchOnly` at cosmetic tier 2 with
- *  `patchBase` 1: the real surface every cell of the plateau (including (4,4)) actually shares. */
+/** A flat tier-1 plateau (4,4)-(5,5) with (4,4) wrapped by a tier-2 L, so auto-trim leaves (4,4)
+ *  `patchOnly` at cosmetic tier 2 over `patchBase` 1, the surface the whole plateau shares. */
 function buildFilletedPlateau(state: any, ctx: any): void {
   const wall: [number, number][] = [[3, 3], [4, 3], [3, 4]];
   const plateau: [number, number][] = [[4, 4], [5, 4], [4, 5], [5, 5]];
@@ -52,7 +43,7 @@ describe('a road records the structural surface, not a fillet corners cosmetic t
     expect(corner.elevation, 'cosmetic fillet tier').toBe(2);
     expect(surfaceElevation(corner), 'the surface every plateau cell actually shares').toBe(1);
 
-    // The plan a click issues is the ghost's own preview (planPaint), so the two cannot disagree.
+    // A click issues the same plan the ghost previews.
     const planned = planPaint([{ x: 4, y: 4 }], ctx, 'road', new Set()).commands[0];
     expect(planned?.type === 'PlaceObject' && planned.object.elevation).toBe(1);
 
@@ -60,9 +51,6 @@ describe('a road records the structural surface, not a fillet corners cosmetic t
     expect(placeTileCell({ x: 4, y: 4 }, ctx, painted)).toBe(true);
     const road = [...state.objects.values()].find((o: any) => o.position.x === 4 && o.position.y === 4);
     expect(road).toBeDefined();
-    // Render-facing: object-meshes.ts draws every object at `surfaceY(obj.elevation)` directly, so
-    // this stored field is the rendered height — a wrong value here is a floating road, not a
-    // cosmetic label.
     expect((road as PlacedObject).elevation).toBe(1);
   });
 

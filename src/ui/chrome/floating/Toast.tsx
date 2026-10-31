@@ -1,37 +1,42 @@
 import { framerMotion } from '../../design/motion';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useChromeLayer } from '../../primitives/chrome-layer';
+import { NOTICE_CONTROL, useNoticeZoom } from '../../primitives/NoticeBar';
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { font, radii, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useEditorStore } from '../../../state/store';
+import { anyModalOpen } from '../../../state/slices/shell';
 import { useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
 import { setToastPresenter, type ToastType } from '../../../platform/channels/toast-bus';
-import { TOAST_BAND_TOP, bandTop } from './toast-band';
+import { TOAST_BAND_TOP, UPRIGHT_TOAST_TOP, bandCentre, bandMaxWidth, bandTop, fromChromePx } from './toast-band';
+import { useLayoutShape } from '../../design/input-mode';
+import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
 import { refusalKey, ruleToast } from '../../../i18n/terms/rule-copy';
 import { PANEL_EDGE, ERROR, ACCENT, SUCCESS, PLATE, FRAME_INK, ON_DARK } from '../../design/tokens';
-
-export { showToast } from '../../../platform/channels/toast-bus';
+import { useMorph } from '../../primitives/morph';
 
 const TOAST_DURATION = 3000;
 
-const containerStyle: CSSProperties = {
+/** Where the band stands, its places written in chrome px and converted to the toasts' own by `ratio`
+ *  (`toast-band.ts:fromChromePx`); upright, under the frame's top row. */
+const containerStyle = (ratio: number, upright: boolean, overWindow: boolean): CSSProperties => ({
   position: 'fixed',
-  top: bandTop(TOAST_BAND_TOP),
-  // Centred over the work: while the assistant's panel is docked it owns a strip at one side of the
-  // window, and a notice about what just happened on the map belongs over the map. Half the difference
-  // between the two edges, since the dock stands at either and only one is ever non-zero.
-  left: 'calc(50% + (var(--pin-dock-left, 0px) - var(--pin-dock-right, 0px)) / 2)',
+  top: fromChromePx(upright ? UPRIGHT_TOAST_TOP : bandTop(TOAST_BAND_TOP), ratio),
+  // Centred over the work: a docked panel owns a strip at one side of the window, and a notice about
+  // what just happened on the map belongs over the map, upright between the frame's side margins.
+  left: bandCentre(ratio, upright),
   transform: 'translateX(-50%)',
-  zIndex: z.toast,
+  // A toast about the map stands under a window; one a window's own work posted stands over it.
+  zIndex: overWindow ? z.toast : z.notice,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
   gap: 8,
   pointerEvents: 'none',
-};
+});
 
 
 interface ToastMessage {
@@ -39,6 +44,8 @@ interface ToastMessage {
   text: string;
   type: ToastType;
   count: number;
+  /** Posted while a window stood, so it reports what was done in that window. */
+  overWindow: boolean;
 }
 
 function accentColor(type: ToastType): string {
@@ -113,39 +120,43 @@ let nextId = 0;
 
 export function ToastContainer() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  // The list as last set, read by the presenter, which schedules each toast's expiry outside the
+  // state updater (an updater may run twice).
+  const listRef = useRef<ToastMessage[]>([]);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const eventBus = useEditorStore((s) => s.eventBus);
   const t = useT();
 
-  const addToast = useCallback((text: string, type: ToastType = 'error') => {
-    setToasts((prev) => {
-      const existing = prev.find((t) => t.text === text && t.type === type);
-      if (existing) {
-        const oldTimer = timersRef.current.get(existing.id);
-        if (oldTimer) clearTimeout(oldTimer);
-        const timer = setTimeout(() => {
-          setToasts((p) => p.filter((t) => t.id !== existing.id));
-          timersRef.current.delete(existing.id);
-        }, TOAST_DURATION);
-        timersRef.current.set(existing.id, timer);
-
-        return prev.map((t) =>
-          t.id === existing.id ? { ...t, count: t.count + 1 } : t
-        );
-      }
-
-      const id = nextId++;
-      const timer = setTimeout(() => {
-        setToasts((p) => p.filter((t) => t.id !== id));
-        timersRef.current.delete(id);
-      }, TOAST_DURATION);
-      timersRef.current.set(id, timer);
-
-      return [...prev.slice(-2), { id, text, type, count: 1 }];
-    });
+  const publish = useCallback((next: ToastMessage[]) => {
+    const timers = timersRef.current;
+    for (const [id, timer] of timers) {
+      if (!next.some((toast) => toast.id === id)) { clearTimeout(timer); timers.delete(id); }
+    }
+    listRef.current = next;
+    setToasts(next);
   }, []);
 
+  const addToast = useCallback((text: string, type: ToastType = 'error') => {
+    const prev = listRef.current;
+    const overWindow = anyModalOpen(useEditorStore.getState());
+    const existing = prev.find((toast) => toast.text === text && toast.type === type);
+    const id = existing?.id ?? nextId++;
+    const timers = timersRef.current;
+    clearTimeout(timers.get(id));
+    timers.set(id, setTimeout(() => {
+      timers.delete(id);
+      publish(listRef.current.filter((toast) => toast.id !== id));
+    }, TOAST_DURATION));
+    publish(existing
+      ? prev.map((toast) => (toast.id === id ? { ...toast, count: toast.count + 1, overWindow: toast.overWindow || overWindow } : toast))
+      : [...prev.slice(-2), { id, text, type, count: 1, overWindow }]);
+  }, [publish]);
+
   useEffect(() => setToastPresenter(addToast), [addToast]);
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => { for (const timer of timers.values()) clearTimeout(timer); timers.clear(); };
+  }, []);
 
   useEffect(() => {
     const handler = ({ errors }: { errors: ValidationError[] }) => {
@@ -158,14 +169,33 @@ export function ToastContainer() {
     return () => eventBus.off('validation-failed', handler);
   }, [eventBus, t, addToast]);
 
-  const layer = useChromeLayer();
-  // Never early-return null while toasts could be exiting: unmounting the
-  // container tears down <AnimatePresence> before it can play the last toast's
-  // exit. The empty container is inert (pointerEvents: none), so keep it mounted
-  // and let AnimatePresence animate the final toast out.
+  // The band reads the scale and the window only while it holds a toast or plays the last one out.
+  const [banded, setBanded] = useState(false);
+  if (toasts.length > 0 && !banded) setBanded(true);
+  const emptied = useCallback(() => setBanded(false), []);
+  return banded ? <ToastBand toasts={toasts} onEmptied={emptied} /> : null;
+}
+
+function ToastBand({ toasts, onEmptied }: { toasts: ToastMessage[]; onEmptied: () => void }) {
+  // Touch mode draws the refusals at the band's zoom (`NoticeBar.tsx:useNoticeZoom`). From `left: 50%`
+  // a lifted card would only have the half window to its right, so it is held at its words' width
+  // and never past the window less a docked panel's strip and the side margins: upright, the
+  // frame's own, which the greeting under it keeps as well (`ArrivalToast.tsx:uprightContainerStyle`).
+  const layer = useChromeLayer({ control: NOTICE_CONTROL });
+  const zoom = useNoticeZoom();
+  const ratio = useGlidingChromeScale() / zoom;
+  const viewportW = useViewportSize().w;
+  const upright = useLayoutShape() === 'portrait';
+  const lifted: CSSProperties | null = ratio === 1 ? null : {
+    width: 'max-content',
+    maxWidth: bandMaxWidth(viewportW, zoom, ratio, upright),
+  };
+  // The band stays mounted until the last toast's exit has played (`onExitComplete`), since
+  // unmounting it would tear down <AnimatePresence> mid-exit; empty, it is inert (pointerEvents: none).
+  const morph = useMorph('toasts');
   return (
-    <div style={{ ...layer, ...containerStyle }}>
-      <AnimatePresence>
+    <div data-testid="toast-band" {...morph} style={{ ...layer, ...containerStyle(ratio, upright, toasts.some((toast) => toast.overWindow)), ...lifted }}>
+      <AnimatePresence onExitComplete={() => { if (toasts.length === 0) onEmptied(); }}>
         {toasts.map((toast) => (
           <motion.div
             key={toast.id}

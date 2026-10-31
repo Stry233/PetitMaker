@@ -12,18 +12,18 @@ import { showToast } from '../../../../platform/channels/toast-bus';
 import { useWindow, type WindowProps } from '../use-window';
 import { visuallyHidden } from '../../../design/styles';
 import { skin, windowCard } from '../../../design/window-skin';
-import { useChromeScale, useViewportSize } from '../../../design/scale';
 import { RenderBoundary } from '../../../primitives/RenderBoundary';
 import { ChunkNotice } from '../../guards/FailureNotice';
-import { ModalShell } from '../../../primitives/ModalShell';
+import { ModalShell, useWindowFixedWidth, useWindowRoom } from '../../../primitives/ModalShell';
 import { LoadingDots } from '../../../primitives/LoadingDots';
-import { useScrollFade } from '../../../primitives/scroll-fade';
 import { useSizeGlide } from '../../../primitives/use-size-glide';
-import { WindowClose } from '../../../primitives/Window';
+import { WindowBody, WindowClose } from '../../../primitives/Window';
 import { DOCS, docIdForPath, type DocId } from '../../../../legal/registry';
 import { WindowStep } from '../WindowStep';
 import { AboutView, opensDoc } from './AboutView';
+import { ABOUT_STACK_PAD_TOP, ABOUT_WIDE_PAD_X, aboutCloseAt } from './about-styles';
 import { loadLegalDocView } from '../../loaders';
+import { useRoomColumns } from '../use-window-columns';
 
 const LegalDocView = lazy(loadLegalDocView);
 
@@ -33,16 +33,14 @@ type View = { kind: 'about' } | { kind: 'doc'; id: DocId };
 const ABOUT_WIDTH = 440;
 const ABOUT_WIDE_WIDTH = 800;
 const DOC_WIDTH = 640;
-/** Window px the wide card must leave free beside itself; below that About stacks into one column. */
-const WIDE_MARGIN = 32;
 /** A document opened straight from another window, before About has stood once. */
 const DOC_FIRST_HEIGHT = 480;
 
 const cardStyle: CSSProperties = { ...windowCard, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' };
 const glideBox: CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 1 auto' };
-const aboutScroll: CSSProperties = { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowY: 'auto', overflowX: 'hidden', minHeight: 0, padding: '32px 28px 28px', gap: 24 };
-const aboutWide: CSSProperties = { ...aboutScroll, padding: '28px 32px 24px' };
-const closeAt: CSSProperties = { position: 'absolute', top: 16, insetInlineEnd: 16, zIndex: 1 };
+/** About's content carries its own padding to the card's edge, so its body needs no bleed. */
+const aboutContent: CSSProperties = { display: 'flex', flexDirection: 'column', padding: `${ABOUT_STACK_PAD_TOP}px 28px 28px`, gap: 24 };
+const aboutWide: CSSProperties = { ...aboutContent, padding: `28px ${ABOUT_WIDE_PAD_X}px 24px` };
 const suspenseFallback: CSSProperties = { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
 export function AboutModal(props: WindowProps) {
@@ -70,8 +68,10 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
     loadLocale(lang).then(() => setDocLang(lang), () => showToast(t('boot.chunk_failed'), 'error'));
   };
   const isDoc = view.kind === 'doc';
-  // The card renders at `width × chrome` window px.
-  const wide = ABOUT_WIDE_WIDTH * useChromeScale() + WIDE_MARGIN <= useViewportSize().w;
+  // About sizes its card to the layout it picks, so the choice reads the room the card may take.
+  const wide = useRoomColumns(ABOUT_WIDE_WIDTH) === 2;
+  const room = useWindowRoom() ?? Infinity;
+  const fixed = useWindowFixedWidth();
 
   const width = useSizeGlide<HTMLDivElement>(`${view.kind}|${wide}`, { axis: 'width', motionId: 'modal.resize' });
   const height = useSizeGlide<HTMLDivElement>(`${view.kind}|${wide}|${locale}`, { axis: 'height', motionId: 'modal.resize' });
@@ -96,9 +96,6 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
     refocusId.current = null;
   }, [view]);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fade = useScrollFade(scrollRef, 'y');
-
   return (
     <>
       <span id={titleId} style={visuallyHidden}>{isDoc ? t(DOCS[view.id].titleKey) : t('modal.about_title')}</span>
@@ -106,7 +103,7 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
         <div ref={height.ref} style={{ ...glideBox, position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             {view.kind === 'doc' ? (
-              <WindowStep key="doc" view="doc" style={{ width: DOC_WIDTH, height: docHeight, maxHeight: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <WindowStep key="doc" view="doc" style={{ width: fixed ?? Math.min(DOC_WIDTH, room), height: docHeight, maxHeight: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div data-doc-view style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
                   <RenderBoundary resetKey={view.id} fallback={<ChunkNotice />}>
                     <Suspense fallback={<div style={suspenseFallback}><LoadingDots color={skin.muted} /></div>}>
@@ -117,11 +114,12 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
                 </div>
               </WindowStep>
             ) : (
-              <WindowStep key="about" view="about" style={{ width: wide ? ABOUT_WIDE_WIDTH : ABOUT_WIDTH, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div ref={scrollRef} data-about-view data-scroll data-about-layout={wide ? 'wide' : 'stack'} style={{ ...(wide ? aboutWide : aboutScroll), ...fade }}>
+              <WindowStep key="about" view="about" style={{ width: fixed ?? Math.min(wide ? ABOUT_WIDE_WIDTH : ABOUT_WIDTH, room), display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <WindowBody bleed={0} data-about-view data-about-layout={wide ? 'wide' : 'stack'} style={{ flex: '0 1 auto' }}
+                  contentStyle={wide ? aboutWide : aboutContent}>
                   <AboutView wide={wide} onOpenDoc={openDoc} rowRefs={rowRefs} />
-                </div>
-                <WindowClose label={t('hint.close')} onPress={onClose} style={closeAt} data-testid="about-close" />
+                </WindowBody>
+                <WindowClose label={t('hint.close')} onPress={onClose} style={aboutCloseAt} data-testid="about-close" />
               </WindowStep>
             )}
           </AnimatePresence>

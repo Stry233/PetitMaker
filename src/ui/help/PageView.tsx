@@ -11,7 +11,8 @@ import { providerName } from '../../i18n/terms/providers';
 import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useEditorStore } from '../../state/store';
 import { startTour } from '../chrome/tour/use-tour';
-import { useLocale, useT } from '../../i18n/context';
+import { useLocale } from '../../i18n/context';
+import { useReadingT } from '../design/reading';
 import { useKeybinds } from '../../state/keymap/store';
 import { resolveTokenSpecs } from './hints/catalogue';
 import { HintTokens } from './hints/hint-marks';
@@ -19,6 +20,8 @@ import { roleWeight, roleFont, LINE_HEIGHT } from '../design/text-weight';
 import { ACTIVE, INK, INSET, LINE, MUTED, PLATE, PLATE_INK, TEXT_PRIMARY, rgbaOf } from '../design/tokens';
 import { cursors, radii } from '../design/styles';
 import { ActionButton } from '../primitives/ActionButton';
+import { useScrollRow } from '../primitives/use-scroll-row';
+import { useSurfaceZoom } from '../design/scale';
 import { Pill } from '../primitives/Pill';
 import { BrandLockup } from '../chrome/BrandLockup';
 import { LoadDiscSvg } from '../shell/controls/LoadMeter';
@@ -132,7 +135,7 @@ const STEP_LINK: CSSProperties = {
 };
 
 function SectionView({ section }: { section: HelpSection }) {
-  const t = useT();
+  const t = useReadingT();
   const overrides = useKeybinds((s) => s.overrides);
   const facts = helpFacts(useLocale());
   if (section.kind === 'callout') {
@@ -232,10 +235,13 @@ function SectionView({ section }: { section: HelpSection }) {
 }
 
 function Figure({ fig }: { fig: HelpPage['figure'] }) {
-  const t = useT();
+  const t = useReadingT();
   const facts = helpFacts(useLocale());
   const ref = useRef<HTMLElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const ready = useInView(ref);
+  // The row scrolls and fades inside the figure, so the figure's own plate stays whole.
+  const row = useScrollRow(rowRef, { zoom: useSurfaceZoom(), pointerEvents: 'auto' });
   if (!fig) return null;
   let body: ReactNode = null;
   if (fig.kind === 'demo') {
@@ -262,8 +268,10 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   if (!body) return null;
   // A demo narrates itself with its animated caption; only a surface carries a static one.
   return (
-    <figure ref={ref} style={{ background: rgbaOf(INSET, 0.42), borderRadius: radii.card, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, overflowX: 'auto' }}>
-      <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
+    <figure ref={ref} style={{ background: rgbaOf(INSET, 0.42), borderRadius: radii.card, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div ref={rowRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', ...row }}>
+        <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
+      </div>
       {fig.kind === 'surface' && (
         <figcaption style={{ ...roleFont('note'), color: MUTED, textAlign: 'center', lineHeight: 1.5, paddingBottom: 4 }}>
           {t(fig.captionKey, facts)}
@@ -273,7 +281,7 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   );
 }
 
-function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: ReturnType<typeof helpFacts>; t: ReturnType<typeof useT> }) {
+function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: ReturnType<typeof helpFacts>; t: ReturnType<typeof useReadingT> }) {
   return (
     <div style={{ borderTop: `1px solid ${LINE}`, padding: '14px 0' }}>
       <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 6px' }}>{t(qKey, facts)}</h4>
@@ -283,7 +291,7 @@ function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: 
 }
 
 function PageAction({ action }: { action: NonNullable<HelpPage['action']> }) {
-  const t = useT();
+  const t = useReadingT();
   const setModal = useEditorStore((s) => s.setModal);
   // The tour walks the map's interface, which a planet session has set aside.
   const inSession = useEditorStore((s) => s.planetSession !== null);
@@ -311,7 +319,7 @@ export const PageView = memo(function PageView(
   { page, onGo, onReady }: { page: HelpPage; onGo: (id: HelpPageId, anchor?: string) => void; onReady?: (page: HelpPageId) => void | (() => void) },
 ) {
   useEffect(() => onReady?.(page.id), [onReady, page.id]);
-  const t = useT();
+  const t = useReadingT();
   const facts = helpFacts(useLocale());
   return (
     <article style={{ padding: '24px 32px 40px', maxWidth: 730 }}>

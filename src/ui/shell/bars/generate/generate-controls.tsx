@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { cssMotion } from '../../../design/motion';
+import { TouchReach, type ReachSides } from '../../../primitives/TouchReach';
+import { useFrameZoom } from '../../use-frame-zoom';
+import { usePlanGlide } from '../../frame-layout';
 import { btnReset, cursors, UNAVAILABLE, radii } from '../../../design/styles';
-import { DARK_GROOVE, MUTED_INK, ON_DARK, PLATE, PLATE_INK } from '../../../design/tokens';
+import { MUTED_INK, ON_DARK, PLATE, PLATE_INK } from '../../../design/tokens';
 import { TEXT } from '../../units';
 import { Switch } from '../../../primitives/Switch';
-import { BarText } from '../bar-atoms';
+import { BarText, Groove } from '../bar-atoms';
 import { GAP, STRIP } from './generate-shelf';
 
 /**
@@ -19,6 +21,7 @@ export function StripChip({ name, value, onOpen, testId, disabled, width }: {
   /** A fixed width for a chip among the knobs, so its changing reading never shoves them; long text ellipsizes. */
   width?: number;
 }) {
+  const zoom = useFrameZoom();
   return (
     <ActionButton
       interaction="action" unavailable={disabled}
@@ -26,7 +29,7 @@ export function StripChip({ name, value, onOpen, testId, disabled, width }: {
       onClick={disabled ? undefined : onOpen}
       title={value}
       style={{
-        ...btnReset, flex: '0 0 auto', pointerEvents: 'auto',
+        ...btnReset, position: 'relative', flex: '0 0 auto', pointerEvents: 'auto',
         cursor: disabled ? cursors.blocked : cursors.clickable,
         opacity: disabled ? UNAVAILABLE : 1,
         height: STRIP.h, padding: `0 ${STRIP.padX}px`, borderRadius: radii.pill, background: PLATE,
@@ -40,6 +43,7 @@ export function StripChip({ name, value, onOpen, testId, disabled, width }: {
           {value}
         </span>
       </BarText>
+      <TouchReach zoom={zoom} />
     </ActionButton>
   );
 }
@@ -48,6 +52,7 @@ export function StripChip({ name, value, onOpen, testId, disabled, width }: {
 export function StripSwitch({ label, on, onToggle, testId, disabled }: {
   label: string; on: boolean; onToggle: () => void; testId: string; disabled?: boolean;
 }) {
+  const zoom = useFrameZoom();
   return (
     <span
       data-testid={testId}
@@ -56,7 +61,7 @@ export function StripSwitch({ label, on, onToggle, testId, disabled }: {
       <BarText size={TEXT.label} color={ON_DARK} align="left" style={{ opacity: disabled ? UNAVAILABLE : 1 }}>
         {label}
       </BarText>
-      <Switch on={on} onClick={onToggle} label={label} {...(disabled ? { disabled } : {})} />
+      <Switch on={on} onClick={onToggle} label={label} reachZoom={zoom} {...(disabled ? { disabled } : {})} />
     </span>
   );
 }
@@ -76,14 +81,7 @@ export function Knob({ label, control, groove = true }: {
       {/* The slot stands at the strip's one control height; the drawn track centres inside it and
           the groove fills it, so the three kinds of control share one box. */}
       <span style={{ position: 'relative', display: 'flex', alignItems: 'center', height: STRIP.h }}>
-        {groove ? (
-          <span
-            style={{
-              position: 'absolute', inset: 0, borderRadius: radii.pill,
-              background: DARK_GROOVE, pointerEvents: 'none',
-            }}
-          />
-        ) : null}
+        {groove ? <Groove /> : null}
         {control}
       </span>
     </span>
@@ -91,18 +89,22 @@ export function Knob({ label, control, groove = true }: {
 }
 
 /** One of the shelf's whole-generation actions (New batch, Clear): a cream plate holding a mark, refusing while the shelf works. */
-export function ShelfAction({ label, testId, busy, width, height, radius, offset, onPress, children }: {
+export function ShelfAction({ label, testId, busy, width, height, radius, at, reach, onPress, children }: {
   label: string;
   testId: string;
   busy: boolean;
   width: number;
   height: number;
   radius: number;
-  /** Where it stands from the action before it, which moves as the pair stacks. */
-  offset?: { marginLeft: number; marginTop: number };
+  /** Where it stands in the pair's box, which glides as the pair stacks and unstacks. */
+  at: { left: number; top: number };
+  /** The sides its fingertip area may grow past: the pair closes the side they share. */
+  reach: Partial<ReachSides>;
   onPress: () => void;
   children: ReactNode;
 }) {
+  const zoom = useFrameZoom();
+  const glide = usePlanGlide('frame.layout.adapt');
   return (
     <ActionButton
       interaction="action" unavailable={busy}
@@ -110,14 +112,15 @@ export function ShelfAction({ label, testId, busy, width, height, radius, offset
       data-testid={testId}
       onClick={onPress}
       style={{
-        ...btnReset, flex: '0 0 auto', width, height, ...offset,
-        transition: cssMotion('frame.layout.adapt', ['width', 'height', ...(offset ? ['margin-left', 'margin-top'] : [])]),
+        ...btnReset, position: 'absolute', left: at.left, top: at.top, width, height,
+        transition: glide(['width', 'height', 'left', 'top']),
         pointerEvents: 'auto', cursor: busy ? cursors.blocked : cursors.clickable,
         borderRadius: radius, background: PLATE,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
       {children}
+      <TouchReach w={width} h={height} zoom={zoom} sides={reach} />
     </ActionButton>
   );
 }

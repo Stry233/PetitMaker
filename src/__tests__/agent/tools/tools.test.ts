@@ -202,7 +202,7 @@ describe('agent tools', () => {
     const ok = await executeToolCall(call('place_object', { catalogId: 'building-myhouse', x: 10, y: 10 }), deps);
     expect(ok.isError).toBe(false);
     const id = [...state.objects.keys()][0]!;
-    // carve a cliff so the rotated footprint is non-flat → rotation fails → restore
+    // A cliff under the rotated footprint makes the rotation fail and the object restore.
     setTerrain(state, 10, 16, TerrainType.Mountain, 1);
     const r = await executeToolCall(call('rotate_object', { objectId: id, rotation: 90 }), deps);
     expect(state.objects.size).toBe(1);
@@ -364,10 +364,8 @@ describe('agent tools', () => {
   });
 
   it('find_flat_areas excludes the cells a half-anchored deck covers, not just an integer footprint', async () => {
-    // A halfStep object (ramp/bridge) anchored at a fractional x covers macro cells (4,4) and
-    // (5,4) (footprintCells' floor/ceil expansion). Keyed by its raw position instead, the
-    // occupancy set holds a fractional key ("4.5,4") that an integer probe ("4,4") never matches,
-    // and the anchor at (4,4) comes back offered with a deck already standing on it.
+    // A deck anchored at x 4.5 covers cells (4,4) and (5,4); keyed by its raw position, the
+    // occupancy key "4.5,4" would never match the probe "4,4".
     const { state, deps } = setup(12, 12);
     state.objects.set('d', { id: 'd', catalogId: 'nope', position: { x: 4.5, y: 4 }, width: 1, height: 1, rotation: 0, elevation: 0 });
     const found = await executeToolCall(
@@ -758,12 +756,12 @@ describe('clear_area, skills, delegation stub', () => {
     expect(list.content).toContain('STYLE set pieces');
   });
 
-  it('list_skills contains every registered skill name, and the set is the thirteen', async () => {
+  it('list_skills contains every registered skill name, and the set is the fifteen', async () => {
     const s = setup();
     const list = await executeToolCall(call('list_skills', {}), s.deps);
     const allNames = [
       'garden-town', 'water-garden', 'figure-landscape', 'cozy-village', 'terraced-hill-park',
-      'pro-terraforming', 'site-analysis', 'composition', 'terrain-shaping',
+      'pro-terraforming', 'site-analysis', 'plan-on-map', 'build-from-plan', 'composition', 'terrain-shaping',
       'settlement-design', 'ecology-planting', 'street-grammar', 'design-review',
     ];
     expect(Object.keys(SKILLS).sort()).toEqual([...allNames].sort());
@@ -1204,28 +1202,22 @@ describe('result detail (structured extras for the view)', () => {
     expect(r.detail?.reverted).toBe(true);
   });
 
-  /**
-   * A refusal travels twice: as the model's English sentence in `content`, and as the rule in
-   * `detail.violations` for whoever has to say it to a person. A panel that lifted the rule out of
-   * the model's copy and showed it as-is would put three lines of English inside a Russian card for
-   * a message that ships keyed in all seven locales. The carrier is additive — the model's own
-   * bytes are unchanged, which is what keeps model-visible and logged the same thing.
-   */
+  /** A refusal carries the model's English sentence in `content` and the keyed rule in
+   *  `detail.violations`, so a panel can show it in the user's locale. */
   it('a post-stroke revert also carries the rule ITSELF, keyed, with the model s copy untouched', async () => {
     const { deps } = setup();
     const r = await executeToolCall(call('paint_terrain', { cells: [{ x: 5, y: 5 }], terrain: 'water', elevation: 1 }), deps);
     expect(r.detail?.violations?.length).toBeGreaterThan(0);
     const first = r.detail!.violations![0]!;
     expect(first.ruleId).toMatch(/^V-/);
-    // A key, not a sentence: it must resolve in the locale table, and the model's line is the same
-    // rule said in English.
+    // A locale key, not a sentence.
     expect(translations.en[first.message], first.message).toBeTruthy();
     expect(r.content).toContain(first.ruleId);
   });
 
   it('a pre-command rejection carries the rule too, deduped across the cells it refused', async () => {
     const { deps } = setup();
-    // Every cell of this rect is refused for the same reason, and the well shows one sentence.
+    // Every cell of this rect is refused for the same reason.
     const r = await executeToolCall(
       call('paint_terrain', { rect: { x1: 2, y1: 2, x2: 6, y2: 6 }, terrain: 'water', elevation: 4 }),
       deps,
@@ -1300,11 +1292,8 @@ describe('placement failure guidance', () => {
   });
 });
 
-/**
- * An argument refusal teaches: it names the missing or invalid parameter and shows one minimal
- * valid example in the tool's own schema shape, so the retry it earns can differ from the call
- * that earned it. All of these are model-facing English in the "Arguments: reason" register.
- */
+/** An argument refusal names the missing or invalid parameter and shows one minimal valid example in
+ *  the tool's schema shape, so the retry can differ from the call that earned it. */
 describe('argument errors teach the schema shape', () => {
   it('paint_terrain with no geometry names the shape options and shows a flat rect example', async () => {
     const { deps } = setup();

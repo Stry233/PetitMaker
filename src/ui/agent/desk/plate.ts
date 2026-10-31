@@ -9,7 +9,8 @@ import type { Variants } from 'framer-motion';
 import { PLATE, PLATE_INK } from '../../design/tokens';
 import { radii } from '../../design/styles';
 import { framerMotion } from '../../design/motion';
-import { DOCK_CHROME_W, type DockSide } from '../../shell/panel-frame';
+import { DOCK_CHROME_W, type DockEdge } from '../../shell/panel-frame';
+import { SEAM_HANDLE } from '../../primitives/SeamHandle';
 import { COMPOSER_HEIGHT } from '../composer/Composer';
 import { STATUS_CARD_HEIGHT } from './StatusCard';
 import { PIN_KNOB } from '../parts/IconButton';
@@ -89,8 +90,23 @@ const PANEL_STYLE: CSSProperties = {
   overflow: 'hidden',
 };
 
-/** Docked plates fill the available height, square their corners and retain only the sheet seam. */
-export function dockedStyle(cap: string | undefined, side: DockSide): CSSProperties {
+/** Docked plates fill the available height, square their corners and retain only the sheet seam. A
+ *  plate at the foot spans the window and leaves the seam's handle its strip over the desk band. */
+export function dockedStyle(cap: string | undefined, side: DockEdge): CSSProperties {
+  if (side === 'bottom') {
+    return {
+      ...PANEL_STYLE,
+      width: '100%',
+      minHeight: 0,
+      height: cap ?? '100%',
+      maxHeight: cap ?? '100%',
+      borderRadius: radii.none,
+      borderRight: '0',
+      borderBottom: '0',
+      borderLeft: '0',
+      paddingTop: PANEL_PAD + SEAM_HANDLE.h,
+    };
+  }
   const atSeam = side === 'left' ? 'right' : 'left';
   return {
     ...PANEL_STYLE,

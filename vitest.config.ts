@@ -58,6 +58,9 @@ export default defineConfig({
     // Files that need a DOM open with a `// @vitest-environment jsdom` docblock; jsdom setup costs
     // most of a small file's run time, so it is not the default.
     environment: 'node',
+    // `assets/fonts/faces.ts` reads the face declarations as `fonts.css?raw`, which Vitest would
+    // otherwise empty like every CSS import it does not include.
+    css: { include: [/assets\/fonts\/fonts\.css/] },
     setupFiles: ['./src/__tests__/_support/setup.ts'],
     // Transformed modules persist under node_modules/.vitest-cache, keyed by content, so a rerun skips the transform.
     fsModuleCache: true,

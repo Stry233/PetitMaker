@@ -6,6 +6,7 @@
 import { getCharacterHandle } from './Character';
 import { CHARACTER_SEAT } from '../../shell/panel-frame';
 import { visualRect } from '../../design/visual-rect';
+import { restingRect } from '../../primitives/morph';
 import { createSignal } from '../../../core/base/signal';
 
 function layerOrigin(el: HTMLElement): { left: number; top: number } {
@@ -46,7 +47,8 @@ interface SeatedAt { left: number; top: number; width: number }
 export function seatBox(slot: HTMLElement | null): SeatedAt | null {
   const hero = getCharacterHandle();
   if (!hero || !slot) return null;
-  const r = visualRect(slot);
+  // Read where the seat stands once a running morph has carried it, never midway.
+  const r = restingRect(slot);
   const origin = layerOrigin(hero.el);
   const pad = CHARACTER_SEAT.pad * (r.width / CHARACTER_SEAT.w);
   return {

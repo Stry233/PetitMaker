@@ -3,7 +3,7 @@
  * else (the panel view, the provider messages) is a fold over it, recomputed on every append (the
  * store bumps an epoch per append and re-derives both). Covers building a ~500-event session log
  * through its own append API, folding it into the panel's `PanelView`, folding it into the
- * provider's message list, and the fold's own per-append cost (one more event, same full walk —
+ * provider's message list, and the fold's own per-append cost (one more event, same full walk:
  * this layer has no incremental memoization, so the number should track the steady-state fold).
  * See `_harness.ts` for the gate and methodology.
  */
@@ -19,7 +19,7 @@ const s = perfSuite('agent-core');
 
 /** One job's worth of realistic events: an order, a tool-calling turn (occasionally reasoning
  *  first), its results, an occasional gate ask/answer and mid-job steer, a closing turn, a
- *  checkpoint and the jobEnd — about 7-9 events, so ~500 events is ~60-70 jobs. */
+ *  checkpoint and the jobEnd; about 7-9 events, so ~500 events is ~60-70 jobs. */
 function populateJob(log: SessionLog, k: number): void {
   append(log, {
     kind: 'order', text: `build district ${k} with a plaza and two roads`,

@@ -116,7 +116,7 @@ export function AnimatedTotal({ bytes, label }: { bytes: number | null; label: s
 
   const tint = dir === 1 ? SIZE_GROWS : dir === -1 ? SIZE_SHRINKS : skin.plateInk;
   return (
-    <span style={{ ...roleFont('small'), color: skin.plateInk, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>
+    <span style={{ ...roleFont('small'), color: skin.plateInk, display: 'inline-flex', gap: 4, alignItems: 'baseline', whiteSpace: 'nowrap' }}>
       <span>{label}:</span>
       <motion.span
         // The tint arrives over the first 30% of the curve and drifts back over the rest.

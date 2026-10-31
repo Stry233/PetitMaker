@@ -7,7 +7,7 @@ import { framerMotion } from '../../../design/motion';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useT } from '../../../../i18n/context';
-import { useChromeScale, useWeightVars } from '../../../design/scale';
+import { useSurfaceZoom, useWeightVars } from '../../../design/scale';
 import { useFloatingPosition } from '../../../primitives/use-floating-position';
 import { useSurfaceScope } from '../../../primitives/surface-scope';
 import { useUiPreview } from '../../../design/preview';
@@ -19,12 +19,12 @@ export function HelpBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const id = useId();
-  const chrome = useChromeScale();
+  const chrome = useSurfaceZoom();
   const weights = useWeightVars();
   const pictured = useUiPreview();
   const floating = useFloatingPosition({ open: open && !pictured, anchor: btnRef, zoom: chrome, width: WIDTH, gap: 6 });
   useSurfaceScope({ open: open && !pictured, root: floating.ref, trigger: btnRef, onClose: () => setOpen(false), outside: true });
-  const content = <motion.div ref={floating.ref} id={id} role="tooltip" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={framerMotion('surface.arrive')}
+  const content = <motion.div ref={floating.ref} {...floating.piece} id={id} role="tooltip" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={framerMotion('surface.arrive')}
     onClick={() => setOpen(false)} style={{ ...bubble, zoom: pictured ? 1 : chrome, ...weights, ...(pictured ? { position: 'absolute' } : floating.style) }}>{text}</motion.div>;
   return (
     <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle' }}>

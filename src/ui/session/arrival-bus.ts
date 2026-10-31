@@ -10,6 +10,8 @@
  * moment that has passed; an arrival describes where the map is, which stays true until the next
  * one. That is what lets a caller announce during boot, before the presenter has mounted.
  */
+import { useSyncExternalStore } from 'react';
+import { createSignal } from '../../core/base/signal';
 import type { I18nKey } from '../../i18n/keys';
 export type ArrivalKind =
   /** A map template opened: the editor starting up, or a planet chosen in the New-project window. */
@@ -68,8 +70,21 @@ export function subscribeArrival(next: ArrivalListener): () => void {
   return () => { if (listener === next) listener = null; };
 }
 
-/** Tests only: forget the listener and anything latched. */
+const standing = createSignal(false);
+
+/** The presenter says whether its notice is on screen, for surfaces that must not cover it. */
+export function setArrivalStanding(on: boolean): void {
+  if (standing.get() !== on) standing.emit(on);
+}
+
+/** Whether an arrival notice is on screen. */
+export function useArrivalStanding(): boolean {
+  return useSyncExternalStore(standing.subscribe, standing.get);
+}
+
+/** Tests only: forget the listener, anything latched and the standing notice. */
 export function __resetArrivals(): void {
   listener = null;
   latched = null;
+  setArrivalStanding(false);
 }

@@ -1,24 +1,29 @@
 /*
  * The session's contact sheet: Original, every take in order, then the card for a job in flight (the one
  * place a running job is reported). Ghost slots keep six slots drawn, so a take fills a slot rather than
- * growing the row; past six it scrolls sideways. Hover tries a take on the canvas, a press keeps it; the
- * retire square is the card's sibling, since a button cannot nest in a button.
+ * growing the row; past what the row shows (six, fewer on a narrow row) it scrolls sideways. Reaching
+ * for a take (`useReveal`) tries it on the canvas, a press keeps it and so shows it too; the retire
+ * square is the card's sibling, since a button cannot nest in a button, and in touch mode it stands on
+ * the kept card.
  */
 import { ActionButton } from '../../../../primitives/ActionButton';
-import { useChromeScale } from '../../../../design/scale';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useNameReveal } from '../../../../primitives/use-name-reveal';
+import { useSurfaceZoom } from '../../../../design/scale';
+import { TouchReach } from '../../../../primitives/TouchReach';
+import { useEffect, useRef, type CSSProperties } from 'react';
+import { useReveal } from '../../../../primitives/use-reveal';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
-import { cursors, pressable, radii } from '../../../../design/styles';
+import { cursors, radii } from '../../../../design/styles';
 import { DANGER_INK, DANGER_SURFACE, ACTIVE, inkTint, rgbaOf } from '../../../../design/tokens';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import { versionSrc, type StylizeVersion } from '../../../../../state/stylize-versions';
-import { useScrollFade } from '../../../../primitives/scroll-fade';
-import { useWheelToHorizontal } from '../../../../primitives/wheel-horizontal';
+import { useScrollRow } from '../../../../primitives/use-scroll-row';
 import { MAP_ASPECT } from './sample-art';
 import { entering } from './stylize-parts';
 import { amplitude, cssMotion, framerMotion, NO_MOTION } from '../../../../design/motion';
+import { useInteractionProfiles } from '../../../../design/input-mode';
 
 /** How many slots stand in view; the row scrolls once the session has made more. */
 const SLOTS = 6;
@@ -45,7 +50,8 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
 }) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
-  const [hover, setHover] = useState<string | null>(null);
+  // Tries the original on the canvas while its card is reached for, and puts the kept picture back after.
+  const tryOriginal = useReveal({ onChange: (shown) => onTry(shown ? 'original' : null) }).bind;
   const painting = running;
   // What the loader's leave should say: a job that minted hands its exact spot to the take (the
   // slot collapses on the same frame, so the card pops where the bar stood); a job that ended
@@ -57,9 +63,8 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
   const minted = versions.length > jobStartLen.current;
   const ghosts = Math.max(0, SLOTS - versions.length - 1 - (painting ? 1 : 0));
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fade = useScrollFade(scrollRef, 'x');
   // A mouse over the shelf has only vertical notches; they drive the row's own travel.
-  useWheelToHorizontal(scrollRef, { zoom: useChromeScale() });
+  const row = useScrollRow(scrollRef, { zoom: useSurfaceZoom(), bleed: SHELF_BLEED, pointerEvents: 'auto' });
 
   // A card the row just gained (a finished take, or the one painting) belongs in view without a
   // hand on the scrollbar. Only growth scrolls: a retire must not yank the row to its end while
@@ -79,16 +84,14 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
       {...entering(enterIndex)}
       ref={scrollRef}
       data-testid="stylize-shelf-scroll"
-      style={{ ...shelfRow, ...fade }}
+      className="pw-noscroll"
+      style={{ ...shelfRow, ...row }}
    >
       <div style={{ ...slotBox, position: 'relative' }}>
         <ActionButton
           aria-label={t('stylize.original')}
           onClick={() => onPick(null)}
-          onMouseEnter={() => onTry('original')}
-          onMouseLeave={() => onTry(null)}
-          onFocus={() => onTry('original')}
-          onBlur={() => onTry(null)}
+          {...tryOriginal}
           style={cardStyle(selectedId === null, originalSrc)}
        >
           <span style={tagStyle}>{t('stylize.original')}</span>
@@ -102,75 +105,9 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
           if (entry === 'painting') {
             return <PaintingCard key="painting" band={runningBand} reduced={reduced} />;
           }
-          const version = entry;
-          const custom = version.direction === 'custom';
-          const label = t('stylize.version_label', { n: version.no });
           return (
-            <motion.div
-              key={version.id}
-              initial={{ opacity: 0, scale: 1 - amplitude('stylize.card.enter') }}
-              animate={{ opacity: 1, scale: 1 }}
-              // The slot folds shut while the picture fades: flex reflow carries every survivor
-              // continuously (no transform compensation to disagree with the scroller), the row's
-              // scrollWidth shrinks smoothly instead of clamping at a scrolled end, and the flex
-              // gap collapses because it is the slot's own margin. Reduced motion takes the fade
-              // alone and lets the reflow land in one step.
-              exit={reduced
-                ? { opacity: 0, transition: framerMotion('stylize.shelf.retire') }
-                : {
-                    opacity: 0,
-                    scale: 1 - amplitude('stylize.card.enter'),
-                    flexBasis: 0,
-                    marginRight: 0,
-                    transition: {
-                      ...framerMotion('stylize.shelf.retire'),
-                      flexBasis: framerMotion('stylize.shelf.settle'),
-                      marginRight: framerMotion('stylize.shelf.settle'),
-                    },
-                  }}
-              transition={framerMotion('stylize.card.enter')}
-              onMouseEnter={() => setHover(version.id)}
-              onMouseLeave={() => setHover(null)}
-              style={{ ...slotBox, position: 'relative' }}
-           >
-              <ActionButton
-                aria-label={label}
-                {...(custom && version.prompt ? { title: version.prompt } : {})}
-                onClick={() => onPick(version.id)}
-                onMouseEnter={() => onTry(version.id)}
-                onMouseLeave={() => onTry(null)}
-                onFocus={() => onTry(version.id)}
-                onBlur={() => onTry(null)}
-                style={cardStyle(selectedId === version.id, versionSrc(version))}
-             >
-                <span style={tagStyle}>
-                  {label}
-                  {custom ? <i aria-label={t('stylize.edit_prompt')} style={{ fontStyle: 'normal' }}> ✎</i> : null}
-                </span>
-              </ActionButton>
-              <motion.button
-                type="button"
-                aria-label={t('stylize.retire')}
-                title={t('stylize.retire')}
-                onClick={() => onRetire(version.id)}
-                onFocus={() => setHover(version.id)}
-                onBlur={() => setHover(null)}
-                // The square is revealed by the card's hover and answers the pointer with its own
-                // growth: both are hover feedback, so both run on the house affordance's own spring.
-                // While hidden it must not take the pointer either, or the card's corner would
-                // delete a take the hand was only reaching to pick.
-                animate={{ opacity: hover === version.id ? 1 : 0 }}
-                whileHover={pressable.whileHover}
-                whileTap={pressable.whileTap}
-                transition={pressable.transition}
-                style={{ ...retireStyle, pointerEvents: hover === version.id ? 'auto' : 'none' }}
-             >
-                {/* The cross is drawn, not typed: the Latin face has no U+2715, and a fallback
-                    font's glyph lands off-center in an 18px circle. */}
-                <span aria-hidden style={crossArm(45)} />
-                <span aria-hidden style={crossArm(-45)} />
-              </motion.button>
-            </motion.div>
+            <VersionCard key={entry.id} version={entry} picked={selectedId === entry.id} reduced={reduced}
+              onTry={onTry} onPick={onPick} onRetire={onRetire} />
           );
         })}
       </AnimatePresence>
@@ -185,6 +122,90 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
           style={{ ...slotBox, ...slotStyle }}
         />
       ))}
+    </motion.div>
+  );
+}
+
+/** One take's slot: its card, and the retire square the slot's reveal shows (in touch mode, the
+ *  kept card's too). */
+function VersionCard({ version, picked, reduced, onTry, onPick, onRetire }: {
+  version: StylizeVersion;
+  picked: boolean;
+  reduced: boolean;
+  onTry: (key: string | null) => void;
+  onPick: (id: string | null) => void;
+  onRetire: (id: string) => void;
+}) {
+  const t = useT();
+  const profiles = useInteractionProfiles();
+  const chrome = useSurfaceZoom();
+  const slot = useReveal();
+  const retireName = useNameReveal(t('stylize.retire'));
+  const tryIt = useReveal({ onChange: (shown) => onTry(shown ? version.id : null) }).bind;
+  const retirable = slot.shown || (slot.touch && picked);
+  const custom = version.direction === 'custom';
+  const label = t('stylize.version_label', { n: version.no });
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 1 - amplitude('stylize.card.enter') }}
+      animate={{ opacity: 1, scale: 1 }}
+      // The slot folds shut while the picture fades: flex reflow carries every survivor
+      // continuously (no transform compensation to disagree with the scroller), the row's
+      // scrollWidth shrinks smoothly instead of clamping at a scrolled end, and the flex
+      // gap collapses because it is the slot's own margin. Reduced motion takes the fade
+      // alone and lets the reflow land in one step.
+      exit={reduced
+        ? { opacity: 0, transition: framerMotion('stylize.shelf.retire') }
+        : {
+            opacity: 0,
+            scale: 1 - amplitude('stylize.card.enter'),
+            flexBasis: 0,
+            marginRight: 0,
+            transition: {
+              ...framerMotion('stylize.shelf.retire'),
+              flexBasis: framerMotion('stylize.shelf.settle'),
+              marginRight: framerMotion('stylize.shelf.settle'),
+            },
+          }}
+      transition={framerMotion('stylize.card.enter')}
+      {...slot.bind}
+      style={{ ...slotBox, position: 'relative' }}
+   >
+      <ActionButton
+        aria-label={label}
+        {...(custom && version.prompt ? { title: version.prompt } : {})}
+        onClick={() => onPick(version.id)}
+        {...tryIt}
+        style={cardStyle(picked, versionSrc(version))}
+     >
+        <span style={tagStyle}>
+          {label}
+          {custom ? <i aria-label={t('stylize.edit_prompt')} style={{ fontStyle: 'normal' }}> ✎</i> : null}
+        </span>
+      </ActionButton>
+      <motion.button
+        type="button"
+        {...retireName.bind}
+        aria-label={t('stylize.retire')}
+        onClick={() => onRetire(version.id)}
+        // The square is revealed by the card's reach and answers the pointer with its own
+        // growth: both are hover feedback, so both run on the house affordance's own spring.
+        // While hidden it must not take the pointer either, or the card's corner would
+        // delete a take the hand was only reaching to pick.
+        animate={{ opacity: retirable ? 1 : 0 }}
+        whileHover={profiles.tile.whileHover}
+        whileTap={profiles.tile.whileTap}
+        transition={profiles.tile.transition}
+        style={{ ...retireStyle, pointerEvents: retirable ? 'auto' : 'none' }}
+     >
+        {/* The cross is drawn, not typed: the Latin face has no U+2715, and a fallback
+            font's glyph lands off-center in an 18px circle. */}
+        <span aria-hidden style={crossArm(45)} />
+        <span aria-hidden style={crossArm(-45)} />
+        {/* In the card's corner, so it grows into the card rather than past the shelf's clipped edges. */}
+        <TouchReach w={RETIRE} h={RETIRE} zoom={chrome} sides={{ top: false, right: false }} />
+        {retireName.bubble}
+      </motion.button>
     </motion.div>
   );
 }
@@ -228,26 +249,25 @@ function PaintingCard({ band, reduced }: { band: string; reduced: boolean }) {
 }
 
 
-/** The row itself: six slots in view, the rest reachable sideways. The vertical padding keeps a
- *  picked card's ring (drawn 2.5px outside its box) inside the clipped area. `scroll`, not `auto`:
- *  the house scrollbar is a classic (space-taking) one, and `scrollbar-gutter` reserves only the
- *  inline-axis gutter — so the lane under the row is held open from the start, and the seventh
- *  card cannot change the row's height. */
+/** Clip room around the row for the cards' hover growth and the chosen ring (drawn 2.5px outside a
+ *  card), handed back by the margin so the row keeps its footprint. */
+const SHELF_BLEED = 8;
+
+/** The row itself: up to six slots in view, the rest reachable sideways with the edge fades and no bar. */
 const shelfRow: CSSProperties = {
   flex: 'none',
   display: 'flex',
-  overflowX: 'scroll',
-  overflowY: 'hidden',
-  /* Clip room for the cards' hover growth and the chosen ring (both drawn outside the card box),
-     handed back by the margin so the shelf keeps its footprint. */
-  padding: 8,
-  margin: -4,
 };
 
-/** One slot's footprint in the row: exactly six fit the visible width, gaps included. The gap is
+/** The narrowest a slot stands, in css px: room for a card's tag ("Original") in every locale, so a
+ *  narrow row shows fewer slots and scrolls rather than cutting the tag. */
+const SLOT_MIN = 96;
+
+/** One slot's footprint in the row: six fit the visible width, gaps included, unless that would be
+ *  narrower than `SLOT_MIN`. The gap is
  *  the slot's own right margin (not the row's `gap`) so a retiring slot folds its gap shut with it. */
 const slotBox: CSSProperties = {
-  flex: '0 0 calc((100% - 48px) / 6)',
+  flex: `0 0 max(calc((100% - 48px) / 6), ${SLOT_MIN}px)`,
   minWidth: 0,
   marginRight: 8,
 };
@@ -296,10 +316,16 @@ const bandStyle: CSSProperties = {
   position: 'absolute', left: 0, top: 0, right: 0, height: 4, pointerEvents: 'none',
 };
 
+/** A tag longer than `SLOT_MIN` allows ends in an ellipsis; the card's name carries the whole label. */
 const tagStyle: CSSProperties = {
   position: 'absolute',
   left: 4,
   bottom: 4,
+  maxWidth: 'calc(100% - 8px)',
+  boxSizing: 'border-box',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
   ...roleFont('small'),
   color: skin.plate,
   background: inkTint(0.66),
@@ -308,12 +334,15 @@ const tagStyle: CSSProperties = {
   pointerEvents: 'none',
 };
 
+/** The retire square's side, in the window's px. */
+const RETIRE = 18;
+
 const retireStyle: CSSProperties = {
   position: 'absolute',
   right: 3,
   top: 3,
-  width: 18,
-  height: 18,
+  width: RETIRE,
+  height: RETIRE,
   border: 'none',
   borderRadius: '50%',
   background: DANGER_SURFACE,

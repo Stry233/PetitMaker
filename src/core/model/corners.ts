@@ -86,3 +86,20 @@ export function mapCorners(corners: Readonly<Corners>, fn: (trim: CornerTrim, in
 export function sameCorners(a: Readonly<Corners>, b: Readonly<Corners>): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
+
+/** The corner a quarter turn carries each corner to: clockwise (`1`, screen y down) TL to TR to BR
+ *  to BL, counter-clockwise (`-1`) the reverse. */
+const TURNED: Readonly<Record<1 | -1, readonly number[]>> = { 1: [1, 3, 0, 2], [-1]: [2, 0, 3, 1] };
+
+/** `corners` after the cell turns a quarter (`turn` as in `TURNED`): each trim moves to the corner
+ *  the turn carries its own to, and a triangle keeps the quadrant it named, turned with it. */
+export function turnCorners(corners: Readonly<Corners>, turn: 1 | -1): Corners {
+  const to = TURNED[turn];
+  const trim = (t: CornerTrim): CornerTrim => {
+    const i = CORNER_COMPASS.findIndex((c) => t === `tri-${c}`);
+    return i < 0 ? t : cornerTri(to[i]!);
+  };
+  const out = copyCorners(SQUARE_CORNERS);
+  corners.forEach((t, i) => { out[to[i]!] = trim(t); });
+  return out;
+}

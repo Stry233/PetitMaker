@@ -8,5 +8,5 @@ export function useToolbarContext(): ToolbarContext {
   const mode = useEditorStore(s => s.editMode.mode);
   const annotationTool = useEditorStore(s => s.annotationTool);
   const pose = useUiPreviewPose();
-  return pose ? toolbarContextOf({ selectingRegion: false, editMode: { mode: pose.mode ?? mode }, annotationTool }) : live;
+  return pose ? toolbarContextOf({ selectingRegion: false, objectBrushBar: false, editMode: { mode: pose.mode ?? mode }, annotationTool }) : live;
 }

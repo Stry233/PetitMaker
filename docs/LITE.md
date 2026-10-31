@@ -32,7 +32,7 @@ The ZIP has one `index.html` at its root and relative references to its bundled 
 | Generation | Planet and Maze retain recipe thumbnails, settings, custom seeds and region selection. Previews run one at a time on the main thread. Letter, Picture and illustration generation are omitted. |
 | Assistant | AI assistant and provider settings are omitted. |
 | Platform features | No external navigation, clipboard, browser downloads, full-screen requests, network calls, Web Workers or WebAssembly. |
-| Guidance | The first-launch tour, Replay the tour, searchable Help and contextual help cover Lite’s available editor features. About uses the shared web-edition layout and document reader, with branding, build details, team and community credits, a selectable feedback address and offline licenses. External navigation, clipboard actions, sponsorship links and web-only policy pages are omitted. |
+| Guidance | The welcome tips (without demonstration reels, which the offline package has no room for), Show the welcome tips in Settings, searchable Help and contextual help cover Lite’s available editor features. About uses the shared web-edition layout and document reader, with branding, build details, team and community credits, a selectable feedback address and offline licenses. External navigation, clipboard actions, sponsorship links and web-only policy pages are omitted. |
 
 Xiaohongshu client 9.37 or later is required for the data-URI images used by map previews and recipe thumbnails.
 

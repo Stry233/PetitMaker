@@ -1,6 +1,6 @@
 /**
  * Surface picking: a pointer ray marches the terrain heightfield and lands on
- * the first visible surface — a hilltop occludes the cell behind it, a cliff
+ * the first visible surface: a hilltop occludes the cell behind it, a cliff
  * wall attributes to its column's cell, water picks at its surface, the sea at
  * sea level. Coordinates honour the dual grid: terrain columns sit on the
  * micro grid (−0.5 world offset), ground slabs on the macro grid.

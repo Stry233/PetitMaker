@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The connection page of the stylize window.
- *
- * The window opens on the studio, so every scenario here first walks to the connection page the way
- * a hand does: pick a direction that needs a key, and take the pane's own verb. What is under test
- * from there is the form's own decision-making, so the model list is an injected fake and no
- * network is touched: which ingredients arm Start creating, how the model row walks from empty to a
- * pre-picked list, what a listless endpoint leaves standing, and what a refused verify does to the
- * permanent status slot. The debounce is driven on fake timers, since the probe is what every one
- * of those states hangs off.
+ * The stylize window's connection page, reached as a user does: pick a direction that needs a key
+ * and take its pane's verb. The model list is an injected fake and the probe's debounce runs on fake
+ * timers.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
@@ -51,8 +45,6 @@ function startButton(): HTMLButtonElement {
 async function openHero(listModels: StylizeListModels) {
   const view = render(<StylizeWindow onClose={() => {}} listModels={listModels} />, { wrapper: Wrapper });
   await settle();
-  // The window opens on the studio now; the connection page is reached from a model direction's
-  // own pane, which is the path a user without a key actually walks.
   fireEvent.click(screen.getByRole('button', { name: /Forest watercolor/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Add a key' }));
   await settle();
@@ -74,10 +66,8 @@ describe('the stylize hero', () => {
   it('opens on the studio, and a model direction\'s pane is the way to the form', async () => {
     render(<StylizeWindow onClose={() => {}} listModels={async () => ['a-model']} />, { wrapper: Wrapper });
     await settle();
-    // No connection page on arrival: the studio's own verb row is standing instead.
     expect(screen.queryByLabelText('API key')).toBeNull();
     expect(screen.getByRole('button', { name: 'Generate illustration' })).toBeTruthy();
-    // Picking a keyed direction surfaces the requirement in the pane, and its verb opens the form.
     fireEvent.click(screen.getByRole('button', { name: /Forest watercolor/ }));
     expect(screen.getByText('This style needs an API key')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add a key' }));
@@ -107,7 +97,7 @@ describe('the stylize hero', () => {
     fireEvent.click(screen.getByText('Custom endpoint'));
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'gateway-token' } });
     await probe();
-    // The address is the ingredient a custom endpoint alone needs, so no probe has even run.
+    // A custom endpoint also needs an address, and the probe waits for it.
     expect(startButton().disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Endpoint address'), { target: { value: 'https://gateway.example.com' } });
@@ -139,7 +129,6 @@ describe('the stylize hero', () => {
     expect(typed.value).toBe('step-image-edit-2');
     expect(startButton().disabled).toBe(false);
 
-    // A user's own text stands: editing it and re-running the probe must not clobber the typed value.
     fireEvent.change(typed, { target: { value: 'my-own-model' } });
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sf-test-key-2' } });
     await probe();
@@ -202,9 +191,8 @@ describe('the stylize hero', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    // The create page is what stands afterwards. The connection form is asserted through its
-    // Arrival rather than through the other's absence: the two pages cross in one box, so the one
-    // being replaced is still painting its leave for a beat after the swap is decided.
+    // The arriving create page is asserted rather than the connection form's absence: the two pages
+    // cross in one box, so the leaving one still paints for a beat.
     expect(screen.getByRole('button', { name: 'Generate illustration' })).toBeTruthy();
   });
 });

@@ -161,11 +161,11 @@ const UA_STYLED: readonly UaElement[] = [
     gecko: 'default', blink: 'default', ours: 'default' },
 ];
 
-// ── The sheet, read as the browser reads it ─────────────────────────────────────────────────────
+// The sheet, read as the browser reads it
 
 interface SheetRule { readonly selectors: readonly string[]; readonly id: DomCursorId }
 
-/** Split a selector list on its TOP-level commas, so a comma inside `:has(…)` cannot cut one. */
+/** Splits a selector list on its top-level commas, so a comma inside `:has(…)` cannot cut one. */
 function splitList(list: string): string[] {
   const out: string[] = [];
   let depth = 0, start = 0;
@@ -189,8 +189,7 @@ function parseSheet(css: string): SheetRule[] {
     const decl = /cursor\s*:\s*var\(\s*(--[a-z-]+)\s*,/.exec(block[2]!);
     if (!decl) continue;
     const id = byProperty.get(decl[1]!);
-    // A rule pointing at a property nobody publishes resolves to its keyword fallback forever,
-    // which is the OS cursor the whole system exists to replace.
+    // An unpublished property always resolves to its keyword fallback, the OS cursor.
     if (!id) throw new Error(`cursors.css reads an unpublished property: ${decl[1]}`);
     rules.push({ selectors: splitList(block[1]!), id });
   }
@@ -210,13 +209,8 @@ const nameEnd = (s: string, i: number): number => {
   return i;
 };
 
-/**
- * Specificity of one compound selector, per Selectors 4.
- *
- * Only compound selectors are supported, which is all this sheet uses; a combinator throws rather
- * than being silently mis-scored, because a wrong score would make this file agree with a cascade
- * no browser performs.
- */
+/** Specificity of one compound selector, per Selectors 4. The sheet uses only compound selectors;
+ *  a combinator throws rather than being mis-scored. */
 function specificity(sel: string): Spec {
   if (/[\s>+~]/.test(sel.replace(/\([^)]*\)/g, ''))) throw new Error(`not a compound selector: ${sel}`);
   let a = 0, b = 0, c = 0, i = 0;
@@ -280,11 +274,9 @@ function probeElement(html: string): Element {
 
 describe('the elements a UA stylesheet gives a cursor to', () => {
   it('is a derived list, not a handful of guesses', () => {
-    // The lower bound catches an incomplete derived table; `label` covers a commonly missed case.
     expect(UA_STYLED.length).toBeGreaterThanOrEqual(64);
     expect(UA_STYLED.map((e) => e.probe)).toContain('label');
     expect(new Set(UA_STYLED.map((e) => e.probe)).size).toBe(UA_STYLED.length);
-    // Every row must be a real finding: at least one engine declared a cursor on it.
     for (const e of UA_STYLED) {
       expect(e.gecko !== null || e.blink !== null, `${e.probe} is in the table but neither engine styles it`).toBe(true);
     }
@@ -292,13 +284,13 @@ describe('the elements a UA stylesheet gives a cursor to', () => {
 
   it('parses cursors.css into rules that all point at published properties', () => {
     expect(RULES.length).toBeGreaterThan(5);
-    // The page default, which is what covers every surface no rule below names.
+    // The page default, for every surface no later rule names.
     expect(RULES[0]).toEqual({ selectors: ['html'], id: 'default' });
   });
 
   it('is named in full by cursors.css', () => {
     const unnamed = UA_STYLED.filter((e) => winner(probeElement(e.html), RULES) === null);
-    // An element left out keeps the OS glyph on that control, whatever the rest of the sheet says.
+    // An element left out keeps the OS cursor.
     expect(unnamed.map((e) => `${e.probe} (gecko: ${e.gecko}, blink: ${e.blink})`)).toEqual([]);
   });
 
@@ -313,7 +305,7 @@ describe('the elements a UA stylesheet gives a cursor to', () => {
 });
 
 describe('the disabled backstop', () => {
-  /** `disabled` is only an attribute on form controls; `'disabled' in el` is exactly that set. */
+  /** `'disabled' in el` holds exactly for the form controls that take the attribute. */
   const disableable = UA_STYLED.filter((e) => e.ours !== 'blocked' && 'disabled' in probeElement(e.html));
 
   it('covers a control this sheet would otherwise call clickable or text', () => {
@@ -329,9 +321,8 @@ describe('the disabled backstop', () => {
   });
 
   it('outranks every rule above it, rather than only tying with them', () => {
-    // Source order settles a tie, so a rule above with higher specificity would beat the backstop
-    // and pin the enabled cursor onto a control that is refusing. `aria-disabled` is meaningful on
-    // a widget or a link, so that is the set swept; `<label>` carries no role that supports it.
+    // A more specific earlier rule would beat the backstop. `aria-disabled` applies to widgets and
+    // links, so labels are not swept.
     const aria = UA_STYLED.filter((e) => probeElement(e.html).matches('button, input, select, textarea, option, optgroup, a[href]'));
     expect(aria.length).toBeGreaterThan(20);
     const wrong: string[] = [];
@@ -351,7 +342,6 @@ describe('the specificity model this file cascades with', () => {
     expect(specificity('a:any-link')).toEqual([0, 1, 1]);
     expect(specificity('input[type="file"]')).toEqual([0, 1, 1]);
     expect(specificity('[aria-disabled="true"]')).toEqual([0, 1, 0]);
-    // `:has()` contributes its most specific argument, so this outranks a bare `label`.
     expect(specificity('label:has(input[type="checkbox"])')).toEqual([0, 1, 2]);
     expect(specificity('label')).toEqual([0, 0, 1]);
   });

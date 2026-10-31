@@ -27,10 +27,9 @@ function terracedHill() {
 
 describe('the failure mode: backing asked at a lowered tier against raw neighbours', () => {
   it('finds no step below the lowered tier and falls through to ground', () => {
-    // The direct call shape that produces the bug: the cell's raw terrain with the
-    // visibility-lowered tier, neighbours unclamped. The tier-1 step around the
-    // cell is not strictly below tier 1, so every cut corner backs with null —
-    // ground — even though the whole region renders solid.
+    // The cell's raw terrain with the visibility-lowered tier and unclamped neighbours: the tier-1 step
+    // around the cell is not strictly below tier 1, so every cut corner backs with null (ground) even
+    // though the whole region renders solid.
     const state = terracedHill();
     const t = getCell(state.cells, 5, 5)!.terrain!;
     const raw = (dx: number, dy: number) => getCell(state.cells, 5 + dx, 5 + dy)?.terrain;
@@ -77,8 +76,8 @@ describe('cellRenderSpec under hidden layers', () => {
   });
 
   it('backing follows a neighbour to ITS visible tier', () => {
-    // Trimmed tier-3 cell whose cut is backed by a tier-2 step; hiding layer 2
-    // drops the step's render to tier 1 — the backing colour must follow it.
+    // Trimmed tier-3 cell whose cut is backed by a tier-2 step; hiding layer 2 drops the step's render
+    // to tier 1, and the backing colour must follow it.
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 3);
     state.cells[5]![5]!.terrain!.corners = FAN_TL;

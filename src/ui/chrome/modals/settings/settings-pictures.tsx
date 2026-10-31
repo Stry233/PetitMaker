@@ -2,6 +2,7 @@
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { cssMotion, holdSeconds, presence } from '../../../design/motion';
 import { ActionButton } from '../../../primitives/ActionButton';
+import { DeviceIcon } from '../../../primitives/line-glyphs';
 import { fadeMask } from '../../../primitives/scroll-fade';
 import { useSizeGlide } from '../../../primitives/use-size-glide';
 import { useTransient } from '../../../primitives/use-transient';
@@ -17,6 +18,7 @@ import { templateAnchor } from '../../../../core/model/landmarks';
 import { DEFAULT_MAP } from '../../../../config/maps';
 import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../../../core/game/profile';
 import type { GridId } from '../../../../core/grid/grids';
+import { CHUNK_GRID_STYLE } from '../../../../view/shared/grid/reference-grid';
 import type { GridMode } from '../../../../platform/storage/prefs';
 import { cursorArt } from '../../../../assets/cursors/cursor-art';
 import { iconUrl } from '../../../../assets/icon-urls';
@@ -98,11 +100,14 @@ export function GridOverlay({ mode, shown }: { mode: GridMode; shown: Exclude<Gr
   );
 }
 
-/** The chunk bounds the chunk tile shows, the renderer's black at 0.35. */
+/** The chunk bounds the chunk tile shows, the renderer's black at 0.35, dashed as the map dashes them:
+ *  one cell on, one off, each dash centred on every other cell line from the map's corner. */
 export function ChunkOverlay({ on }: { on: boolean }): ReactNode {
   const style: CSSProperties = { opacity: on ? 1 : 0, transition: cssMotion('control.fade', ['opacity']) };
   return (
-    <g style={style} stroke={rgbaOf(SHADE, 0.35)} strokeWidth={2}>
+    <g style={style} stroke={rgbaOf(SHADE, 0.35)} strokeWidth={2}
+      strokeDasharray={`${CHUNK_GRID_STYLE.dashCells * MAP_CELL} ${CHUNK_GRID_STYLE.gapCells * MAP_CELL}`}
+      strokeDashoffset={(CHUNK_GRID_STYLE.dashCells * MAP_CELL) / 2}>
       <line x1={5 * MAP_CELL} y1={0} x2={5 * MAP_CELL} y2={MAP_H} />
       <line x1={0} y1={3.5 * MAP_CELL} x2={MAP_W} y2={3.5 * MAP_CELL} />
     </g>
@@ -274,7 +279,9 @@ export function MapTile({ on, name, state, asSwitch = false, announce = false, o
 /* ── the interface group's steps (motion) and choices (cursor) ─────────── */
 
 export const stepStyle = (on: boolean): CSSProperties => ({
+  // Equal shares whatever each holds: Auto's monitor gives way instead of widening its tile.
   flex: 1,
+  minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -292,44 +299,50 @@ export const stepName: CSSProperties = { ...roleFont('chip'), fontFamily: font.f
 
 export type MotionPref = 'system' | 'reduced' | 'full';
 
-/** The demo pinwheel: the plain "motion" mark, nothing a visitor could misread as map content. */
-export const PINWHEEL = (
-  // display: block, or the inline svg sits on the text baseline and its wrapper keeps descender
-  // room under it: the rotation origin (50% of the wrapper) then lands below the hub, and the
-  // wheel orbits that point instead of spinning on its own centre.
-  <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden style={{ display: 'block' }}>
-    <g fill={skin.ink}>
-      <path d="M12 12 L12 2 A10 10 0 0 1 19 5 Z" />
-      <path d="M12 12 L22 12 A10 10 0 0 1 19 19 Z" />
-      <path d="M12 12 L12 22 A10 10 0 0 1 5 19 Z" />
-      <path d="M12 12 L2 12 A10 10 0 0 1 5 5 Z" />
-    </g>
-    <circle cx="12" cy="12" r="2.6" fill={skin.plate} stroke={skin.ink} strokeWidth="1" />
+/** A map cell as the motion sample: its top face the ground's colour over a band one mountain step
+ *  deeper, drawn flat like the map. */
+const CELL = (
+  <svg width="24" height="26" viewBox="0 0 26 28" aria-hidden style={{ display: 'block' }}>
+    <rect x="1" y="5" width="24" height="22" rx="6" fill={ELEVATION_COLORS[3]} />
+    <rect x="1" y="1" width="24" height="19" rx="6" fill={ELEVATION_COLORS[0]} />
   </svg>
 );
+/** The cell's shadow on the ground; the sample scales and fades it with the cell's height. */
+const CELL_SHADOW: CSSProperties = { width: 28, height: 6, borderRadius: '50%', background: inkTint(0.27) };
+/** The sample's box: the cell's fall from its top to the shadow at its bottom, in CSS px. */
+const DROP_BOX: CSSProperties = { width: 40, height: 52 };
+/** How far the resting cell stands above the bottom of the box, so its base meets its shadow's middle. */
+const CELL_SEAT = 2.5;
 
-/** The small monitor the System tile wears: the mark that says the device made this choice. */
-export const DEVICE_BADGE = (
-  <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden style={{ position: 'absolute', right: -12, bottom: -2 }}>
-    <rect x="1" y="1.5" width="13" height="9.5" rx="2" fill={skin.plate} stroke={skin.muted} strokeWidth="1.7" />
-    <rect x="4.5" y="12.4" width="6" height="1.8" rx="0.9" fill={skin.muted} />
-  </svg>
+/** How far the Auto tile's monitor reaches past the sample's box, in CSS px: its frame starts just
+ *  past the edge of the cell's widest landing shadow. */
+const BADGE_REACH = 18;
+/** The monitor the Auto tile wears: the mark that says the device made this choice, in the line set
+ *  and the caption's ink, its stand on the cell's ground line. */
+const DEVICE_BADGE = (
+  <span style={{ position: 'absolute', right: 0, bottom: 0, display: 'flex', color: skin.plateInk }}>
+    <DeviceIcon size={22} />
+  </span>
 );
 
 /**
- * Each option performs itself under every preference: Full's pinwheel spins, Reduced's stands
- * still, and System's does whichever this device asks for while wearing the device badge that says
- * who decided. Only the pinwheel is exempt from the reduced-motion gate; the tile's feedback is not.
+ * Each option performs itself under every preference: Full's cell falls and bounces, Reduced's falls
+ * and lands still, and Auto's does whichever this device resolves to while wearing the device badge
+ * that says who decided. Only the sample is exempt from the reduced-motion gate; the tile's feedback
+ * is not.
  */
 export function MotionDemo({ pref }: { pref: MotionPref }) {
-  // System's demo shows what this device resolves to, read from the same live OS reading as the gates.
-  const spins = !resolveReducedMotion(pref, useOsReducedMotion());
+  // Auto's demo shows what this device resolves to, read from the same live OS reading as the gates.
+  const level = resolveReducedMotion(pref, useOsReducedMotion()) ? 'reduced' : 'full';
   return (
-    <span style={{ height: 30, display: 'grid', placeItems: 'center' }} aria-hidden>
-      <span style={{ position: 'relative', display: 'block' }}>
-        <MotionSample id="settings.orbit" playing={spins}>{PINWHEEL}</MotionSample>
-        {pref === 'system' && DEVICE_BADGE}
-      </span>
+    // Auto's box widens by the monitor's reach, so the cell and its monitor centre together in the tile;
+    // a tile too narrow for the whole reach draws the monitor nearer the cell, never widening the tile.
+    <span style={{ position: 'relative', display: 'block', paddingRight: pref === 'system' ? `clamp(0px, calc(100% - ${DROP_BOX.width}px), ${BADGE_REACH}px)` : 0 }} aria-hidden>
+      <MotionSample id="settings.cell.drop" level={level} seat={CELL_SEAT} style={DROP_BOX}
+        ground={<span style={CELL_SHADOW} />}>
+        {CELL}
+      </MotionSample>
+      {pref === 'system' && DEVICE_BADGE}
     </span>
   );
 }

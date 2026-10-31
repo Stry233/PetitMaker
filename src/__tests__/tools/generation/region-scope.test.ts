@@ -1,16 +1,9 @@
 /**
- * What a generation confined to a painted region may touch, and what taking it back may take.
+ * What a generation confined to a painted region may touch, and what Clear may take back.
  *
- * Both show up as one symptom — "generating in a new region deletes the placements in the old one, and
- * Clear wipes the map" — and they are two separate faults:
- *
- *   1. An ID derived from the seed (`gen-<seed>-<n>`) is not unique across runs: the panel's seed does
- *      not change between clicks, so a second run reissues the first run's ids. `state.objects` is keyed
- *      by id, so a reissue replaces an object elsewhere on the map, and the 2D layer (which only adds
- *      ids it has never seen) keeps the sprite where it was — the new region looks empty and the old one
- *      empties.
- *   2. Clear reading the current painted region, which a finished run has already dropped, falls back
- *      to the whole map and takes the person's own work with it.
+ * The panel's seed does not change between clicks, so ids must not derive from it: `state.objects` is
+ * keyed by id, and a reissued id would replace an object in the earlier region. Clear works on the
+ * remembered region (a finished run has dropped the painted one) and spares a person's own work.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
@@ -45,7 +38,7 @@ function square(state: GridState, cx: number, cy: number, half: number): MacroCo
   return out;
 }
 
-/** The roomiest open grass on one side of the map — a region the generator can actually fill. */
+/** The roomiest open grass on one side of the map, a region the generator can actually fill. */
 function grassSpot(state: GridState, side: 'w' | 'e'): MacroCoord {
   const { width, height } = state.template;
   let best = { x: 0, y: 0, n: -1 };
@@ -61,7 +54,7 @@ function grassSpot(state: GridState, side: 'w' | 'e'): MacroCoord {
   return { x: best.x, y: best.y };
 }
 
-/** One Generate run, as the panel does it: clear the scope, then build — under the Procedural
+/** One Generate run, as the panel does it: clear the scope, then build; under the Procedural
  *  source, which is what marks the result as the generator's work. */
 async function generate(state: GridState, exec: CommandExecutor, seed: number, region: MacroCoord[] | null) {
   const config = defaultConfig('designed', { maxElevation: 8, richness: 1, seed, region });
@@ -107,7 +100,7 @@ describe('generating into a region', () => {
     for (const seed of [42, 42, 7]) {
       await generate(state, exec, seed, square(state, spot.x, spot.y, 10));
       const now = snapshot(state);
-      // An id present in both runs must still be the same object: a reissue would have moved it.
+      // An id present in both runs is still the same object.
       const stolen = [...now].filter(([id, what]) => held.has(id) && held.get(id) !== what);
       expect(stolen.slice(0, 5)).toEqual([]);
       for (const [id, what] of now) held.set(id, what);
@@ -126,8 +119,8 @@ describe('clearing after a generation', () => {
     const genCount = [...state.objects.values()].filter((o) => !o.locked).length;
     expect(genCount, 'the region got placements').toBeGreaterThan(20);
 
-    // Somebody's own work, in both places: a tree inside the region and one outside it.
-    // Both go down through the ordinary command path, so they are recorded as a person's.
+    // A person's trees inside and outside the region, placed through the command path so they are
+    // recorded as human work.
     const inRegion = new Set(region.map((c) => `${c.x},${c.y}`));
     const plant = (near: MacroCoord, want: boolean): PlacedObject => {
       for (let r = 0; r < 40; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r]]) {
@@ -157,7 +150,7 @@ describe('clearing after a generation', () => {
     const exec = makeExecutor(state);
     const spot = grassSpot(state, 'w');
     const obj: PlacedObject = { id: 'loaded-1', catalogId: 'tree-apple', position: spot, rotation: 0, elevation: 0 };
-    state.objects.set(obj.id, obj);   // straight into the map, no command → no taint
+    state.objects.set(obj.id, obj);   // no command, so no authorship
     const prov = exec.getAuthorship();
     clearAllObjects({ state, execute: (c: Command) => exec.execute(c) }, { spare: (o) => prov.objectAuthor(o.id) === 'human' });
     expect(state.objects.has('loaded-1')).toBe(false);

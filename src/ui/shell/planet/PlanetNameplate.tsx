@@ -14,44 +14,39 @@ import { localizedName, quantityParams, useLocale, useT } from '../../../i18n/co
 import { getCatalogItem } from '../../../state/catalog';
 import { pendingLandmarks, sessionFrame, sessionHasEdits, sessionHasGround } from '../../../editor/operations/planet-session';
 import { useEditorStore } from '../../../state/store';
-import { touchFloorZoom, useChromeScale, useDenseScript, useDevicePixelRatio, useTouchPrimary, useViewportSize } from '../../design/scale';
-import { TOAST_BAND_SHIFT_VAR } from '../../chrome/floating/toast-band';
-import { ShapeEdge, isWebKitEngine } from '../../design/shape-edge';
+import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
+import { useGlidingChromeLift } from '../../primitives/chrome-layer';
+import { useToastBandShift } from '../../chrome/floating/toast-band';
 import { btnReset, font, radii, z } from '../../design/styles';
-import { roleFont, weightVars } from '../../design/text-weight';
-import { INK, LINE, PLATE, PLATE_INK, SEA } from '../../design/tokens';
+import { roleFont } from '../../design/text-weight';
+import { INK, PLATE_INK, SEA } from '../../design/tokens';
 import { cozyPanel, skin, windowCard } from '../../design/window-skin';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { Switch } from '../../primitives/Switch';
 import { AnchoredConfirm, anchoredCardMotion, anchoredOrigin } from '../../primitives/AnchoredConfirm';
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { BackIcon, CheckIcon, EditIcon } from '../../primitives/line-glyphs';
-import { mapEdgeAttr } from '../../primitives/map-edge';
 import { PlanetStill } from '../../chrome/modals/planet/PlanetStill';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { PlanetNameField, usePlanetNameReview } from '../../chrome/modals/planet/PlanetNameField';
 import { sessionModes, TOP_RIGHT_TOP } from '../frame';
 import { useFrameLayout } from '../frame-layout';
+import { LANDSCAPE_MODE_ROW } from '../frame-plan';
 import { EDGE_RIGHT } from '../units';
 import { useFrameZoom } from '../use-frame-zoom';
 import { finishPlanetEditing, stopPlanetEditing } from '../../../editor/session/planet-editing';
 import { useSessionPlanetName } from './use-planet-session';
 import { useCanvasFact } from '../../session/use-canvas-fact';
-import { useRootCssVars } from '../../primitives/use-root-css-vars';
-import { NAME_GAP, NAME_LEAST, NAME_PAD, PANEL_GAP, PEN, PLATE_ROW, nameplateSpan, nameplateTop, toastBandShift } from './nameplate-layout';
+import { NAME_GAP, NAME_LEAST, NAME_PAD, PANEL_GAP, PEN, nameplateBottom, nameplateSpan, nameplateTop, toastBandShift } from './nameplate-layout';
+import { useMorph } from '../../primitives/morph';
+import { PLATE_BUTTON as BUTTON, PlateBody, plateButton, plateRule } from './MapPlate';
 
-/** Each control on the plate and in its panel, in css px. */
-const BUTTON = 44;
 /** Inset of the controls from the plate's ends, and the space between them, in css px. */
 const PLATE_PAD = 4;
 const PLATE_GAP = 4;
-/** The rule between Back and the name: inset from the plate's top and bottom, and its side air. */
-const RULE_INSET = 12;
-const RULE_AIR = 2;
 const NAME_MAX_W = 220;
 const TICK = 18;
-const DONE_PAD = { start: 14, end: 18 };
-const DONE_GAP = 6;
 const PANEL_PAD = 16;
 /** The panel's width with its picture above the name, and beside it. */
 const STACKED_W = 380;
@@ -84,23 +79,19 @@ export function PlanetNameplate({ motionProps }: {
   motionProps?: Record<string, unknown>;
 }) {
   const t = useT();
-  const chrome = useChromeScale();
-  // The plate is frame chrome and follows the chrome scale; what it opens is transient and
-  // keeps a fingertip's target on a touch screen.
-  const panelZoom = touchFloorZoom(chrome, useTouchPrimary(), BUTTON);
-  const dpr = useDevicePixelRatio();
-  const dense = useDenseScript();
-  const plateWeights = weightVars(chrome, dpr, dense);
-  const panelWeights = weightVars(panelZoom, dpr, dense);
+  const backName = useNameReveal(t('planet.back'));
+  const chrome = useGlidingChromeScale();
+  // The plate and what it opens follow the chrome scale, raised in touch mode until their 44 px
+  // buttons reach a fingertip. Its row and the toast band are placed in its own px.
+  const { zoom, weights } = useGlidingChromeLift(BUTTON);
   const frameZoom = useFrameZoom();
-  const top = nameplateTop(frameZoom, chrome);
+  const top = nameplateTop(frameZoom, zoom);
   const review = useEditorStore((s) => s.planetSession?.review);
-  const shift = toastBandShift(frameZoom, chrome);
   const viewport = useViewportSize();
   const layout = useFrameLayout();
   const modes = useEditorStore((s) => sessionModes(s.planetSession).length);
-  const span = nameplateSpan(viewport.w, frameZoom, chrome,
-    layout ?? { width: viewport.w / frameZoom, edgeRight: EDGE_RIGHT, cornerTop: TOP_RIGHT_TOP }, modes);
+  const span = nameplateSpan(viewport.w, frameZoom, zoom,
+    layout ?? { width: viewport.w / frameZoom, edgeRight: EDGE_RIGHT, cornerTop: TOP_RIGHT_TOP, modeRow: LANDSCAPE_MODE_ROW }, modes);
   const editing = useEditorStore((s) => s.planetSession?.entryId != null);
   // The shown name follows the language and the background name check until the visitor types one.
   const fallback = useSessionPlanetName();
@@ -115,7 +106,7 @@ export function PlanetNameplate({ motionProps }: {
   const name = draft ?? fallback;
   const shown = name.trim() || fallback;
 
-  useRootCssVars({ [TOAST_BAND_SHIFT_VAR]: `${shift}px` });
+  useToastBandShift(toastBandShift(nameplateBottom(frameZoom, zoom), zoom, chrome));
 
   const back = () => {
     if (asking === 'discard') { close(); return; }
@@ -137,63 +128,60 @@ export function PlanetNameplate({ motionProps }: {
   // gives way first when it does not. The assistant cannot dock during a session, so the window is
   // the frame.
   const lean = (span.centre - span.left) - (span.right - span.centre);
-  const spacer = (basis: number): CSSProperties => ({ flex: `1 1 ${Math.max(0, basis) / chrome}px`, minWidth: 0 });
+  const spacer = (basis: number): CSSProperties => ({ flex: `1 1 ${Math.max(0, basis) / zoom}px`, minWidth: 0 });
 
+  const morph = useMorph('nameplate');
   // Portalled out of the frame, whose zoom and layout containment would otherwise scale the plate
   // a second time; each surface carries its own zoom.
   return createPortal(
     <>
       <motion.div
         {...motionProps}
+        {...morph}
         data-testid="planet-nameplate"
         style={{
-          position: 'fixed', top, left: span.left / chrome, width: Math.max(0, span.right - span.left) / chrome,
-          zoom: chrome, ...plateWeights, display: 'flex', pointerEvents: 'none', zIndex: z.panel,
+          position: 'fixed', top, left: span.left / zoom, width: Math.max(0, span.right - span.left) / zoom,
+          zoom, ...weights, display: 'flex', pointerEvents: 'none', zIndex: z.panel,
         }}
       >
         <span aria-hidden style={spacer(lean)} />
-        <div ref={plateRef} data-testid="planet-nameplate-plate" {...mapEdgeAttr('top')}
-          style={{ ...surface, position: 'relative', flex: 'none', maxWidth: '100%' }}>
-          <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
-            <span style={{ position: 'absolute', inset: 0, background: PLATE, borderRadius: (PLATE_ROW / 2) * (isWebKitEngine() ? 2 : 1) }} />
-          </ShapeEdge>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: PLATE_GAP, height: PLATE_ROW, padding: `0 ${PLATE_PAD}px` }}>
+        <PlateBody bodyRef={plateRef} testId="planet-nameplate-plate" gap={PLATE_GAP} padding={`0 ${PLATE_PAD}px`} style={{ flex: 'none' }}>
             <ActionButton ref={backRef} data-testid="planet-back" interaction="tile"
-              aria-label={t('planet.back')} title={t('planet.back')} onClick={back} style={iconButton}>
+              {...backName.bind} aria-label={t('planet.back')} onClick={back} style={iconButton}>
               <BackIcon />
+              {backName.bubble}
             </ActionButton>
-            <PlateRule />
+            <span aria-hidden style={plateRule} />
             <ActionButton data-testid="planet-name" interaction="pill"
               aria-label={t('planet.rename_named', { name: shown })} aria-expanded={asking === 'save'} onClick={rename} title={shown}
               style={{ ...btnReset, display: 'flex', alignItems: 'center', gap: NAME_GAP, height: BUTTON, padding: `0 ${NAME_PAD}px`, borderRadius: radii.pill, color: PLATE_INK, flex: '0 1 auto', minWidth: NAME_LEAST }}>
               <span style={{ ...roleFont('head'), minWidth: 0, maxWidth: NAME_MAX_W, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shown}</span>
               <span aria-hidden style={{ display: 'flex', color: skin.muted, flex: 'none' }}><EditIcon size={PEN} /></span>
             </ActionButton>
-            {review && <PlateRule />}
+            {review && <span aria-hidden style={plateRule} />}
             {review && <ReviewSegment cells={review.cells.length} landmark={review.landmark} />}
             <ActionButton appearance="primary" interaction="pill" data-testid="planet-done"
               disabled={!ground} aria-expanded={asking === 'save'}
               onClick={() => setAsking(asking === 'save' ? null : 'save')}
-              style={{ flex: 'none', height: BUTTON, paddingBlock: 0, paddingInline: `${DONE_PAD.start}px ${DONE_PAD.end}px`, borderRadius: radii.pill, display: 'flex', alignItems: 'center', gap: DONE_GAP, whiteSpace: 'nowrap' }}>
+              style={plateButton}>
               <CheckIcon size={TICK} />
               {t('planet.done')}
             </ActionButton>
-          </div>
-        </div>
+        </PlateBody>
         <span aria-hidden style={spacer(-lean)} />
       </motion.div>
       <AnimatePresence>
         {asking === 'save' && (
-          <SavePanel key="save" style={{ ...surface, zoom: panelZoom, ...panelWeights, zIndex: z.opened }}
-            zoom={panelZoom} anchor={plateRef} trigger={plateRef}
+          <SavePanel key="save" style={{ ...surface, zoom, ...weights, zIndex: z.opened }}
+            zoom={zoom} anchor={plateRef} trigger={plateRef}
             editing={editing} ground={ground} name={name} known={fallback} onName={setDraft} nameAsk={nameAsk}
             onSave={save} onCancel={close} />
         )}
       </AnimatePresence>
       <AnimatePresence>
         {asking === 'discard' && (
-          <AnchoredConfirm key="discard" anchor={plateRef} trigger={backRef} align="start" zoom={panelZoom}
-            width={DISCARD_W} helpTarget={{ page: 'planet' }} style={{ zoom: panelZoom, ...panelWeights }}
+          <AnchoredConfirm key="discard" anchor={plateRef} trigger={backRef} align="start" zoom={zoom}
+            width={DISCARD_W} helpTarget={{ page: 'planet' }} style={{ zoom, ...weights }}
             title={t('planet.discard_title')} cancelLabel={t('planet.keep_editing')} confirmLabel={t('planet.discard')}
             onCancel={close} onConfirm={() => { close(); stopPlanetEditing(); }} />
         )}
@@ -201,11 +189,6 @@ export function PlanetNameplate({ motionProps }: {
     </>,
     document.body,
   );
-}
-
-/** The rule between the plate's segments. */
-function PlateRule() {
-  return <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: `${RULE_INSET}px ${RULE_AIR}px`, background: LINE, flex: 'none' }} />;
 }
 
 /** `pendingLandmarks` of the live session, as their ids joined by spaces, so a reading compares by value. */
@@ -226,8 +209,10 @@ function ReviewSegment({ cells, landmark }: { cells: number; landmark: boolean }
   const counted = t(key, quantityParams(locale, { n: cells }));
   const names = pending.map((id) => { const item = getCatalogItem(id); return item ? localizedName(item.name, locale) : id; });
   const full = names.length ? t('planet.review_with_unplaced', { review: counted, name: joinList(locale, names) }) : counted;
+  // The count is short; what it counts, and the items not yet placed, read in full when reached for.
+  const said = useNameReveal(full, 'below');
   return (
-    <div data-testid="planet-review" title={full} style={{
+    <div data-testid="planet-review" {...said.bind} style={{
       display: 'flex', alignItems: 'center', gap: REVIEW_GAP, height: BUTTON, flex: 'none', whiteSpace: 'nowrap',
       paddingInline: `${REVIEW_PAD.start}px ${REVIEW_PAD.end}px`,
     }}>
@@ -235,6 +220,7 @@ function ReviewSegment({ cells, landmark }: { cells: number; landmark: boolean }
         {t('planet.review_short', quantityParams(locale, { n: cells + (landmark ? 1 : 0) + pending.length }))}
       </span>
       <Switch on={shown} onClick={() => setShown(!shown)} label={t('planet.review_toggle')} />
+      {said.bubble}
     </div>
   );
 }
@@ -295,6 +281,7 @@ function SavePanel({ style, zoom, anchor, trigger, editing, ground, name, known,
   return (
     <motion.div
       ref={ref}
+      {...floating.piece}
       role="dialog"
       aria-label={title}
       data-testid="planet-save-panel"

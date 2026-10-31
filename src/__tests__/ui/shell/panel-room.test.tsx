@@ -1,14 +1,7 @@
 /**
- * The room the frame gives the assistant's column, resolved — not the string that expresses it.
- *
- * `panelTop`/`panelMaxHeight` answer in css, so jsdom can hold the strings but never lays them out
- * (`_resolve-css.ts` evaluates them). The failure shape here is arithmetic rather than wiring (a cap
- * that falls below the panel's own furniture, at a zoom a user reaches with Ctrl +/-), so the
- * expressions are evaluated here at the windows and zooms the app is actually judged in and the
- * Readings are what is asserted, against the same table the live-app measurements were taken as.
- *
- * The frame's zoom is `units.ts:ZOOM` times the window's fit times the user's UI zoom, so 1.25 is the
- * reference window at uiZoom 1 and 2.25 is that same window at the pref's top of range.
+ * The room the frame gives the assistant's column. `panelTop` and `panelMaxHeight` answer in CSS that
+ * jsdom never lays out, so `_resolve-css.ts` evaluates them at the windows and zooms the app is judged
+ * in. The frame's zoom is `units.ts:ZOOM` (1.25) times the window's fit times the UI zoom (0.6 to 1.8).
  */
 import { describe, it, expect } from 'vitest';
 import type { BuildMode } from '../../../state/editing/edit-mode';
@@ -17,15 +10,14 @@ import { EDGE_TOP, ZOOM } from '../../../ui/shell/units';
 import { GATE_BORROW, JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../../../ui/agent/PanelShell';
 import { resolveCss } from './_resolve-css';
 
-/** The panel's own pinned furniture plus a record worth the name, as `PanelColumn` derives it —
- *  taken from the same two constants rather than typed, so a taller dock moves this with it. */
+/** The panel's pinned furniture plus the least job zone, from the constants `PanelColumn` uses. */
 const LEAST = PINNED_HEIGHT + JOB_ZONE_FLOOR;
 
 /** The taste trim the courteous cap gives up, in frame px. */
 const PANEL_CAP_TRIM = 24;
 
-/** Top and height together, since neither reads alone: the cap is measured from wherever the top is.
- *  `borrow` is what an unanswered plan gate asks for on top of the skeleton. */
+/** Top and height together, since the cap is measured from the top. `borrow` is what an unanswered
+ *  plan gate asks for on top of the skeleton. */
 function box(mode: BuildMode, vh: number, zoom: number, borrow = 0): { top: number; height: number } {
   return {
     top: resolveCss(panelTop(LEAST), vh, zoom),
@@ -34,9 +26,7 @@ function box(mode: BuildMode, vh: number, zoom: number, borrow = 0): { top: numb
 }
 
 describe('the panel keeps the least room it can work in', () => {
-  /** The reading the live app was measured at: at the reference window with no bottom bar there is
-   *  room to spare, so both clearances are paid in full, the taste trim comes off the top of what is
-   *  left, and nothing yields. */
+  /** At the reference window with no bottom bar both clearances are paid and the trim comes off. */
   it('pays both clearances in full wherever there is room for them', () => {
     const { top, height } = box(null, 800, ZOOM);
     expect(top).toBeCloseTo(PANEL_TOP, 3);
@@ -44,12 +34,8 @@ describe('the panel keeps the least room it can work in', () => {
     expect(height).toBeGreaterThan(LEAST);
   });
 
-  /**
-   * The trim is a taste tune and it comes off the courteous cap alone. A panel with room to spare
-   * stands one step shorter than the room allows; a panel with no room to spare is already at the
-   * least height it can work in, and taking a step off that is what leaves a plate with the composer
-   * clipped off its bottom.
-   */
+  /** The trim comes off the roomy cap only; taken off the least workable height it would clip the
+   *  composer. */
   it('spends the trim on the roomy cap and never on the least workable height', () => {
     const roomy = box(null, 800, ZOOM).height;
     expect(roomy).toBeCloseTo(800 / ZOOM - PANEL_TOP - footReserve(null) - PANEL_CAP_TRIM, 3);
@@ -63,17 +49,13 @@ describe('the panel keeps the least room it can work in', () => {
       const { top, height } = box('generate', h, ZOOM * fit * 1.2);
       expect(height, `${w}x${h}`).toBeCloseTo(LEAST, 3);
       expect(top, `${w}x${h}`).toBeCloseTo(PANEL_TOP, 3);
-      // And the panel is still wholly on screen: it overlaps the bar, it does not run off the window.
+      // Wholly on screen: it overlaps the bar but not the window's edge.
       expect(top + height, `${w}x${h}`).toBeLessThanOrEqual(h / (ZOOM * fit * 1.2) + 0.001);
     }
   });
 
-  /**
-   * The UI-zoom top of range. `uiZoom` is a persisted preference on Ctrl +/- (0.6..1.8), and at 1.8
-   * the reference window holds 355 frame px in total: a standing head clearance alone would take 198
-   * of them and leave the panel a plate carrying the dock and nothing else. The head yields last, and
-   * only as far as it must.
-   */
+  /** At UI zoom 1.8 the reference window holds 355 frame px, of which a standing head clearance would
+   *  take 198; the head yields last, and only as far as it must. */
   it('slides the column up rather than empty it, at the top of the uiZoom range', () => {
     const zoom = ZOOM * 1.8;
     const { top, height } = box(null, 800, zoom);
@@ -83,8 +65,8 @@ describe('the panel keeps the least room it can work in', () => {
     expect(top + height).toBeCloseTo(800 / zoom, 3);
   });
 
-  /** The whole pref range, every mode, the windows the frame is judged in: the panel is never
-   *  shorter than its own furniture unless the window itself is, and never runs off the bottom. */
+  /** The panel is never shorter than its furniture unless the window is, and never runs off the
+   *  bottom. */
   it('holds both invariants across the pref range, every mode and every judged window', () => {
     const modes: BuildMode[] = [null, 'mountain', 'water', 'road', 'object', 'generate'];
     for (const [w, h] of [[1280, 800], [1366, 768], [1440, 810], [1280, 700], [1024, 768], [1920, 1080]] as const) {
@@ -103,21 +85,17 @@ describe('the panel keeps the least room it can work in', () => {
 });
 
 /**
- * An unanswered plan gate borrows the room it needs.
- *
- * The courtesy to the bottom bar is worth having while the panel is only reporting. It is not worth a
- * question the user cannot read: in Object mode at the reference window the courteous cap leaves 233
- * frame px against a 180px skeleton, so the plan card would have 53px to stand in — the Approve pair
- * showing with the plan itself scrolled off above it. So the foot gives the room, the head does
- * not move, and the panel paints over the bar for exactly as long as the question stands.
+ * In Object mode at the reference window the cap that clears the bottom bar leaves a plan card 53 px.
+ * While a plan gate stands unanswered, the foot reserve gives way, the head stays, and the panel
+ * paints over the bar.
  */
 describe('an unanswered plan gate borrows the room to be read in', () => {
-  /** The zone a borrowing panel actually offers the card: the cap less everything pinned. */
+  /** The zone a borrowing panel offers the card: the cap less everything pinned. */
   const zone = (mode: BuildMode, h: number, zoom: number) =>
     box(mode, h, zoom, GATE_BORROW).height - PINNED_HEIGHT;
 
-  /** What the window has under the entrance block, in frame px. The head does not move for a borrow
-   *  (see `panelMaxHeight`), so this is the ceiling the foot can give up to. */
+  /** The room under the entrance block, in frame px: the most a borrow can reach, since the head
+   *  does not move. */
   const room = (h: number, zoom: number) => h / zoom - PANEL_TOP;
 
   it('spends the foot reserve down to nothing, in every mode and at every judged window', () => {
@@ -134,19 +112,14 @@ describe('an unanswered plan gate borrows the room to be read in', () => {
   });
 
   /**
-   * The floor that matters, said as the card it is for. A plan gate's own parts measure ~293 frame px
-   * at four stages with both notes and the answer pair (12+12 card padding, an 18px head, an 18px row
-   * per stage, two 2-line 13.5/1.4 notes, the 39px action pair, 8px between each), and the courteous
-   * cap gave it 53 in Object mode and 159 in Generate. The foot alone brings both to 261: the head,
-   * the note, four stages and the pair, all but a note line of the tallest card the panel can be
-   * holding a question on. The head clearance is left standing deliberately — yielding it too would
-   * put the panel over the mode row and the character's own entrance, which the bar below never
-   * covered either.
+   * The tallest plan card (four stages, both notes, the answer pair) is about 293 frame px. The
+   * borrowed foot gives 261 in both modes, all but one note line; the head clearance stays so the
+   * panel never covers the mode row and the character's entrance.
    */
   it('stands a real plan card in the two modes with the least room', () => {
     for (const mode of ['object', 'generate'] as const) {
       expect(zone(mode, 800, ZOOM), mode).toBeGreaterThan(250);
-      // And the courteous cap alone gives less than a band, which is what the borrow is for.
+      // Without the borrow the zone is short.
       expect(box(mode, 800, ZOOM).height - PINNED_HEIGHT, mode).toBeLessThan(160);
     }
   });
@@ -174,8 +147,6 @@ describe('an unanswered plan gate borrows the room to be read in', () => {
     }
   });
 
-  /** Answered, the room goes back. Nothing beneath the panel was moved or disabled while it stood
-   *  over the bar, and the moment the borrow is not asked for the readings are the plain ones. */
   it('gives the room back the moment there is nothing to answer', () => {
     const modes: BuildMode[] = [null, 'mountain', 'water', 'road', 'object', 'generate'];
     for (const mode of modes) {

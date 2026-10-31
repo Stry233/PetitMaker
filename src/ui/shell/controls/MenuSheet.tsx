@@ -8,7 +8,6 @@ import { useEditorStore, type ModalId } from '../../../state/store';
 import { helpTargetAttr } from '../../session/help-targets';
 import type { HelpPageId } from '../../help/page-schema';
 import { FloatMenu, type FloatMenuItem } from '../../primitives/FloatMenu';
-import { useFrameZoom } from '../use-frame-zoom';
 import type { I18nKey } from '../../../i18n/keys';
 
 /** The Help Center page each row that opens a taught window points at. */
@@ -47,7 +46,6 @@ export function MenuSheet({ open, onDismiss, trigger }: {
   trigger: RefObject<HTMLElement>;
 }) {
   const t = useT();
-  const zoom = useFrameZoom();
   const setModal = useEditorStore((s) => s.setModal);
   // A planet session or a hand repair holds the map, so the rows that act on it stand down.
   const rows = menuRows(useEditorStore((s) => s.planetSession !== null || s.repairSession?.phase === 'hand'));
@@ -65,7 +63,6 @@ export function MenuSheet({ open, onDismiss, trigger }: {
       onOpen={() => {}}
       onClose={onDismiss}
       onPick={(id) => setModal(id as ModalId, true)}
-      zoom={zoom}
       aria-label={t('a11y.open_menu')}
       trigger={{ ref: trigger, align: 'end', gap: SHEET_GAP, minWidth: SHEET_MIN_W, onMap: true }}
     />

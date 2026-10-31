@@ -1,7 +1,7 @@
 /**
  * The maps whose share codes and saves the identity pins hold fixed: every built-in planet fresh and
  * generated, the save fixtures, and a drawn and a scanned custom planet. `share-identity.json` beside
- * the fixtures records what today's build writes for each.
+ * the fixtures records what the build writes for each.
  */
 import { readFileSync } from 'node:fs';
 import { createGridState } from '../../core/model/template';

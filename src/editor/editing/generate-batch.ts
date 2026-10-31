@@ -23,6 +23,7 @@ import { clearGenerated, generateCandidate, generateMap, peekCandidate, type Can
 import { host } from '../host/host';
 import { currentEditor } from '../session/context';
 import { reportGenerate } from './generate-report';
+import { holdEditInFlight } from '../../state/edits-in-flight';
 
 /** The visitor's own card, after the batch's dealt cards. */
 const CUSTOM = CANDIDATES;
@@ -400,7 +401,11 @@ export function landCandidate(ask: LandingRequest): Landing | null {
     host.feedback.flash([cellSet(TERRAIN_GRID, outcome.cells)]);
     return reportGenerate(outcome, ask.stencil) ? outcome : null;
   })();
-  return { done, abort: () => controller.abort() };
+  const abort = (): void => controller.abort();
+  // Held as landing until it settles, so whatever takes the map back cancels it first.
+  const release = holdEditInFlight(abort, 'build');
+  void done.then(release, release);
+  return { done, abort };
 }
 
 /** Clears the last run, bounded by its region and sparing placements made by hand there. False

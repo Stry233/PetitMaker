@@ -11,7 +11,7 @@ import { exportable } from '../../_support/exportable';
 
 const META: ShareCodeMeta = { appVersion: '1.0-test', saveVersion: 3 };
 
-/** Deterministic tiny LCG — matches the style of other codec tests' seeded noise. */
+/** A tiny deterministic LCG for seeded noise. */
 function rng(seed: number): () => number {
   let s = seed >>> 0;
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xffffffff; };
@@ -86,10 +86,8 @@ describe('PetitGlyph raster-first import/export', () => {
       // a plausible-but-different map.
       expect(canonicalBytes(canonicalize(result.state))).toEqual(canonicalBytes(canonicalize(state)));
     } else {
-      // Uncorrectable: must fail cleanly, never silently produce a different map. decodeGlyph can
-      // reject before ever reaching decodeMapPayload's hash gate (no-payload) as well as after
-      // (corrupt/decode-failed) — the binding invariant is "never ok with a different canonical",
-      // asserted above; this branch only confirms the failure mode is one of the expected codes.
+      // Uncorrectable: decodeGlyph rejects before decodeMapPayload's hash gate (no-payload) or after
+      // it (corrupt, decode-failed), and never returns a different map.
       expect(['no-payload', 'corrupt', 'decode-failed']).toContain(result.error.code);
     }
   });

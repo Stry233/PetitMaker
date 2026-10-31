@@ -22,7 +22,7 @@ describe('qualityReport: connectivity', () => {
 describe('qualityReport: connectivity is start-point independent', () => {
   it('scores high when a small unramped plateau sits at the map centre', () => {
     const state = makeState(20, 20);
-    // an isolated elev-2 plateau covering the centre — the main landmass is
+    // an isolated elev-2 plateau covering the centre; the main landmass is
     // everything around it and must dominate the score
     for (let y = 8; y <= 12; y++) for (let x = 8; x <= 12; x++) setTerrain(state, x, y, TerrainType.Mountain, 2);
     const r = qualityReport(state).connectivity;

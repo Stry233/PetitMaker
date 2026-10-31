@@ -70,7 +70,7 @@ describe('connected road materials', () => {
     expect(split.map((r) => r.elevation).sort()).toEqual([1, 2]);
     const patches = split.flatMap((r) => buildRoadMaterial(r, inlay));
     expect(colorsAt(patches, 3.5, 3.5)).toEqual([]);
-    // Each level fades at its own outline, so the split line is no longer interior to one surface.
+    // Each level fades at its own outline, so the split line is not interior to one surface.
     expect(colorsAt(patches, 2.99, 1.5)).toEqual([]);
     expect(colorsAt(patches, 2.9, 1.5)).toEqual([inlay.edge.color]);
     expect(colorsAt(patches, 3.1, 1.5)).toEqual([inlay.edge.color]);

@@ -1,24 +1,22 @@
-/** The object shelf's search field, drawn as the design's capsule. */
-import { useFrameReadableWeight } from '../../use-frame-zoom';
+/** The object shelf's search field: a cream stadium edged as the brush button beside it is, so it keeps
+ *  its round ends at whatever width the row gives it. */
+import { useFrameReadableWeight, useFrameZoom } from '../../use-frame-zoom';
 import {
-  type CSSProperties, type HTMLAttributes,
+  useId, type CSSProperties, type HTMLAttributes,
 } from 'react';
+import { TouchReach } from '../../../primitives/TouchReach';
 import { cursors, type PwStyle } from '../../../design/styles';
-import { MUTED_INK, PLATE_INK } from '../../../design/tokens';
-import { ShapeEdge } from '../../../design/shape-edge';
+import { MUTED_INK, PLATE, PLATE_INK, plateShapeEdge } from '../../../design/tokens';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../../design/focus-source';
-import { Plate } from '../bar-atoms';
-import {
-  SEARCH, } from './object-shelf';
-import searchArt from '../../../../assets/shell/shelf-object/search-field.svg';
+import { useReducedMotionConfig } from 'framer-motion';
+import { cssMotion } from '../../../design/motion';
+import { SEARCH } from './object-shelf';
 
 /**
- * The search capsule as one part: the drawn plate, its silhouette hairline and the field laid over
- * it, at the sizes `SEARCH` declares. The shelf mounts it live; the Help Center's search figure
- * mounts the same part read-only, so the pictured field is this field rather than a copy of its
- * values.
+ * The search capsule as one part: the plate, its hairline and the field laid over it, at the sizes
+ * `SEARCH` declares unless `wrapStyle` gives it another width.
  */
-export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, readOnly, wrapStyle, wrapAttrs }: {
+export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, readOnly, wrapStyle, wrapAttrs, inPill, wordsHidden }: {
   value: string;
   onChange?: (next: string) => void;
   placeholder?: string;
@@ -27,17 +25,27 @@ export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, read
   /** The room the capsule keeps in the row it stands in; the box itself is `SEARCH`'s. */
   wrapStyle?: CSSProperties;
   wrapAttrs?: HTMLAttributes<HTMLDivElement>;
+  /** Laid in a pill its caller draws, of any width: no capsule art, the words centred clear of
+   *  `inPill.padX` at either end. */
+  inPill?: { padX: number };
+  /** The words fade out while the capsule shrinks into the round search button. */
+  wordsHidden?: boolean;
 }) {
+  const reduced = useReducedMotionConfig();
   const weightAt = useFrameReadableWeight();
+  const zoom = useFrameZoom();
+  const fieldId = useId();
   const searchStyle: PwStyle = {
     position: 'relative', display: 'block', boxSizing: 'border-box',
     width: '100%', height: '100%',
-    paddingLeft: SEARCH.padX, paddingRight: SEARCH.padX,
+    paddingLeft: inPill?.padX ?? SEARCH.padX, paddingRight: inPill?.padX ?? SEARCH.padX,
+    ...(inPill ? { textAlign: 'center' as const } : {}),
     paddingTop: 0, paddingBottom: 0,
     background: 'transparent', border: 'none', outline: 'none',
     fontSize: SEARCH.text, fontWeight: weightAt(800, SEARCH.text), color: PLATE_INK,
-    lineHeight: 'normal', cursor: cursors.text,
+    lineHeight: 'normal', cursor: cursors.text, textOverflow: 'ellipsis',
     '--pw-placeholder': MUTED_INK,
+    ...(wordsHidden === undefined ? {} : { opacity: wordsHidden ? 0 : 1, transition: cssMotion('shelf.search.expand', ['opacity'], reduced) }),
   };
   return (
     // The focus ring goes on the box, not on the input: an outline follows its own element's
@@ -45,16 +53,14 @@ export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, read
     // `design/focus-source.ts`, which is where the whole rule reads.
     <div
       className={FIELD_WRAP_CLASS}
-      style={{ position: 'relative', width: SEARCH.w, height: SEARCH.h, borderRadius: SEARCH.radius, ...wrapStyle }}
+      style={{
+        position: 'relative', width: SEARCH.w, height: SEARCH.h, borderRadius: SEARCH.radius,
+        ...(inPill ? {} : { background: PLATE, boxShadow: plateShapeEdge() }), ...wrapStyle,
+      }}
       {...wrapAttrs}
     >
-      {/* The plate wears the hairline every drawing standing on the map wears
-          (`shape-edge.tsx:ShapeEdge`), on the art itself rather than on the box, so what is
-          outlined is the capsule's own silhouette and not the rectangle around it. */}
-      <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
-        <Plate src={searchArt} style={{ inset: 0, width: '100%', height: '100%' }} />
-      </ShapeEdge>
       <input
+        id={fieldId}
         type="search"
         className={`pw-search-field ${FIELD_INPUT_CLASS}`}
         value={value}
@@ -64,6 +70,8 @@ export function ShelfSearchField({ value, onChange, placeholder, ariaLabel, read
         placeholder={placeholder}
         style={searchStyle}
       />
+      {/* A field holds no children, so its reach is a label that focuses it. */}
+      <TouchReach zoom={zoom} labelFor={fieldId} />
     </div>
   );
 }

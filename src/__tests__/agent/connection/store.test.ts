@@ -162,11 +162,7 @@ describe('saved key identification', () => {
 });
 
 describe('an unhydrated store never writes over a record it has not read', () => {
-  /**
-   * One press on the oversight row, from a panel store that has not hydrated, would otherwise
-   * assemble the whole record from defaults: the sealed key blob dropped, the provider back at
-   * claude, and both models emptied.
-   */
+  /** Written from an unhydrated store, a setting would rebuild the record from defaults. */
   it('keeps the sealed key blob, the provider and the models through a setting pressed too early', () => {
     seedStoredRecord();
 
@@ -186,10 +182,8 @@ describe('an unhydrated store never writes over a record it has not read', () =>
   });
 
   /**
-   * Not even a key. A save carrying keys makes `key-storage` re-seal rather than drop the blob, but
-   * it re-seals only the keys that save carries — and an unhydrated keyring holds at most the one
-   * key just typed, so writing it would trade that key for every other provider's. It is held in
-   * memory and owed, which loses nothing.
+   * A save re-seals only the keys it carries, and an unhydrated keyring holds at most the key just
+   * typed, so writing it would drop every other provider's key.
    */
   it('holds a key typed before hydration in memory rather than writing a partial keyring', async () => {
     seedStoredRecord();
@@ -197,12 +191,9 @@ describe('an unhydrated store never writes over a record it has not read', () =>
     useAgentConnection.getState().connectKey('openai', 'sk-proj-abc');
 
     expect(backing.get(PREFS.agentSettings.key)).toBe(before);
-    // The session has the key regardless: it is the disk that waits, not the panel.
     expect(useAgentConnection.getState().keyed).toEqual(['openai']);
 
-    // `hydrate` seeds every field from disk (its own contract says to call it first), and the
-    // keyring is merged rather than replaced, so the typed key reaches the record while nothing the
-    // user had is disturbed.
+    // Hydration merges the held keyring over the stored one.
     await useAgentConnection.getState().hydrate();
     const after = storedRecord();
     expect(Object.keys(after.keys as Record<string, string>)).toContain('openai');
@@ -212,9 +203,7 @@ describe('an unhydrated store never writes over a record it has not read', () =>
     expect(after.model).toMatchObject({ deepseek: 'deepseek-chat', claude: 'claude-sonnet-4-5' });
   });
 
-  /** The real exposure is the vault's own opening window: `hydrate` seeds the store synchronously
-   *  and only then awaits the sealed keys, so a press inside that gap lands on a store that already
-   *  holds the user's values but is not yet cleared to write. Declining it silently would lose it. */
+  /** `hydrate` seeds the store synchronously, then awaits the sealed keys; a write in that gap is owed. */
   it('makes the write it declined once hydration lands', async () => {
     seedStoredRecord();
     const pending = useAgentConnection.getState().hydrate();
@@ -222,7 +211,7 @@ describe('an unhydrated store never writes over a record it has not read', () =>
     expect(useAgentConnection.getState().oversight).toBe('strict'); // the sync seed has run
 
     useAgentConnection.getState().setOversight('yolo');
-    expect(storedRecord().oversight).toBe('strict'); // declined, not written
+    expect(storedRecord().oversight).toBe('strict');
 
     await pending;
     expect(storedRecord().oversight).toBe('yolo');
@@ -231,14 +220,12 @@ describe('an unhydrated store never writes over a record it has not read', () =>
 });
 
 /**
- * A merge cannot express an absence, which is why a revocation travels as its own fact. Without it
- * `hydrate`'s `{...disk, ...keyring}` hands the deleted key straight back — it is not in the keyring
- * to win with — and the owed write then puts it back on disk as well.
+ * A merge cannot express an absence, so a revocation is held as its own fact; otherwise hydration
+ * would merge the stored key back and the owed write would put it on disk again.
  */
 describe('a key revoked before hydration stays revoked', () => {
   function seedObfuscatedKey(): void {
-    // The obfuscated fallback (`key-storage`'s base64 path), which is what the synchronous read
-    // returns and therefore what the merge would resurrect.
+    // The base64 fallback of `key-storage`, which the synchronous read returns.
     backing.set(PREFS.agentSettings.key, JSON.stringify({
       provider: 'claude',
       model: emptyModels(),
@@ -354,9 +341,8 @@ describe('the key is not in the store', () => {
   });
 });
 
-/* A key going away must not orphan a running job. Nothing here stops the loop, and every panel
- * surface reads a keyless store as "there is no session" — so the job went on writing to the map
- * behind a setup form, with the record and both controls gone. */
+/* The panel reads a keyless store as no session, so a job left running would edit the map behind
+ * the setup form. */
 describe('revoking the armed key ends the job that was running on it', () => {
   beforeEach(() => setLiveJobStop(undefined));
 
@@ -396,10 +382,7 @@ describe('revoking the armed key ends the job that was running on it', () => {
   });
 });
 
-/**
- * A key is not a connection. Three facts have to stand before a request can be built at all, and
- * `isConnected` answers for exactly one of them — which is why the panel asks this question too.
- */
+/** A request needs a key, a model and, for a custom provider, an endpoint; `isConnected` checks only the key. */
 describe('what a connection is still missing', () => {
   beforeEach(async () => {
     await useAgentConnection.getState().hydrate();
@@ -418,8 +401,7 @@ describe('what a connection is still missing', () => {
     expect(connectionReady(state())).toBe(true);
   });
 
-  /** The user's own server owes an address. Without one there is no host to ask, and the SDK's own
-   *  default would carry a gateway key to a platform it was never issued for. */
+  /** Without an address the SDK's default host would receive a key issued for another gateway. */
   it('holds a custom provider to its endpoint address', () => {
     const state = () => useAgentConnection.getState();
     state().pinProvider('custom');
@@ -432,8 +414,6 @@ describe('what a connection is still missing', () => {
     expect(connectionReady(state())).toBe(true);
   });
 
-  /** The question is about one provider, so a key and a model held for another are no answer: the
-   *  request goes out against the armed one. */
   it('answers about the armed provider, or the one it is asked about', () => {
     const state = () => useAgentConnection.getState();
     state().connectKey('claude', 'sk-ant-api03-secret');

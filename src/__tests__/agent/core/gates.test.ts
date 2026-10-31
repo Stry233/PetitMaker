@@ -78,10 +78,9 @@ describe('askGate / pendingGate / answerGate', () => {
   });
 
   /**
-   * The settle race, which is the reachable one. The double answer above cannot happen through the
-   * UI (the buttons unmount the moment the verdict lands), but a press landing in the frame between
-   * `jobEnd` reaching the log and React removing the card takes this path: the append was legal, the
-   * fold attached it to nothing, and the event sat in the persisted session invisible forever.
+   * The settle race is the reachable one: a press landing in the frame between `jobEnd` reaching the
+   * log and React removing the card. Without the throw the append would be legal, the fold would
+   * attach it to nothing, and the event would sit invisible in the persisted session.
    */
   it('answerGate throws once the gate\'s job has SETTLED under it', () => {
     const log = createLog();
@@ -98,8 +97,7 @@ describe('askGate / pendingGate / answerGate', () => {
     expect(() => answerGate(log, gateId, 'skip')).toThrow();
   });
 
-  /** A pause is not a settle: the loop re-enters the same gate on resume, so the question is held
-   *  rather than lost and an answer to it is still legal. */
+  /** A pause is not a settle: the loop re-enters the same gate on resume, so an answer stays legal. */
   it('answerGate still accepts an answer across a pause', () => {
     const log = createLog();
     const gateId = askGate(log, { scope: 'tool', summary: 'paint' });
@@ -108,7 +106,7 @@ describe('askGate / pendingGate / answerGate', () => {
     expect(() => answerGate(log, gateId, 'allow')).not.toThrow();
   });
 
-  /** A gate answered in an earlier job is untouched by the settle of a later one. */
+  /** A `jobEnd` from an earlier job does not settle a later gate. */
   it('answerGate does not look past a jobEnd that came BEFORE the ask', () => {
     const log = createLog();
     append(log, { kind: 'jobEnd', outcome: 'done' });
@@ -130,7 +128,7 @@ describe('awaitGate', () => {
     const gateId = askGate(log, { scope: 'tool', summary: 'paint' });
     const controller = new AbortController();
     const waiting = awaitGate(log, gateId, controller.signal);
-    // Give the promise a tick to attach its subscription before the answer lands.
+    // One tick lets the wait attach its subscription before the answer lands.
     await Promise.resolve();
     answerGate(log, gateId, 'words', 'go bigger');
     const result = await waiting;

@@ -3,7 +3,7 @@
  * object load. Per-catalogId tallies live in `state/object-index.ts:countByCatalog` instead, so this
  * module keeps no second, differently-scoped count of the same fact.
  *
- * Memoized per GridState and patched from `state.objectsDelta` rather than rebuilt, because a
+ * Memoized per GridState and patched from the object deltas since (`objectDeltasSince`) rather than rebuilt, because a
  * rebuild costs one catalog lookup, one rect and one chunk bucketing per object and a stroke
  * mutates objects once per cell. The terrain half rebuilds on `cellsVersion`, which is one grid
  * walk per frame in which cells moved: consumers coalesce, and a stroke changes cells for only as
@@ -16,6 +16,7 @@ import { roundLoad } from '../core/model/load';
 import { chunkKey } from '../core/grid/rect';
 import { isBuildableZone } from '../core/game/zones';
 import { mapChunkAt } from '../core/grid/map-chunks';
+import { objectDeltasSince } from '../core/model/grid-model';
 import { TerrainType, type GridState, type MapTemplate, type ObjectsDelta, type PlacedObject } from '../core/model/types';
 import { type EditorEvents } from './editing/events';
 import { catalogLoadValue, getCatalogItem } from './catalog';
@@ -145,8 +146,16 @@ function recountObjectLayers(state: GridState, stats: MapStats, folded: Folded):
 /** True if every `removed` id is actually folded in — the precondition for patching a removal
  *  at all. Checked before any mutation (not learned by attempting it and giving up midway),
  *  so a rejected delta never leaves `stats`/`folded` partially folded. */
-function deltaIsFoldable(folded: Folded, delta: ObjectsDelta): boolean {
-  for (const obj of delta.removed ?? []) if (!folded.has(obj.id)) return false;
+/** Whether each removal in `deltas`, taken in order, takes an object the fold holds by then. */
+function deltasAreFoldable(folded: Folded, deltas: readonly ObjectsDelta[]): boolean {
+  const present = new Map<string, boolean>();
+  for (const delta of deltas) {
+    for (const obj of delta.removed ?? []) {
+      if (!(present.get(obj.id) ?? folded.has(obj.id))) return false;
+      present.set(obj.id, false);
+    }
+    for (const obj of delta.added ?? []) present.set(obj.id, true);
+  }
   return true;
 }
 
@@ -221,29 +230,23 @@ export function getMapStats(state: GridState): MapStats {
   }
 
   // Objects moving zero steps (only cells changed) needs no delta at all — the cached object
-  // arrays are still exactly right. Otherwise a missing delta, a skipped version, a delta this
-  // cache is not exactly one step behind, or a removal the fold never saw means the object
-  // half cannot be trusted to patch from what we hold.
-  const delta = state.objectsDelta;
+  // arrays are still exactly right. Otherwise a step since the cache without a delta, or a
+  // removal the fold never saw, means the object half cannot be trusted to patch from what we hold.
   const objectsUnchanged = cached !== undefined && cached.objectsVersion === objectsVersion;
-  const canPatch =
-    cached !== undefined &&
-    delta !== undefined &&
-    delta.version === objectsVersion &&
-    cached.objectsVersion === objectsVersion - 1 &&
-    deltaIsFoldable(cached.folded, delta);
+  const deltas = cached && !objectsUnchanged ? objectDeltasSince(state, cached.objectsVersion) : null;
+  const canPatch = cached !== undefined && deltas !== null && deltasAreFoldable(cached.folded, deltas);
 
   let stats: MapStats;
   let folded: Folded;
   if (cached && (objectsUnchanged || canPatch)) {
     stats = cached.stats;
     folded = cached.folded;
-    if (canPatch) {
-      for (const obj of delta!.removed ?? []) {
+    for (const delta of deltas ?? []) {
+      for (const obj of delta.removed ?? []) {
         applyObject(stats, folded.get(obj.id)!, -1, state.template);
         folded.delete(obj.id);
       }
-      for (const obj of delta!.added ?? []) foldIn(folded, stats, obj, state);
+      for (const obj of delta.added ?? []) foldIn(folded, stats, obj, state);
     }
     if (cached.cellsVersion !== cellsVersion) {
       walkTerrain(state, stats);

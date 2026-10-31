@@ -71,7 +71,7 @@ describe('autosave', () => {
   it('debounces, then persists a restorable map', () => {
     const state = makeWorkingMap();
     autosave.schedule(state);
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // not yet — still debouncing
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // not yet: still debouncing
     vi.advanceTimersByTime(2000);
 
     expect(hasAutosave()).toBe(true);
@@ -80,7 +80,7 @@ describe('autosave', () => {
     expect(restored!.state.template.id).toBe(DEFAULT_MAP.id);
     // Content survives the round-trip (compare encoded cells, ignoring timestamp).
     expect(JSON.parse(serialize(restored!.state)).cells).toBe(JSON.parse(serialize(state)).cells);
-    // No camera was ever reported by either view this session — nothing to restore.
+    // No camera was ever reported by either view this session: nothing to restore.
     expect(restored!.camera).toBeUndefined();
   });
 
@@ -188,7 +188,7 @@ describe('autosave', () => {
 
     it('persists only the view(s) actually reported — a view never opened this session is simply absent', () => {
       host.camera.get2d = () => ({ x: 5, y: 5, zoom: 1 });
-      // host.camera.get3d left at its default undefined: the 3D editor was never opened.
+      // host.camera.get3d stays undefined: the 3D editor was never opened.
       autosave.schedule(makeWorkingMap());
       vi.advanceTimersByTime(2000);
 
@@ -201,19 +201,18 @@ describe('autosave', () => {
       localStorage.setItem(STORAGE_KEY, serialize(makeWorkingMap()));
       const restored = readAutosave();
       expect(restored).not.toBeNull();
-      expect(restored!.state.template.id).toBe(DEFAULT_MAP.id); // the map itself loads fine
-      expect(restored!.camera).toBeUndefined(); // nothing to apply — never touches the live camera
+      expect(restored!.state.template.id).toBe(DEFAULT_MAP.id);
+      expect(restored!.camera).toBeUndefined(); // nothing to apply; never touches the live camera
     });
 
     it('reads the camera LIVE at write time, not at schedule time — moving the camera between the ' +
       'schedule call and the debounced write does not add a write, and the write carries the latest pose', () => {
       host.camera.get2d = () => ({ x: 0, y: 0, zoom: 1 }); // pose at schedule time
       autosave.schedule(makeWorkingMap());
-      vi.advanceTimersByTime(1000); // still inside the debounce window — no write yet
+      vi.advanceTimersByTime(1000); // still inside the debounce window: no write yet
       expect(hasAutosave()).toBe(false);
 
-      // The user pans/zooms; nothing schedules an autosave for this (a camera move must not create
-      // a new write on its own — see io/storage/autosave.ts's currentCamera doc).
+      // A camera move schedules no write of its own.
       host.camera.get2d = () => ({ x: 999, y: 999, zoom: 2 });
       vi.advanceTimersByTime(1000); // the original debounce now fires
 
@@ -228,7 +227,7 @@ describe('autosave', () => {
     vi.advanceTimersByTime(1000);
     autosave.schedule(state); // resets the timer
     vi.advanceTimersByTime(1000);
-    expect(hasAutosave()).toBe(false); // 1s after the second call — not fired yet
+    expect(hasAutosave()).toBe(false); // 1s after the second call: not fired yet
     vi.advanceTimersByTime(1000);
     expect(hasAutosave()).toBe(true);
   });
@@ -301,7 +300,7 @@ describe('autosave', () => {
 
   describe('undo history rides along', () => {
     /** A live executor over `state` with `steps` painted commands behind it, installed on the store
-     *  the way the app has one — `currentHistory` reads it there, live, at write time. */
+     *  the way the app has one; `currentHistory` reads it there, live, at write time. */
     function withHistory(state: GridState, steps: number): CommandExecutor {
       const exec = makeExecutor(state);
       let laid = 0;

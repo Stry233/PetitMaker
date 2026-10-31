@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { isTextEntry } from '../../../platform/input/text-entry';
+import { isTextEntry, raisesKeyboard } from '../../../platform/input/text-entry';
 
 describe('isTextEntry', () => {
   it('treats inputs, text areas and selects as fields', () => {
@@ -21,5 +21,21 @@ describe('isTextEntry', () => {
     expect(isTextEntry(document.createElement('button'))).toBe(false);
     expect(isTextEntry(null)).toBe(false);
     expect(isTextEntry(undefined)).toBe(false);
+  });
+});
+
+describe('raisesKeyboard', () => {
+  const input = (type: string): HTMLInputElement => Object.assign(document.createElement('input'), { type });
+
+  it('is true for the fields a finger types into', () => {
+    expect(raisesKeyboard(document.createElement('textarea'))).toBe(true);
+    for (const type of ['text', 'search', 'number']) expect(raisesKeyboard(input(type)), type).toBe(true);
+  });
+
+  it('is false for a select, a slider, a checkbox and anything that is not a field', () => {
+    expect(raisesKeyboard(document.createElement('select'))).toBe(false);
+    for (const type of ['range', 'checkbox', 'color']) expect(raisesKeyboard(input(type)), type).toBe(false);
+    expect(raisesKeyboard(document.createElement('button'))).toBe(false);
+    expect(raisesKeyboard(null)).toBe(false);
   });
 });

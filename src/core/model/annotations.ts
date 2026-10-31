@@ -28,6 +28,9 @@ export type NoteTag = PresetTagId | CustomTagId;
 /** The most custom tags one map holds. */
 export const CUSTOM_TAG_MAX = 32;
 
+/** The most cells of its own grid one zone keeps through a save. */
+export const ZONE_CELL_MAX = 5000;
+
 export function isCustomTagId(v: unknown): v is CustomTagId {
   return typeof v === 'string' && v.startsWith('custom:') && v.length > 'custom:'.length;
 }

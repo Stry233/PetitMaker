@@ -1,15 +1,7 @@
 /**
- * The sketch proposals, over real maps.
- *
- * Every fixture here is the shipped island. `createGridState(getMapTemplate('hexia'))` is the same state the
- * editor cold-starts on (the real template's zones, the real locked plaza), and everything laid on
- * top of it goes through the real `CommandExecutor` with the real rule registry — so a fixture
- * cannot describe a map the app would refuse to build. A hand-typed grid would let an analyser pass
- * against a shape no map has.
- *
- * What is being pinned is that each family fires on the map that has its feature, that its geometry
- * lands on the map it is about, and that a map with nothing to say yields nothing at all: the card's
- * whole honesty rests on the empty list being reachable.
+ * Each sketch family fires on a map that has its feature, draws inside that map, and a map with nothing
+ * to say yields an empty list. Fixtures start from the shipped island and are built through the real
+ * executor and rule registry, so none describes a map the app would refuse.
  */
 import { describe, it, expect } from 'vitest';
 
@@ -35,8 +27,8 @@ function rect(x1: number, y1: number, x2: number, y2: number): MacroCoord[] {
   return out;
 }
 
-/** Paints through the real executor and refuses to continue if the rules said no: a fixture whose
- *  water never landed would test the analyser against a map it never built. */
+/** Paints through the real executor and throws if the rules refuse, so a fixture never silently
+ *  lacks its feature. */
 function paint(state: GridState, cells: MacroCoord[], type: TerrainType, elevation: number): void {
   const ok = executorFor(state).execute({
     type: CommandType.PaintTerrain, cells, terrainType: type, elevation,   });
@@ -62,9 +54,8 @@ function allGrass(state: GridState, x: number, y: number, size: number): boolean
   return true;
 }
 
-/** A square of the real template that is buildable Grass, searched from a starting point outwards,
- *  so a fixture names a place the island actually has rather than a coordinate that happens to work.
- *  One cell of margin up-left, for the same micro-block bleed the ridge keeps off. */
+/** The nearest open grass square of the real template, searched outwards from `from`, with one cell
+ *  of margin up-left for the micro-block bleed V-ZONE-01 refuses (see `unroadedBay`). */
 function grassNear(state: GridState, from: MacroCoord, want: number): MacroCoord {
   const { width, height } = state.template;
   for (let r = 0; r < Math.max(width, height); r++) {
@@ -102,14 +93,9 @@ function inside(state: GridState, idea: SketchProposal): boolean {
     && p.x <= state.template.width && p.y <= state.template.height);
 }
 
-/* ── the three maps ─────────────────────────────────────────── */
-
 /**
- * Ground with no road up to it: the real island with its southern end raised one tier, and a lane of
- * real path tiles laid in the north. The terrace is what makes the southern ground a place of its
- * own — `segmentRegions` cuts a region at a step as well as at water — and the pavement is only ever
- * on the other side of the step. Raised rather than flooded because a channel cut to the coast is
- * water the zone rule refuses, and a fixture may not build what the app would not.
+ * The island with its southern end raised one tier and a short path laid in the north: the step cuts
+ * the south into its own region (`segmentRegions` splits at steps as well as water) with no pavement.
  */
 function unroadedBay(): GridState {
   const state = createGridState(getMapTemplate('hexia'));
@@ -117,9 +103,8 @@ function unroadedBay(): GridState {
   const terrace: MacroCoord[] = [];
   for (let y = Math.round(height * 0.72); y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // A painted block renders half a cell up-left of its zone cell, so V-ZONE-01 refuses a paint
-      // whose micro-block bleeds onto unbuildable ground — and refuses the whole command with it.
-      // The terrace therefore keeps one cell clear of the zone boundary on that side.
+      // A painted block reaches half a cell up-left of its cell, and V-ZONE-01 refuses the whole
+      // command if one bleeds onto unbuildable ground, so the terrace keeps one cell clear on that side.
       if (allGrass(state, x - 1, y - 1, 2)) terrace.push({ x, y });
     }
   }
@@ -133,16 +118,13 @@ function unroadedBay(): GridState {
   return state;
 }
 
-/** The island as it opens: nothing built, nothing painted. One flat empty expanse. */
+/** The island as it opens: nothing built, nothing painted. */
 function flatEmpty(): GridState {
   return createGridState(getMapTemplate('hexia'));
 }
 
-/**
- * A river with level banks, and a stand of three trees: the two features the last two families read.
- * The river is four cells wide (inside the game's own 3-6 span rule) with untouched grass on each
- * side, and the trees stand within a few cells of each other.
- */
+/** A four-cell river (inside the game's 3 to 6 bridge span) with level grass banks, and three trees
+ *  standing close together. */
 function riverAndGrove(): GridState {
   const state = createGridState(getMapTemplate('hexia'));
   const { width, height } = state.template;
@@ -157,7 +139,7 @@ function riverAndGrove(): GridState {
   return state;
 }
 
-/** A template that is all sea: no land at all, which is the map that must say nothing. */
+/** A template with no land at all. */
 function openSea(): GridState {
   const template: MapTemplate = {
     id: 'sea', name: { en: 'Open sea' }, width: 40, height: 40,
@@ -167,8 +149,6 @@ function openSea(): GridState {
   return { template, cells: createGrid(template), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
-/* ── what each map offers ───────────────────────────────────── */
-
 describe('the lane: a place with no road down to it', () => {
   it('proposes one from the plaza to the far end of the cut-off ground', () => {
     const state = unroadedBay();
@@ -177,22 +157,19 @@ describe('the lane: a place with no road down to it', () => {
     expect(kinds(ideas), 'the bay map offers a lane').toContain('lane');
     expect(lane && inside(state, lane)).toBe(true);
     expect(lane!.art.shape).toBe('lane');
-    // It comes from somewhere paved (the plaza is the map's own) and goes somewhere that is not.
     const art = lane!.art as { shape: 'lane'; from: { x: number; y: number }; to: { x: number; y: number } };
     expect(art.from).not.toEqual(art.to);
-    // The reading in the caption is the size of the place it is about, not a decoration.
+    // The caption's number is the lane's length.
     expect(lane!.params.n).toBeGreaterThan(0);
   });
 
   it('says nothing about a road where the ground it would reach is already paved to', () => {
     const state = unroadedBay();
-    // Pave through the channel: the southern ground now has a made surface at its edge.
     const road = getPlaceableByCategory(ItemCategory.Road)[0]!;
     const lane = of(proposeSketches(state), 'lane')!;
     const art = lane.art as { to: { x: number; y: number } };
-    // The landing may sit against the step, where a tile is refused for not being flat — which is
-    // the rules answering honestly rather than the fixture failing. Take the first ground that
-    // accepts one.
+    // The landing may sit against the step, where a tile is refused as not flat; pave the nearest
+    // cell that accepts one.
     let laid = 0;
     for (let r = 0; r <= 4 && laid === 0; r++) {
       for (let dy = -r; dy <= r && laid === 0; dy++) {
@@ -208,8 +185,7 @@ describe('the lane: a place with no road down to it', () => {
     }
     expect(laid, 'the fixture paved something').toBeGreaterThan(0);
     const after = of(proposeSketches(state), 'lane');
-    // Either the family declines, or it has found a different place: what it may not do is keep
-    // proposing a road to ground a road now reaches.
+    // The family may decline or pick another place, but not keep proposing the one now paved.
     if (after) expect((after.art as { to: { x: number; y: number } }).to).not.toEqual(art.to);
   });
 });
@@ -224,7 +200,7 @@ describe('the pond: a flat empty expanse', () => {
     const art = pond!.art as { shape: 'pond'; cx: number; cy: number; rx: number; ry: number };
     expect(art.rx).toBeGreaterThanOrEqual(2);
     expect(art.ry).toBeGreaterThanOrEqual(2);
-    // The centre stands on the island's buildable ground, which is the whole claim the caption makes.
+    // The centre stands on buildable ground.
     expect(state.cells[Math.floor(art.cy)]?.[Math.floor(art.cx)]?.zone).toBe(CellZone.Grass);
   });
 });
@@ -245,7 +221,6 @@ describe('the bridge: two level banks across a water run', () => {
     expect(span).toBeLessThanOrEqual(6);
     expect(bridge!.params.n).toBe(span);
     expect(art.approach).toHaveLength(2);
-    // The deck stands on the water it crosses.
     expect(state.cells[art.y]?.[art.x]?.terrain?.type).toBe(TerrainType.Water);
   });
 
@@ -264,7 +239,6 @@ describe('the grove: a stand thin enough to thicken', () => {
     expect(grove!.params.n).toBe(3);
     const art = grove!.art as { shape: 'grove'; pips: readonly { x: number; y: number; standing: boolean }[] };
     expect(art.pips.filter((pip) => pip.standing)).toHaveLength(3);
-    // Every standing pip is on a tree the map really holds.
     const trees = [...state.objects.values()].filter((o) => o.catalogId.length > 0 && !o.locked);
     for (const pip of art.pips.filter((p) => p.standing)) {
       expect(trees.some((o) => Math.floor(o.position.x) === Math.floor(pip.x)

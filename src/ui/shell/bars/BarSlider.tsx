@@ -7,15 +7,17 @@ import { presence } from '../../design/motion';
 import { clientPoint, viewportSize } from '../../../platform/device/viewport-space';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotionConfig, type MotionValue } from 'framer-motion';
 import { usePx } from '../../design/scale';
 import { cursors, font, UNAVAILABLE, z, radii } from '../../design/styles';
 import { useUiPreview } from '../../design/preview';
 import { BarText, Plate } from './bar-atoms';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useFrameZoom } from '../use-frame-zoom';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
 import { TEXT } from '../units';
 import { MOTIONS } from '../../design/motion/registry';
-import { useTransition } from '../../design/motion/use-motion';
+import { useSliderGlide } from '../../primitives/use-slider-glide';
 import { visualRect } from '../../design/visual-rect';
 
 /** How far the bubble rises into place, in css px: the registry's own amplitude, since a distance
@@ -59,14 +61,20 @@ interface Props {
   /** The context this slider is standing in has nothing for it to set. A range with one stop is
    *  already unavailable without being told. */
   disabled?: boolean;
+  /** The track takes its container's width, which the owner keeps between its narrowest and the
+   *  drawing's: the right end and last stop come in by the difference, the stops close up evenly and
+   *  the drawn ends keep their shape. Ticks and knob stand at shares of the track, so the value keeps
+   *  its place on it while the width changes past React. */
+  fill?: boolean;
 }
 
 export function BarSlider({
-  art, shape, min, max, ticks, value, onChange, label, valueText, disabled,
+  art, shape, min, max, ticks, value, onChange, label, valueText, disabled, fill = false,
 }: Props) {
   const { px } = usePx();
+  const zoom = useFrameZoom();
   const ref = useRef<HTMLDivElement>(null);
-  const glide = useTransition('tool.control.morph');
+  const travel = useRef<HTMLSpanElement>(null);
   /* The reading lives on the knob while it is hovered or dragged. */
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -76,9 +84,22 @@ export function BarSlider({
   const steps = Math.max(1, max - min);
   const clamp = (v: number): number => Math.min(max, Math.max(min, v));
   const current = clamp(value);
+  // The knob's centre travels from `from` past the track's left end to `tail` short of its right end.
   const from = shape.first - shape.track.x;
-  const span = shape.last - shape.first;
-  const centre = from + ((current - min) / steps) * span;
+  const tail = shape.track.x + shape.track.w - shape.last;
+  const share = (current - min) / steps;
+  // A value set from elsewhere (a tool switch onto another stored width) glides on the carried control's motion.
+  const glide = useSliderGlide(share, 'tool.control.morph');
+  // The value last reported: a drag reports a stop once as it crosses it, not on every pointer move,
+  // since each report is a store update every subscriber of the store hears.
+  const reported = useRef(current);
+  useLayoutEffect(() => { reported.current = current; }, [current]);
+  const set = (v: number): void => {
+    if (v === reported.current) return;
+    reported.current = v;
+    glide.own((v - min) / steps);
+    onChange(v);
+  };
   // A coarse step for the arrow keys on a wide range: a hundred presses to cross a slider is a
   // control no one uses twice.
   const nudge = Math.max(1, Math.round(steps / 20));
@@ -86,10 +107,9 @@ export function BarSlider({
   // Measured as a fraction of the track's rect, never `px()`: rects and pointers are in screen px under the zoom.
   const pick = (clientX: number): void => {
     if (off) return;
-    const rect = ref.current ? visualRect(ref.current) : null;
+    const rect = travel.current ? visualRect(travel.current) : null;
     if (!rect || rect.width === 0) return;
-    const atDesign = ((clientX - rect.left) / rect.width) * shape.track.w;
-    onChange(clamp(min + Math.round(((atDesign - from) / span) * steps)));
+    set(clamp(min + Math.round(((clientX - rect.left) / rect.width) * steps)));
   };
 
   return (
@@ -117,15 +137,15 @@ export function BarSlider({
       onBlur={() => setHovered(false)}
       onKeyDown={(e) => {
         if (off) return;
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') onChange(clamp(current + nudge));
-        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') onChange(clamp(current - nudge));
-        else if (e.key === 'Home') onChange(min);
-        else if (e.key === 'End') onChange(max);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') set(clamp(current + nudge));
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') set(clamp(current - nudge));
+        else if (e.key === 'Home') set(min);
+        else if (e.key === 'End') set(max);
         else return;
         e.preventDefault();
       }}
       style={{
-        position: 'relative', width: px(shape.track.w), height: px(shape.track.h),
+        position: 'relative', width: fill ? '100%' : px(shape.track.w), height: px(shape.track.h),
         // The groove drawn in this box is a stadium and a focus ring follows its own element's
         // corner, so a square box rings the slider as a rectangle cutting through the drawing.
         borderRadius: px(shape.track.h / 2),
@@ -134,45 +154,57 @@ export function BarSlider({
         opacity: off ? UNAVAILABLE : 1,
       }}
     >
-      {art.track ? (
+      {/* Taller only: the value is read across the track's own width. */}
+      <TouchReach zoom={zoom} />
+      {art.track && !fill ? (
         <Plate src={art.track} style={{ left: 0, top: 0, width: px(shape.track.w), height: px(shape.track.h) }} />
       ) : null}
-      {Array.from({ length: ticks }, (_, i) => (
-        <Plate
-          key={i}
-          src={art.tick}
-          style={{
-            left: px(from + (i / Math.max(1, ticks - 1)) * span - shape.tick / 2),
-            top: px(shape.centreY - shape.track.y - shape.tick / 2),
-            width: px(shape.tick), height: px(shape.tick),
-          }}
-        />
-      ))}
-      {/* A value set from elsewhere (a tool switch onto another stored width) glides the knob there;
-          under the hand it follows at once. */}
-      <motion.span aria-hidden initial={false} animate={{ x: px(centre) }} transition={dragging ? { duration: 0 } : glide}
-        style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
-        <Plate
-          src={art.knob}
-          style={{
-            left: px(-shape.knob / 2), top: px(shape.centreY - shape.track.y - shape.knob / 2),
-            width: px(shape.knob), height: px(shape.knob),
-          }}
-        />
-        <Plate
-          src={art.pip}
-          style={{
-            left: px(-shape.pip / 2), top: px(shape.centreY - shape.track.y - shape.pip / 2),
-            width: px(shape.pip), height: px(shape.pip),
-          }}
-        />
-      </motion.span>
+      {/* Filling, the drawing's two ends each show in half the track, so neither cap is squeezed. */}
+      {art.track && fill ? ([0, 1] as const).map((half) => art.track && (
+        <span key={half} aria-hidden style={{ position: 'absolute', top: 0, height: px(shape.track.h), overflow: 'hidden', pointerEvents: 'none',
+          left: half ? '50%' : 0, width: '50%' }}>
+          <Plate src={art.track} style={{ top: 0, height: px(shape.track.h), width: px(shape.track.w),
+            left: half ? `calc(100% - ${px(shape.track.w)}px)` : 0 }} />
+        </span>
+      )) : null}
+      <span ref={travel} aria-hidden style={{ position: 'absolute', top: 0, height: '100%', left: px(from), right: px(tail), pointerEvents: 'none' }}>
+        {Array.from({ length: ticks }, (_, i) => (
+          <Plate
+            key={i}
+            src={art.tick}
+            style={{
+              left: `calc(${(i / Math.max(1, ticks - 1)) * 100}% - ${px(shape.tick / 2)}px)`,
+              top: px(shape.centreY - shape.track.y - shape.tick / 2),
+              width: px(shape.tick), height: px(shape.tick),
+            }}
+          />
+        ))}
+        {/* The knob stands at the value's share of the travel, so it keeps that share at any width; a box
+            as wide as the travel moved by a transform instead would reach past the track and count as
+            overflow in a row that scrolls. */}
+        <motion.span style={{ position: 'absolute', top: 0, width: 0, height: 0, left: glide.percent }}>
+          <Plate
+            src={art.knob}
+            style={{
+              left: px(-shape.knob / 2), top: px(shape.centreY - shape.track.y - shape.knob / 2),
+              width: px(shape.knob), height: px(shape.knob),
+            }}
+          />
+          <Plate
+            src={art.pip}
+            style={{
+              left: px(-shape.pip / 2), top: px(shape.centreY - shape.track.y - shape.pip / 2),
+              width: px(shape.pip), height: px(shape.pip),
+            }}
+          />
+        </motion.span>
+      </span>
       {/* The bubble carries the reading above the track, deaf to the pointer and following the knob without lag. */}
       <AnimatePresence initial={false}>
         {showReading ? (
         <SliderReading
           key="reading"
-          anchor={ref} centre={px(centre)} width={px(shape.track.w)}
+          anchor={ref} share={share} drawn={glide.share} from={px(from)} tail={px(tail)}
           text={valueText ?? String(current)}
         />
         ) : null}
@@ -182,8 +214,13 @@ export function BarSlider({
 }
 
 /** The reading follows the knob outside scroll clips; pictured controls stay inside their preview. */
-function SliderReading({ anchor, centre, width, text }: {
-  anchor: RefObject<HTMLDivElement>; centre: number; width: number; text: string;
+function SliderReading({ anchor, share, drawn, from, tail, text }: {
+  anchor: RefObject<HTMLDivElement>;
+  /** The value's share of the knob's travel, which runs `from` css px past the track's left end to `tail` short of its right. */
+  share: number;
+  /** The knob's drawn share while it glides there. */
+  drawn: MotionValue<number>;
+  from: number; tail: number; text: string;
 }) {
   const pictured = useUiPreview();
   const layer = useRef<HTMLDivElement>(null);
@@ -194,8 +231,11 @@ function SliderReading({ anchor, centre, width, text }: {
     let raf = 0;
     const place = () => {
       const rect = anchor.current ? visualRect(anchor.current) : null;
+      // The track's own width in its local px, current even while its owner resizes it.
+      const width = anchor.current?.offsetWidth ?? 0;
+      const centre = from + drawn.get() * (width - from - tail);
       if (layer.current) {
-        const zoom = rect ? rect.width / width : 0;
+        const zoom = rect && width > 0 ? rect.width / width : 0;
         const style = layer.current.style;
         // An anchor that measures nothing leaves the layer hidden rather than standing at the page origin.
         const visibility = zoom > 0 ? 'visible' : 'hidden';
@@ -213,7 +253,7 @@ function SliderReading({ anchor, centre, width, text }: {
     };
     place();
     return () => cancelAnimationFrame(raf);
-  }, [anchor, centre, width, pictured]);
+  }, [anchor, drawn, from, tail, pictured]);
   const reading = (
     <motion.span
       ref={bubble}
@@ -221,7 +261,7 @@ function SliderReading({ anchor, centre, width, text }: {
       aria-hidden
       {...readingMotion}
       style={{
-        position: 'absolute', left: pictured ? centre : 0, bottom: '100%',
+        position: 'absolute', left: pictured ? `calc(${from}px + ${share} * (100% - ${from + tail}px))` : 0, bottom: '100%',
         translateX: '-50%', marginBottom: 6,
         padding: '2px 8px', borderRadius: radii.pill, background: PLATE,
         pointerEvents: 'none', whiteSpace: 'nowrap',

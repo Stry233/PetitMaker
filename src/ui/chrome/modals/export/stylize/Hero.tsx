@@ -3,13 +3,12 @@
  * model list is read off the key (`use-stylize-connection.ts`); every row stands from the first frame
  * and Start creating stays disabled rather than absent, so a refusal never moves a control.
  */
-import { interactionProfiles, buttonMotion, cursors, font, radii, UNAVAILABLE, shadows } from '../../../../design/styles';
+import { cursors, font, radii, UNAVAILABLE, shadows } from '../../../../design/styles';
 import { DANGER_INK, rgbaOf } from '../../../../design/tokens';
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useMotionValue, useReducedMotionConfig, useSpring, useTransform, type MotionValue } from 'framer-motion';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
-import { useChromeScale } from '../../../../design/scale';
 import { FloatMenu } from '../../../../primitives/FloatMenu';
 import { Spinner } from '../../../../primitives/Spinner';
 import { useT } from '../../../../../i18n/context';
@@ -22,6 +21,10 @@ import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion
 import type { StylizeConnection } from './use-stylize-connection';
 import { visualRect } from '../../../../design/visual-rect';
 import { clientPoint } from '../../../../../platform/device/viewport-space';
+import { useInteractionProfiles } from '../../../../design/input-mode';
+import { STACKED_PREVIEW_HEIGHT, useWindowColumns } from '../../use-window-columns';
+import { WindowBody } from '../../../../primitives/Window';
+import { useNameReveal } from '../../../../primitives/use-name-reveal';
 
 /** The lean's declared spring (`stylize.deck.follow`, curve `stiff`), in the option shape
  *  `useSpring` takes: the same physics the transform's own transition would carry. */
@@ -55,6 +58,8 @@ export function pointerLean(
  *  stand readable on their own, so reduced motion simply leaves the deck still. */
 function Deck() {
   const t = useT();
+  const nextName = useNameReveal(t('stylize.deck_next'));
+  const profiles = useInteractionProfiles();
   const reduced = useReducedMotionConfig() === true;
   const rise = amplitude('stylize.deck.breathe');
   const follow = amplitude('stylize.deck.follow');
@@ -86,10 +91,10 @@ function Deck() {
       onClick={() => setHead((h) => h + 1)}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
+      {...nextName.bind}
       aria-label={t('stylize.deck_next')}
-      title={t('stylize.deck_next')}
-      whileTap={interactionProfiles.toggleTap.whileTap}
-      transition={buttonMotion.transition}
+      whileTap={profiles.toggleTap.whileTap}
+      transition={profiles.action.transition}
       style={{
         position: 'relative', borderRadius: radii.card, background: skin.inset, overflow: 'hidden',
         border: 'none', padding: 0, cursor: cursors.clickable, display: 'block', width: '100%', height: '100%',
@@ -116,6 +121,7 @@ function Deck() {
           );
         })}
       </AnimatePresence>
+      {nextName.bubble}
     </motion.button>
   );
 }
@@ -187,13 +193,14 @@ function Row({ index, children }: { index: number; children: ReactNode }) {
   );
 }
 
+const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 2 };
+
 export function Hero({ conn, onStart, onDismiss }: {
   conn: StylizeConnection;
   onStart: () => void;
   onDismiss: () => void;
 }) {
   const t = useT();
-  const zoom = useChromeScale();
   const [menu, setMenu] = useState<'provider' | 'model' | null>(null);
   const shake = useAnimationControls();
   const reduced = useReducedMotionConfig() === true;
@@ -208,111 +215,128 @@ export function Hero({ conn, onStart, onDismiss }: {
   }, [conn.shakeNonce, reduced, shake]);
 
   const providerName = (id: StylizeProvider['id']) => illustrationProviderName(id, t);
+  // In one column the deck stands above the connection form.
+  const [columns, bodyRef] = useWindowColumns();
+
+  const form = (
+    <>
+      <Row index={0}>
+        <span style={fieldLabel}>{t('stylize.provider')}</span>
+        <FloatMenu
+          aria-label={t('stylize.provider')}
+          row={providerName(conn.provider)}
+          items={STYLIZE_PROVIDERS.map((p) => ({ id: p.id, label: providerName(p.id) }))}
+          activeId={conn.provider}
+          open={menu === 'provider'}
+          onOpen={() => setMenu('provider')}
+          onClose={() => setMenu(null)}
+          onPick={(id) => { conn.setProvider(id as StylizeProvider['id']); setMenu(null); }}
+        />
+      </Row>
+
+      <Row index={1}>
+        <motion.div animate={shake}>
+          <Field label={t('stylize.key')}>
+            <input
+              type="password"
+              value={conn.key}
+              placeholder={t('stylize.key_ph')}
+              onChange={(e) => conn.setKey(e.target.value)}
+              style={{ ...fieldBox, borderColor: conn.status ? DANGER_INK : skin.line }}
+            />
+          </Field>
+        </motion.div>
+      </Row>
+
+      {/* The address row is the custom endpoint's alone. It stays in the tree at zero height so
+          the rows below it never re-mount, and unfolds where the provider needs it. */}
+      <motion.div
+        initial={false}
+        animate={{ height: custom ? 'auto' : 0, opacity: custom ? 1 : 0 }}
+        transition={framerMotion('stylize.address.unfold')}
+        style={{ overflow: 'hidden' }}
+     >
+        <Field label={t('stylize.base_url')}>
+          <input
+            type="text"
+            value={conn.baseUrl}
+            onChange={(e) => conn.setBaseUrl(e.target.value)}
+            style={fieldBox}
+          />
+        </Field>
+      </motion.div>
+
+      <Row index={3}>
+        {conn.modelsState === 'ready' ? (
+          <motion.div
+            key={conn.arrivedNonce}
+            initial={{ boxShadow: `0 0 0 3px ${skin.active}` }}
+            animate={{ boxShadow: `0 0 0 3px ${rgbaOf(skin.active, 0)}` }}
+            transition={framerMotion('stylize.model.arrive')}
+            style={{ borderRadius: radii.md, display: 'flex', flexDirection: 'column', gap: 4 }}
+         >
+            <span style={fieldLabel}>{t('stylize.model')}</span>
+            <FloatMenu
+              aria-label={t('stylize.model')}
+              row={conn.model}
+              items={conn.models.map((id) => ({ id, label: id }))}
+              activeId={conn.model}
+              open={menu === 'model'}
+              onOpen={() => setMenu('model')}
+              onClose={() => setMenu(null)}
+              onPick={(id) => { conn.setModel(id); setMenu(null); }}
+              // The connection takes any id the provider knows, so a model the list lacks can be typed.
+              search={{ label: t('stylize.model_search'), noMatches: t('stylize.model_no_matches'), manual: (id) => t('stylize.model_use', { id }) }}
+            />
+          </motion.div>
+        ) : conn.modelsState === 'unlisted' ? (
+          <Field label={t('stylize.model')}>
+            <input
+              type="text"
+              value={conn.model}
+              placeholder={t('stylize.model_typed_ph')}
+              onChange={(e) => conn.setModel(e.target.value)}
+              style={fieldBox}
+            />
+          </Field>
+        ) : (
+          <>
+            <span style={fieldLabel}>{t('stylize.model')}</span>
+            <StaticRow dim>
+              {conn.modelsState === 'loading' ? (
+                <>
+                  <Spinner size={15} />
+                  <span>{t('stylize.model_loading')}</span>
+                </>
+              ) : null}
+            </StaticRow>
+          </>
+        )}
+      </Row>
+
+      <Row index={4}>
+        <span style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t('stylize.disclosure')}</span>
+      </Row>
+    </>
+  );
 
   return (
     <>
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, paddingTop: 8 }}>
-        <Deck />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center', minHeight: 0, padding: 2 }}>
-          <Row index={0}>
-            <span style={fieldLabel}>{t('stylize.provider')}</span>
-            <FloatMenu
-              aria-label={t('stylize.provider')}
-              row={providerName(conn.provider)}
-              items={STYLIZE_PROVIDERS.map((p) => ({ id: p.id, label: providerName(p.id) }))}
-              activeId={conn.provider}
-              open={menu === 'provider'}
-              onOpen={() => setMenu('provider')}
-              onClose={() => setMenu(null)}
-              onPick={(id) => { conn.setProvider(id as StylizeProvider['id']); setMenu(null); }}
-              zoom={zoom}
-            />
-          </Row>
-
-          <Row index={1}>
-            <motion.div animate={shake}>
-              <Field label={t('stylize.key')}>
-                <input
-                  type="password"
-                  value={conn.key}
-                  placeholder={t('stylize.key_ph')}
-                  onChange={(e) => conn.setKey(e.target.value)}
-                  style={{ ...fieldBox, borderColor: conn.status ? DANGER_INK : skin.line }}
-                />
-              </Field>
-            </motion.div>
-          </Row>
-
-          {/* The address row is the custom endpoint's alone. It stays in the tree at zero height so
-              the rows below it never re-mount, and unfolds where the provider needs it. */}
-          <motion.div
-            initial={false}
-            animate={{ height: custom ? 'auto' : 0, opacity: custom ? 1 : 0 }}
-            transition={framerMotion('stylize.address.unfold')}
-            style={{ overflow: 'hidden' }}
-         >
-            <Field label={t('stylize.base_url')}>
-              <input
-                type="text"
-                value={conn.baseUrl}
-                onChange={(e) => conn.setBaseUrl(e.target.value)}
-                style={fieldBox}
-              />
-            </Field>
-          </motion.div>
-
-          <Row index={3}>
-            {conn.modelsState === 'ready' ? (
-              <motion.div
-                key={conn.arrivedNonce}
-                initial={{ boxShadow: `0 0 0 3px ${skin.active}` }}
-                animate={{ boxShadow: `0 0 0 3px ${rgbaOf(skin.active, 0)}` }}
-                transition={framerMotion('stylize.model.arrive')}
-                style={{ borderRadius: radii.md, display: 'flex', flexDirection: 'column', gap: 4 }}
-             >
-                <span style={fieldLabel}>{t('stylize.model')}</span>
-                <FloatMenu
-                  aria-label={t('stylize.model')}
-                  row={conn.model}
-                  items={conn.models.map((id) => ({ id, label: id }))}
-                  activeId={conn.model}
-                  open={menu === 'model'}
-                  onOpen={() => setMenu('model')}
-                  onClose={() => setMenu(null)}
-                  onPick={(id) => { conn.setModel(id); setMenu(null); }}
-                  zoom={zoom}
-                />
-              </motion.div>
-            ) : conn.modelsState === 'unlisted' ? (
-              <Field label={t('stylize.model')}>
-                <input
-                  type="text"
-                  value={conn.model}
-                  placeholder={t('stylize.model_typed_ph')}
-                  onChange={(e) => conn.setModel(e.target.value)}
-                  style={fieldBox}
-                />
-              </Field>
-            ) : (
-              <>
-                <span style={fieldLabel}>{t('stylize.model')}</span>
-                <StaticRow dim>
-                  {conn.modelsState === 'loading' ? (
-                    <>
-                      <Spinner size={15} />
-                      <span>{t('stylize.model_loading')}</span>
-                    </>
-                  ) : null}
-                </StaticRow>
-              </>
-            )}
-          </Row>
-
-          <Row index={4}>
-            <span style={{ ...roleFont('caption'), color: skin.muted, lineHeight: 1.4 }}>{t('stylize.disclosure')}</span>
-          </Row>
+      {/* Two columns: the deck beside the form, which scrolls alone in a short window. One column: the
+          deck stands above the form and the two scroll together under the head, the buttons below. */}
+      {columns === 2 ? (
+        <div ref={bodyRef} data-columns={columns} style={{ flex: 1, minHeight: 0, display: 'grid', gap: 20, paddingTop: 8, gridTemplateColumns: '1fr 300px' }}>
+          <Deck />
+          <WindowBody contentStyle={{ display: 'flex', flexDirection: 'column', gap: formStyle.gap, justifyContent: 'safe center', minHeight: '100%', boxSizing: 'border-box' }}>{form}</WindowBody>
         </div>
-      </div>
+      ) : (
+        <WindowBody>
+          <div ref={bodyRef} data-columns={columns} style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 8 }}>
+            <div style={{ height: STACKED_PREVIEW_HEIGHT, flex: 'none' }}><Deck /></div>
+            <div style={formStyle}>{form}</div>
+          </div>
+        </WindowBody>
+      )}
 
       <WindowFoot>
         <StatusSlot status={conn.status} busy={conn.verifying} />

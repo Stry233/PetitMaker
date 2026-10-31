@@ -1,5 +1,8 @@
 import { helpAttributes, type HelpTarget } from '../../primitives/help-target';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useFrameZoom } from '../use-frame-zoom';
 import { MapCaption } from './MapCaption';
 import { CAPTION_TOP } from './ToolPill';
 import { useRef, useState, type ReactNode } from 'react';
@@ -24,6 +27,7 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
   helpTarget?: HelpTarget; disabled?: boolean; onChange: (value: T) => void;
 }) {
   const present = useIsPresent();
+  const zoom = useFrameZoom();
   const inactive = disabled || !present;
   // The registry follows preference changes; Framer's positional gate is fixed at mount.
   const transition = { ...useTransition('tool.option.select'), reduceMotion: false };
@@ -45,11 +49,7 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
         style={{ position: 'absolute', left: PAD, top: PAD, bottom: PAD, borderRadius: radii.pill, background: INSET, pointerEvents: 'none' }}/>}
       {options.map((option, index) => {
         const active = value === option.value;
-        return <ActionButton key={option.value} interaction="action" dim="caller" disabled={inactive}
-          aria-label={option.label} aria-pressed={active} title={option.title ?? option.label} onClick={() => { if (!inactive) onChange(option.value); }}
-          style={{ ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', height: PILL_H - 2 * PAD,
-            borderRadius: radii.pill, color: INK, pointerEvents: 'auto', cursor: inactive ? cursors.blocked : cursors.clickable }}>
-          <span style={{ display: 'grid', placeItems: 'center', width: ICON_WIDTH, flex: 'none' }}>{option.glyph}</span>
+        return <OptionButton key={option.value} option={option} active={active} inactive={inactive} onPress={() => { if (!inactive) onChange(option.value); }}>
           {/* Remount once after layout measurement so every animated width starts in pixels before paint. */}
           <motion.span key={measured ? 'measured' : 'measuring'} aria-hidden initial={false}
             animate={{ width: active ? (widths[index] ?? 0) + LABEL_PAD : 0, opacity: active ? 1 : 0 }} transition={transition}
@@ -57,7 +57,8 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
             <BarText size={TEXT.label} style={{ flex: 'none' }}><span ref={element => { words.current[index] = element; }}
               style={{ display: 'block', whiteSpace: 'nowrap' }}>{option.label}</span></BarText>
           </motion.span>
-        </ActionButton>;
+          <TouchReach zoom={zoom} />
+        </OptionButton>;
       })}
     </div>
     {commandId && <ShortcutBadge commandId={commandId} grown/>}
@@ -65,4 +66,20 @@ export function OptionPill<T extends string>({ value, options, label, commandId,
       <BarText onMap size={TEXT.label}>{label}</BarText>
     </MapCaption>
   </div>;
+}
+
+/** One option: its glyph, then `children` (its label, shown while it is the active one). An option
+ *  that shows only its glyph names itself (`useNameReveal`). */
+function OptionButton<T extends string>({ option, active, inactive, onPress, children }: {
+  option: Option<T>; active: boolean; inactive: boolean; onPress: () => void; children: ReactNode;
+}) {
+  const name = useNameReveal(option.label, 'above', option.title ?? option.label);
+  return <ActionButton interaction="action" dim="caller" disabled={inactive}
+    {...name.bind} aria-label={option.label} aria-pressed={active} onClick={onPress}
+    style={{ ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', height: PILL_H - 2 * PAD,
+      borderRadius: radii.pill, color: INK, pointerEvents: 'auto', cursor: inactive ? cursors.blocked : cursors.clickable }}>
+    <span style={{ display: 'grid', placeItems: 'center', width: ICON_WIDTH, flex: 'none' }}>{option.glyph}</span>
+    {children}
+    {active ? null : name.bubble}
+  </ActionButton>;
 }

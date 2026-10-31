@@ -1,164 +1,233 @@
-import { viewportSize } from '../../platform/device/viewport-space';
+import { subscribeViewportSize, viewportSizeSnapshot } from '../../platform/device/viewport-space';
 /**
- * Fixed providers convert design coordinates to CSS pixels. `fittedUiScale` supplies the shared live
- * CSS zoom for chrome and frame; the frame adds its constant authored ratio. The minimum workspace
- * applies to the rendered size without rewriting the user's preferred scale.
+ * The interface's scale in React: the view a surface stands in (window, dock strip, input mode,
+ * arrangement, UI zoom), handed to the one model in `scale-model.ts`, and the zoom a zoomed surface
+ * tells its content it draws at (`DrawnAtProvider`). Nothing here computes a scale of its own.
  */
-import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
-import { readMatch } from '../../platform/device/portrait-signals';
+import { createContext, useContext, useSyncExternalStore, type CSSProperties } from 'react';
 import { useUiPreviewPose } from './preview';
-import { useAnimatedUiZoom, useUiZooming } from './ui-zoom-anim';
+import { touchSizing, useLayoutShape, useTouchMode } from './input-mode';
+import { onUiZoomSpan, uiZoomLive, uiZoomSpan, useSettledUiZoom } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, weightVars } from './text-weight';
 import { UI_ZOOM_MIN, UI_ZOOM_MAX } from '../../platform/storage/prefs';
 import { useLocale } from '../../i18n/context';
+import {
+  NO_DOCK, reachOf, uiScaleOf,
+  type ArrangementRoom, type DockRef, type ScaleView,
+} from './scale-model';
 
-/**
- * The window the fixed layout was judged in; below it the whole interface scales down to the tighter
- * axis. `FIT_FLOOR` keeps a control tappable, and is also what a touch device gets instead of a size
- * boost. A 768×1024 portrait tablet lands at the floor's 0.60, behind a dismissible `PortraitGuard`.
- *
- * Browser page zoom divides the css viewport and multiplies `devicePixelRatio` by the same factor.
- * At or above the reference `frameFit` is pinned at 1, so zoom magnifies the chrome as it does the
- * frame; below it `frameFit` falls by the factor zoom rose by, so the chrome's physical size holds.
- */
-export const FIT_REF = { w: 1280, h: 800 } as const;
-export const FIT_FLOOR = 0.6;
-/** The floor on a touch-primary device: a short landscape screen gives up some fingertip room for workspace. */
-const FIT_FLOOR_TOUCH = 0.5;
-
-/** The fit floor for the primary pointer. */
-function fitFloorFor(touchPrimary: boolean): number {
-  return touchPrimary ? FIT_FLOOR_TOUCH : FIT_FLOOR;
-}
-
-/**
- * 1 at or above `FIT_REF`, the tighter axis's share below it, never under `FIT_FLOOR`.
- *
- * `refWiden` widens the reference window, which is how a surface that takes a strip of the viewport
- * for itself is paid for: the interface then fits into what is left of the window at one factor,
- * itself included. It is the strip's width at fit 1, and the solved form of the circular
- * definition — the strip is drawn at the fit, so the room left for the reference window is
- * `vw - strip x fit`, which is `fit = vw / (FIT_REF.w + refWiden)` — so the answer needs no
- * iteration and the strip and the interface cannot end up at two different sizes. Today the one
- * caller is the assistant's docked panel (`shell/panel-frame.ts:PINNED_DOCK_REF_W`), handed in
- * rather than named here: the dock's width is the frame's own arithmetic, and this file is below it.
- */
-function frameFit(vw: number, vh: number, refWiden = 0, floor = FIT_FLOOR): number {
-  return Math.max(floor, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
-}
-
-/** Minimum workspace in chrome pixels, after the shell folds its controls and scrolls its rows. */
-const MIN_UI_ROOM = { w: 700, h: 525 } as const;
-
+export {
+  FIT_FLOOR, FIT_REF, MIN_UI_ROOM, NO_DOCK, TOUCH_TARGET, besideDock, fittedUiScale, liftOf, reachOf, reachShareOf, spacedOf, touchReachPx, uiScaleOf,
+  type ArrangementRoom, type DockAxis, type DockRef, type ScaleView,
+} from './scale-model';
 export { UI_ZOOM_MIN, UI_ZOOM_MAX };
 
-/** Fit the requested size without changing the saved preference, including the dock's own width. */
-export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0, floor = FIT_FLOOR): number {
-  return Math.min(
-    frameFit(vw, vh, refWiden * uiZoom, floor) * uiZoom,
-    vw / (MIN_UI_ROOM.w + refWiden),
-    vh / MIN_UI_ROOM.h,
-  );
+/** One step of the UI scale, for the Settings slider and the Ctrl+(+/−) shortcut alike. */
+export const UI_SCALE_STEP = 0.05;
+
+/** The UI scale's stops for a scale whose default is `anchor`: the default plus or minus whole steps,
+ *  from the lowest at or above `UI_ZOOM_MIN` to the highest at or below `reach`, never short of the
+ *  default, so every default sits on its own track. */
+export function scaleLattice(anchor: number, reach: number): { lo: number; hi: number; snap: (z: number) => number } {
+  const at = (k: number) => +(anchor + k * UI_SCALE_STEP).toFixed(2);
+  const lo = at(-Math.floor((anchor - UI_ZOOM_MIN) / UI_SCALE_STEP + 1e-6));
+  const hi = Math.max(at(Math.max(0, Math.floor((reach - anchor) / UI_SCALE_STEP + 1e-6))), +(lo + UI_SCALE_STEP).toFixed(2));
+  const snap = (z: number) => Math.min(hi, Math.max(lo, at(Math.round((z - anchor) / UI_SCALE_STEP))));
+  return { lo, hi, snap };
 }
 
-/** The largest UI zoom that still enlarges the fitted scale in this window; past it the workspace minimum caps the scale. */
-export function reachableUiZoom(vw: number, vh: number, refWiden = 0, floor = FIT_FLOOR): number {
-  const cap = Math.min(vw / (MIN_UI_ROOM.w + refWiden), vh / MIN_UI_ROOM.h);
-  const unbounded = (zoom: number) => frameFit(vw, vh, refWiden * zoom, floor) * zoom;
-  if (unbounded(UI_ZOOM_MAX) <= cap) return UI_ZOOM_MAX;
-  let lo = UI_ZOOM_MIN;
-  let hi = UI_ZOOM_MAX;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (unbounded(mid) < cap) lo = mid; else hi = mid;
-  }
-  return hi;
-}
-
-/**
- * How much the reference window is widened by right now, in reference px: the strip some surface
- * has taken out of the viewport, or 0 while none has.
- *
- * A context rather than a constant, because the number belongs to a layer above this one and this
- * one is the floor every scaling answer comes from. The provider stands over the whole app (`App`),
- * so the frame and the chrome read one answer — a fit either of them derived on its own is the
- * drift this file exists to prevent.
- */
-const DockRefContext = createContext(0);
+/** The strip a dock has taken (`DockRef`), provided over the whole app (`App`) so the frame and the
+ *  chrome read one answer. */
+const DockRefContext = createContext<DockRef>(NO_DOCK);
 
 export const DockRefProvider = DockRefContext.Provider;
 
-export function useDockRef(): number {
+export function useDockRef(): DockRef {
   return useContext(DockRefContext);
 }
 
-/** The live window, re-read on resize. Two numbers rather than one object: a drag-resize fires this
- *  many times a second, and an object would be a new identity (and a re-render) on every one of them
- *  even where neither axis moved. Exported for the one question that must not go through the fit:
- *  whether there is room to dock, which is what decides the widening the fit reads. */
+/** The frame's arrangement room (`shell/panel-frame.ts:ARRANGEMENT_ROOM`), provided by the app root; a
+ *  subtree mounted without the frame (its own React root, a test) has none and sizes by the fit alone. */
+const ArrangementRoomContext = createContext<ArrangementRoom | null>(null);
+
+export const ArrangementRoomProvider = ArrangementRoomContext.Provider;
+
+const SERVER_SIZE = { width: 1280, height: 800 };
+const serverSize = () => SERVER_SIZE;
+
+/** The live window, from the one shared reading (`platform/device/viewport-space.ts:subscribeViewportSize`),
+ *  so a resize re-renders every reader in one commit. Exported for the one question that must not go
+ *  through the fit: whether there is room to dock, which is what decides the widening the fit reads. */
 export function useViewportSize(): { w: number; h: number } {
   const posed = useUiPreviewPose()?.viewport;
-  const [w, setW] = useState(() => (typeof window === 'undefined' ? FIT_REF.w : viewportSize().width));
-  const [h, setH] = useState(() => (typeof window === 'undefined' ? FIT_REF.h : viewportSize().height));
-  useEffect(() => {
-    const onResize = () => { setW(viewportSize().width); setH(viewportSize().height); };
-    window.addEventListener('resize', onResize);
-    window.visualViewport?.addEventListener('resize', onResize);
-    onResize();
-    return () => { window.removeEventListener('resize', onResize); window.visualViewport?.removeEventListener('resize', onResize); };
-  }, []);
+  const { width, height } = useSyncExternalStore(subscribeViewportSize, viewportSizeSnapshot, serverSize);
   // A pictured shell lays itself out for the window its figure poses, so every fit and plan
   // downstream of this reading agrees with the box the picture is drawn in.
-  return posed ?? { w, h };
+  return posed ?? { w: width, h: height };
 }
 
-const COARSE_POINTER = '(pointer: coarse)';
+/** The inputs that move on their own clock: whether the sizes are touch mode's, the UI zoom, and, while
+ *  a dock slides or its seam is held, the strip it takes on this frame. */
+export interface ScaleInputs { touch: boolean; uiZoom: number; dock?: DockRef }
 
-/** A fingertip needs this many visual px per control, whatever the chrome scale. */
-export const TOUCH_TARGET = 44;
-
-/** The zoom a transient surface of `control`-px controls draws at: the chrome's, raised on a
- *  touch-primary device until each control reaches `TOUCH_TARGET` on screen. */
-export function touchFloorZoom(chrome: number, touch: boolean, control: number): number {
-  return touch ? Math.max(chrome, TOUCH_TARGET / control) : chrome;
+/** The dock's strip on this frame, published by the shell's dock driver (`shell/use-dock.ts`): one
+ *  page-wide registration, so a writer or a gliding surface here hears the slide the frame hears. */
+export interface LiveDock {
+  /** The strip as it stands on this frame. */
+  now(): DockRef;
+  /** Whether it is moving: a slide between its ends, or a held seam. */
+  moving(): boolean;
+  /** Calls `tell` on each frame it moves and when it lands. */
+  subscribe(tell: () => void): () => void;
 }
 
-/** Whether the primary pointer is a fingertip, live as a mouse is attached or removed. */
-export function useTouchPrimary(): boolean {
-  const [touch, setTouch] = useState(() => readMatch(COARSE_POINTER));
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia(COARSE_POINTER);
-    const update = () => setTouch(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-  return touch;
+let liveDock: LiveDock | null = null;
+
+/** Registers the page's live dock; returns the unregister. */
+export function registerLiveDock(source: LiveDock): () => void {
+  liveDock = source;
+  if (writers.size > 0) { unwatch?.(); unwatch = null; watchWriters(); }
+  flushWriters();
+  return () => {
+    if (liveDock !== source) return;
+    liveDock = null;
+    if (writers.size > 0) { unwatch?.(); unwatch = null; watchWriters(); }
+  };
 }
 
-/** The live fit floor for this device. */
-export function useFitFloor(): number {
-  return fitFloorFor(useTouchPrimary());
-}
-
-/** The shared live fit, normalized so callers can multiply by the animated UI preference. */
-export function useViewportFit(): number {
+/** The view this render stands in, at the settled inputs or the given ones (`useGlidingScale`). The
+ *  arrangement's room applies in touch mode only. */
+export function useScaleView(at?: ScaleInputs): ScaleView {
   const { w, h } = useViewportSize();
-  const widen = useDockRef();
-  const zoom = useAnimatedUiZoom();
-  const floor = useFitFloor();
-  return fittedUiScale(w, h, zoom, widen, floor) / zoom;
+  const settled: ScaleInputs = { touch: useTouchMode(), uiZoom: useSettledUiZoom() };
+  const { touch, uiZoom, dock } = at ?? settled;
+  const room = useContext(ArrangementRoomContext);
+  const settledDock = useDockRef();
+  return { vw: w, vh: h, dock: dock ?? settledDock, touch, uiZoom, upright: useLayoutShape() === 'portrait', room: touch ? room : null };
+}
+
+/** The settled view's reach (`scale-model.ts:reachOf`), where the Settings slider and the shortcuts end. */
+export function useScaleReach(): number {
+  return reachOf(useScaleView());
+}
+
+/** The zoom the nearest zoomed surface draws at (the frame, the docked desk, a window, a lifted
+ *  card), which it tells its content so a weight, a scroll row or a hit area inside reads the zoom it
+ *  actually stands under rather than choosing a scale of its own. */
+const SurfaceZoomContext = createContext<number | null>(null);
+
+export const SurfaceZoomProvider = SurfaceZoomContext.Provider;
+
+/** The zoom this render stands under: its surface's, or the chrome scale outside every surface. */
+export function useSurfaceZoom(): number {
+  const surface = useContext(SurfaceZoomContext);
+  const chrome = useChromeScale();
+  return surface ?? chrome;
+}
+
+/** The scale inputs this frame, for a writer outside a render: the live sizing and UI zoom, which
+ *  equal the settled ones at rest. */
+export function liveScaleNow(): ScaleInputs {
+  const dock = liveDock?.moving() ? liveDock.now() : undefined;
+  return { touch: touchSizing.get(), uiZoom: uiZoomLive.get(), ...(dock ? { dock } : {}) };
+}
+
+const writers = new Set<() => void>();
+let unwatch: (() => void) | null = null;
+
+function flushWriters(): void {
+  for (const write of [...writers]) write();
+}
+
+function watchWriters(): void {
+  const offs = [touchSizing.subscribe(flushWriters), uiZoomLive.on('change', flushWriters), onUiZoomSpan(flushWriters)];
+  if (liveDock) offs.push(liveDock.subscribe(flushWriters));
+  unwatch = () => { for (const off of offs) off(); };
+}
+
+/** Calls `write` once a frame while the UI zoom glides (its follow moves it once a frame) or the dock
+ *  moves, when either starts or ends, and when the sizing steps with the mode (synchronously, so a
+ *  start or a landing is written before the paint), so a writer holds its styles on the live scale
+ *  while React renders only the settled one. */
+export function onLiveScale(write: () => void): () => void {
+  writers.add(write);
+  if (!unwatch) watchWriters();
+  return () => {
+    writers.delete(write);
+    if (writers.size > 0 || !unwatch) return;
+    unwatch();
+    unwatch = null;
+  };
+}
+
+let gliding: ScaleInputs = { touch: false, uiZoom: 1 };
+/** The live inputs while the UI zoom glides or the dock moves, as one snapshot replaced only when they
+ *  moved; null at rest. */
+function readGliding(): ScaleInputs | null {
+  if (!scaleMovingNow() && !liveDock?.moving()) return null;
+  const now = liveScaleNow();
+  if (now.touch !== gliding.touch || now.uiZoom !== gliding.uiZoom
+    || now.dock?.axis !== gliding.dock?.axis || now.dock?.size !== gliding.dock?.size) gliding = now;
+  return gliding;
+}
+const glidingAtRest = () => null;
+
+const hearNothing = () => () => {};
+
+/**
+ * The scale inputs a surface standing on the window renders at so it glides with the frame: the live
+ * ones, re-rendering it once a frame while the UI zoom glides or the dock moves. For the open surfaces whose zoom, placement
+ * or caps must move with the frame; everything else renders the settled scale. A surface mounted
+ * while it shows nothing passes `active` false and reads the settled inputs, as a pictured one does.
+ */
+export function useGlidingScale(active = true): ScaleInputs {
+  const live = useSyncExternalStore(active ? onLiveScale : hearNothing, readGliding, glidingAtRest);
+  const settled = { touch: useTouchMode(), uiZoom: useSettledUiZoom() };
+  return useUiPreviewPose() || !active || !live ? settled : live;
+}
+
+/** The chrome scale (`useChromeScale`) at the gliding inputs (`useGlidingScale`). */
+export function useGlidingChromeScale(active = true): number {
+  return uiScaleOf(useScaleView(useGlidingScale(active)));
+}
+
+const atRest = () => null;
+
+/** The UI zoom's glide, from where its follow last retargeted to its target, re-read only when it
+ *  starts, retargets or ends; null at rest. The input mode's sizing never glides: it steps with the
+ *  mode, and the chrome's morph carries the re-size (`shell/ChromeMorph.tsx`). */
+export function useScaleSpan(): { from: number; to: number } | null {
+  return useSyncExternalStore(onUiZoomSpan, uiZoomSpan, atRest);
+}
+
+/** How much of the UI zoom's glide is still to run, 1 at its start and 0 where it lands; null at rest.
+ *  For a motion that must land with the glide. */
+export function glideRemainingNow(): number | null {
+  const zoom = uiZoomSpan();
+  if (!zoom) return null;
+  return zoom.to !== zoom.from ? Math.min(1, Math.abs(zoom.to - uiZoomLive.get()) / Math.abs(zoom.to - zoom.from)) : 0;
+}
+
+/** Whether the UI zoom glides right now, for a writer outside a render. */
+export function scaleMovingNow(): boolean {
+  return uiZoomSpan() !== null;
+}
+const stillNow = () => false;
+
+/** True only while the UI zoom glides. Elements gate their Framer `layout` animations and px rounding
+ *  off during it, so nothing trails or jitters while the scale moves each frame. Flips at most twice
+ *  per glide. */
+export function useScaleMoving(): boolean {
+  return useSyncExternalStore(onUiZoomSpan, scaleMovingNow, stillNow);
 }
 
 /**
- * Chrome scale: the window's fit times the user's UI zoom — the frame's own factor without the
- * frame's page zoom, so 1 means "the size the modals and corner controls were designed at" and the
- * chrome:frame ratio is a constant. Applied as css `zoom` (crisp layout scaling; browsers without
- * `zoom` render at 1, a graceful no-op).
+ * The chrome scale: the one scale (`scale-model.ts:uiScaleOf`) in the settled view, so 1 means "the
+ * size the modals and corner controls were designed at", and the frame draws at `units.ts:ZOOM` times
+ * it. Applied as css `zoom` (crisp layout scaling; browsers without `zoom` render at 1).
  */
 export function useChromeScale(): number {
-  return useViewportFit() * useAnimatedUiZoom();
+  return uiScaleOf(useScaleView());
 }
 
 /** The exact-ratio query to watch. A `resolution` query that does not match the ratio it was built
@@ -170,29 +239,40 @@ function dprQuery(ratio: number): MediaQueryList {
   return window.matchMedia(`(-webkit-min-device-pixel-ratio: ${ratio}) and (-webkit-max-device-pixel-ratio: ${ratio})`);
 }
 
-/** The display's own pixel multiplier, re-read on the media change that moves it (browser page zoom
- *  moves `devicePixelRatio`, and a window dragged between screens changes it outright). Without
- *  `matchMedia` there is no such event to hang off, so the first reading stands. */
-export function useDevicePixelRatio(): number {
-  const [dpr, setDpr] = useState(() => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1));
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
+const readDpr = () => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
+const serverDpr = () => 1;
+const dprListeners = new Set<() => void>();
+let unwatchDpr: (() => void) | null = null;
+
+/** One media watch for every reader, armed while any listens. The query matches only at exactly the
+ *  ratio it was built for, so it changes the moment the ratio does, which is the one event the
+ *  platform gives for a dpr move; it is re-armed at the new ratio each time. */
+function subscribeDpr(listener: () => void): () => void {
+  dprListeners.add(listener);
+  if (!unwatchDpr && typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     let cancel = () => {};
     const watch = () => {
-      const ratio = window.devicePixelRatio || 1;
-      setDpr(ratio);
-      // The query matches only at exactly this ratio, so it changes the moment the ratio does —
-      // which is the one event the platform gives for a dpr move. Re-armed at the new ratio each
-      // time, since a single query can only ever report leaving the value it was built for.
-      const mq = dprQuery(ratio);
-      const onChange = () => { cancel(); watch(); };
+      const mq = dprQuery(readDpr());
+      const onChange = () => { cancel(); watch(); for (const tell of [...dprListeners]) tell(); };
       mq.addEventListener('change', onChange);
       cancel = () => mq.removeEventListener('change', onChange);
     };
     watch();
-    return () => cancel();
-  }, []);
-  return dpr;
+    unwatchDpr = () => cancel();
+  }
+  return () => {
+    dprListeners.delete(listener);
+    if (dprListeners.size > 0 || !unwatchDpr) return;
+    unwatchDpr();
+    unwatchDpr = null;
+  };
+}
+
+/** The display's own pixel multiplier, re-read on the media change that moves it (browser page zoom
+ *  moves `devicePixelRatio`, and a window dragged between screens changes it outright). Without
+ *  `matchMedia` nothing announces a move, so a reader takes it on its next render. */
+export function useDevicePixelRatio(): number {
+  return useSyncExternalStore(subscribeDpr, readDpr, serverDpr);
 }
 
 /** Whether the live locale is written in a script that fills its em (the dense weight floors). */
@@ -201,21 +281,22 @@ export function useDenseScript(): boolean {
 }
 
 /**
- * `(nominalWeight, cssPx) => weight` for a surface standing under the chrome zoom — a modal, a
- * window, a floating popover. Reach for it where a site's size is its own rather than a role's;
- * anything on the role table inherits its answer from `useWeightVars` instead.
+ * `(nominalWeight, cssPx) => weight` at the zoom this render stands under (`useSurfaceZoom`). Reach
+ * for it where a site's size is its own rather than a role's; anything on the role table inherits its
+ * answer from `useWeightVars` instead.
  */
 export function useReadableWeight(denseOverride?: boolean): (nominal: number, cssPx: number) => number {
-  const zoom = useChromeScale();
+  const zoom = useSurfaceZoom();
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
   return (nominal, cssPx) => readableWeight(nominal, cssPx * zoom, denseOverride ?? dense, dpr);
 }
 
-/** Every role's weight resolved for the chrome zoom times `fit`, the zoom the surface itself adds,
- *  as the custom properties a surface publishes. Spread onto the element carrying that `zoom`. */
+/** Every role's weight resolved for the zoom this render stands under times `fit`, the zoom the
+ *  surface itself adds, as the custom properties a surface publishes. Spread onto the element carrying
+ *  that `zoom`. */
 export function useWeightVars(fit = 1): CSSProperties {
-  return weightVars(useChromeScale() * fit, useDevicePixelRatio(), useDenseScript());
+  return weightVars(useSurfaceZoom() * fit, useDevicePixelRatio(), useDenseScript());
 }
 
 const ScaleContext = createContext<number>(0.56);
@@ -229,12 +310,12 @@ function useScale(): number {
 /** px helpers bound to the current scale. */
 export function usePx() {
   const scale = useScale();
-  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  const dpr = useDevicePixelRatio();
   // While the UI zoom animates, px() snaps to integers at rounding boundaries
   // that each element crosses at a different scale, so the layout jitters.
   // Drop the rounding mid-zoom (subpixel = smooth); restore it when the zoom
   // settles (crisp static layout). One flip per zoom, not per frame.
-  const zooming = useUiZooming();
+  const zooming = useScaleMoving();
   // Rounding to whole device pixels, not CSS ones. Snapping is what keeps edges crisp, but the CSS
   // pixel is not the grid the screen actually has: at a fractional dpr — which is every page-zoom
   // step — rounding to it lands elements on a grid that browser zoom moves underneath, so the whole

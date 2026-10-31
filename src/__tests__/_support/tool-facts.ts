@@ -9,6 +9,7 @@ export function stubFacts(write: Iterable<string> = [], wide: Iterable<string> =
   return {
     access: (name) => (wides.has(name) ? 'wide' : writes.has(name) ? 'write' : 'read'),
     verifies: TOOL_FACTS.verifies,
+    sketches: TOOL_FACTS.sketches,
     footprint: TOOL_FACTS.footprint,
     guides: TOOL_FACTS.guides,
   };

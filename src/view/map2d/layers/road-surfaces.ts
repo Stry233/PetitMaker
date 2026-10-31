@@ -65,21 +65,24 @@ export class RoadSurfaces {
 
   private repaint = (): void => this.host.requestRender();
 
-  /** Queue a road-surface rebuild, coalesced to one per frame; a stroke announces several
-   *  objects per command and every one lands here. */
+  /** Queue a road-surface rebuild for the next frame the view paints (`flushQueued`), coalesced;
+   *  a stroke announces several objects per command and every one lands here. */
   schedule(): void {
     if (this.refreshQueued) return;
     this.refreshQueued = true;
-    requestAnimationFrame(() => this.flush());
     this.host.requestRender();
+  }
+
+  /** The queued rebuild, if any: a view hidden under 3D paints nothing, so it rebuilds once shown. */
+  flushQueued(): void {
+    if (this.refreshQueued) this.flush();
   }
 
   /** Rebuild the road surfaces now. Unchanged regions keep their Graphics; changed ones redraw;
    *  gone ones drop. */
   flush(): void {
     this.refreshQueued = false;
-    // A capture flushes synchronously and throws its world away; the frame its sync had queued
-    // still arrives, with nothing left to draw into (`repaintMaterial` guards the same way).
+    // A world torn down with a rebuild queued has nothing left to draw into.
     if (this.host.container().destroyed) return;
     const gridState = this.host.state();
     if (!gridState) return;

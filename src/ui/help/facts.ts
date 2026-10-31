@@ -22,8 +22,8 @@ import { CANDIDATES, CONTRAST, CORRIDOR, MIN_ELEVATION, RICHNESS, SEED_DIGITS, S
 import { DRAWN_SEED_MAX, MAZE_MAX_ELEVATION } from '../../tools/generation/facts';
 import { BRUSH_SIZE } from '../../state/editing/edit-mode';
 import { RECENT_HISTORY_STEPS } from '../../io/export/facts';
-import { UI_ZOOM_DEFAULT, UI_ZOOM_MIN } from '../../platform/storage/prefs';
-import { UI_SCALE_STEP } from '../chrome/modals/settings/UiScaleSlider';
+import { TOUCH_UI_ZOOM_DEFAULT, TOUCH_WIDE_UI_ZOOM_DEFAULT, UI_ZOOM_DEFAULT, UI_ZOOM_MAX, UI_ZOOM_MIN } from '../../platform/storage/prefs';
+import { scaleLattice, UI_SCALE_STEP } from '../design/scale';
 import { MAX_SHOTS, MIN_SHOTS } from '../../view/map3d/capture/shot-list';
 import { CREEP_FACTOR, RUN_FACTOR } from '../../view/interaction/use-view-shortcuts';
 import { CUSTOM_PROMPT_MAX, STYLIZE_PROVIDERS } from '../../pipelines/stylize/facts';
@@ -125,6 +125,9 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     uiScaleMin: percent(UI_ZOOM_MIN),
     uiScaleStep: percent(UI_SCALE_STEP),
     uiScaleDefault: percent(UI_ZOOM_DEFAULT),
+    uiScaleTouchDefault: percent(TOUCH_UI_ZOOM_DEFAULT),
+    uiScaleTouchWideDefault: percent(TOUCH_WIDE_UI_ZOOM_DEFAULT),
+    uiScaleTouchMin: percent(scaleLattice(TOUCH_UI_ZOOM_DEFAULT, UI_ZOOM_MAX).lo),
     minShots: MIN_SHOTS,
     maxShots: MAX_SHOTS,
     customPromptMax: CUSTOM_PROMPT_MAX,

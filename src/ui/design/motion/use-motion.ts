@@ -3,10 +3,10 @@ import { useReducedMotionConfig } from 'framer-motion';
 import { beatOf, type BeatTarget, type ScoreId } from './choreography';
 import { MOTIONS, type MotionId } from './registry';
 
-/** Informing state remains available when decorative motion is disabled. */
-export function useMotionAllowed(id: MotionId): boolean {
-  const reduced = useReducedMotionConfig();
-  return !reduced || MOTIONS[id].tier === 'inform';
+/** Whether `id` plays: under reduced motion no tier does, as `useTransition` lands it at once. Named
+ *  by id so a caller's gate reads as the motion it guards. */
+export function useMotionAllowed(_id: MotionId): boolean {
+  return !useReducedMotionConfig();
 }
 
 /** The one Framer adapter for a registry motion: reduced motion drops travel and repeats (callers

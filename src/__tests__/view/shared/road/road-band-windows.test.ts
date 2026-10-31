@@ -1,4 +1,7 @@
-/** Road material bands cut into map-grid windows: equal to a full recompute after any edit, tiling the single-pass bands, and reused by both views across rebuilds. */
+/**
+ * Road material bands cut into map-grid windows: equal to a full recompute after any edit, tiling
+ * the single-pass bands, and reused by both views across rebuilds.
+ */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import ClipperLib from 'clipper-lib';
 import {

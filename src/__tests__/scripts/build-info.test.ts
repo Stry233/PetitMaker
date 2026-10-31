@@ -1,13 +1,7 @@
 /**
- * The build number has one source: the committed `build-info.json`, stamped from the
- * repository that owns it. A build reads that file and nothing else.
- *
- * Deriving it per build (`git rev-list --count HEAD` at build time) is right only
- * inside the full-history private repo and wrong everywhere else without saying so:
- * a shallow clone (CI's default checkout) counts the fetch depth, a tarball or
- * Docker copy without `.git` falls back to 0, and the public-repo export carries a
- * fresh history that starts over at 1. These tests pin the properties that make the
- * number survive being copied, exported, shallow-cloned, and re-hosted.
+ * The build number has one source, the committed `scripts/build-info.json`, stamped in the repository that
+ * owns it. A count taken at build time would be the fetch depth in a shallow clone, 0 without
+ * `.git`, and 1 in the public export's fresh history.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -56,8 +50,7 @@ describe('what a build reads', () => {
   });
 
   it('reads the stamp and NOTHING else — no env, no git, so a host cannot supply its own', () => {
-    // The deps surface is the whole contract: if resolution ever grew another input,
-    // a deployment could report a number this repository never produced.
+    // Another input would let a deployment report a number this repository never produced.
     expect(Object.keys(resolveBuildInfo({ readStamp: () => STAMP })).sort()).toEqual(['info', 'stamped']);
     expect(resolveBuildInfo.length).toBe(1);
     const core = readFileSync('scripts/build-info-core.mts', 'utf8');
@@ -98,8 +91,7 @@ describe('stamping is the only writer, and only in the owning repository', () =>
   });
 
   it('refuses to LOWER the number, so a fresh or squashed history cannot clobber it', () => {
-    // Running `npm run stamp` inside the public export (or after a squashing
-    // migration) would otherwise replace 1479 with 1.
+    // Stamping in the public export or after a squash would replace 1479 with 1.
     expect(() => stampFromGit(FRESH_HISTORY, parseStamp(STAMP)))
       .toThrow(/refusing to lower the build number \(committed 1479, this history gives 1\)/);
     // Moving forward in the owning repository is accepted.
@@ -178,9 +170,8 @@ describe('version numbering', () => {
   });
 
   it('shows the version the tree WOULD be released as, once a release is on record', () => {
-    // The point of recording it: a dev build has to sort above the release it descends from, and
-    // package.json's own minor does not move, so `0.1.<build>-dev` sank below `0.3.2` as soon as
-    // the third sync happened. The next sync's minor is one past the last one's, so this cannot.
+    // package.json's minor does not move, so a dev build takes the minor after the last release to
+    // sort above it.
     const dev = resolveVersion({
       pkgVersion: '0.1.0', buildNumber: '1747',
       lastRelease: { version: '0.3.2', buildNumber: '1718' },
@@ -190,8 +181,7 @@ describe('version numbering', () => {
   });
 
   it('falls back rather than throwing when the tree is BEHIND the last release', () => {
-    // Building an old commit: `nextReleaseVersion` refuses to count backwards, and a version is
-    // still needed. The fallback is truthful about a tree that is behind.
+    // On an old commit `nextReleaseVersion` refuses to count backwards, so the package series stands in.
     expect(resolveVersion({
       pkgVersion: '0.1.0', buildNumber: '1000',
       lastRelease: { version: '0.3.2', buildNumber: '1718' },
@@ -199,9 +189,7 @@ describe('version numbering', () => {
   });
 
   it('carries the recorded release through a re-stamp', () => {
-    // The dev site stamps in its own runner on every deploy. A stamp that rewrote the file from
-    // git alone would drop the record there, and the dev version would sink back below the
-    // release on the very build that is supposed to show it.
+    // The dev site re-stamps on every deploy; losing the record would sink its version below the release.
     const git = (cmd: string): string | null =>
       cmd.includes('rev-list') ? '1900'
       : cmd.includes('rev-parse --short') ? 'abc1234'

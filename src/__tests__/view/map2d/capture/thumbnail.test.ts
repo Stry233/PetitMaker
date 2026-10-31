@@ -4,7 +4,7 @@
  * There is nothing here about what a map looks like, and that is the point: the picture is taken by
  * the real 2D renderer over the candidate's own grid, so the colours, the trims and the icons are
  * the map's own and a test restating them would be a second opinion about one drawing. What is
- * still this module's own is what the capture cannot do for itself — refusing to invent a picture
+ * still this module's own is what the capture cannot do for itself: refusing to invent a picture
  * where there is no renderer to take one, choosing the cells a card is framed on when a painted
  * region is what the run applies to, and centring what comes back in more sea when that frame is
  * not the card's shape.

@@ -29,7 +29,7 @@ function paintCell(world: World, coord: MacroCoord, elevation: number): boolean 
   return world.executor.execute(cmd).success;
 }
 
-// A 20x10 block of plain grass on the hexia template, clear of the plaza — a
+// A 20x10 block of plain grass on the hexia template, clear of the plaza: a
 // real drag's worth of cells for the stroke benches below.
 const BLOCK_ORIGIN = { x: 19, y: 7 };
 const BLOCK_W = 20, BLOCK_H = 10;
@@ -86,9 +86,8 @@ describe.runIf(PERF)('perf: core commands', () => {
 
   it('stroke landing on the dense generated map', async () => {
     const island = denseIsland();
-    // Eligible cells (plain grass, no object, no locked layer over it) are a structural fact of the
-    // fixture itself — probed once against a scratch clone via validatePre (non-mutating), then
-    // reused as a fixed set every sample paints against its own fresh clone.
+    // Eligible cells (plain grass, no object, no locked layer over it) are a fact of the fixture, so
+    // they are probed once on a scratch clone via validatePre and every sample paints its own clone.
     const probe = cloneWorld(island);
     const cells: MacroCoord[] = [];
     const { width, height } = probe.state.template;

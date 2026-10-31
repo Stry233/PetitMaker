@@ -1,11 +1,10 @@
 /*
- * V-PLACE-BLOCK over a Γ fillet (#18): a tree standing on the ground beside a 1-layer mountain
- * refused the mountain's notch its fillet, because the rule judged the fillet by its whole cell.
+ * V-PLACE-BLOCK judges a Γ fillet by its corner quadrant, so a tree beside a 1-layer mountain does not
+ * stop the notch from taking its fillet.
  *
- * The geometry is the reported map, minimised: mountain@1 at (11,3), (12,3), (12,4) wraps the
- * empty cell (11,4) at its TR corner; the tree stands at (10,4). Terrain sits half a tile up-left
- * of the object grid, so cell (11,4) spans [10.5, 11.5] x [3.5, 4.5] and the tree's [10, 11] x
- * [4, 5] does overlap it — but only in its BL quadrant, three quadrants away from the TR fillet.
+ * Mountain@1 at (11,3), (12,3), (12,4) wraps the empty cell (11,4) at its TR corner; the tree stands
+ * at (10,4). Terrain sits half a tile up-left of the object grid, so cell (11,4) spans
+ * [10.5, 11.5] x [3.5, 4.5] and the tree's [10, 11] x [4, 5] overlaps only its BL quadrant.
  */
 import { describe, it, expect } from 'vitest';
 import { EventBus } from '../../core/commands/event-bus';
@@ -20,7 +19,7 @@ import { type EditorEvents } from '../../state/editing/events';
 import { cell, point } from '../_support/grid';
 import { createExecutor } from '../../state/executor';
 
-/** The reported notch: an L of mountain@1 wrapping the empty cell (11,4) at its TR corner. */
+/** The notch: an L of mountain@1 wrapping the empty cell (11,4) at its TR corner. */
 function notchState(): GridState {
   const state = makeState(20, 20);
   setTerrain(state, 11, 3, TerrainType.Mountain, 1);
@@ -60,8 +59,8 @@ function blockErrors(state: GridState, cmd: TrimCornersCommand): ValidationError
 
 describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not its cell', () => {
   it('a 1x1 object blocks exactly the two-by-two of quadrants it covers', () => {
-    // The tree at (10,4) covers the BR quadrant of cell (10,4), the BL of (11,4),
-    // the TR of (10,5) and the TL of (11,5) — together exactly its own footprint.
+    // The tree at (10,4) covers the BR quadrant of (10,4), the BL of (11,4), the TR of (10,5) and the
+    // TL of (11,5).
     const blocked: Record<string, number> = { '10,4': 3, '11,4': 2, '10,5': 1, '11,5': 0 };
     for (const [key, blockedCorner] of Object.entries(blocked)) {
       const [x, y] = key.split(',').map(Number) as [number, number];
@@ -75,9 +74,8 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   });
 
   it('a patch RAISING a hidden block is judged by the whole cell', () => {
-    // Materialising a patch over a real lower block carries 'square' on the corners it does not
-    // fillet, and those draw at the new tier too — the notch's whole silhouette rises. Every
-    // quadrant is new mass there, so the tree in any one of them still refuses it.
+    // A patch over a real lower block draws its 'square' corners at the new tier too, so every
+    // quadrant is new mass and a tree in any of them refuses it.
     const state = notchState();
     setTerrain(state, 11, 4, TerrainType.Mountain, 1);   // the hidden lower block in the notch
     addTree(state, 10, 4);
@@ -103,9 +101,8 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   });
 
   it('RE-SEATING a patch to a taller tier is judged by every quadrant it draws', () => {
-    // The auto pass re-issues a standing patch at the wrapping tier when the walls stack past it.
-    // No corner's shape changes, so nothing moves horizontally — but each drawn quadrant grows a
-    // taller column, and a patch is cosmetic, so an object may have arrived in one meanwhile.
+    // The auto pass re-issues a standing patch at the wrapping tier when the walls stack past it:
+    // each drawn quadrant grows a taller column, and an object may stand in one.
     const state = notchState();
     setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 11, 3);   // stands in the TR quadrant, [11,11.5] x [3.5,4]
@@ -117,7 +114,6 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   });
 
   it('a re-seat still spares a quadrant the patch does not draw', () => {
-    // The rise widens which corners are judged, never the rect each one covers.
     const state = notchState();
     setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);
     addTree(state, 10, 4);   // the BL quadrant, which this patch leaves empty
@@ -140,8 +136,7 @@ describe('V-PLACE-BLOCK — a Γ fillet is judged by its corner quadrant, not it
   });
 
   it('a whole-cell PAINT over the same cell stays blocked', () => {
-    // The quadrant precision is the fillet's alone: a paint fills the cell, so the tree's
-    // quarter of it is enough to refuse.
+    // A paint fills the whole cell, so the tree's quarter of it refuses.
     const state = notchState();
     addTree(state, 10, 4);
     const errs = createDefaultRegistry()
@@ -159,7 +154,7 @@ describe('EdgeCutTool — the notch beside a tree', () => {
     bus.on('validation-failed', (e) => refusals.push(e));
     const exec = createExecutor(state, createDefaultRegistry(), bus);
 
-    // The intersection shared by (11,3), (12,3), (11,4), (12,4) — the L's concave corner.
+    // The intersection shared by (11,3), (12,3), (11,4), (12,4), the L's concave corner.
     new EdgeCutTool().onPointerDown(cell({ x: 11, y: 3 }), point({ x: 11, y: 3 }), makeToolCtx(state, exec));
 
     const patch = getCell(state.cells, 11, 4)!.terrain!;
@@ -185,9 +180,8 @@ describe('EdgeCutTool — the notch beside a tree', () => {
   });
 
   it('still refuses a fillet whose OWN quadrant an object stands on', () => {
-    // The genuinely illegal sub-case: an object on the mountain at (11,3) covers [11,12] x [3,4],
-    // which is the TR quadrant of (11,4) — the very quarter the fillet's column would fill, and
-    // the same quarter that already refuses a mountain paint there.
+    // An object on the mountain at (11,3) covers [11,12] x [3,4], including the TR quadrant of
+    // (11,4) that the fillet's column would fill.
     const state = notchState();
     addTree(state, 11, 3);
     const bus = new EventBus<EditorEvents>();
@@ -215,9 +209,8 @@ describe('auto-trim — the same notch, the same answer', () => {
   });
 
   it('refuses to re-seat a standing fillet taller under an object', () => {
-    // The walls stack to tier 2 over a fillet already seated at tier 1, with something standing in
-    // the fillet's own quadrant. The auto pass tries to re-seat; the rule refuses, so the column
-    // stays where it was rather than growing through the object.
+    // The walls stand at tier 2 over a fillet seated at tier 1, with a tree in the fillet's own
+    // quadrant: the auto pass's re-seat is refused.
     const state = makeState(20, 20);
     for (const [x, y] of [[11, 3], [12, 3], [12, 4]] as const) setTerrain(state, x, y, TerrainType.Mountain, 2);
     setPatch(state, { x: 11, y: 4 }, 1, ['empty', 'fan', 'empty', 'empty']);

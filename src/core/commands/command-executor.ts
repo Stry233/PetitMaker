@@ -13,6 +13,7 @@ import {
   type GridState,
   type MacroCoord,
   type PlacedObject,
+  type Refusal,
   type StrokeScope,
   type ValidationError,
   type ValidationResult,
@@ -89,6 +90,52 @@ export interface Stroke {
 }
 
 /**
+ * Editor state the history carries beside the map (the editor's object selection): a step records
+ * the value it found, and undo and redo write back the value each side of it showed. The executor
+ * never looks inside a value; `undefined` is never one.
+ */
+export interface HistoryAside<T = unknown> {
+  read(): T;
+  /** Show `value` again; the owner may narrow it to what the map still holds. */
+  write(value: T): void;
+  /** Whether two values show the same thing: a step whose undo or redo would show nothing new is
+   *  passed over and forgotten. */
+  same(a: T, b: T): boolean;
+}
+
+/** A change of the aside alone, standing above the first `at` map entries of its stack: `before`
+ *  is what undo writes and `after` what redo writes, each refreshed as the step is crossed. */
+export interface AsideStep {
+  readonly at: number;
+  readonly before: unknown;
+  readonly after: unknown;
+}
+
+/** The aside around one map entry: `before` as the entry was recorded or last redone, `after` as it
+ *  was last undone (`undefined` until then). */
+interface AsideSpan {
+  before: unknown;
+  after: unknown;
+}
+
+/** The history as it stood at one moment, for `CommandExecutor.returnTo`; only the executor that
+ *  took it can return to it. */
+export interface HistoryMark {
+  readonly undo: readonly HistoryEntry[];
+  readonly redo: readonly HistoryEntry[];
+  readonly undoAsides: readonly AsideStep[];
+  readonly redoAsides: readonly AsideStep[];
+}
+
+/** Refusals held back from `validation-failed` while it is open (`CommandExecutor.holdRefusals`). */
+export interface RefusalHold {
+  /** Report what the hold kept, in order, and close it. */
+  release(): void;
+  /** Close the hold, reporting nothing it kept. */
+  discard(): void;
+}
+
+/**
  * Executes commands against GridState with two-phase validation, orchestrating validate, apply,
  * record, history and events. `command-apply.ts` holds the per-CommandType mutation and emits
  * `objects-changed`; the injected `HistoryRecorder` captures, merges and reverts authorship.
@@ -104,11 +151,27 @@ export class CommandExecutor {
   /** What commands, reverts and replays announce object changes through; see `transaction`. */
   private objectChanges: ObjectChangeHold;
   private registry: RuleDispatcher;
+  /** The map's history; every depth, stroke start and saved step reads these alone. */
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
+  /** What the history carries beside the map, once attached (`attachAside`). */
+  private aside: HistoryAside | null = null;
+  /** Steps that changed only the aside, interleaved with the map's by `at`, which never exceeds
+   *  its stack's length (`settleAsides`); a redo step's `at` counts the redo entries below it. */
+  private undoAsides: AsideStep[] = [];
+  private redoAsides: AsideStep[] = [];
+  /** The aside around each map entry recorded while one was attached. */
+  private readonly spans = new WeakMap<HistoryEntry, AsideSpan>();
+  /** The marks this executor took; a mark from another map's executor is not one of them. */
+  private readonly marks = new WeakSet<HistoryMark>();
+  /** Counts the histories `returnTo` restored. A stroke begun under an earlier count is over: the
+   *  entries above its start are no longer its own, so its commit, rollback and collapse change nothing. */
+  private returns = 0;
   /** Silenced runs in progress; while any is, rejected commands emit no validation-failed (no error
    *  toast). A count, so async runs that overlap and settle in any order restore it exactly. */
   private silentRuns = 0;
+  /** The refusals each open hold keeps, innermost last; a refusal goes to the innermost. */
+  private refusalHolds: Refusal[][] = [];
   /** The objects the open stroke took off the map, by id; cleared when it commits, rolls back or
    *  is abandoned. Placement rules judge a re-placed object on its net change through it. */
   private readonly lifted = new Map<string, PlacedObject>();
@@ -135,6 +198,29 @@ export class CommandExecutor {
       execute: (cmd) => this.execute(cmd),
       validatePre: (cmd) => this.validatePre(cmd),
     };
+  }
+
+  /** Keep the refusals `execute` reports from `validation-failed` until the hold is released or
+   *  discarded: a press that may yet be taken back says nothing until it stands. */
+  holdRefusals(): RefusalHold {
+    const kept: Refusal[] = [];
+    this.refusalHolds.push(kept);
+    const close = (): boolean => {
+      const at = this.refusalHolds.indexOf(kept);
+      if (at < 0) return false;
+      this.refusalHolds.splice(at, 1);
+      return true;
+    };
+    return {
+      release: () => { if (close()) for (const refusal of kept) this.report(refusal); },
+      discard: () => { close(); },
+    };
+  }
+
+  private report(refusal: Refusal): void {
+    const hold = this.refusalHolds[this.refusalHolds.length - 1];
+    if (hold) hold.push(refusal);
+    else reportRefusal(this.eventBus, refusal);
   }
 
   /** Pre-command validation with no execution and no validation-failed event — the reconcile
@@ -184,13 +270,14 @@ export class CommandExecutor {
    *  changes are not held across its awaits, so the map shows its progress. */
   async transactionAsync<T>(opts: TransactionOptions, body: (tx: Stroke) => Promise<T>): Promise<T> {
     const start = this.undoStack.length;
+    const returns = this.returns;
     const tx = this.beginStroke();
     if (opts.source) this.pushSource(opts.source);
     if (opts.silent) this.silentRuns++;
     try {
       return await body(tx);
     } catch (err) {
-      this.rollbackAfterThrow(start);
+      if (returns === this.returns) this.rollbackAfterThrow(start);
       throw err;
     } finally {
       if (opts.silent) this.silentRuns--;
@@ -214,19 +301,22 @@ export class CommandExecutor {
    */
   beginStroke(): Stroke {
     const start = this.undoStack.length;
+    const returns = this.returns;
     const depth = (): number => this.undoStack.length;
+    const over = (): boolean => returns !== this.returns;
     return {
       get size() { return depth() - start; },
       commands: () => this.commandsSince(start),
       entries: () => this.undoStack.slice(start),
       commit: ({ reconcile, atomic = false } = {}) => {
+        if (over()) return [];
         const violations = this.commitStroke(start, reconcile === undefined ? {} : { reconcile });
         if (atomic && violations.length > 0) this.rollbackTo(start);
         return violations;
       },
-      rollback: () => { this.rollbackTo(start); },
-      collapse: () => { this.collapseHistory(start); },
-      setGeneration: (mark) => { this.recordGeneration(start, mark); },
+      rollback: () => { if (!over()) this.rollbackTo(start); },
+      collapse: () => { if (!over()) this.collapseHistory(start); },
+      setGeneration: (mark) => { if (!over()) this.recordGeneration(start, mark); },
     };
   }
 
@@ -256,7 +346,7 @@ export class CommandExecutor {
     const errors: ValidationError[] = this.registry.validatePreCommand(cmd, this.state, this.scope);
 
     if (errors.length > 0) {
-      if (this.silentRuns === 0) reportRefusal(this.eventBus, { cmd, errors });
+      if (this.silentRuns === 0) this.report({ cmd, errors });
       return { success: false, errors };
     }
 
@@ -274,8 +364,10 @@ export class CommandExecutor {
     const after = this.snapshot(coords);
     const taint = this.provenance.capture(cmd, before, after, objectOps);
 
-    this.undoStack.push(objectOps ? { cmd, before, after, objectOps, taint } : { cmd, before, after, taint });
-    this.redoStack = [];
+    const entry: HistoryEntry = objectOps ? { cmd, before, after, objectOps, taint } : { cmd, before, after, taint };
+    this.undoStack.push(entry);
+    if (this.aside) this.spans.set(entry, { before: this.aside.read(), after: undefined });
+    this.clearRedo();
 
     this.eventBus.emit('cells-changed', cause === undefined ? { cells: sets } : { cells: sets, cause });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
@@ -344,6 +436,7 @@ export class CommandExecutor {
           if (remaining.length === 0) break;
         }
       });
+      this.settleAsides();
       if (affectedCoords.length > 0) {
         this.eventBus.emit('cells-changed', { cells: restoredCells(affectedCoords) });
         this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
@@ -391,6 +484,7 @@ export class CommandExecutor {
         coords.push(...this.revertEntry(this.undoStack.pop()!));
       }
     });
+    this.settleAsides();
     this.eventBus.emit('cells-changed', { cells: restoredCells(coords) });
     this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
   }
@@ -427,7 +521,7 @@ export class CommandExecutor {
       for (const o of entry.objectOps.added) added.set(o.id, o);
     }
     const mergedTaint = this.provenance.mergeGroup(group.map((e) => e.taint));
-    this.undoStack.push({
+    const merged: HistoryEntry = {
       cmd: group[group.length - 1]!.cmd,
       before: [...firstBefore.values()],
       after: [...lastAfter.values()],
@@ -436,32 +530,65 @@ export class CommandExecutor {
       ...(marked.length > 0
         ? { generation: { before: marked[0]!.generation!.before, after: marked[marked.length - 1]!.generation!.after } }
         : {}),
-    });
+    };
+    this.undoStack.push(merged);
+    const span = this.spans.get(group[0]!);
+    if (span) this.spans.set(merged, { before: span.before, after: undefined });
+    this.settleAsides();
   }
 
+  /**
+   * Takes back one step. A step that changed only the aside writes back the value before it; a map
+   * step reverts entries until the map is legal and writes back the aside the deepest of them
+   * found. Aside steps that would show nothing new are forgotten on the way. False when nothing
+   * was left to take back.
+   */
   undo(): boolean {
     this.abandonStroke();
-    if (this.undoStack.length === 0) return false;
+    const port = this.aside;
+    let above = port?.read();
+    const dropped = this.dropSpent(this.undoAsides, this.undoStack.length, 'before', above);
+    const top = this.topAside(this.undoAsides, this.undoStack.length);
+    if (top && port) {
+      this.undoAsides.pop();
+      this.redoAsides.push({ at: this.redoStack.length, before: top.before, after: above });
+      port.write(top.before);
+      this.emitHistoryChanged();
+      return true;
+    }
+    if (this.undoStack.length === 0) {
+      if (dropped) this.emitHistoryChanged();
+      return false;
+    }
 
     const affectedCoords: MacroCoord[] = [];
     const reverted: HistoryEntry[] = [];
 
     this.objectChanges.hold(() => {
       while (this.undoStack.length > 0) {
+        // Aside steps between two entries one undo reverts go to redo with them, in order.
+        for (let step = this.topAside(this.undoAsides, this.undoStack.length); step; step = this.topAside(this.undoAsides, this.undoStack.length)) {
+          this.undoAsides.pop();
+          this.redoAsides.push({ at: this.redoStack.length, before: step.before, after: above });
+          above = step.before;
+        }
         const entry = this.undoStack.pop()!;
         reverted.push(entry);
         affectedCoords.push(...this.revertEntry(entry));
         this.redoStack.push(entry);
+        const span = this.spans.get(entry);
+        if (span) { span.after = above; above = span.before; }
 
         const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
         if (violations.length === 0) break;
       }
     });
+    if (port && above !== undefined) port.write(above);
 
     const cells = restoredCells(affectedCoords);
     this.eventBus.emit('cells-changed', { cells });
     this.eventBus.emit('history-applied', { cells, objects: this.flashObjects(reverted) });
-    this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
+    this.emitHistoryChanged();
     return true;
   }
 
@@ -469,27 +596,128 @@ export class CommandExecutor {
    *  False when there was nothing to redo. */
   redo(): boolean {
     this.abandonStroke();
-    if (this.redoStack.length === 0) return false;
+    const port = this.aside;
+    let below = port?.read();
+    const dropped = this.dropSpent(this.redoAsides, this.redoStack.length, 'after', below);
+    const top = this.topAside(this.redoAsides, this.redoStack.length);
+    if (top && port) {
+      this.redoAsides.pop();
+      this.undoAsides.push({ at: this.undoStack.length, before: below, after: top.after });
+      port.write(top.after);
+      this.emitHistoryChanged();
+      return true;
+    }
+    if (this.redoStack.length === 0) {
+      if (dropped) this.emitHistoryChanged();
+      return false;
+    }
 
     const coords: MacroCoord[] = [];
     const reapplied: HistoryEntry[] = [];
     this.objectChanges.hold(() => {
       while (this.redoStack.length > 0) {
+        for (let step = this.topAside(this.redoAsides, this.redoStack.length); step; step = this.topAside(this.redoAsides, this.redoStack.length)) {
+          this.redoAsides.pop();
+          this.undoAsides.push({ at: this.undoStack.length, before: below, after: step.after });
+          below = step.after;
+        }
         const entry = this.redoStack.pop()!;
         reapplied.push(entry);
         coords.push(...this.reapplyEntry(entry));
         this.undoStack.push(entry);
+        const span = this.spans.get(entry);
+        if (span) { span.before = below; below = span.after; }
 
         const violations = this.registry.validatePostStroke(this.state, { firstOnly: true });
         if (violations.length === 0) break;
       }
     });
+    if (port && below !== undefined) port.write(below);
 
     const cells = restoredCells(coords);
     this.eventBus.emit('cells-changed', { cells });
     this.eventBus.emit('history-applied', { cells, objects: this.flashObjects(reapplied) });
-    this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
+    this.emitHistoryChanged();
     return true;
+  }
+
+  /** Undoes until one map entry has been taken back, with the aside steps above it: one undo as a
+   *  caller counting map edits (the assistant, a job's rewind) means it. False when the map's
+   *  history is empty. */
+  undoEdit(): boolean {
+    const depth = this.undoStack.length;
+    while (depth > 0 && this.undoStack.length >= depth && this.undo()) { /* aside steps first */ }
+    return this.undoStack.length < depth;
+  }
+
+  /** Mirrors `undoEdit`. */
+  redoEdit(): boolean {
+    const depth = this.redoStack.length;
+    while (depth > 0 && this.redoStack.length >= depth && this.redo()) { /* aside steps first */ }
+    return this.redoStack.length < depth;
+  }
+
+  /** Lets the history carry `aside` beside the map from now on: map entries recorded after this
+   *  hold its value, and `recordAside` adds steps of its own. */
+  attachAside<T>(aside: HistoryAside<T>): void {
+    this.aside = aside as HistoryAside;
+  }
+
+  /**
+   * Records a change of the aside alone as one undo step, from `before` to the value it reads now,
+   * and clears redo as a new edit does. Records nothing when no aside is attached or the value did
+   * not change.
+   */
+  recordAside(before: unknown): void {
+    const port = this.aside;
+    if (!port) return;
+    const after = port.read();
+    if (port.same(before, after)) return;
+    this.undoAsides.push({ at: this.undoStack.length, before, after });
+    this.clearRedo();
+    this.emitHistoryChanged();
+  }
+
+  /** The aside step on top of `asides` over a stack `depth` long, or null where a map entry is. */
+  private topAside(asides: AsideStep[], depth: number): AsideStep | null {
+    const top = asides[asides.length - 1];
+    return this.aside && top && top.at >= depth ? top : null;
+  }
+
+  /** Forgets the aside steps on top whose `side` already shows `now`; whether any went. */
+  private dropSpent(asides: AsideStep[], depth: number, side: 'before' | 'after', now: unknown): boolean {
+    const port = this.aside;
+    let dropped = false;
+    for (let top = this.topAside(asides, depth); port && top && port.same(top[side], now); top = this.topAside(asides, depth)) {
+      asides.pop();
+      dropped = true;
+    }
+    return dropped;
+  }
+
+  /** Whether some aside step on top of `asides` (over an empty map stack) would show something new. */
+  private liveAside(asides: AsideStep[], side: 'before' | 'after'): boolean {
+    const port = this.aside;
+    if (!port || asides.length === 0) return false;
+    const now = port.read();
+    return asides.some((step) => !port.same(step[side], now));
+  }
+
+  /** Keeps every aside step at or below the top of the map's undo stack after entries left it. */
+  private settleAsides(): void {
+    const depth = this.undoStack.length;
+    if (this.undoAsides.some((step) => step.at > depth)) {
+      this.undoAsides = this.undoAsides.map((step) => (step.at > depth ? { ...step, at: depth } : step));
+    }
+  }
+
+  private clearRedo(): void {
+    this.redoStack = [];
+    this.redoAsides = [];
+  }
+
+  private emitHistoryChanged(): void {
+    this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
   }
 
   /**
@@ -515,9 +743,60 @@ export class CommandExecutor {
     return reapplyEntryState(entry, this.state, this.objectChanges.sink);
   }
 
-  canUndo(): boolean { return this.undoStack.length > 0; }
-  canRedo(): boolean { return this.redoStack.length > 0; }
-  /** How many entries the undo history holds: a depth to compare, never a stroke start. */
+  /** The history as it stands now, for `returnTo`. Entries are never edited once recorded, so the
+   *  mark holds them by reference. */
+  markHistory(): HistoryMark {
+    const mark: HistoryMark = {
+      undo: this.undoStack.slice(), redo: this.redoStack.slice(),
+      undoAsides: this.undoAsides.slice(), redoAsides: this.redoAsides.slice(),
+    };
+    this.marks.add(mark);
+    return mark;
+  }
+
+  /**
+   * Puts the map and its history back exactly as they stood at `mark`: the entries recorded since
+   * the two histories parted are reverted, newest first, the mark's own are reapplied and its redo
+   * restored. Every state passed through is one the history recorded, so the map stays legal.
+   * False, changing nothing, for a mark this executor did not take. Every stroke still open is over.
+   */
+  returnTo(mark: HistoryMark): boolean {
+    if (!this.marks.has(mark)) return false;
+    this.abandonStroke();
+    this.returns++;
+    let shared = 0;
+    while (shared < mark.undo.length && shared < this.undoStack.length && mark.undo[shared] === this.undoStack[shared]) shared++;
+    if (shared === this.undoStack.length && shared === mark.undo.length) {
+      this.redoStack = mark.redo.slice();
+      this.restoreAsides(mark);
+      this.emitHistoryChanged();
+      return true;
+    }
+    const coords: MacroCoord[] = [];
+    this.objectChanges.hold(() => {
+      while (this.undoStack.length > shared) coords.push(...this.revertEntry(this.undoStack.pop()!));
+      for (const entry of mark.undo.slice(shared)) {
+        coords.push(...this.reapplyEntry(entry));
+        this.undoStack.push(entry);
+      }
+    });
+    this.redoStack = mark.redo.slice();
+    this.restoreAsides(mark);
+    this.eventBus.emit('cells-changed', { cells: restoredCells(coords) });
+    this.emitHistoryChanged();
+    return true;
+  }
+
+  private restoreAsides(mark: HistoryMark): void {
+    this.undoAsides = mark.undoAsides.slice();
+    this.redoAsides = mark.redoAsides.slice();
+  }
+
+  /** Whether undo, and redo, has a step to take, an aside step that would show something new included. */
+  canUndo(): boolean { return this.undoStack.length > 0 || this.liveAside(this.undoAsides, 'before'); }
+  canRedo(): boolean { return this.redoStack.length > 0 || this.liveAside(this.redoAsides, 'after'); }
+  /** How many map entries the undo history holds, aside steps apart: a depth to compare (whether
+   *  the map was edited, a job's floor), never a stroke start. */
   historyDepth(): number { return this.undoStack.length; }
   getRegistry(): RuleDispatcher { return this.registry; }
 
@@ -538,8 +817,9 @@ export class CommandExecutor {
   restoreHistory(entries: HistoryEntry[]): void {
     this.abandonStroke();
     this.undoStack = [...entries];
-    this.redoStack = [];
-    this.eventBus.emit('history-changed', { canUndo: this.canUndo(), canRedo: this.canRedo() });
+    this.undoAsides = [];
+    this.clearRedo();
+    this.emitHistoryChanged();
   }
 
   private pushSource(ctx: SourceContext): void { this.provenance.pushSource(ctx); }

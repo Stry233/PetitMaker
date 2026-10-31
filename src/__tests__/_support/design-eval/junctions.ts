@@ -1,8 +1,7 @@
 /**
  * The shape of the network: how its streets meet, how far they run, and which 1-wide pavement is a
  * garden path rather than a road. Straightness (`streets.ts`) cannot tell a grid of long streets
- * from a lattice of planet-spanning lines crossing at four-ways, so this measures how much pavement
- * stands in a planet-spanning line and how its junctions are shaped.
+ * from a lattice of planet-spanning lines crossing at four-ways; this reading can.
  *
  * A junction is counted by its arms: around a paved cell, the paved cells at Chebyshev distance
  * `RING_R` fall into cyclic runs, one per street leaving (two opposite pass through, two
@@ -17,13 +16,11 @@ import { labelComponents } from '../../../core/grid/cell-sets';
 import { anchorReach } from './reach';
 
 /** How far from a cell the arms are counted. It must exceed the widest street's half-width, or the
- *  street's own width wraps the ring and a straight run reads as one arm; the map's widest pavement
- *  is the movement line's 4-cell leg. */
+ *  street's own width wraps the ring and a straight run reads as one arm. */
 const RING_R = 4;
 
-/** Pavement this wide is a square — an apron, a court, a paved figure — and not a street whose
- *  junctions can be read. Both references pave such ground, and every cell inside one presents arms
- *  in every direction. The terminus reading draws the same line at the same width. */
+/** Pavement this wide is a square (an apron, a court, a paved figure), where every cell presents arms
+ *  in every direction, so it carries no junction reading. Matches `TERMINUS_WIDE` in street ends. */
 const COURT_WIDE = 6;
 
 /** Two arms count as one street passing through when their directions are this opposed. */
@@ -34,11 +31,8 @@ const THROUGH_DOT = -0.5;
 export const LATTICE_SPAN = 0.8;
 
 /**
- * How much of a map's pavement may stand in such a line.
- *
- * Neither decoded reference carries a single straight run over `LATTICE_SPAN` of its own planet, so
- * both read zero. The cap is a hair over that rather than at it, because one street reaching the bar on a small planet is a
- * street and not a lattice, and a share this small cannot be more than one.
+ * How much of a map's pavement may stand in such a line. Both decoded references read zero; the cap
+ * sits a hair above so one street reaching the bar on a small planet still passes.
  */
 export const LATTICE_SHARE_MAX = 0.02;
 
@@ -47,8 +41,7 @@ export const LATTICE_SHARE_MAX = 0.02;
 const OFFSET_APART = 16;
 const OFFSET_ACROSS = 3;
 
-/** The longest 1-wide path that can be a garden walk inside a region. Beyond it the pavement is
- *  going somewhere, and where it goes is between regions. */
+/** The longest 1-wide path that can be a garden walk inside a region; anything longer links regions. */
 const GARDEN_PATH_MAX = 24;
 
 export interface NetworkShape {
@@ -102,8 +95,7 @@ function armsAt(paved: Uint8Array, W: number, H: number, cx: number, cy: number)
     const x = cx + RING[k]![0], y = cy + RING[k]![1];
     hit[k] = x >= 0 && y >= 0 && x < W && y < H && paved[y * W + x] ? 1 : 0;
   }
-  // The sweep starts at the first cell of a run, so the run that would have wrapped the end of the
-  // array is walked whole and no run is counted twice.
+  // Starting at a run's first cell walks the wrapping run whole, so no run is counted twice.
   let start = -1;
   for (let k = 0; k < n; k++) if (hit[k] && !hit[(k + n - 1) % n]) { start = k; break; }
   if (start < 0) return [];
@@ -186,8 +178,7 @@ function armReading(paved: Uint8Array, W: number, H: number, open = openingWidth
     pavedCells++;
     if (open[i]! >= COURT_WIDE) court[i] = 1;
   }
-  // Every paved cell outside a square is asked for its arms; the answer is clustered by the callers,
-  // so one meeting of streets counts once however many of its cells can see all of it.
+  // Callers cluster these cells, so one meeting of streets counts once however many cells see it.
   const node = new Uint8Array(W * H);
   const bend = new Uint8Array(W * H);
   const armsOf = new Map<number, { dx: number; dy: number }[]>();
@@ -255,8 +246,7 @@ function teesOf(nodes: readonly Node[]): Tee[] {
   const out: Tee[] = [];
   for (const node of nodes) {
     if (node.arms.length !== 3) continue;
-    // The one pair of opposed arms is the street passing through; the third arm is the branch. A T
-    // has exactly one such pair, and the first found is it.
+    // A T has exactly one opposed pair (the street passing through); the third arm is the branch.
     let found = false;
     for (let a = 0; a < 3 && !found; a++) {
       for (let b = a + 1; b < 3 && !found; b++) {
@@ -264,9 +254,8 @@ function teesOf(nodes: readonly Node[]): Tee[] {
         if (p.dx * q.dx + p.dy * q.dy > THROUGH_DOT) continue;
         const branch = node.arms[3 - a - b]!;
         const axis: 'x' | 'y' = Math.abs(p.dx) > Math.abs(p.dy) ? 'x' : 'y';
-        // Which side the branch leaves on, and not its direction: an arm's direction is the mean of
-        // the ring cells it lit, so a 2-wide street's arm sits a little off the axis and two branches
-        // that plainly face away from each other read only two thirds opposed.
+        // Side rather than direction: an arm is the mean of its lit ring cells, so a 2-wide street's
+        // arm sits off the axis and two branches facing away read only two thirds opposed.
         const off = axis === 'x' ? branch.dy : branch.dx;
         out.push({
           axis,
@@ -283,9 +272,7 @@ function teesOf(nodes: readonly Node[]): Tee[] {
 
 /**
  * Staggered crossings: two T-junctions on one street whose branches leave on opposite sides within
- * `OFFSET_APART` of each other, a Z-shaped walk (two roads that would cross are offset into two T-junctions).
- *
- * Greedy and one pairing per junction, so three T's in a row read as one pair and not as three.
+ * `OFFSET_APART` of each other. Greedy, one pairing per junction, so three T's in a row read as one pair.
  */
 function offsetPairs(nodes: readonly Node[]): number {
   const tees = teesOf(nodes);
@@ -322,14 +309,10 @@ export interface OneWideReading {
 }
 
 /**
- * The 1-WIDE rule, scoped to the network (the third road grade).
- *
- * The hard rule is that no road is one cell wide, and a path (a garden walk inside a region, to a
- * fountain court or along a bed) is a third grade that carries nothing between regions. The two are told apart by what the pavement does, not by what laid it: a
- * 1-wide cluster is a garden path when it is a leaf, hanging off exactly one piece of >=2-wide
- * pavement that the plaza can already walk to, and short enough to be a walk inside a place.
- * Anything else — a neck two streets meet through, a thin thread the plaza's only route runs along,
- * a path reaching no street at all — is charged as road.
+ * The no-1-wide-road rule, excusing garden paths. A 1-wide cluster is a garden path when it is a leaf
+ * hanging off exactly one piece of >=2-wide pavement the plaza already reaches, and no longer than
+ * `GARDEN_PATH_MAX`. Anything else (a neck two streets meet through, the plaza's only route, a path
+ * reaching no street) is charged as road.
  */
 export function networkOneWide(
   masks: { paved: Uint8Array; anchor: Uint8Array; crossing: Uint8Array; W: number; H: number },
@@ -345,8 +328,7 @@ export function networkOneWide(
     if (open[i]! <= 1) { thin[i] = 1; oneWideCells++; } else skeleton[i] = 1;
   }
 
-  // The skeleton's own components, and which of them the plaza reaches over the skeleton alone: a
-  // 1-wide path may only be excused where the street it hangs off does not depend on it.
+  // Reach over the skeleton alone: a path is excused only where its street does not depend on it.
   const comp = new Int32Array(W * H).fill(-1);
   const parts = clustersOf(skeleton, W, H);
   parts.forEach((cells, id) => { for (const i of cells) comp[i] = id; });

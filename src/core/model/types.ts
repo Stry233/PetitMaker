@@ -218,11 +218,15 @@ export interface ImageAttribution {
 /** The objects added/removed by one `objects` mutation. `version` is the
  *  `objectsVersion` it produced, so a consumer can tell "this delta describes the
  *  step I am one behind" from a leftover of an older step. An object present in
- *  both is an in-place replacement (same id). */
+ *  both is an in-place replacement (same id). `prev` is the step before, while
+ *  it too was recorded (`grid-model.ts:objectDeltasSince`). */
 export interface ObjectsDelta {
   version: number;
   removed?: readonly PlacedObject[];
   added?: readonly PlacedObject[];
+  prev?: ObjectsDelta;
+  /** How many deltas this one and its `prev` chain hold. */
+  depth: number;
 }
 
 /** The fields of a map that live only in the session: no save, share code or export carries them,

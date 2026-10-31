@@ -16,8 +16,8 @@ describe('Viewport', () => {
     const vp = new Viewport(800, 600);
     // Pixel (130, 200) with TILE_SIZE=64 → macro (2, 3)
     const m = cellUnder(vp, 130, 200, 'object');
-    expect(m.x).toBe(2); // floor(130/64) = 2
-    expect(m.y).toBe(3); // floor(200/64) = 3
+    expect(m.x).toBe(2);
+    expect(m.y).toBe(3);
   });
 
   it('the object cell under a point accounts for zoom', () => {
@@ -68,7 +68,6 @@ describe('Viewport', () => {
     vp.setZoom(2, 200, 150);
     expect(vp.getZoom()).toBe(2);
 
-    // The world coordinate under screen (200,150) should still be (200, 150)
     const world = vp.screenToWorld(200, 150);
     expect(world.x).toBeCloseTo(200, 5);
     expect(world.y).toBeCloseTo(150, 5);
@@ -76,14 +75,11 @@ describe('Viewport', () => {
 
   it('fitToMap sets valid zoom', () => {
     const vp = new Viewport(800, 600);
-    // Map 20x20: world = 1280x1280
-    // scaleX = 800/1280 = 0.625, scaleY = 600/1280 ≈ 0.469
-    // zoom = min(0.625, 0.469) ≈ 0.469
+    // A 20x20 map is 1280 px square, so the 600 px height sets the zoom.
     vp.fitToMap(20, 20);
     const z = vp.getZoom();
     expect(z).toBeGreaterThanOrEqual(ZOOM_MIN);
     expect(z).toBeLessThanOrEqual(ZOOM_MAX);
-    // Zoom should be approximately 0.469
     expect(z).toBeCloseTo(600 / (20 * TILE_SIZE), 5);
   });
 
@@ -114,7 +110,7 @@ describe('Viewport', () => {
 
 describe('pan bounds', () => {
   // 100x100 map at zoom 1 = 6400px world; canvas 800x600. At least PAN_KEEP_PX
-  // of map must stay visible on each axis — the map can never be lost off-screen.
+  // of map must stay visible on each axis; the map can never be lost off-screen.
   function boundedViewport() {
     const v = new Viewport(800, 600);
     v.fitToMap(100, 100);
@@ -126,7 +122,7 @@ describe('pan bounds', () => {
     const v = boundedViewport();
     v.pan(1e9, 1e9);
     const o = v.getOffset();
-    expect(o.x).toBe(100 * 64 - PAN_KEEP_PX); // map right edge keeps PAN_KEEP_PX on screen
+    expect(o.x).toBe(100 * 64 - PAN_KEEP_PX);
     expect(o.y).toBe(100 * 64 - PAN_KEEP_PX);
     v.pan(-1e9, -1e9);
     expect(v.getOffset().x).toBe(PAN_KEEP_PX - 800);
@@ -152,10 +148,10 @@ describe('pan bounds', () => {
     const v = new Viewport(800, 600);
     v.fitToMap(4, 4); // 256px world, fits easily
     const o = v.getOffset();
-    // centered: non-positive offsets place the map mid-canvas
+    // Non-positive offsets centre the map on the canvas.
     expect(o.x).toBeLessThan(0);
     expect(o.y).toBeLessThanOrEqual(0);
-    // and a wild pan still keeps half the small map visible
+    // A wild pan still keeps half the small map visible.
     v.pan(1e9, 0);
     const mapPx = 4 * 64 * v.getZoom();
     expect(v.getOffset().x).toBeCloseTo(mapPx - Math.min(160, mapPx / 2), 5);

@@ -87,7 +87,7 @@ describe('overlay box paint is shared, not per box', () => {
 
 describe('the light state is primed before the shadow map is baked', () => {
   /** The method reads only the renderer and the target off the presenter, so it can be driven on a
-   *  stand-in — the real constructor needs a WebGL context, which no test environment here has. */
+   *  stand-in: the real constructor needs a WebGL context, which no test environment here has. */
   const drive = (opts: { enabled: boolean; target: object | null }) => {
     const log: string[] = [];
     let needsUpdate = false;

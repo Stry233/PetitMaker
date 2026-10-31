@@ -1,6 +1,6 @@
 /* Illustration workspace. Takes remain in memory for the current map state, and only the Generate
  * action is disabled while a job is running. */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../../../../i18n/context';
 import { host } from '../../../../../editor/host/host';
 import { CUSTOM_DIRECTION_ID, STYLE_PACKS, isProcPackId, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
@@ -16,6 +16,18 @@ import { DirectionBooklet, directionRow } from './DirectionBooklet';
 import { DirectionPane } from './DirectionPane';
 import { StudioCanvas, type Picture } from './StudioCanvas';
 import { VersionShelf } from './VersionShelf';
+import { scrollBleed } from '../../../../primitives/use-scroll-row';
+import { WindowBody } from '../../../../primitives/Window';
+import { STACKED_PREVIEW_HEIGHT, TWO_COLUMNS_FROM, useWindowColumns } from '../../use-window-columns';
+
+/** The room, in css px, the body holds at each side for the bleed its rows reach outside their boxes
+ *  (`DirectionBooklet`, `VersionShelf`), handed back through its margin; a row reaching past it is cut. */
+const BODY_BLEED = 8;
+
+/** In one column the picture keeps the stacked preview height and its versions stand under it, the
+ *  direction stands below at its full height, and the body is the one scroller; the footer stays fixed. */
+const stackedPicture: CSSProperties = { display: 'grid', gridTemplateRows: `${STACKED_PREVIEW_HEIGHT}px auto`, gap: 10, minHeight: 0 };
+const stackedControls: CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'max-content max-content', gap: 10, minHeight: 0 };
 
 export type { RunStylize };
 
@@ -44,6 +56,7 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
   const [status, setStatus] = useState<SlotStatus | null>(null);
   const [tried, setTried] = useState<string | null>(null);
   const [swapped, setSwapped] = useState(false);
+  const [columns, bodyRef] = useWindowColumns(TWO_COLUMNS_FROM);
   const abortRef = useRef<AbortController | null>(null);
 
   // Capture the original once so comparison stays fixed throughout this studio session.
@@ -111,27 +124,45 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
     }
   };
 
+  const controls = (
+    <div key="controls" style={columns === 2 ? { display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 } : stackedControls}>
+      <DirectionBooklet value={direction} onPick={setDirection} enterIndex={0} scrolls={columns === 2} />
+      <DirectionPane direction={direction} text={text} onText={setText} connected={connected} onConnect={onSettings} enterIndex={1} />
+    </div>
+  );
+  const picture = (
+    <div key="picture" style={columns === 2 ? { display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 } : stackedPicture}>
+      <StudioCanvas main={main} corner={corner} onSwap={() => setSwapped((s) => !s)} enterIndex={2} />
+      <VersionShelf
+        versions={state.versions}
+        selectedId={state.selectedId}
+        running={state.running}
+        runningBand={directionRow(direction).band}
+        originalSrc={originalSrc}
+        onTry={setTried}
+        onPick={pick}
+        onRetire={(id) => { versionStore.retire(id); setSwapped(false); }}
+        enterIndex={3}
+      />
+    </div>
+  );
+
   return (
     <>
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '250px 1fr', gap: 16, paddingTop: 8 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
-          <DirectionBooklet value={direction} onPick={setDirection} enterIndex={0} />
-          <DirectionPane direction={direction} text={text} onText={setText} connected={connected} onConnect={onSettings} enterIndex={1} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
-          <StudioCanvas main={main} corner={corner} onSwap={() => setSwapped((s) => !s)} enterIndex={2} />
-          <VersionShelf
-            versions={state.versions}
-            selectedId={state.selectedId}
-            running={state.running}
-            runningBand={directionRow(direction).band}
-            originalSrc={originalSrc}
-            onTry={setTried}
-            onPick={pick}
-            onRetire={(id) => { versionStore.retire(id); setSwapped(false); }}
-            enterIndex={3}
-          />
-        </div>
+      {/* The measured box holds the card's width in both arrangements. In one column the picture and
+          its versions stand above the direction in the window's body. */}
+      <div ref={bodyRef} data-columns={columns} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', paddingTop: 8 }}>
+        {columns === 2 ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'grid', gap: 16, gridTemplateColumns: '250px 1fr',
+            ...scrollBleed({ top: 0, right: BODY_BLEED, bottom: 0, left: BODY_BLEED }) }}>
+            {controls}{picture}
+          </div>
+        ) : (
+          <WindowBody bleed={BODY_BLEED}
+            contentStyle={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'max-content max-content', alignContent: 'start' }}>
+            {picture}{controls}
+          </WindowBody>
+        )}
       </div>
 
       <WindowFoot>

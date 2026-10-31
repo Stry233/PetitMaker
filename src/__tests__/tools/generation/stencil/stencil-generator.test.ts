@@ -1,10 +1,6 @@
 /**
- * The stencil generators: a picture laid onto the map as shape (the text mode) or as colour (the
- * image mode).
- *
- * A stencil is plain numbers, so all of this runs with no browser: the rasterizing that produces one
- * needs a canvas and lives on the main thread, which is exactly why the generator takes the result
- * rather than the source.
+ * The stencil generators: a picture laid onto the map as shape (text mode) or as colour (image mode).
+ * The generator takes a rasterized stencil of plain numbers, so no canvas is needed here.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
@@ -70,7 +66,7 @@ describe('stencil: the palette a picture is matched against', () => {
   });
 
   it('sends a mid green to a green rather than to the water blue', () => {
-    // The whole reason the match is luma-weighted: unweighted, mid greens fell to the blue.
+    // The match is luma-weighted; unweighted, mid greens would fall to the blue.
     const p = terrainPalette(8);
     expect(nearestTerrain(p, 0x6ab84a).type).toBe(TerrainType.Mountain);
   });
@@ -92,9 +88,9 @@ describe('stencil as SHAPE (the text mode)', () => {
     ]);
     const res = layTerrain(state, { origin: { x: 5, y: 5 }, stencil }, TerrainType.Mountain, (c) => exec(state).execute(c));
     expect(res.placed).toBeGreaterThan(0);
-    expect(at(state, 6, 5)?.type).toBe(TerrainType.Mountain);   // covered
-    expect(at(state, 5, 5)).toBeNull();                          // not covered
-    expect(at(state, 5, 6)?.type).toBe(TerrainType.Mountain);    // the bar of the shape
+    expect(at(state, 6, 5)?.type).toBe(TerrainType.Mountain);
+    expect(at(state, 5, 5)).toBeNull();
+    expect(at(state, 5, 6)?.type).toBe(TerrainType.Mountain);
   });
 
   it('stands one layer on the ground it is written on, edge and middle alike', () => {
@@ -151,7 +147,7 @@ describe('a rasterized shape is repaired before it is built', () => {
       '..~#',
     ]);
     finishGlyph(s);
-    // Every near-cell flanked by two covered cells joined; the stroke is 4-connected now.
+    // Each near cell between two covered cells joins, making the stroke 4-connected.
     expect(covered(s, 1, 0)).toBe(true);
     expect(covered(s, 0, 1)).toBe(true);
     expect(covered(s, 2, 1)).toBe(true);
@@ -167,7 +163,7 @@ describe('a rasterized shape is repaired before it is built', () => {
     expect(covered(s, 1, 1)).toBe(false);
     const open = cov(['#..', '...', '..#']);
     finishGlyph(open);
-    expect(covered(open, 1, 1)).toBe(false); // two lone corners join nothing
+    expect(covered(open, 1, 1)).toBe(false);
   });
 });
 
@@ -187,26 +183,24 @@ describe('the trim chooses each corner from the source', () => {
   it('keeps a corner the source fills, and cuts by nearest area below that', () => {
     const pick = stencilChooser(at0, withQuads([1, 0.8, 0.55, 0.2]))!;
     expect(pick(0, 0, 0, 'outer')).toBeNull();   // filled: stays square
-    expect(pick(0, 0, 1, 'outer')).toBe('fan');  // ~π/4: the quarter round
-    expect(pick(0, 0, 2, 'outer')).toBe('tri');  // ~half: the bevel
-    expect(pick(0, 0, 3, 'outer')).toBe('tri');  // clipped hard: the deepest cut on offer
+    expect(pick(0, 0, 1, 'outer')).toBe('fan');  // near π/4: the quarter round
+    expect(pick(0, 0, 2, 'outer')).toBe('tri');  // near half: the bevel
+    expect(pick(0, 0, 3, 'outer')).toBe('tri');  // the deepest cut on offer
   });
 
   it('always fills an offered notch, sized by how far the source bulges into it', () => {
-    // The notch cell is outside the glyph, so near-zero ink there is the normal case at a concave
-    // corner — the curve's ink is in the stroke cells beside it. A fillet adds no mass, so the
-    // question is never whether, only how big.
+    // A notch lies outside the glyph, so it usually carries almost no ink; a fillet adds no mass, so
+    // only its size is chosen.
     const pick = stencilChooser(at0, withQuads([0.05, 0.2, 0.45, 0]))!;
     expect(pick(0, 0, 0, 'inner')).toBe('fan');  // inkless notch: the small smoothing fillet
     expect(pick(0, 0, 1, 'inner')).toBe('fan');  // the concave fillet's own area
-    expect(pick(0, 0, 2, 'inner')).toBe('tri');  // a real bulge: the bigger fill
+    expect(pick(0, 0, 2, 'inner')).toBe('tri');  // a real bulge: the bigger fillet
     expect(pick(0, 0, 3, 'inner')).toBe('fan');
   });
 
   it('chamfers a staircase, whatever the quadrants say', () => {
-    // On a quantised diagonal the bevels chain into one straight line; fans scallop and a mix wobbles.
-    // The edge direction comes from the coverage gradient rather than from the quad values, which are
-    // mid-range and noisy exactly there.
+    // Bevels chain into one straight line on a quantised diagonal, where fans would scallop. The edge
+    // direction comes from the coverage gradient, since the quad values are noisy there.
     const s = stencilOf([
       '#....',
       '##...',
@@ -214,10 +208,10 @@ describe('the trim chooses each corner from the source', () => {
       '####.',
       '#####',
     ]);
-    s.quad = new Uint8Array(s.width * s.height * 4).fill(Math.round(0.7 * 255));   // fan territory
+    s.quad = new Uint8Array(s.width * s.height * 4).fill(Math.round(0.7 * 255));   // would pick a fan
     const pick = stencilChooser({ x: 0, y: 0 }, s)!;
-    expect(pick(1, 1, 1, 'outer')).toBe('tri');   // a step corner on the diagonal
-    expect(pick(2, 1, 0, 'inner')).toBe('tri');   // and the notch beside it continues the line
+    expect(pick(1, 1, 1, 'outer')).toBe('tri');   // a step corner
+    expect(pick(2, 1, 0, 'inner')).toBe('tri');   // the notch beside it
   });
 
   it('keeps rounding a corner where the edge runs with the axes', () => {
@@ -230,7 +224,7 @@ describe('the trim chooses each corner from the source', () => {
     ]);
     s.quad = new Uint8Array(s.width * s.height * 4).fill(Math.round(0.7 * 255));
     const pick = stencilChooser({ x: 0, y: 0 }, s)!;
-    expect(pick(2, 2, 1, 'outer')).toBe('fan');   // a straight vertical edge: no diagonal to chain
+    expect(pick(2, 2, 1, 'outer')).toBe('fan');
   });
 
   it('has no opinion outside the stencil', () => {
@@ -241,16 +235,11 @@ describe('the trim chooses each corner from the source', () => {
 });
 
 describe('the region, not its bounding box', () => {
-  /**
-   * A stencil is fitted to the region's bounding box, which is not the region. A rectangle's box is
-   * itself, so the two agreed and the gap went unnoticed; anything else has a box bigger than it is,
-   * and the picture filled the box and spilled over everything the visitor had not painted.
-   */
+  /** A stencil is fitted to the region's bounding box, so a non-rectangular region must clip it. */
   it('writes nothing outside the cells it was allowed', () => {
     const state = makeState(20, 20);
     const e = exec(state);
     const rows = Array.from({ length: 6 }, () => '######');
-    // A checkerboard scope: nothing like the solid box the stencil is fitted to.
     const allow = new Set<number>();
     for (let y = 4; y < 10; y++) {
       for (let x = 4; x < 10; x++) if ((x + y) % 2 === 0) allow.add(y * 20 + x);
@@ -281,10 +270,8 @@ describe('the region, not its bounding box', () => {
 });
 
 describe('the smallest region a word is worth writing in', () => {
-  /** The shelf gates on the shorter side, which says nothing about a row of characters: six of them
-   *  in a box twelve cells across leave two cells each. The box helper is what a gate that cares
-   *  about the word rather than the region consults. What each glyph needs is measured in the text
-   *  matrix (`stencil-glyph.test.ts`); here it is the arithmetic over that number. */
+  /** A row of characters needs width per character, which the shorter-side gate cannot say;
+   *  `textMinBox` gives the word's box. The per-glyph size is measured in `stencil-glyph.test.ts`. */
   it('grows with the number of characters, and never below one glyph', () => {
     expect(textMinBox('AB').height).toBe(textMinBox('ABCDEF').height);
     expect(textMinBox('ABCDEF').width).toBe(textMinBox('AB').width * 3);
@@ -292,25 +279,21 @@ describe('the smallest region a word is worth writing in', () => {
   });
 
   it('asks for more room per glyph as the glyph asks for more', () => {
-    // One letter, a row of letters, an ideograph: three floors, and the whole point of asking the
-    // Text rather than the region. A word with one dense character in it is a dense word.
+    // One letter, a row of letters, an ideograph: three floors. One dense character makes a dense word.
     expect(textMinBox('E').height).toBeLessThan(textMinBox('HELLO').height);
     expect(textMinBox('HELLO').height).toBeLessThan(textMinBox('谷').height);
     expect(textMinBox('A谷').height).toBe(textMinBox('谷').height);
-    // The region gate is lower than any of them: it is the smallest region a glyph has been measured
-    // to survive, and which texts that region can carry is each card's own question, measured on the
-    // letter it drew rather than assumed from the string.
+    // The region gate is the smallest region any glyph survives, so it sits below all of them.
     expect(STENCIL_MIN_SIDE.text).toBeLessThan(textMinBox('E').height);
   });
 });
 
 describe('what a shape may be tiled with', () => {
-  /** A letter needs the same item many times over, so the list it offers has to be exactly the items
-   *  that can be placed many times over. Read from the live catalog, not from a list of ids. */
+  /** A letter repeats one item many times, so only uncapped items qualify; read from the live catalog. */
   it('excludes every capped item, and every crossing', () => {
     const all = getAllItems();
     const offered = all.filter(tilesAShape);
-    expect(offered.length).toBeGreaterThan(20);   // the premise: there is plenty left
+    expect(offered.length).toBeGreaterThan(20);
 
     for (const item of offered) {
       expect(item.maxCount).toBeUndefined();
@@ -318,7 +301,7 @@ describe('what a shape may be tiled with', () => {
       expect(item.category).not.toBe(ItemCategory.Ramp);
       expect(item.category).not.toBe(ItemCategory.Road);
     }
-    // And the uniques really are in the catalog, or the filter above proves nothing.
+    // Capped items and bridges exist, or the filter above proves nothing.
     expect(all.some((i) => i.maxCount !== undefined)).toBe(true);
     expect(all.some((i) => i.category === ItemCategory.Bridge)).toBe(true);
   });
@@ -330,25 +313,19 @@ describe('what a shape may be tiled with', () => {
 });
 
 describe('what the rules refuse, refused before it is asked', () => {
-  /**
-   * Both of these came back from driving the real rasterizer and generator in a browser: a letter
-   * that committed 2265 cells and then vanished (46 violations), and a picture that lost most of
-   * itself (210). Neither was visible to a test that hand-drew a solid block.
-   */
   it('a letter with thin strokes commits clean against the live rules', () => {
     const state = makeState(24, 24);
     const e = exec(state);
     const whole = e.beginStroke();
-    // Two cells wide, which is what a real glyph's stem comes out as in a modest region.
+    // Two cells wide, as a real glyph's stem comes out in a modest region.
     const rows = ['..##..', '..##..', '..##..', '..##..', '..##..', '..##..'];
     layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(whole.commit()).toEqual([]);
-    expect(at(state, 8, 8)).not.toBeNull();   // and it is still standing
+    expect(at(state, 8, 8)).not.toBeNull();
   });
 
   it('writes around a zone hole inside the shape', () => {
-    // A beach cell inside the glyph is never laid, and one layer over the ground beside it needs no
-    // base under it, so the letter keeps its shape with a hole where the ground refuses to build.
+    // A one-layer letter needs no base, so a beach cell inside it is simply a hole.
     const state = makeState(24, 24);
     state.cells[9]![9]!.zone = CellZone.Beach;
     const e = exec(state);
@@ -356,8 +333,8 @@ describe('what the rules refuse, refused before it is asked', () => {
     const rows = Array.from({ length: 8 }, () => '########');
     layTerrain(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows) }, TerrainType.Mountain, (c) => e.execute(c));
     expect(whole.commit()).toEqual([]);
-    expect(at(state, 9, 9)).toBeNull();                              // the hole stays a hole
-    expect(at(state, 7, 7)?.elevation).toBeGreaterThanOrEqual(1);    // and the shape still stands
+    expect(at(state, 9, 9)).toBeNull();
+    expect(at(state, 7, 7)?.elevation).toBeGreaterThanOrEqual(1);
   });
 
   it('writes only inside the scope it was allowed, and commits clean', () => {
@@ -374,8 +351,8 @@ describe('what the rules refuse, refused before it is asked', () => {
   });
 
   it('skips the one cell an object refuses, and keeps the rest', () => {
-    // The object cell is writable ground, so no mask can see it coming: the refusal lands at layer
-    // 1, pre-command, and everything already targeted around it has to lower with it.
+    // No mask predicts the object's refusal: it lands pre-command at layer 1, and the targets around
+    // it must lower with it.
     const state = makeState(24, 24);
     const e = exec(state);
     const whole = e.beginStroke();
@@ -399,11 +376,10 @@ describe('what the rules refuse, refused before it is asked', () => {
   });
 
   it('relaxes heights the picture chose but the rules will not carry', () => {
-    // One bright cell among dark: it cannot stand 8 layers over its neighbours.
     const target = new Int16Array([1, 1, 1, 1, 8, 1, 1, 1, 1]);
     relaxHeights(target, 3, 3);
     expect(target[4]).toBe(1 + FLAT_SAFE_ELEVATION);
-    // Only ever lowers, and leaves what already stands alone.
+    // Only lowers, and leaves the neighbours alone.
     expect([...target].filter((v) => v === 1)).toHaveLength(8);
   });
 
@@ -411,7 +387,7 @@ describe('what the rules refuse, refused before it is asked', () => {
     const state = makeState(24, 24);
     const e = exec(state);
     const whole = e.beginStroke();
-    // Alternating extremes, which is the worst a photograph can hand the palette.
+    // Cycling through every elevation colour, the worst a photograph can hand the palette.
     const rows = Array.from({ length: 8 }, () => '########');
     const stencil = stencilOf(rows);
     stencil.color.forEach((_, i) => {
@@ -437,8 +413,7 @@ describe('stencil as COLOUR (the image mode)', () => {
     const e = exec(state);
     const whole = e.beginStroke();
     const rows = Array.from({ length: 4 }, () => '####');
-    // Water in the palette: the blue is a ninth entry a blue picture wins, which is the reading a
-    // mixed picture takes.
+    // With `water: 'palette'` the blue is one more palette entry, as in a mixed picture.
     layStencilColor(state, { origin: { x: 6, y: 6 }, stencil: stencilOf(rows, hexStringToNumber(WATER_COLOR)) }, (c) => e.execute(c), { maxElevation: 8, water: 'palette' });
     expect(at(state, 7, 7)?.type).toBe(TerrainType.Water);
     expect(whole.commit()).toEqual([]);

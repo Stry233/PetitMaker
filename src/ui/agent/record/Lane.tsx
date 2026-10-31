@@ -1,10 +1,10 @@
-import { displayAgentText, toolVerbKey, type ToolResultDetail } from '../../../agent/panel';
 /*
  * Shows a `delegate_task` child's live work inside the parent ticket: its name, step count, current
  * tool and any retry or error. When the child settles, `laneRollup` reduces its retained operation
  * details to a result chip on the delegate row. Errors remain visible in both places while live
  * because the nested lane may be hidden by a collapsed operation list.
  */
+import { displayAgentText, toolVerbKey, type ToolResultDetail } from '../../../agent/panel';
 import type { ReactNode } from 'react';
 import { Icon, type IconId } from '../parts/sprite';
 import { ResultChip } from '../parts/panel-parts';
@@ -15,6 +15,7 @@ import { roleFont } from '../../design/text-weight';
 import { Spinner } from '../../primitives/Spinner';
 import { useT } from '../../../i18n/context';
 import type { Translate } from '../../../i18n/keys';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 
 export interface LaneView {
   /** The helper's own order: complete, self-contained instructions, which is why it is not the
@@ -73,6 +74,7 @@ function helperName(lane: LaneView): string {
  *  restriction the parent has, the step count, and what it is doing right now. */
 function LaneHead({ lane }: { lane: LaneView }) {
   const t = useT();
+  const inheritsName = useNameReveal(t('agent.lane_inherits'));
   const name = lane.retry
     ? t('agent.lane_retrying', { s: lane.retry.seconds })
     : t('agent.lane_helper', { task: displayAgentText(helperName(lane), t) });
@@ -109,10 +111,11 @@ function LaneHead({ lane }: { lane: LaneView }) {
       {/* A helper inherits the painted region and every rule the parent obeys; the shield is that
           promise standing where the delegation is, not in a tooltip nobody opens. */}
       <span
-        title={t('agent.lane_inherits')}
+        {...inheritsName.bind}
         style={{ flex: '0 0 auto', display: 'inline-flex', color: MUTED }}
       >
         <Icon id="pw-shield" size={LANE_GLYPH} />
+        {inheritsName.bubble}
       </span>
       <span
         data-testid="lane-count"

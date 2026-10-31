@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Terrain consolidates into one Graphics per chunk. Per-cell Graphics made a
- * dense generated map carry ~10k+ display nodes, and a pan re-traverses every
- * visible node each frame — measured at ~9 ms/frame (41 fps) at fit-to-map.
- * Chunk-level Graphics cut the traversal to ~1 node per 256 cells; edits mark
- * their chunks dirty and repaint once per frame (flushDirty), not per command.
+ * Terrain consolidates into one Graphics per chunk, so a pan re-traverses ~1 display node per 256
+ * cells instead of one per cell (~10k+ on a dense generated map). Edits mark their chunks dirty and
+ * repaint once per frame (flushDirty), not per command.
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect } from 'vitest';

@@ -166,7 +166,7 @@ describe('road surfaces', () => {
       state.objects.set(cmd.object.id, cmd.object);
       n++;
     }
-    // The index cannot trust a mutation it was not told about, so it rebuilds — which is exactly
+    // The index cannot trust a mutation it was not told about, so it rebuilds, which is exactly
     // what a checklist read must survive.
     const after = buildChecklist(state);
     expect(after.roads.map((r) => r.catalogId)).toEqual(

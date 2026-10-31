@@ -9,6 +9,7 @@ import type { Translate, I18nKey } from '../../i18n/keys';
 import type { Infer } from './schema';
 import type { TOOLS } from './registry';
 import { layerNumber } from '../../core/game/profile';
+import { ANNOTATION_TAGS } from '../../config/annotation-tags';
 
 type In = Record<string, unknown>;
 /** One tool's arguments as its schema declares them. A described call may be one the schema later
@@ -79,19 +80,23 @@ function shape(rawInput: In, t: Translate, flatDefault: FlatDefault = 'rect'): s
 }
 
 const at = (input: In): string => `(${n(input.x)},${n(input.y)})`;
-const box = (i: In): string => `${at(i)}+${n(i.w)}×${n(i.h)}`;
+/** A call kept to a planning zone reads as the zone's number badge. */
+const inZone = (i: In): string | null => (i.zone !== undefined ? `#${n(i.zone)}` : null);
+const box = (i: In): string => inZone(i) ?? `${at(i)}+${n(i.w)}×${n(i.h)}`;
 
 /** Arguments worth reviewing before a map operation. */
 const DESCRIBERS: { [N in ToolName]?: Describer<N> } = {
   set_annotation: (i, t) => {
     const kind = ({ zone: 'annot.layer', chip: 'annot.chip', route: 'annot.route', measure: 'annot.measure' } as Partial<Record<string, I18nKey>>)[String(i.kind)];
-    return [kind ? t(kind) : t('annot.layer'), Array.isArray(i.cells) ? cellCount(i.cells.length, t) : ''].filter(Boolean).join(' ');
+    const preset = ANNOTATION_TAGS.find((tag) => tag.id === i.tag);
+    const label = typeof i.customTag === 'string' ? displayAgentText(i.customTag, t) : preset ? t(preset.labelKey) : '';
+    return [kind ? t(kind) : t('annot.layer'), label, Array.isArray(i.cells) ? cellCount(i.cells.length, t) : ''].filter(Boolean).join(' ');
   },
   remove_annotation: (_i, t) => t('annot.layer'),
   paint_terrain: (i, t) => {
     const terrain = word(TERRAIN_KEY, i.terrain, t);
     const elev = layerNumber(n(i.elevation));
-    const area = shape(i, t);
+    const area = inZone(i) ?? shape(i, t);
     return i.smooth
       ? t('agent.dc_paint_smooth', { terrain, elev, area, style: word(SMOOTH_KEY, i.smooth, t) })
       : t('agent.dc_paint', { terrain, elev, area });
@@ -109,7 +114,7 @@ const DESCRIBERS: { [N in ToolName]?: Describer<N> } = {
     at: at(i),
     style: word(TRIM_KEY, i.style, t),
   }),
-  build_road: (i, t, names) => t('agent.dc_along', { what: itemName(i.catalogId ?? defaultRoadId(), t, names), area: shape(i, t, 'line') }),
+  build_road: (i, t, names) => t('agent.dc_along', { what: itemName(i.catalogId ?? defaultRoadId(), t, names), area: inZone(i) ?? shape(i, t, 'line') }),
   scatter_objects: (i, t, names) => {
     const ids = (i.catalogIds ?? []).map((id) => itemName(id, t, names));
     const pool = ids.length > 2 ? `${ids.slice(0, 2).join(', ')} +${ids.length - 2}` : ids.join(', ');
@@ -117,7 +122,7 @@ const DESCRIBERS: { [N in ToolName]?: Describer<N> } = {
     return t('agent.dc_scatter', {
       n: n(i.count),
       pool,
-      where: rect ? shape({ rect }, t) : t('agent.dc_selection'),
+      where: inZone(i) ?? (rect ? shape({ rect }, t) : t('agent.dc_selection')),
     });
   },
   sculpt_wall: (i, t) => t('agent.dc_wall', {

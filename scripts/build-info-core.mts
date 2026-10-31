@@ -1,6 +1,6 @@
 /**
  * Build identity (build number, commit sha, date). The one source is the committed
- * `build-info.json`, stamped from this repository's history.
+ * `scripts/build-info.json` (`STAMP_PATH`), stamped from this repository's history.
  *
  * A build only reads the stamp; no build derives a number from the commit count, the
  * date or a deploy-host variable. A shallow clone counts its fetch depth, a tarball has
@@ -31,11 +31,17 @@ export interface BuildInfo {
 }
 
 export interface BuildInfoDeps {
-  /** Raw `build-info.json` contents, or null when the file is absent. */
+  /** Raw stamp file contents, or null when the file is absent. */
   readStamp: () => string | null;
 }
 
-export const STAMP_PATH = 'build-info.json';
+/** Where the stamp lives, relative to the repository root; every reader and writer derives it
+ *  from here (`vite-node scripts/stamp-build.mts --path` prints it for shells). */
+export const STAMP_PATH = 'scripts/build-info.json';
+
+/** Where commits and published snapshots made before the stamp moved keep it. Read only as a
+ *  fallback when a historical tree has no `STAMP_PATH`; nothing writes it. */
+export const LEGACY_STAMP_PATH = 'build-info.json';
 
 /** What a build shows when there is no usable stamp. A production build never gets
  *  this far (it throws); dev and unit tests do, and 'dev' cannot be mistaken for a

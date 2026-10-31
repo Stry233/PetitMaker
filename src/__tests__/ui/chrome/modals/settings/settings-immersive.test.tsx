@@ -24,7 +24,7 @@ describe('Settings immersive mode', () => {
   it('offers no button where the browser has no fullscreen', () => {
     renderModal();
     expect(screen.queryByRole('button', { name: 'Immersive mode' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Replay the tour' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show the welcome tips' })).toBeTruthy();
   });
 
   it('enters fullscreen from the button, which then names the way back out', () => {
@@ -34,7 +34,7 @@ describe('Settings immersive mode', () => {
     define(document, 'fullscreenElement', null);
     renderModal();
     const pills = screen.getAllByRole('button').map((b) => b.textContent);
-    expect(pills.indexOf('Immersive mode')).toBeLessThan(pills.indexOf('Replay the tour'));
+    expect(pills.indexOf('Immersive mode')).toBeLessThan(pills.indexOf('Show the welcome tips'));
     fireEvent.click(screen.getByRole('button', { name: 'Immersive mode' }));
     expect(request).toHaveBeenCalledTimes(1);
     define(document, 'fullscreenElement', document.documentElement);

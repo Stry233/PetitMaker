@@ -3,9 +3,11 @@
  * scroll separately so the hidden-count control remains visible. Recalled notes shrink in place;
  * delivered notes lift as they leave.
  */
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { withBind } from '../../primitives/use-reveal';
 import { Disclosure, DisclosureStack } from '../../primitives/Disclosure';
 import { ScrollArea } from '../../primitives/ScrollArea';
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ActionButton, type ActionButtonProps } from '../../primitives/ActionButton';
 import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
 import { Icon } from '../parts/sprite';
@@ -140,8 +142,7 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
                     {onRecall && (
                       <RecallButton
                         data-testid="panel-steer-recall"
-                        aria-label={t('agent.steer_take_back')}
-                        title={t('agent.steer_take_back')}
+                        label={t('agent.steer_take_back')}
                         onClick={() => recall(steer.seq)}
                         style={CROSS_STYLE}
                       >
@@ -171,9 +172,16 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
   );
 }
 
-/** A leaving chip's cross takes no press: it is already on its way out. */
-function RecallButton(props: Omit<ActionButtonProps, 'disabled'>) {
+/** A leaving chip's cross takes no press: it is already on its way out. It names itself by `label`
+ *  (`useNameReveal`). */
+function RecallButton({ label, children, ...props }: Omit<ActionButtonProps, 'disabled' | 'children'> & { label: string; children: ReactNode }) {
   const present = useIsPresent();
+  const name = useNameReveal(label);
   // A departing chip's cross keeps its ink; it only stops answering.
-  return <ActionButton {...props} interaction="badge" disabled={!present} style={{ ...props.style, ...(present ? {} : { opacity: 1 }) }} />;
+  return (
+    <ActionButton {...withBind(name.bind, props)} aria-label={label} interaction="badge" disabled={!present} style={{ ...props.style, ...(present ? {} : { opacity: 1 }) }}>
+      {children}
+      {name.bubble}
+    </ActionButton>
+  );
 }

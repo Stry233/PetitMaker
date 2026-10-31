@@ -20,6 +20,8 @@ export interface GuideTools {
   skill: string;
   /** The search family, written as its wildcard (`find_*`). */
   search: string;
+  /** Reads the planning annotations back. */
+  sketch: string;
 }
 
 export interface ToolFacts {
@@ -27,6 +29,8 @@ export interface ToolFacts {
   access(name: string): ToolAccess | undefined;
   /** Whether a successful call of the named tool is a look at the map that reviews prior edits. */
   verifies(name: string): boolean;
+  /** Whether the named tool draws planning annotations, the plan the plan protocol files. */
+  sketches(name: string): boolean;
   /** The cells a call's arguments name, as their bounding box, where they name a place. */
   footprint(input: Record<string, unknown>): CellBox | undefined;
   /** The tools the nudges name, so core prose names no tool itself. */

@@ -46,23 +46,22 @@ function fingerprint(pixels: FramePixels): number {
 }
 
 export class MissedRenderCheck {
-  private signature: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private warned = false;
 
   /** @param readFrame the view's last drawn frame, from {@link viewFrameReader}. */
   constructor(private readonly readFrame: () => FramePixels, private readonly draw: () => void) {}
 
-  /** The window closed on a frame just painted: fingerprint it and arm the rest check. */
+  /** The window closed on a frame just painted: arm the rest check. The frame is read only once the
+   *  rest holds, since any paint before then cancels the check and the view keeps its last frame. */
   rested(): void {
     this.cancel();
     if (this.warned) return;
-    this.signature = fingerprint(this.readFrame());
     this.timer = setTimeout(() => {
       this.timer = null;
-      const before = this.signature;
+      const before = fingerprint(this.readFrame());
       this.draw();
-      if (before !== null && fingerprint(this.readFrame()) !== before) {
+      if (fingerprint(this.readFrame()) !== before) {
         this.warned = true;
         console.warn('MapRenderer: the scene changed at rest without a requestRender() call');
       }
@@ -73,6 +72,5 @@ export class MissedRenderCheck {
   cancel(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    this.signature = null;
   }
 }

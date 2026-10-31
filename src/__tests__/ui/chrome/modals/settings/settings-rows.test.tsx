@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Every control the Settings panel offers, and that each one still writes what it is for.
- *
- * The sibling files go deep on two controls (the size slider, the erase confirm). This one goes
- * Wide: it is the inventory. The panel is picture-first — language pills, map-drawing toggles, a
- * quality trio rendered as the same map three ways — so what a control is lives in its role and
- * accessible name, and the way a repaint loses one is not a crash but a control that quietly
- * stops being wired. The pin is "the control is there AND the handler fires".
- *
- * The Painted/System cursor pair is the accessibility opt-out and stays.
+ * The inventory of Settings controls: each is present by role and accessible name, and its handler
+ * still fires. A repaint that unwires a control fails silently, so presence alone is not enough.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, cleanup, within } from '@testing-library/react';
@@ -21,8 +14,7 @@ import { MotionConfig } from 'framer-motion';
 import { readPref } from '../../../../../platform/storage/prefs';
 import { holdSeconds } from '../../../../../ui/design/motion';
 
-/** The English string a control shows. `en` reads as possibly-absent by index, and a key that is
- *  not there is a test bug rather than a missing assertion. */
+/** The English string a control shows; a missing key throws. */
 function label(key: string): string {
   const text = (en as Record<string, string | undefined>)[key];
   if (!text) throw new Error(`no English string for ${key}`);

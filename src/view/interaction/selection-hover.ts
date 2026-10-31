@@ -1,9 +1,10 @@
 /**
  * Pure decision for the grey hover-preview box, in the modes where a click selects (Hand, or
  * ObjectPlacer with nothing armed to place — the same predicate as the pointer machine's
- * block-selection path): over an object, the footprint a click selects; over ground, a 1×1 box that
- * slides under the pointer in half-cell steps, a click selecting the terrain cell holding its centre
- * (the selection ring then marks that whole cell). The overlay draws the returned rect; null means
+ * block-selection path): over an object, the footprint a click selects; over open ground, the
+ * placement cell under the pointer, which a click picks as the paste's top-left (EDIT-54); over
+ * mountain or water, a 1×1 box that slides under the pointer in half-cell steps, a click selecting
+ * the terrain cell holding its centre (the selection ring then marks that whole cell). The overlay draws the returned rect; null means
  * no preview (wrong mode, off the map, or region selection active). A selected target
  * previews too, so the pointer always shows what it is over.
  *
@@ -15,8 +16,10 @@ import { getCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getObjectIndex, objectAtPoint } from '../../state/object-index';
 import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
-import { mapPoint, type GridCell, type GridId, type MapPoint } from '../../core/grid/grids';
+import { gridCell, mapPoint, type GridCell, type GridId, type MapPoint } from '../../core/grid/grids';
+import { anchorCell } from './press/press-plan';
 import { cellAtPoint, halfPoint } from '../../core/grid/pointer';
+import { getCell } from '../../core/model/grid-model';
 
 /** What a press with nothing armed lands on at a map point. */
 export interface PointerTarget {
@@ -29,13 +32,28 @@ export interface PointerTarget {
   /** The terrain cell holding `centre`, the one the box overlaps most: what a press selects where it
    *  hits no object. Terrain selections name terrain cells, so this is read on the terrain grid. */
   terrain: GridCell<typeof TERRAIN_GRID>;
+  /** The placement cell under the pointer when the press hits no object and `terrain` is open
+   *  ground on the map, no mountain or water: a press there picks this cell instead of selecting
+   *  terrain. Null elsewhere, and on a map that limits presses (`GridState.unsettled`). */
+  pick: GridCell<typeof PLACEMENT_GRID> | null;
+}
+
+const onMap = (gs: GridState, c: MacroCoord): boolean => c.x >= 0 && c.y >= 0 && c.x < gs.template.width && c.y < gs.template.height;
+
+/** The placement cell a press with nothing hit picks at `point`, or null where the terrain cell it
+ *  would select is off the map or holds mountain or water. */
+function pickAt(gs: GridState, point: MapPoint, terrain: MacroCoord): GridCell<typeof PLACEMENT_GRID> | null {
+  if (gs.unsettled || !onMap(gs, terrain) || getCell(gs.cells, terrain.x, terrain.y)?.terrain) return null;
+  return gridCell(PLACEMENT_GRID, anchorCell(cellAtPoint(point, PLACEMENT_GRID)));
 }
 
 export function pointerTarget(gs: GridState, point: MapPoint, meshHitId?: string): PointerTarget {
   const meshHit = meshHitId && (!gs.unsettled || gs.unsettled.has(meshHitId)) ? gs.objects.get(meshHitId) : undefined;
   const hit = meshHit ?? objectAtPoint(getObjectIndex(gs), point, gs.unsettled);
   const centre = halfPoint(point);
-  return { hit, centre, terrain: cellAtPoint(mapPoint(centre), TERRAIN_GRID) };
+  const terrain = cellAtPoint(mapPoint(centre), TERRAIN_GRID);
+  const pick = hit ? null : pickAt(gs, point, terrain);
+  return { hit, centre, terrain, pick };
 }
 
 export interface HoverBox {
@@ -48,14 +66,15 @@ export interface HoverBox {
   grid: GridId;
 }
 
-/** The box a press's target shows: the object's footprint, else the 1×1 box centred on the
- *  half-cell point nearest the pointer, its corner on the half-cell lattice. Null when the terrain
- *  cell it selects is off the map. */
+/** The box a press's target shows: the object's footprint, the cell it picks, else the 1×1 box
+ *  centred on the half-cell point nearest the pointer, its corner on the half-cell lattice. Null
+ *  when the terrain cell it selects is off the map. */
 function targetBox(gs: GridState, target: PointerTarget): HoverBox | null {
   if (target.hit) {
     const size = getPlacedObjectSize(target.hit);
     return { x: target.hit.position.x, y: target.hit.position.y, w: size.w, h: size.h, grid: PLACEMENT_GRID };
   }
+  if (target.pick) return { x: target.pick.x, y: target.pick.y, w: 1, h: 1, grid: PLACEMENT_GRID };
   const { x, y } = target.terrain;
   if (gs.unsettled) return null;
   if (x < 0 || y < 0 || x >= gs.template.width || y >= gs.template.height) return null;

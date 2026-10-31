@@ -60,7 +60,7 @@ describe('chunkNumberCells', () => {
   });
 
   it('masks the covered cells under a half-anchored footprint (halfStep), not a fractional key', () => {
-    // A 2-wide deck at x = 7.5 covers macro cells 7, 8, 9 (floor/ceil expansion) — one more cell
+    // A 2-wide deck at x = 7.5 covers macro cells 7, 8, 9 (floor/ceil expansion), one more cell
     // than an integer anchor of the same width, since a half origin lands exactly on the cells it
     // covers with no dual-grid bleed to absorb. `position.x + dx` (getFootprint) would instead
     // mask "7.5,5"/"8.5,5", which chunkNumberCells's integer-keyed lookups never ask for.

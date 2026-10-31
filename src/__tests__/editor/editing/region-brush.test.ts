@@ -36,12 +36,12 @@ describe('region brush history (separate from map history)', () => {
   it('a whole brush drag (many moves) undoes as ONE unit, not one cell', () => {
     selecting(true);
 
-    // Drag across several cells — several move callbacks, one pointer-up.
+    // Drag across several cells: several move callbacks, one pointer-up.
     move({ x: 0, y: 0 });
     move({ x: 1, y: 0 });
     move({ x: 2, y: 0 });
     done();
-    expect(region().length).toBe(3); // the stroke committed
+    expect(region().length).toBe(3);
 
     undo();
     expect(region()).toEqual([]); // the whole drag undone, not one cell
@@ -175,13 +175,13 @@ describe('region brush history (separate from map history)', () => {
     expect(region().length).toBeGreaterThan(0);
 
     // Leave region-select mode (mirrors the scope screen's Done / navigating away), then
-    // come back — a fresh session must not inherit a stale undo entry from before.
+    // come back: a fresh session must not inherit a stale undo entry from before.
     selecting(false);
     selecting(true);
 
     let ok = true;
     ok = undo();
-    expect(ok).toBe(false); // nothing to undo — the earlier stroke's history is gone
+    expect(ok).toBe(false); // nothing to undo: the earlier stroke's history is gone
   });
 });
 

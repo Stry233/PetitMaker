@@ -7,15 +7,15 @@ import { fadeMask, SCROLL_FADE, useScrollFade } from '../../../ui/primitives/scr
 
 type FadeAt = (el: HTMLElement, edge: number, atEnd: boolean) => number;
 
-function FadeProbe({ axis, fadeAt }: { axis: 'x' | 'y'; fadeAt?: FadeAt }) {
+function FadeProbe({ axis, fadeAt, extent }: { axis: 'x' | 'y'; fadeAt?: FadeAt; extent?: number }) {
   const ref = useRef<HTMLDivElement>(null);
-  const style = useScrollFade(ref, axis, fadeAt ? { fadeAt } : undefined);
+  const style = useScrollFade(ref, axis, { ...(fadeAt ? { fadeAt } : {}), ...(extent === undefined ? {} : { extent: () => extent }) });
   return createElement('div', { ref, style, 'data-testid': 'fade' });
 }
 
 /** The mask a box at `pos` of `size` content in a `client` window wears, settled at once. */
-function maskOf(pos: number, size: number, client: number, axis: 'x' | 'y', fadeAt?: FadeAt): string | undefined {
-  const { getByTestId, unmount } = render(createElement(MotionConfig, { reducedMotion: 'always' }, createElement(FadeProbe, { axis, fadeAt })));
+function maskOf(pos: number, size: number, client: number, axis: 'x' | 'y', { fadeAt, extent }: { fadeAt?: FadeAt; extent?: number } = {}): string | undefined {
+  const { getByTestId, unmount } = render(createElement(MotionConfig, { reducedMotion: 'always' }, createElement(FadeProbe, { axis, fadeAt, extent })));
   const box = getByTestId('fade');
   const [at, scroll, view] = axis === 'x' ? ['scrollLeft', 'scrollWidth', 'clientWidth'] : ['scrollTop', 'scrollHeight', 'clientHeight'];
   Object.defineProperty(box, at, { value: pos, configurable: true });
@@ -38,13 +38,17 @@ describe('the fade a scroller measures', () => {
     expect(maskOf(0, 100.5, 100, 'x')).toBeUndefined();
   });
   it('clears the fade within a hair of either stop, where zoomed metrics overstate the room', () => {
-    // Under a CSS zoom the browser's real maximum offset sits a couple of px short of
-    // scrollWidth - clientWidth, so a fully-scrolled row reports phantom travel at its end.
+    // Under a CSS zoom the real maximum offset sits a couple of px short of scrollWidth - clientWidth.
     expect(maskOf(198, 300, 100, 'x')).toBe(fadeMask('x', { start: SCROLL_FADE, end: 0 }));
     expect(maskOf(2, 300, 100, 'y')).toBe(fadeMask('y', { start: 0, end: SCROLL_FADE }));
   });
   it('lets a custom fadeAt set per-edge widths', () => {
-    expect(maskOf(50, 300, 100, 'x', (_el, _edge, atEnd) => (atEnd ? 40 : 10))).toBe(fadeMask('x', { start: 10, end: 40 }));
+    expect(maskOf(50, 300, 100, 'x', { fadeAt: (_el, _edge, atEnd) => (atEnd ? 40 : 10) })).toBe(fadeMask('x', { start: 10, end: 40 }));
+  });
+  it('counts travel only up to the settled extent, which the scroll length caps', () => {
+    expect(maskOf(0, 300, 100, 'x', { extent: 100 })).toBeUndefined();
+    expect(maskOf(0, 300, 100, 'x', { extent: 200 })).toBe(fadeMask('x', { start: 0, end: SCROLL_FADE }));
+    expect(maskOf(0, 100, 100, 'x', { extent: 400 })).toBeUndefined();
   });
 });
 
@@ -70,12 +74,8 @@ function VProbe({ innerRef }: { innerRef: RefObject<HTMLDivElement | null> }) {
   return createElement('div', { ref: innerRef, style, 'data-testid': 'probe' });
 }
 
-/**
- * `useTravel`'s settle loop runs on `requestAnimationFrame` + `performance.now()`, so these two
- * tests drive it with the same pumped-clock stub `row-scroll.test.ts` established: a queue of
- * callbacks and a `now` this file alone advances, rather than real timers ticking on wall-clock
- * time underneath a synchronous test body.
- */
+/** The settle loop runs on `requestAnimationFrame` and `performance.now()`, so both are stubbed with a
+ *  frame queue and a clock only this file advances. */
 let queue: FrameRequestCallback[] = [];
 let now = 0;
 
@@ -87,8 +87,7 @@ function pump(ms = 16): void {
   for (const cb of q) cb(now);
 }
 
-/** Pump up to `max` frames, or until `done` reads true — a bounded stand-in for "however long the
- *  settle actually takes", so a stalled loop fails the test instead of hanging it. */
+/** Pump up to `max` frames or until `done`, so a stalled loop fails rather than hangs. */
 function pumpUntil(done: () => boolean, max = 120): void {
   for (let i = 0; i < max && !done(); i++) act(() => pump());
 }
@@ -119,10 +118,7 @@ describe('useScrollFade', () => {
   });
 });
 
-/**
- * Nothing pops: a measurement only ever moves the target, and a settle loop chases the shown width
- * toward it, so both arriving and leaving take several frames rather than one.
- */
+/** A measurement only moves the target; a settle loop chases the shown width toward it. */
 describe('useScrollFade transitions instead of popping', () => {
   it('grows in over several frames, sits at a fractional width mid-transition, then only clears the mask once it has fully settled', () => {
     const ref = createRef<HTMLDivElement>();
@@ -131,10 +127,9 @@ describe('useScrollFade transitions instead of popping', () => {
     Object.defineProperty(el, 'scrollWidth', { value: 300, configurable: true });
     Object.defineProperty(el, 'clientWidth', { value: 100, configurable: true });
     Object.defineProperty(el, 'scrollLeft', { value: 0, configurable: true });
-    fireEvent.scroll(el); // start stays at its stop (pos=0); the end gains SCROLL_FADE of travel
+    fireEvent.scroll(el); // only the end has travel
 
-    // One frame in: the shade is already showing, but not yet at its full width — a fractional
-    // px value in the gradient is the transition, not a rounding artifact to tolerate.
+    // One frame in, the shade shows at a fractional width.
     act(() => pump());
     const early = /calc\(100% - ([\d.]+)px\)/.exec(el.style.maskImage);
     expect(early, 'the fade should already be under way, not popped in whole').not.toBeNull();
@@ -142,18 +137,16 @@ describe('useScrollFade transitions instead of popping', () => {
     expect(earlyWidth).toBeGreaterThan(0);
     expect(earlyWidth).toBeLessThan(SCROLL_FADE);
 
-    // A bounded run of frames reaches the settle, at the exact measured width.
     pumpUntil(() => el.style.maskImage.includes(`calc(100% - ${SCROLL_FADE}px)`));
     expect(el.style.maskImage).toContain(`calc(100% - ${SCROLL_FADE}px)`);
 
-    // Now clear all travel (a fully fitted box): this is the pop this feature removes. The
-    // mask must not vanish on the very frame that measured the change...
+    // Clearing all travel does not drop the mask on the triggering event...
     Object.defineProperty(el, 'scrollWidth', { value: 100, configurable: true });
     fireEvent.scroll(el);
     expect(el.style.maskImage, 'the shade melts, it does not vanish on the triggering event')
       .not.toBe('');
 
-    // ...but a bounded run of frames does reach the fully-cleared state.
+    // ...but within a bounded run of frames.
     pumpUntil(() => el.style.maskImage === '');
     expect(el.style.maskImage).toBe('');
   });
@@ -209,10 +202,8 @@ function LateMountHost() {
 
 describe('useScrollFade when the CONTENT changes under a standing box', () => {
   it('melts a fade whose overflow left with the children, with no scroll, resize or render to say so', async () => {
-    // The layer panel's mode switch: the outgoing tiles are removed by the animation library when
-    // their exit finishes, so scrollHeight drops with no scroll event, no box resize and no host
-    // re-render. The shade must notice the mutation itself, or it stands over a stack that is all
-    // showing until something else happens to re-render the panel.
+    // As in the layer panel's mode switch: exiting tiles are removed when their animation ends, with
+    // no scroll event, resize or re-render, so the hook has to observe the mutation itself.
     const ref = createRef<HTMLDivElement>();
     const { getByTestId } = render(createElement(Probe, { innerRef: ref }));
     const el = getByTestId('probe');
@@ -248,12 +239,8 @@ describe('useScrollFade on a scroller that mounts on a later render', () => {
 });
 
 /**
- * The mid-tween trap, which is what a shade standing over content that is all showing comes
- * from: the surface a scroller lives in tweens its own height (the panel does, to its new
- * content height), so for the length of that tween the box is shorter than it is about to be and the
- * metrics say the content scrolls. A reading latched there leaves a shade standing over a record
- * that is all showing, with nothing left to scroll — which is why the answer is re-derived on every
- * resize rather than kept.
+ * While the surface around a scroller tweens its height, the box is shorter than it is about to be and
+ * the metrics report travel; the reading is re-derived on every resize so it does not latch there.
  */
 describe('useScrollFade while the box it lives in is being tweened taller', () => {
   it('takes the shade back off once the box has finished growing', () => {
@@ -263,14 +250,13 @@ describe('useScrollFade while the box it lives in is being tweened taller', () =
     Object.defineProperty(box, 'scrollHeight', { value: 300, configurable: true });
     Object.defineProperty(box, 'scrollTop', { value: 0, configurable: true });
 
-    // Mid-tween: the panel is on its way to a taller height, so the zone is still short of its
-    // content and there is travel to report.
+    // Mid-tween, still short of its content.
     Object.defineProperty(box, 'clientHeight', { value: 150, configurable: true });
     fireEvent.scroll(box);
     pumpUntil(() => box.style.maskImage.includes('linear-gradient(to bottom,'));
     expect(box.style.maskImage).toContain('linear-gradient(to bottom,');
 
-    // Settled: the box now holds all of it. Nothing scrolls, so nothing may be shaded.
+    // Settled, holding all of it.
     Object.defineProperty(box, 'clientHeight', { value: 300, configurable: true });
     fireEvent.scroll(box);
     pumpUntil(() => box.style.maskImage === '');
@@ -279,10 +265,9 @@ describe('useScrollFade while the box it lives in is being tweened taller', () =
 });
 
 /**
- * Under reduced motion the shade is set from the binding effect, which re-measures on every render.
- * A render that measured nothing new must queue no update: one queued on a component whose other
- * state is still waiting on a lower-priority update re-renders it at once, and the same effect runs
- * again in that render, which is the generate shelf's tab-switch loop.
+ * Under reduced motion the binding effect re-measures on every render, so a render that measured
+ * nothing new must queue no update: beside a pending lower-priority update it would re-render at once
+ * and run the same effect again, an endless loop.
  */
 describe('useScrollFade under reduced motion, re-rendered', () => {
   let renders = 0;
@@ -293,7 +278,7 @@ describe('useScrollFade under reduced motion, re-rendered', () => {
     renders += 1;
     const ref = useRef<HTMLDivElement>(null);
     const [, setTick] = useState(0);
-    // A list whose updater always yields a new array, as a batch's pictures arriving one by one do.
+    // An updater that always yields a new array.
     const [, setList] = useState<number[]>([]);
     poke = () => setTick((n) => n + 1);
     starve = () => {
@@ -328,5 +313,59 @@ describe('useScrollFade under reduced motion, re-rendered', () => {
     expect(() => act(() => starve!())).not.toThrow();
     expect(failed).not.toHaveBeenCalled();
     expect(renders, 'mount, the default update and the transition').toBeLessThanOrEqual(4);
+  });
+});
+
+/** The settle glide is a frame-by-frame writer: it draws on the scroller past React. */
+describe('useScrollFade glides past React', () => {
+  let renders = 0;
+  function Owner({ on = true }: { on?: boolean }) {
+    renders += 1;
+    const ref = useRef<HTMLDivElement>(null);
+    const style = useScrollFade(ref, 'x', { on });
+    return createElement('div', { ref, style, 'data-testid': 'owner' });
+  }
+  function overflow(el: HTMLElement): void {
+    Object.defineProperty(el, 'scrollWidth', { value: 300, configurable: true });
+    Object.defineProperty(el, 'clientWidth', { value: 100, configurable: true });
+    Object.defineProperty(el, 'scrollLeft', { value: 0, configurable: true });
+  }
+  beforeEach(() => { renders = 0; });
+
+  it('settles the shade over several frames without rendering the scroller\'s owner again', () => {
+    const { getByTestId } = render(createElement(Owner));
+    const el = getByTestId('owner');
+    overflow(el);
+    const before = renders;
+    fireEvent.scroll(el);
+    act(() => pump());
+    expect(el.style.maskImage, 'one frame in, part of the way').toMatch(/calc\(100% - [\d.]+px\)/);
+    pumpUntil(() => el.style.maskImage.includes(`calc(100% - ${SCROLL_FADE}px)`));
+    expect(el.style.maskImage).toContain(`calc(100% - ${SCROLL_FADE}px)`);
+    expect(renders - before, 'no render for any frame of the glide').toBe(0);
+  });
+
+  it('carries the shade it has drawn through a later render of its owner', () => {
+    const { getByTestId, rerender } = render(createElement(Owner));
+    const el = getByTestId('owner');
+    overflow(el);
+    fireEvent.scroll(el);
+    pumpUntil(() => el.style.maskImage.includes(`calc(100% - ${SCROLL_FADE}px)`));
+    rerender(createElement(Owner));
+    expect(el.style.maskImage).toContain(`calc(100% - ${SCROLL_FADE}px)`);
+  });
+
+  it('switched off, observes nothing and takes its shade off the scroller', () => {
+    const { getByTestId, rerender } = render(createElement(Owner));
+    const el = getByTestId('owner');
+    overflow(el);
+    fireEvent.scroll(el);
+    pumpUntil(() => el.style.maskImage.includes(`calc(100% - ${SCROLL_FADE}px)`));
+    rerender(createElement(Owner, { on: false }));
+    expect(el.style.maskImage).toBe('');
+    fireEvent.scroll(el);
+    act(() => pump());
+    expect(el.style.maskImage, 'a scroll while off draws nothing').toBe('');
+    expect(queue.length, 'and arms no frame').toBe(0);
   });
 });

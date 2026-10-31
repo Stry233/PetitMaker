@@ -8,7 +8,7 @@ import { TerrainType, type MacroCoord } from '../../../../core/model/types';
 
 const DEFAULT_STYLE = { turnPenalty: 0, naturalness: 1, alignment: new Map<number, 'x' | 'y'>(), materialId: undefined, source: 'default' as const };
 /** A non-default style (readable off, say, a rectilinear map) so 'straight' genuinely outbids
- *  'short' on turns — at DEFAULT_STYLE's turnPenalty of 0, `astar` never charges for a turn at all,
+ *  'short' on turns: at DEFAULT_STYLE's turnPenalty of 0, `astar` never charges for a turn at all,
  *  profile or no. */
 const TURNY_STYLE = { ...DEFAULT_STYLE, turnPenalty: 1, naturalness: 0.5, source: 'measured' as const };
 
@@ -78,7 +78,7 @@ describe('routeOffers', () => {
       const W = 40, H = 40;
       const state = makeState(W, H);
       // A wall of decorations blocks the direct row; a lake sits just above it, so going up and
-      // over hugs the water while going down and under does not — the same detour cost either way.
+      // over hugs the water while going down and under does not; the detour costs the same either way.
       for (let x = 15; x <= 25; x++) {
         const id = `w${x}`;
         state.objects.set(id, { id, catalogId: 'flower-daisy', position: { x, y: 20 }, rotation: 0, elevation: 0 });
@@ -152,7 +152,7 @@ describe('the straight profile is itself at every style', () => {
   it('differs from short even where the map style carries no turn penalty', () => {
     // A `turnPenalty > 0` gate inside astar closes before the profile's own turn cost is consulted, which
     // makes 'straight' equal 'short' on every organic-default map. Same comb fixture as above, at a
-    // ZERO-turn-penalty style.
+    // zero-turn-penalty style.
     const W = 60, H = 40;
     const state = makeState(W, H);
     const teeth = [

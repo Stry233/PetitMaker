@@ -18,12 +18,12 @@ export const SUPPORTS_EXTERNAL_LINKS = !IS_LITE;
 export const SUPPORTS_WORKERS = !IS_LITE;
 export const SUPPORTS_FULLSCREEN = !IS_LITE;
 export const SUPPORTS_DOWNLOADS = !IS_LITE;
+/** The welcome tips' reels: the offline package cannot hold them, and its container has no fetch. */
+export const SUPPORTS_TOUR_REELS = !IS_LITE;
 /** Reading a planet from a recorded game video: a worker and a full-size video decode. */
 export const SUPPORTS_VIDEO_IMPORT = SUPPORTS_WORKERS;
 /** The licence texts travel inside the bundle where the edition cannot link out to them. */
 export const BUNDLES_LICENSE_TEXTS = !SUPPORTS_EXTERNAL_LINKS;
-/** A phone held in portrait is asked to rotate; the offline edition turns its own body instead. */
-export const BLOCKS_PORTRAIT = !IS_LITE;
 /** CSS `min()` in inline sizes; the offline container's WebView may predate it. */
 export const SUPPORTS_CSS_MIN = !IS_LITE;
 /** The export window's segmented options wrap their labels, which run longer in the offline copy. */

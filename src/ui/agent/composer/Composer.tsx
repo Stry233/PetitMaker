@@ -17,6 +17,7 @@ import { cursors, font, radii, type PwStyle } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { cssMotion, framerMotion } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
 import { useObservedSize } from '../../primitives/use-observed-size';
@@ -125,10 +126,10 @@ const CAVEAT_STYLE: CSSProperties = {
   lineHeight: 1.4, margin: `${PANEL_PAD}px 4px 0`, textAlign: 'center',
 };
 
-const SEND_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: INK, color: PLATE };
+const SEND_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, position: 'relative', background: INK, color: PLATE };
 
 /** An off send says so in the track fill and muted ink, never with a fade, like the well beside it. */
-const SEND_OFF_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: TRACK, color: MUTED, opacity: 1 };
+const SEND_OFF_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, position: 'relative', background: TRACK, color: MUTED, opacity: 1 };
 
 const STOP_BASE_STYLE: CSSProperties = { ...ROUND_BUTTON_BASE, background: DANGER_SURFACE, color: DANGER_INK };
 
@@ -181,6 +182,9 @@ export function Composer({
   focusRef,
 }: ComposerProps) {
   const t = useT();
+  const sendName = useNameReveal(t('agent.action_send'));
+  const stopName = useNameReveal(t('agent.action_stop'));
+  const expandName = useNameReveal(t('agent.composer_expand'));
   const reduced = useReducedMotionConfig() === true;
   const [value, setValue] = useState('');
   /** Whether the single shared field is rendered in the floating editor. */
@@ -376,7 +380,7 @@ export function Composer({
           <ActionButton
             ref={stopRef}
             data-testid="composer-stop"
-            title={t('agent.action_stop')}
+            {...stopName.bind}
             aria-label={t('agent.action_stop')}
             aria-hidden={!running}
             tabIndex={running ? 0 : -1}
@@ -393,6 +397,7 @@ export function Composer({
             }}
           >
             <Icon id="pw-stop" size={19} />
+            {stopName.bubble}
           </ActionButton>
           {/* Offer the expanded editor only after the draft exceeds the inline line limit. */}
           <AnimatePresence initial={false}>
@@ -400,7 +405,7 @@ export function Composer({
               <ActionButton
                 key="door"
                 data-testid="composer-expand"
-                title={t('agent.composer_expand')}
+                {...expandName.bind}
                 aria-label={t('agent.composer_expand')}
                 onClick={unfold}
                 initial={reduced ? false : DOOR_FOLDED}
@@ -410,19 +415,21 @@ export function Composer({
                 style={DOOR_STYLE}
               >
                 <Icon id="pw-note" size={17} />
+                {expandName.bubble}
               </ActionButton>
             )}
           </AnimatePresence>
           {regionButton}
           <ActionButton
             data-testid="composer-send"
-            title={t('agent.action_send')}
             aria-label={t('agent.action_send')}
+            {...sendName.bind}
             disabled={off}
             onClick={submit}
             style={off ? SEND_OFF_STYLE : SEND_STYLE}
           >
             <Icon id="pw-send" size={16} />
+            {sendName.bubble}
           </ActionButton>
         </div>
       )}

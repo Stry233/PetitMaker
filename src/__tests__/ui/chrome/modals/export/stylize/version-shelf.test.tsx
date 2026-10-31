@@ -6,6 +6,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nProvider } from '../../../../../../i18n/context';
 import { VersionShelf } from '../../../../../../ui/chrome/modals/export/stylize/VersionShelf';
 import type { StylizeVersion } from '../../../../../../state/stylize-versions';
+import { InputModeProvider } from '../../../../../../ui/design/input-mode';
+import { spec } from '../../../../../_support/spec';
 
 function fakeVersion(no: number): StylizeVersion {
   return {
@@ -62,9 +64,33 @@ describe('VersionShelf row mechanics', () => {
     );
     const retire = screen.getByRole('button', { name: 'Remove this picture' });
     expect((retire as HTMLElement).style.pointerEvents).toBe('none');
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Take 1' }).parentElement!);
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Take 1' }).parentElement!);
     expect((retire as HTMLElement).style.pointerEvents).toBe('auto');
     fireEvent.click(retire);
     expect(onRetire).toHaveBeenCalledWith('v1');
+  });
+
+  spec('UI-29', 'in touch mode a tap keeps and shows a take, and the kept take wears its retire square', () => {
+    const onPick = vi.fn();
+    const onRetire = vi.fn();
+    const view = (selectedId: string | null) => (
+      <I18nProvider>
+        <InputModeProvider inputMode="touch">
+          <VersionShelf
+            versions={[fakeVersion(1), fakeVersion(2)]} selectedId={selectedId} running={false} runningBand="#123456"
+            originalSrc={null} onTry={noop} onPick={onPick} onRetire={onRetire}
+          />
+        </InputModeProvider>
+      </I18nProvider>
+    );
+    const { rerender } = render(view(null));
+    fireEvent.click(screen.getByRole('button', { name: 'Take 2' }));
+    expect(onPick).toHaveBeenCalledWith('v2');
+    rerender(view('v2'));
+    const [first, second] = screen.getAllByRole('button', { name: 'Remove this picture' }) as HTMLElement[];
+    expect(first!.style.pointerEvents).toBe('none');
+    expect(second!.style.pointerEvents).toBe('auto');
+    fireEvent.click(second!);
+    expect(onRetire).toHaveBeenCalledWith('v2');
   });
 });

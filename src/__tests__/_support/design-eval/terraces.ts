@@ -1,38 +1,30 @@
 /**
  * The shape of the ground, read off the finished map: is a terrace a landform or a block of tofu?
  *
- * Seam length does not discriminate, though it is the obvious reading to reach for: over ten
- * full-richness seeds of both templates the longest straight tier-edge run is 55 to 89 cells against
- * the terraced reference's 126, and corners per hundred segments 13.9 to 15.4 against its 14.8 — by
- * that reading a generated map is already less ruled than the map it is measured against.
+ * Seam length does not discriminate: over ten full-richness seeds the longest straight tier edge is
+ * 55 to 89 cells against the terraced reference's 126, and corners per hundred segments 13.9 to 15.4
+ * against its 14.8. Box fill does: with unbitten edges the median component fills its bounding box
+ * exactly (1.00) against the terraced reference's 0.58.
  *
- * What does discriminate is the box: with the terrace edges left unbitten the median component fills
- * its own bounding box exactly (1.00, with 26 to 47 of a map's components at 0.90 or above) against
- * 0.58 on the terraced reference and 9 of its 38. A tofu block is a component that is its bounding
- * box, and that is what this reading counts.
- *
- * A terrace component is a 4-connected run of land at one surface level, water included at its own
- * surface, which is the definition the references' own terrace tables are read by, so the numbers here
- * can be compared against them directly.
+ * A terrace component is a 4-connected run of land at one surface level, water included, as the
+ * references' terrace tables count it, so the numbers compare directly.
  */
 import type { GridState } from '../../../core/model/types';
 import { labelComponents } from '../../../core/grid/cell-sets';
 import { readMap } from '../../../tools/reading';
 
-/** The smallest component this reading counts. The references' own terraces are read at 30 cells and
- *  up; below that a component is a fillet or a step, not a surface. */
+/** The smallest component counted, as in the references' tables; below it a component is a fillet or
+ *  a step, not a surface. */
 export const TERRACE_MIN_CELLS = 30;
 
-/** The box fill at which a component is its bounding box. Read on the two references this counts 9 of
- *  the terraced planet's 38 components and all 5 of the garden town's. */
+/** The box fill at which a component is its bounding box: 9 of the terraced reference's 38 components
+ *  and all 5 of the garden town's. */
 export const BOXY_FILL = 0.9;
 
 /**
- * The most of its own bounding box the median terrace component may fill.
- *
- * A measured floor, not a target: the references read 0.58 (terraced) and 1.00 (the flat garden town,
- * whose five components are the plain it is). A generated map reads 0.81 to 0.89 with its terrace edges
- * bitten into and exactly 1.00 without, so the bar sits above the worst of those and below the box.
+ * The most of its own bounding box the median terrace component may fill. The references read 0.58
+ * (terraced) and 1.00 (the flat garden town); a generated map reads 0.81 to 0.89 with bitten terrace
+ * edges and 1.00 without, so the cap sits above the first and below the box.
  */
 export const TERRACE_FILL_MAX = 0.94;
 
@@ -46,8 +38,7 @@ export interface TerraceShape {
   /** Components whose fill is `BOXY_FILL` or above, and their share of the count. */
   boxy: number;
   boxyShare: number;
-  /** The longest straight run of tier edge, in cells, and how often an edge turns: corners per 100
-   *  edge segments. Reported rather than gated — see the header. */
+  /** The longest straight tier edge in cells, and corners per 100 edge segments. Reported, not gated. */
   longestSeam: number;
   cornersPer100: number;
 }
@@ -101,12 +92,9 @@ export function terraceShape(state: GridState, g = readMap(state)): TerraceShape
 }
 
 /**
- * The tier edges as unit segments on the dual lattice: how long the longest straight run of one is,
- * and how often two of them meet at a right angle.
- *
- * A vertical segment at (x, y) separates the cells (x-1, y) and (x, y); a horizontal one at (x, y)
- * separates (x, y-1) and (x, y). Only edges between two land cells count — the coastline is the
- * template's shape and not the generator's.
+ * Tier edges as unit segments on the dual lattice: the longest straight run and the right-angle corners.
+ * A vertical segment at (x, y) separates (x-1, y) and (x, y); a horizontal one separates (x, y-1) and
+ * (x, y). Only edges between two land cells count; the coastline is the template's, not the generator's.
  */
 function seamShape(
   surface: Int8Array, W: number, H: number,

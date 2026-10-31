@@ -1,4 +1,4 @@
-// Writes the build identity into `build-info.json` from this repository's history —
+// Writes the build identity into the stamp file (`STAMP_PATH`) from this repository's history —
 // the one and only place the build number is produced. Every build then reads that
 // file, so the number is identical on any host, at any clone depth, with no git at
 // all (see scripts/build-info-core.mts for why deriving it per build cannot work).
@@ -9,12 +9,14 @@
 // main-module guard cannot host both under vite-node.
 //
 // Usage:
-//   vite-node scripts/stamp-build.mts            write build-info.json (refuses to
+//   vite-node scripts/stamp-build.mts            write the stamp (refuses to
 //                                                lower the number — only the repo
 //                                                that owns it may stamp)
 //   vite-node scripts/stamp-build.mts --check     verify the committed stamp came
 //                                                from this history; report how far
 //                                                HEAD has moved since
+//   vite-node scripts/stamp-build.mts --path      print the stamp's repository-relative
+//                                                path, for shell readers (hook, workflows)
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -94,4 +96,6 @@ function write(): void {
   );
 }
 
-if (process.argv.includes('--check')) check(); else write();
+if (process.argv.includes('--path')) console.log(STAMP_PATH);
+else if (process.argv.includes('--check')) check();
+else write();

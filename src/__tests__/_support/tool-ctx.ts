@@ -27,7 +27,7 @@ export function testArming(over: Partial<ToolArming> = {}): ToolArming {
     autoEdgeCut: 'off',
     eraserShape: 'free',
     tileMaterial: 'path-overgrown-dirt',
-    // A test that names a material means it — the store's own default is `false`, and the road
+    // A test that names a material means it; the store's own default is `false`, and the road
     // macros read the map's surface under it.
     tileMaterialPicked: true,
     armedItem: null,
@@ -45,7 +45,12 @@ export function testArming(over: Partial<ToolArming> = {}): ToolArming {
     annotationRouteDashed: true,
     annotationRouteWidth: 1,
     notes: { selection: [], draft: null, historyEpoch: 0, discardPending: false },
+    objectBrush: 'place',
+    objectPaintShape: 'free',
+    objectPaintSpacing: 0,
     ...over,
+    // The picks follow the armed item unless a test names them, as the store's do.
+    picks: over.picks ?? (over.armedItem ? [over.armedItem] : []),
   };
 }
 

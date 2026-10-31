@@ -178,11 +178,9 @@ describe('providers/openai: streaming', () => {
     ]);
   });
 
-  /** Chunks lifted from a live Ivy (vLLM-style) gateway's SSE: every chunk's choice carries both a
-   *  cumulative `message` and a `delta`, a tool call arrives complete in one chunk (id + name + whole
-   *  arguments), and no tool call carries an `index`. Several calls in one turn are several such
-   *  chunks, so keying the accumulator on `index` alone merged them all into one buffer of
-   *  concatenated JSON. */
+  /** Chunks from a live Ivy (vLLM-style) gateway: each choice carries a cumulative `message` beside
+   *  a `delta`, each tool call arrives whole in one chunk, and none carries an `index`, so keying the
+   *  accumulator on `index` alone would merge a turn's calls into one buffer of concatenated JSON. */
   it('assembles complete-in-one-chunk index-less tool calls (Ivy shape: cumulative message beside delta) as distinct calls', async () => {
     const callA = { id: '29ba38e8-1289-4c8d-8651-02889b04b6c6', type: 'function', function: { name: 'place_object', arguments: '{"catalogId":"building-bamboo-cabin","x":68,"y":48}' } };
     const callB = { id: '1f161f97-e566-478b-99de-184084617fa8', type: 'function', function: { name: 'place_object', arguments: '{"catalogId":"building-sunset-cabin","x":75,"y":48}' } };
@@ -513,13 +511,11 @@ describe('providers/openai: streaming', () => {
   });
 
   /**
-   * A gateway that cannot carry a tool call on its streaming path, as recorded against a live Open
-   * WebUI gateway: unstreamed it answers `finish_reason: "tool_calls"` with a `tool_calls` array,
-   * streamed it sends the same call as `delta.content` with `finish_reason: "stop"`. Unnormalized,
-   * that is an answer whose text is the JSON.
+   * A gateway that cannot stream a tool call, as recorded on a live Open WebUI gateway: unstreamed it
+   * answers `finish_reason: "tool_calls"` with a `tool_calls` array; streamed it sends the call as
+   * `delta.content` with `finish_reason: "stop"`, an answer whose text is the JSON.
    *
-   * Each test uses its own base URL: the endpoint memory is module-wide, so a shared URL would let
-   * one test's lesson pick another's transport.
+   * Each test uses its own base URL because the endpoint memory is module-wide.
    */
   const PROSE_CALL = '{"name": "find_flat_areas", "arguments": {"minWidth": 7, "minHeight": 4, "elevation": 0, "near": {"x": 76, "y": 58}, "limit": 5}}';
   const PROSE_ARGS = { minWidth: 7, minHeight: 4, elevation: 0, near: { x: 76, y: 58 }, limit: 5 };

@@ -3,7 +3,7 @@
  * runner; and projects the result into PanelShell. Keeping the column mounted preserves the
  * runner's abort controller and in-flight job.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { callFootprint, jobFootprint, type AskRecord, type GateOption, type JobView } from '../../agent/panel';
 import {
@@ -34,6 +34,7 @@ import { prettyModel, shortModel } from './connection/pretty-model';
 import type { Checkpoint } from './record/ticket-parts';
 import { OVERSIGHT_COPY } from './connection/setup-parts';
 import { POSTCARD } from './panel-skin';
+import { useMorph } from '../primitives/morph';
 
 interface PanelColumnProps {
   /** Whether the mounted panel is visible. */
@@ -66,7 +67,7 @@ function recordShot(job: JobView) {
   return <MapShot box={jobFootprint(job)} width={POSTCARD.width} height={POSTCARD.height} whole />;
 }
 
-export default function PanelColumn({ open, hosted = false, veiled = false }: PanelColumnProps) {
+function PanelColumn({ open, hosted = false, veiled = false }: PanelColumnProps) {
   const t = useT();
   const locale = useLocale();
   const view = useAgentSession(panelView);
@@ -181,12 +182,14 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
   const panelRegion = usePanelRegion(open, view);
   const placement = usePanelPlacement({ t, veiled, planGateStanding: view.gate?.scope === 'plan' });
   const { place } = placement;
+  // Its content re-flows between a side and a bottom dock, so the old fades out as the new fades in.
+  const morph = useMorph('assistant', undefined, { reflows: true });
 
   return (
     <AnimatePresence>
       {/* Keep one panel node through pin and fold stages; a pinned collapse stays until the sheet covers it. */}
       {(open || placement.pinned || place === 'folded') && (
-        <div key="assistant-panel" ref={placement.wrapRef} data-testid="shell-assistant-panel" style={placement.wrapper}>
+        <div key="assistant-panel" ref={placement.wrapRef} data-testid="shell-assistant-panel" {...morph} style={placement.wrapper}>
           <PanelShell
             panel={{
               view, running, open, visit, hosted,
@@ -210,7 +213,7 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
             region={{ ...panelRegion.region, ...(gateCells !== undefined ? { gateCells } : {}) }}
             dock={{
               pinned: placement.pinned,
-              dockSide: placement.side,
+              edge: placement.edge,
               ...(place === 'leaving' || place === 'folded' ? { away: place } : {}),
               pinBlocked: placement.pinBlocked,
               onTogglePin: placement.togglePin,
@@ -230,3 +233,6 @@ export default function PanelColumn({ open, hosted = false, veiled = false }: Pa
     </AnimatePresence>
   );
 }
+
+/** Memoised: its host re-renders with the window and the dock, and the panel reads its own state. */
+export default memo(PanelColumn);

@@ -2,8 +2,8 @@
  * Inside `src/ui`, imports point down the ranks: `design` (tokens, scaling, motion), `primitives`
  * (generic parts and behaviour hooks), `session` (the live session's hooks and channels every surface
  * reads), then the owning surfaces `chrome` (windows and floating surfaces) < `shell` (the frame and
- * its bars) < `agent` (the assistant panel the frame docks) < `help` (the Help Center, which pictures the frame and
- * the panel with their own parts) < `app` (the edition roots) < `lite`.
+ * its bars) < `agent` (the assistant panel the frame docks) < `help` (the Help Center, which pictures
+ * the frame and the panel with their own parts) < `app` (the edition roots) < `lite`.
  * Type-only imports express a contract and are exempt; `UPWARD` lists each reasoned exception.
  */
 import { describe, it, expect } from 'vitest';

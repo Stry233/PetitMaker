@@ -11,7 +11,7 @@
 import { useEditorStore } from '../../state/store';
 import { singleSelection, selectedObjectIds } from '../../state/selection';
 import { getActiveToolManager } from '../../view/active-view';
-import { cancelCarry } from '../../view/interaction/pointer/carry';
+import { cancelEditsInFlight, editsInFlight } from '../../state/edits-in-flight';
 import { getCatalogItem } from '../../state/catalog';
 import { activeToolOf, armedItemOf, armedMacroOf, brushSizeOf, buildShapeOf, buildToolOf, designModeOf, isAnnotating, BUILD_SHAPES, toggleBuildTool, type ContentType, type BuildShape, clampBrushSize, holdsSelection } from '../../state/editing/edit-mode';
 import { pressSmartBuild } from './smart-build';
@@ -21,6 +21,7 @@ import { host } from '../host/host';
 import { ALIASES, COMMAND_META, PLANET_SESSION_COMMANDS, REPAIR_SESSION_COMMANDS, type CommandMeta, type RunCommandId } from '../../state/keymap/registry';
 import { effectiveCombo, type Overrides } from '../../state/keymap/resolve';
 import { deleteSelection, rotateSelection } from '../editing/group-edit';
+import { copyKey, cutKey, pasteKey } from '../editing/clipboard';
 import { translate } from '../../i18n/context';
 import { showToast } from '../../platform/channels/toast-bus';
 import { ACTION_BY_ID, openBuildSurface, runTileAction } from './actions';
@@ -87,6 +88,7 @@ function runAction(action: KeyAction): void {
       if (s.regionRequest.tools.includes(tool)) s.setRegionTool(tool);
       return;
     }
+    case 'object-brush': s.setObjectBrush(action.brush); return;
     case 'note-tool': s.toggleAnnotationTool(action.tool); return;
     case 'smart-build': pressSmartBuild(); return;
     case 'auto-edge-cut':
@@ -109,6 +111,8 @@ function shapeKey(shape: BuildShape): void {
   const context = keyContext(s);
   if (context === 'region') {
     if (s.regionTool !== 'erase' && s.regionRequest.tools.includes(shape)) s.setRegionTool(shape);
+  } else if (context === 'objects') {
+    s.setObjectPaintShape(shape);
   } else if (isNotesContext(context)) {
     if (s.annotationTool === 'zone') s.setAnnotationZoneShape(shape);
     else if (s.annotationTool === 'erase') s.setEraserShape(shape);
@@ -125,6 +129,7 @@ function resizeBrush(delta: number): void {
   const s = store();
   const context = keyContext(s);
   if (context === 'region') s.setRegionBrushSize(clampBrushSize(s.regionBrushSize + delta));
+  else if (context === 'objects') s.setObjectPaintSpacing(s.objectPaintSpacing + delta);
   else if (context === 'notes-route') s.setAnnotationRouteWidth(clampBrushSize(s.annotationRouteWidth + delta));
   else s.setBrushSize(clampBrushSize(brushSizeOf(s) + delta));
 }
@@ -157,13 +162,14 @@ function rotateArmedOrSelected(delta: 90 | -90): void {
 /** A multi-click gesture in progress (the curve's anchors, the map tool's or the region brush's)
  *  answers these keys first: while one is being drawn, Escape and Delete plainly mean "that thing I
  *  am drawing", not the selection. */
-function pendingGesture(): { cancel: () => boolean; undoStep: () => boolean } {
+function pendingGesture(): { cancel: () => boolean; undoStep: () => boolean; stands: () => boolean } {
   const mgr = getActiveToolManager();
   const tool = mgr?.getActiveTool();
   const ctx = mgr?.getContext();
   return {
     cancel: () => cancelPendingRegion() || (tool && ctx ? tool.cancelPending?.(ctx) === true : false),
     undoStep: () => undoPendingRegionStep() || (tool && ctx ? tool.undoPendingStep?.(ctx) === true : false),
+    stands: () => (tool && ctx ? tool.hasPending?.(ctx) === true : false),
   };
 }
 
@@ -192,12 +198,25 @@ function deleteSelected(): void {
   if (ids.length > 0) deleteSelection(translate, ids);
 }
 
+/** Escape on the map when it has something to put down or let go of (an edit the hand still holds,
+ *  a press still down or a carried card, but not a build landing by itself; a gesture being drawn, an armed item or macro, a
+ *  selection), returning whether it did; with none of them, where Escape would only put a brush
+ *  away, it does nothing and returns false, so a surface standing over the map can take the key. */
+export function escapeOnMap(): boolean {
+  const s = store();
+  const meaning = editsInFlight('hand') || pendingGesture().stands() || !!armedItemOf(s) || !!armedMacroOf(s)
+    || s.selection.length > 0 || s.pickedCell !== null || (isAnnotating(s) && s.annotationSelection.length > 0);
+  if (meaning) deselect();
+  return meaning;
+}
+
 /** Notes and terrain disarm with their draft; catalog placement disarms before clearing selection. */
 function deselect(): void {
   const s = store();
   if (s.contextMenu || s.deletePopover) return; // those own their own dismiss
-  // A card carried to the map goes back to the shelf, with the arming it borrowed.
-  if (cancelCarry()) return;
+  // An edit still landing is taken back first: a press still down, or a card carried to the map,
+  // which goes back to the shelf with the arming it borrowed.
+  if (cancelEditsInFlight('hand')) return;
   if (isAnnotating(s)) {
     s.requestAnnotationDiscard(() => {
       pendingGesture().cancel();
@@ -265,7 +284,8 @@ export const RUN: Record<RunCommandId, (ctx: CommandContext) => void> = {
     }
     const shape = isNotesContext(context)
       ? (s.annotationTool === 'zone' ? s.annotationZoneShape : s.annotationTool === 'erase' ? s.eraserShape : null)
-      : context === 'terrain' ? (buildToolOf(s) === 'erase' ? s.eraserShape : buildShapeOf(s)) : null;
+      : context === 'terrain' ? (buildToolOf(s) === 'erase' ? s.eraserShape : buildShapeOf(s))
+      : context === 'objects' ? s.objectPaintShape : null;
     if (shape) shapeKey(BUILD_SHAPES[(BUILD_SHAPES.indexOf(shape) + 1) % BUILD_SHAPES.length]!);
   },
   'tool.free':   () => shapeKey('free'),
@@ -284,6 +304,9 @@ export const RUN: Record<RunCommandId, (ctx: CommandContext) => void> = {
   'selection.delete':     () => deleteSelected(),
   'selection.deselect':   () => deselect(),
   'selection.all':        () => selectAllObjects(),
+  'selection.copy':       () => copyKey(),
+  'selection.cut':        () => cutKey(),
+  'selection.paste':      () => pasteKey(),
 
   'camera.zoom_in':  () => host.camera.zoomIn(),
   'camera.zoom_out': () => host.camera.zoomOut(),
@@ -342,6 +365,8 @@ export const COMMAND_BY_ID: ReadonlyMap<string, EditorCommand> = new Map(COMMAND
 export interface KeyBinding {
   combo: string;
   run: () => void;
+  /** The key's default stays the browser's (`CommandMeta.native`). */
+  keepDefault: boolean;
 }
 
 /** Runs `id` unless a planet session or a hand repair is open and does not answer it
@@ -361,7 +386,7 @@ const answers = (id: string): boolean => {
 export function keyBindings(overrides: Overrides, toolbar: ToolbarContext, ctx: CommandContext): KeyBinding[] {
   const bindings: KeyBinding[] = [];
   const bind = (combo: string, cmd: EditorCommand): void => {
-    bindings.push({ combo, run: () => { if (answers(cmd.id)) cmd.run(ctx); } });
+    bindings.push({ combo, run: () => { if (answers(cmd.id)) cmd.run(ctx); }, keepDefault: cmd.native === true });
   };
   for (const cmd of COMMANDS) {
     if (cmd.continuous || !hasRunBody(cmd.id)) continue;

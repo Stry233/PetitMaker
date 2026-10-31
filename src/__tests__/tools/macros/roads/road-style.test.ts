@@ -6,15 +6,15 @@ import type { GridState, PlacedObject, MacroCoord } from '../../../../core/model
 
 const W = 40, H = 40;
 
-/** Drops a 1x1 road object directly into `state.objects`, bypassing the rules — road-style.ts only
- *  reads `state.objects`, never validates. */
+/** Drops a 1x1 road object straight into `state.objects`, bypassing the rules, which road-style.ts
+ *  never consults. */
 function layRoad(state: GridState, id: string, x: number, y: number, catalogId = 'path-simple-brick'): void {
   const obj: PlacedObject = { id, catalogId, position: { x, y }, rotation: 0, elevation: 0 };
   state.objects.set(id, obj);
 }
 
-/** Long straight avenues crossing at sparse, interior intersections: mostly long straight runs, a
- *  handful of 4-way corners — reads as a rectilinear grid (bendDensity near zero). */
+/** Long straight avenues crossing at a handful of interior 4-way intersections, which reads as a
+ *  rectilinear grid (bendDensity near zero). */
 function layGrid(state: GridState): void {
   let n = 0;
   const xs = [5, 15, 25], ys = [5, 15, 25];
@@ -98,7 +98,7 @@ describe('readRoadStyle', () => {
 describe('a rectilinear map yields a rectilinear route (readRoadStyle feeding astar)', () => {
   it('the rectilinear turnPenalty (naturalness 0) turns strictly less than the organic default (naturalness 1) over the same obstacle field', () => {
     const W = 60, H = 60;
-    // A deterministic scattered obstacle field — open ground alone lets the tie-break already settle
+    // A deterministic scattered obstacle field: open ground alone lets the tie-break already settle
     // on a clean L regardless of turnPenalty (see route.test.ts "a diagonal is one L"); a route only reads
     // as more or less rectilinear where it has to pick its way around real obstacles.
     let seed = 12345;

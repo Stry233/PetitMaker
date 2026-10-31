@@ -37,7 +37,7 @@ describe('the UI-scale listener', () => {
   it('steps the scale on the shipped keys, in both spellings of the keycap', () => {
     const view = render(<Zoomer />);
     expect(press({ key: '=', ctrlKey: true })).toBe(true);
-    expect(zoom()).toBeCloseTo(1.1, 5);
+    expect(zoom()).toBeCloseTo(1.05, 5);
     expect(press({ key: '_', ctrlKey: true, shiftKey: true })).toBe(true); // the - keycap, shifted
     expect(zoom()).toBeCloseTo(1, 5);
     view.unmount();
@@ -49,7 +49,7 @@ describe('the UI-scale listener', () => {
     expect(press({ key: '=', ctrlKey: true })).toBe(false);
     expect(zoom()).toBeCloseTo(1, 5);
     expect(press({ key: '9', ctrlKey: true })).toBe(true);
-    expect(zoom()).toBeCloseTo(1.1, 5);
+    expect(zoom()).toBeCloseTo(1.05, 5);
     view.unmount();
   });
 
@@ -57,7 +57,7 @@ describe('the UI-scale listener', () => {
     const view = render(<Zoomer />);
     act(() => { useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+numadd'); });
     expect(press({ key: '+', code: 'NumpadAdd', ctrlKey: true })).toBe(true);
-    expect(zoom()).toBeCloseTo(1.1, 5);
+    expect(zoom()).toBeCloseTo(1.05, 5);
     view.unmount();
   });
 
@@ -78,8 +78,24 @@ describe('the UI-scale listener', () => {
     expect(zoom()).toBeCloseTo(1, 5);
     // The same press away from the field still scales.
     expect(press({ key: 'j' })).toBe(true);
-    expect(zoom()).toBeCloseTo(1.1, 5);
+    expect(zoom()).toBeCloseTo(1.05, 5);
     field.remove();
     view.unmount();
+  });
+
+  it('[UI-34] keeps touch mode on its own stops, 60% to 180% through 125% upright', () => {
+    act(() => { useEditorStore.getState().setLayoutShape('portrait'); useEditorStore.getState().setInputMode('touch'); });
+    try {
+      render(<Zoomer />);
+      expect(zoom()).toBe(1.25);
+      press({ key: '=', ctrlKey: true });
+      expect(zoom()).toBe(1.3);
+      for (let i = 0; i < 20; i++) press({ key: '=', ctrlKey: true });
+      expect(zoom(), 'the top stop').toBe(1.8);
+      for (let i = 0; i < 40; i++) press({ key: '-', ctrlKey: true });
+      expect(zoom(), 'the bottom stop').toBe(0.6);
+    } finally {
+      act(() => { useEditorStore.getState().setUiZoom(1.25); useEditorStore.getState().setInputMode('pc'); });
+    }
   });
 });

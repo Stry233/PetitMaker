@@ -6,6 +6,7 @@ import { useT } from '../../../../i18n/context';
 import type { HandedImport } from '../../../../state/slices/shell';
 import { useEditorStore } from '../../../../state/store';
 import { ConfirmationContent, type ConfirmationContentProps } from '../../../primitives/ConfirmationContent';
+import { windowColumn } from '../../../primitives/Window';
 
 export interface ImportRedirectProps {
   /** The file as the import surfaces classified it, and where it belongs. */
@@ -34,7 +35,7 @@ export function useRedirectContent({ hand, onGone, onCancel }: ImportRedirectPro
 export function ImportRedirect(props: ImportRedirectProps) {
   const content = useRedirectContent(props);
   return (
-    <div data-testid="import-redirect" data-kind={props.hand.kind}>
+    <div data-testid="import-redirect" data-kind={props.hand.kind} style={windowColumn}>
       <ConfirmationContent {...content} />
     </div>
   );

@@ -3,8 +3,9 @@
  * With nothing armed, the grey hover box shows what a click selects. Over a grid of screen points in
  * the real 2D viewport and the real 3D surface pick, the real pointer machine draws a box that holds
  * the map point under the pointer. Over an object it is the object's footprint and a click selects
- * the object; over ground it is a 1×1 box on the half-cell lattice, sliding in half-cell steps, and a
- * click selects the terrain cell holding its centre.
+ * the object; over open ground it is the placement cell under the pointer and a click picks that
+ * cell (EDIT-54); over mountain or water it is a 1×1 box on the half-cell lattice, sliding in
+ * half-cell steps, and a click selects the terrain cell holding its centre.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -152,34 +153,50 @@ describe.each(['2d', '3d'] as const)('the %s idle hover box', (view) => {
           expect(ground.x >= 0 && ground.y >= 0 && ground.x < W && ground.y < H, `no box at map point ${point.x},${point.y}`).toBe(false);
           continue;
         }
-        expect(point.x >= area.x && point.x < area.x + area.w && point.y >= area.y && point.y < area.y + area.h,
+        // The terrain grid reaches half a cell past the map's top and left edges, where open ground
+        // shows the edge cell beside the pointer.
+        const held = pointerTarget(gs, point).pick ? { x: Math.max(point.x, 0), y: Math.max(point.y, 0) } : point;
+        expect(held.x >= area.x && held.x < area.x + area.w && held.y >= area.y && held.y < area.y + area.h,
           `box ${JSON.stringify(area)} misses map point ${point.x},${point.y}`).toBe(true);
 
-        setStoreState({ selection: [] });
+        setStoreState({ selection: [], pickedCell: null });
         el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: sx, clientY: sy }));
         window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: sx, clientY: sy }));
         const selected = useEditorStore.getState().selection;
+        const picked = useEditorStore.getState().pickedCell;
+        if (picked && selected.length === 0) {
+          expect(area).toEqual({ x: picked.x, y: picked.y, w: 1, h: 1 });
+          expect(gs.cells[ground.y]?.[ground.x]?.terrain, 'only open ground is picked').toBeFalsy();
+          kinds.add('ground');
+          checked++;
+          continue;
+        }
         expect(selected).toHaveLength(1);
         const block = selected[0]!;
         if (block.kind === 'object') {
           const obj = gs.objects.get(block.id)!;
           expect({ x: area.x, y: area.y }).toEqual(obj.position);
+          expect(picked, 'an object press picks nothing').toBeNull();
         } else {
+          // EDIT-25: the press also picks the placement cell under the pointer.
+          const under = cellAtPoint(point, 'object');
+          expect(picked).toEqual({ x: Math.max(under.x, 0), y: Math.max(under.y, 0) });
           expect(area.w).toBe(1);
           expect(area.h).toBe(1);
           expect(onLattice(area.x) && onLattice(area.y), `box origin ${area.x},${area.y} off the half-cell lattice`).toBe(true);
           const centre = mapPoint({ x: area.x + 0.5, y: area.y + 0.5 });
           expect({ x: block.x, y: block.y }).toEqual(cellAtPoint(centre, 'terrain'));
+          expect(gs.cells[block.y]?.[block.x]?.terrain, 'open ground is picked, never selected').toBeTruthy();
         }
         kinds.add(block.kind === 'object' ? block.id : 'terrain');
         checked++;
       }
     }
     expect(checked).toBeGreaterThan(200);
-    expect([...kinds].sort()).toEqual(['half', 'terrain', 'whole']);
+    expect([...kinds].sort()).toEqual(['ground', 'half', 'terrain', 'whole']);
   });
 
-  it('slides in half-cell steps as the pointer sweeps over ground', () => {
+  it('slides in half-cell steps as the pointer sweeps over mountain and water', () => {
     const { gs, proj, hoverAt } = mount(view);
     const steps = new Set<number>();
     for (const sy of [131, 287, 433]) {
@@ -187,7 +204,8 @@ describe.each(['2d', '3d'] as const)('the %s idle hover box', (view) => {
       for (let sx = 9; sx < 800; sx += 1.5) {
         const point = proj.screenToPoint(sx, sy);
         const area = hoverAt(sx, sy);
-        if (!area || area.w !== 1 || pointerTarget(gs, point).hit) { last = null; continue; }
+        const target = pointerTarget(gs, point);
+        if (!area || area.w !== 1 || target.hit || target.pick) { last = null; continue; }
         // A 3D pick jumps where a cliff hides the ground behind it; only a continuous slide counts.
         if (last && Math.abs(point.x - last.point.x) < 0.2 && Math.abs(point.y - last.point.y) < 0.2) {
           for (const d of [area.x - last.area.x, area.y - last.area.y]) {

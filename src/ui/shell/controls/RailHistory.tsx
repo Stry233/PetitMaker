@@ -1,29 +1,32 @@
 /** The rail's undo and redo pair. */
+import type { Ref } from 'react';
 import { veilTransition, group, useRailReflow, RailButton } from './RailButton';
 import { mapEdgeAttr } from '../../primitives/map-edge';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { isAnnotating } from '../../../state/editing/edit-mode';
-import { useUiZooming } from '../../design/ui-zoom-anim';
+import { useScaleMoving } from '../../design/scale';
 import {
   GLYPHS, HISTORY_BUTTONS, railCell, } from '../frame';
 import { GlyphIcon } from '../GlyphIcon';
-import { CSS_CURVES } from '../../design/motion/curves';
-import { MOTIONS } from '../../design/motion/registry';
-import { cssMotion } from '../../design/motion';
+import { usePlanGlide } from '../frame-layout';
 import { RAIL } from '../units';
 import { useRunCommand } from '../use-shell-commands';
 import { useHistoryState } from '../../session/use-history-state';
+import { useMorphGroup } from '../../primitives/morph';
 
-/** How the pair travels between its two places. */
-const YIELD_MOTION = MOTIONS['rail.history.yield'];
-const YIELD_TRANSITION = `top ${YIELD_MOTION.duration}s ${CSS_CURVES[YIELD_MOTION.curve]}`;
 /** History follows continuous zoom directly; only discrete group reflows receive an offset tween. */
-export function HistoryGroup({ top, right, files, placement, veiled }: { top: number; right: number; files: number; placement: string; veiled: boolean }) {
+export function HistoryGroup({ boxRef, top, right, files, placement, veiled, drawnTop }: {
+  boxRef?: Ref<HTMLDivElement>; top: number; right: number; files: number; placement: string; veiled: boolean;
+  /** Where the live rail writer last drew the pair (`frame-layout.tsx:DrawnRail`). */
+  drawnTop?: () => number | null;
+}) {
   const t = useT();
-  const zooming = useUiZooming();
-  const offset = useRailReflow(0, top, placement, zooming);
+  const zooming = useScaleMoving();
+  const glide = usePlanGlide('frame.layout.adapt');
+  const yieldGlide = usePlanGlide('rail.history.yield');
+  const offset = useRailReflow(0, top, placement, zooming, drawnTop);
   const run = useRunCommand();
   // The lane the history commands step: the region's while one is painted, the notes' in Notes, else the map's.
   const lane = useEditorStore((s) => (s.selectingRegion
@@ -34,7 +37,9 @@ export function HistoryGroup({ top, right, files, placement, veiled }: { top: nu
   const { canUndo, canRedo } = useHistoryState();
   return (
     <motion.div
+      ref={boxRef}
       data-testid="shell-rail-history"
+      {...useMorphGroup()}
       {...mapEdgeAttr('right')}
       style={{
         ...group,
@@ -51,10 +56,11 @@ export function HistoryGroup({ top, right, files, placement, veiled }: { top: nu
         // so the pair still arrives at the place the panel left it and simply does not travel there.
         // The veil is on the same declaration because an element has one `transition`, and a second
         // one written here would silently drop the travel this group is placed by.
-        transition: [zooming ? '' : `${YIELD_TRANSITION}, ${cssMotion('frame.layout.adapt', ['right'])}`, veilTransition(veiled)].filter(Boolean).join(', '),
+        transition: [zooming ? '' : yieldGlide(['top']), zooming ? '' : glide(['right']), veilTransition(veiled)].filter(Boolean).join(', '),
       }}
     >
       <RailButton
+        morph="undo"
         label={t('a11y.undo')}
         helpTarget="undo"
         disabled={!(lane ? lane.undo : canUndo)}
@@ -67,6 +73,7 @@ export function HistoryGroup({ top, right, files, placement, veiled }: { top: nu
         <GlyphIcon glyph={GLYPHS.undo} size={RAIL.glyph} />
       </RailButton>
       <RailButton
+        morph="redo"
         label={t('a11y.redo')}
         helpTarget="undo"
         disabled={!(lane ? lane.redo : canRedo)}

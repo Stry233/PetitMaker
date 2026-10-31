@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The house dropdown, and the one rule that shapes it: the panel never makes room for a menu. The
- * closed state is a row; the open state is a card in a body-level layer, so no surface reserves a
- * box, tweens a height, or grows a scroller because a list opened over it.
- *
- * The body-level portal is load-bearing rather than tidy: a panel stands inside the frame's `zoom`
- * and inside its entrance fade, and either of those becomes the containing block or the stacking
- * context for anything rendered under it. A card in the row's own subtree cannot reach the
- * viewport's edges or the popover rung. These pin the layer, the two dismissals, and the one row
- * the list marks as current.
+ * The house dropdown: the panel never makes room for a menu. Closed it is a row; open, a card in a
+ * body-level layer, because the frame's `zoom` and entrance fade would otherwise become the card's
+ * containing block and stacking context, keeping it from the viewport edges and the popover rung.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { FloatMenu, floatMenuItemFill, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
 import { UiPreviewProvider } from '../../../ui/design/preview';
 import { ACTIVE } from '../../../ui/design/tokens';
@@ -87,44 +81,38 @@ describe('the open card stands outside the panel', () => {
     rerender(<Menu open />);
     expect(panel.offsetHeight).toBe(closed.h);
     expect(panel.childElementCount).toBe(closed.kids);
-    // The same row node, still alone in the panel: no card, no reserved box, no spacer.
     expect(screen.getAllByRole('button')[0]).toBe(row);
     expect(panel.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('keeps the scaled gap while respecting the viewport edge margin', () => {
-    render(<Menu open zoom={2} />);
+  it('draws at the zoom its row stands under, keeping the scaled gap and the viewport edge margin', () => {
+    render(<div style={{ zoom: 2 }}><Menu open /></div>);
+    expect(screen.getByRole('menu').parentElement!.style.zoom).toBe('2');
     expect(screen.getByRole('menu').style.top).toBe('6px');
     cleanup();
-    render(<Menu open zoom={0.5} />);
+    render(<div style={{ zoom: 0.5 }}><Menu open /></div>);
     expect(screen.getByRole('menu').style.top).toBe('16px');
   });
 
   /**
-   * All four corners inside the box the card is given.
-   *
-   * The placement hands the card the row's width and the room the window has left. Under
-   * content-box its own padding and border stand outside both: 14px wider than the row, so a card
-   * hanging off a row near the window's right edge stands past the clamp meant to hold it off that
-   * edge, and 14px taller than the room, so its foot is cut off by the window. What reads on the
-   * glass is a rounded card with two square corners.
+   * Under content-box the padding and border would make the card 14px wider and taller than its
+   * box, past the edge clamp and cut off at the window's foot.
    */
   it('keeps its own padding and border inside the box it is given', () => {
-    const view = render(<Menu zoom={1} />);
+    const view = render(<Menu />);
     const row = screen.getAllByRole('button')[0]!;
-    // A row hard against the window's right-hand gutter, which is where an overflow would show. Stubbed
-    // Before the list opens, since the card is placed from the rect read in that layout pass.
+    // A row against the window's right gutter, stubbed before opening since placement reads it then.
     const box = { left: 716, top: 100, width: 300, height: 50, bottom: 150, right: 1016 };
     Object.defineProperty(row, 'getBoundingClientRect', {
       configurable: true, value: () => ({ ...box, x: box.left, y: box.top, toJSON: () => ({}) }),
     });
-    view.rerender(<Menu open zoom={1} />);
+    view.rerender(<Menu open />);
     const card = screen.getByRole('menu');
     expect(card.style.boxSizing).toBe('border-box');
     expect(card.style.width).toBe('300px');
-    // The card's outer right edge lands on the gutter rather than 14px past it.
+    // The fixture's right edge is the gutter itself.
     expect(716 + 300).toBe(window.innerWidth - 8);
-    // And the radius is one value, so every corner carries it and none is styled square.
+    // One radius value, so no corner is square.
     expect(card.style.borderRadius).toBe(`${radii.lg}px`);
   });
 
@@ -207,10 +195,8 @@ describe('the two ways out', () => {
 });
 
 /**
- * The one list shape the item model cannot hold: a row carrying a second control of its own. A
- * `menuitem` here is a `<button>`, and a button cannot nest one — so the panel's past-jobs list
- * (whose row opens the ticket while a square beside it rolls the job back) builds its own rows and
- * takes the card: same layer, same anchor, same clamp, same two ways out.
+ * A row with a second control cannot be a `menuitem` button, since a button cannot nest one, so
+ * the past-jobs list brings its own rows into the same card.
  */
 describe('a caller that brings its own rows', () => {
   it('renders them in the card as a labelled GROUP, not as a menu of items', () => {
@@ -225,16 +211,13 @@ describe('a caller that brings its own rows', () => {
         )}
       />,
     );
-    // A card of `menuitem` rows is a menu; one the caller filled itself is a labelled group, since
-    // its rows are not menuitems and a menu that says they are announces an empty one.
+    // A menu role over rows that are not menuitems would announce an empty menu.
     expect(screen.queryByRole('menu')).toBeNull();
     const card = screen.getByRole('group');
     expect(card.getAttribute('aria-label')).toBe(LABEL);
     expect(card.contains(screen.getByTestId('own-row'))).toBe(true);
     expect(screen.getByTestId('panel').contains(card)).toBe(false);
-    // Its own control is a real button, reachable because it was never wrapped in one.
     expect(screen.getByTestId('own-action').tagName).toBe('BUTTON');
-    // And the row that opens it says what it opens.
     expect(screen.getAllByRole('button')[0]!.getAttribute('aria-haspopup')).toBe('true');
   });
 
@@ -247,11 +230,9 @@ describe('a caller that brings its own rows', () => {
 });
 
 /**
- * A pictured menu holds still. A Help figure's containment (`inert`, `pointer-events: none`) is a
- * property of its real DOM subtree, so the body portal, the outside-press plane and the window Escape
- * capture would all stand outside it, over the live app: an invisible full-viewport click absorber
- * and an Escape eaten app-wide, forever. Pictured, the open card renders inline under its row and
- * nothing reaches past the figure.
+ * A Help figure's containment (`inert`, `pointer-events: none`) covers only its DOM subtree, so a
+ * portal, click catcher or window Escape capture would escape it over the live app. Pictured, the
+ * card renders inline under its row.
  */
 describe('a pictured menu', () => {
   const pictured = (props: Partial<React.ComponentProps<typeof FloatMenu>> = {}) => (
@@ -262,7 +243,6 @@ describe('a pictured menu', () => {
     render(pictured({ open: true }));
     const card = screen.getByRole('menu');
     expect(screen.getByTestId('panel').contains(card)).toBe(true);
-    // In flow rather than viewport-fixed: the frame's containment can only hold what is in it.
     expect(card.style.position).toBe('static');
   });
 
@@ -279,7 +259,7 @@ describe('a pictured menu', () => {
     const outer = vi.fn();
     const added = vi.spyOn(window, 'addEventListener');
     render(pictured({ open: true, onClose }));
-    // The live menu's one keydown registration is capture-phase at the window; pictured, it never happens.
+    // The live menu registers one capture-phase keydown at the window.
     expect(added.mock.calls.some(([type, , opts]) => type === 'keydown' && opts === true)).toBe(false);
     added.mockRestore();
     window.addEventListener('keydown', outer);
@@ -325,5 +305,38 @@ describe('a menu hung from an element of the caller', () => {
     expect(opus.style.backgroundColor).not.toBe(sonnet.style.backgroundColor);
     fireEvent.click(opus);
     expect(onPick).toHaveBeenCalledWith('opus');
+  });
+});
+
+describe('a menu with a search field', () => {
+  const SEARCH = { label: 'Search models', noMatches: 'Nothing matches', empty: 'No models yet', 'data-testid': 'search' };
+
+  it('narrows its rows to what is typed, matching a row by its id or its search text', () => {
+    render(<Menu open items={[...ITEMS, { id: 'haiku', label: 'Claude Haiku', text: 'small quick' }]} search={SEARCH} />);
+    const card = screen.getByRole('group', { name: LABEL });
+    const field = within(card).getByRole('searchbox', { name: 'Search models' });
+    fireEvent.change(field, { target: { value: 'quick' } });
+    expect(within(card).getAllByRole('menuitemradio').map((row) => row.textContent)).toEqual(['Claude Haiku']);
+    fireEvent.change(field, { target: { value: 'gpt' } });
+    expect(within(card).queryAllByRole('menuitemradio')).toEqual([]);
+    expect(within(card).getByRole('status').textContent).toBe('Nothing matches');
+  });
+
+  it('offers a typed id the list lacks as a choice of its own, and Enter takes it', () => {
+    const onPick = vi.fn();
+    render(<Menu open onPick={onPick} search={{ ...SEARCH, manual: (id) => `Use ${id}` }} />);
+    const field = screen.getByRole('searchbox', { name: 'Search models' });
+    fireEvent.change(field, { target: { value: 'my-model' } });
+    expect(screen.getAllByRole('menuitemradio').map((row) => row.textContent)).toEqual(['Use my-model']);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onPick).toHaveBeenCalledWith('my-model');
+  });
+
+  it('says the list is empty, or still arriving, and carries its note', () => {
+    const view = render(<Menu open items={[]} search={SEARCH} note="Pick an image model" />);
+    expect(screen.getByRole('status').textContent).toBe('No models yet');
+    expect(screen.getByText('Pick an image model')).toBeTruthy();
+    view.rerender(<Menu open items={[]} search={SEARCH} loading />);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });

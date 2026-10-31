@@ -1,10 +1,10 @@
 /**
  * The tour spotlight's corner radius. It is drawn in unzoomed screen px over controls that are
- * zoomed, so a constant radius is only ever right at one scale — and on a phone, where the whole UI
+ * zoomed, so a constant radius is only ever right at one scale, and on a phone, where the whole UI
  * is scaled well down, it is wider than the target it is meant to be tracing.
  */
 import { describe, it, expect } from 'vitest';
-import { spotlightRx } from '../../../../ui/chrome/tour/TourOverlay';
+import { spotlightRx } from '../../../../ui/chrome/tour/ShowMe';
 import { radii } from '../../../../ui/design/styles';
 
 describe('spotlightRx', () => {

@@ -75,23 +75,20 @@ describe('the cursor a surface shows', () => {
 
   it('closes a hand on a system-cursor pan, where the painted cross keeps its own drawing', () => {
     // macOS renders the `move` keyword as the open hand, so a system-cursor pan that kept the id
-    // showed a hand that never closes however much the user clicked and dragged.
+    // would show a hand that never closes however much the user clicked and dragged.
     expect(shown({ drag: 'pan' }, { system: true })).toBe(css('hand-closed', false, { system: true }));
     expect(shown({ drag: 'pan' }, { system: false })).toBe(css('move', false, { system: false }));
     expect(shown({ drag: 'pan' })).toBe(css('move', false));
   });
 
   it('opens the hand ONLY where the pointer is over the selected object', () => {
-    // "Over the selected object" is positional, so it arrives from the pointer machine, not from
-    // a store-driven tool getter, which cannot know where the pointer is and turns the whole
-    // canvas into a grab cursor after one click on one object.
+    // "Over the selected object" is positional, so it comes from the pointer machine, never a tool getter.
     expect(shown({ tool: 'select', overSelected: true })).toBe(css('hand-open', false));
     expect(shown({ tool: 'select', overSelected: false })).toBe(css('select', false));
     // The move tool drags a selected object too, so it upgrades on the same terms.
     expect(shown({ tool: 'move', overSelected: true })).toBe(css('hand-open', false));
-    // A tool-owned grab upgrades whatever the tool's own cursor: the note tool's chip mode shows
-    // `place`, and a drag from a selected chip moves it. A press that paints never reports
-    // `overSelected` (press-plan.test.ts), so a brush keeps its own cursor.
+    // The grab upgrades any tool's cursor (the note tool's chip mode shows `place`); a press that
+    // paints never reports `overSelected` (press-plan.test.ts).
     expect(shown({ tool: 'place', overSelected: true })).toBe(css('hand-open', false));
     expect(shown({ tool: 'mountain', overSelected: false })).toBe(css('mountain', false));
   });
@@ -104,9 +101,7 @@ describe('the cursor a surface shows', () => {
   });
 
   it('cannot smuggle a badge onto the grab, which is not FORBIDDABLE', () => {
-    // The badge is re-checked against the upgraded id, so `select` + forbidden + overSelected
-    // resolves to a plain open hand: a grab has no refusable question at hover time (the drop
-    // cell is unknown until the drag ends).
+    // The badge is re-checked against the upgraded id: a grab's drop cell is unknown at hover time.
     expect(shown({ tool: 'select', overSelected: true, forbidden: true })).toBe(css('hand-open', false));
   });
 
@@ -125,8 +120,7 @@ describe('the cursor a surface shows', () => {
   });
 
   it('says select where the press selects instead of placing, badge-free', () => {
-    // With an item armed the tool cursor is `place`, and over an existing object that press
-    // Selects — showing a badged `place` there would name an action the click never attempts.
+    // With an item armed, a press over an existing object selects rather than places.
     expect(shown({ tool: 'place', pressSelects: true, forbidden: true })).toBe(css('select', false));
     expect(shown({ tool: 'place', pressSelects: false, forbidden: true })).toBe(css('place', true));
     // Ctrl outranks it: its own gesture (toggle / rubber band) is what the click would do.
@@ -231,9 +225,8 @@ describe('writing to the surface', () => {
 
 describe('an overlay borrowing the surface', () => {
   it('hands the surface back to the canvas when the overlay closes', () => {
-    // A full-screen overlay (the export shot editor) draws over a canvas that stays mounted, so
-    // its effect never re-runs. Nulling the surface on close left the canvas with no cursor at
-    // all — the platform arrow, until a view toggle happened to re-register it.
+    // A full-screen overlay (the export shot editor) draws over a canvas that stays mounted and
+    // never re-registers, so the close hands the surface back.
     const canvas = document.createElement('div');
     const overlay = document.createElement('div');
     registerCursorSurface(canvas);
@@ -243,7 +236,7 @@ describe('an overlay borrowing the surface', () => {
     const restore = pushCursorSurface(overlay);
     setToolCursor('move');
     expect(overlay.style.cursor).toBe(cursorCss('move'));
-    expect(canvas.style.cursor).toBe(''); // the borrowed-from surface keeps no stale cursor
+    expect(canvas.style.cursor).toBe('');
 
     restore();
     expect(overlay.style.cursor).toBe('');
@@ -261,8 +254,7 @@ describe('an overlay borrowing the surface', () => {
   });
 
   it('lands on whichever canvas is registered NOW, not the one that was there at push time', () => {
-    // The 2D/3D toggle re-registers the base underneath an open overlay; the restore must follow
-    // the live base rather than reinstating an element that no longer owns the screen.
+    // The 2D/3D toggle re-registers the base underneath an open overlay.
     const first = document.createElement('div');
     const second = document.createElement('div');
     registerCursorSurface(first);
@@ -287,8 +279,6 @@ describe('an overlay borrowing the surface', () => {
   });
 
   it('shows the cursor the claim asked for, and leaves the app tool cursor untouched', () => {
-    // The overlay names what it shows rather than writing the tool cursor, so closing it has
-    // nothing to put back: the canvas underneath resumes whatever tool was already armed.
     const canvas = document.createElement('div');
     const overlay = document.createElement('div');
     registerCursorSurface(canvas);
@@ -329,7 +319,7 @@ describe('busy', () => {
     setToolCursor('mountain');
     setCursorBusy(true);
     // The one animated cursor: frame 0 lands at once, and the controller's own clock advances the
-    // ring while the state holds — nothing else writes style.cursor, so the ticking is its job.
+    // ring while the state holds; nothing else writes style.cursor, so the ticking is its job.
     expect(el.style.cursor).toBe(cursorCss('busy'));
     expect(el.style.cursor).toContain('busy-0');
     vi.advanceTimersByTime(125);
@@ -346,9 +336,7 @@ describe('busy', () => {
   });
 
   it('sits above the tool and below a live drag', () => {
-    // The order is the whole design of it: a background job outranks the tool, because the tool
-    // cannot act until the job lands, but a gesture already under way outranks the job, because the
-    // pan or grab cursor is the only thing saying the drag is still live.
+    // The tool cannot act until a background job lands, and a drag's cursor is the only sign it is live.
     const el = document.createElement('div');
     registerCursorSurface(el);
     setToolCursor('mountain');
@@ -361,8 +349,6 @@ describe('busy', () => {
     setCursorDrag('object');
     expect(el.style.cursor).toBe(cursorCss('hand-closed'));
 
-    // The drag ends first, so the job is still showing; then the job ends and the tool is back,
-    // badge and all.
     setCursorDrag('none');
     expect(el.style.cursor).toBe(cursorCss('busy'));
     setCursorBusy(false);

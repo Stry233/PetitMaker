@@ -3,7 +3,7 @@
  *
  * Covers what a Save, a Load and a "copy share code" press pay for: the plain JSON codec (the
  * autosave/save-file path), the PetitGlyph range-coded payload (the visible glyph's byte frame,
- * not the raster it rides in — that needs a canvas and lives in the io/share suite's own tests),
+ * not the raster it rides in, which needs a canvas and is covered by the io/share suite),
  * the undo-stack codec a JSON export's history section runs through, and the sectioned export's
  * pure assembly. See `_harness.ts` for the gate and methodology.
  */
@@ -52,7 +52,7 @@ describe.runIf(PERF)('perf: io', () => {
   it('history codec: encode and decode a ~100-entry undo stack', async () => {
     // A real editing session's undo stack, not a synthetic one: run the designed generator over
     // a fresh template without collapsing the stroke, so every PaintTerrain/TrimCorners/PlaceObject
-    // it issues keeps its own entry, then take the tail — the shape an editor actually accumulates.
+    // it issues keeps its own entry, then take the tail: the shape an editor actually accumulates.
     const world = templateWorld();
     generateWith(world.state, world.executor, islandConfig(4242));
     const entries = world.executor.getUndoEntries().slice(-100);

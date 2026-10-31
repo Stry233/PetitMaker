@@ -13,7 +13,7 @@ import { font, radii } from '../../design/styles';
 import { INK, INSET, MUTED, PLATE_INK, SURFACE_SECONDARY } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { ActionButton } from '../../primitives/ActionButton';
-import { cueCharacter, setIntentDream } from '../character/intent';
+import { useCharacterChannel } from '../character/intent';
 import { Icon, type IconId } from '../parts/sprite';
 import { DREAM } from '../sketchbook/sketch-motion';
 import { edge } from '../panel-skin';
@@ -49,7 +49,7 @@ const SCROLL_STYLE: CSSProperties = {
   flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
   display: 'flex', flexDirection: 'column', gap: 14,
 };
-/** Clips transient row animation while preventing the visible row stack from shrinking. */
+/** Clips transient row animation while preventing the visible row stack from shrinking; positioned, so it is the rows' offset parent. */
 const ROWS_STYLE: CSSProperties = {
   position: 'relative', display: 'flex', flexDirection: 'column', gap: ROW_GAP,
   overflow: 'hidden', flexShrink: 0,
@@ -134,14 +134,15 @@ export function DreamOffice({ onConnect, pinned = false }: {
   const probeRef = useRef<HTMLDivElement>(null);
   const poolHeights = usePoolRowHeights(measureRef, probeRef);
   const reserve = boardHeight(poolHeights);
+  const character = useCharacterChannel();
 
   /** Drives board beats and the character's dream plume for the lifetime of this screen. */
   useEffect(() => {
-    setIntentDream('zzz');
+    character.setDream('zzz');
     if (reduced) {
       // Reduced motion keeps the first board and plume state still.
-      setIntentDream(DREAMS[dreamingAt(0)]!.icon);
-      return () => { setIntentDream('off'); };
+      character.setDream(DREAMS[dreamingAt(0)]!.icon);
+      return () => { character.setDream('off'); };
     }
     const t0 = performance.now();
     let frame = 0;
@@ -149,7 +150,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
     let twitched = false;
     let resettled = false;
     // Composite one-shot movement onto the persistent sleeping pose.
-    const garnish = (move: typeof DREAM.twitchFrames): void => cueCharacter({ kind: 'garnish', moves: [move] });
+    const garnish = (move: typeof DREAM.twitchFrames): void => character.cue({ kind: 'garnish', moves: [move] });
     const tick = () => {
       const now = performance.now() - t0;
       const b = Math.floor(now / DREAM.cycle);
@@ -164,7 +165,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
         resettled = true;
         garnish(DREAM.resettleFrames);
       }
-      setIntentDream(into >= DREAM.glyphIn && into < DREAM.glyphOut
+      character.setDream(into >= DREAM.glyphIn && into < DREAM.glyphOut
         ? DREAMS[dreamingAt(b)]!.icon
         : 'zzz');
       frame = requestAnimationFrame(tick);
@@ -172,9 +173,9 @@ export function DreamOffice({ onConnect, pinned = false }: {
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
-      setIntentDream('off');
+      character.setDream('off');
     };
-  }, [reduced]);
+  }, [character, reduced]);
 
   /** Starts one departing-row overlay per board beat. */
   useEffect(() => {
@@ -190,20 +191,19 @@ export function DreamOffice({ onConnect, pinned = false }: {
   /** Applies a pre-paint flip animation to rows that survive a board beat. */
   const rowEls = useRef(new Map<string, HTMLDivElement>());
   const wasAt = useRef(new Map<string, number>());
-  const rowsRef = useRef<HTMLDivElement | null>(null);
   const wasPinned = useRef(pinned);
   const glideRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) rowEls.current.set(id, el);
     else rowEls.current.delete(id);
   }, []);
   useLayoutEffect(() => {
-    // Board-relative positions exclude panel travel; docking reseeds without a glide.
-    const base = rowsRef.current?.getBoundingClientRect().top ?? 0;
+    // Offsets within the positioned board are local px, as the glide's translate is, at any zoom,
+    // and exclude panel travel; docking reseeds without a glide.
     const reseed = wasPinned.current !== pinned;
     wasPinned.current = pinned;
     const now = new Map<string, number>();
     for (const [id, el] of rowEls.current) {
-      const top = el.getBoundingClientRect().top - base;
+      const top = el.offsetTop;
       now.set(id, top);
       const before = wasAt.current.get(id);
       if (reduced || reseed || before === undefined || Math.abs(before - top) < 0.5) continue;
@@ -222,7 +222,7 @@ export function DreamOffice({ onConnect, pinned = false }: {
     const now = performance.now();
     if (now - stirredAt.current < STIR_GAP_MS) return;
     stirredAt.current = now;
-    cueCharacter({ kind: 'garnish', moves: [DREAM.stirFrames] });
+    character.cue({ kind: 'garnish', moves: [DREAM.stirFrames] });
   };
 
   return (
@@ -232,7 +232,6 @@ export function DreamOffice({ onConnect, pinned = false }: {
           {t('agent.dream_say')}
         </p>
         <div
-          ref={rowsRef}
           data-testid="dream-rows"
           onPointerMove={stir}
           // Docked rows use their full natural content height.

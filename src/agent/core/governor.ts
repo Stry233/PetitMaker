@@ -118,6 +118,16 @@ export function landedWriteCount(log: SessionLog): number {
   return resultFacts(jobEvents(log)).filter((f) => f.wroteMap).length;
 }
 
+/** Whether this job drew planning annotations and filed no plan for them. */
+export function sketchedWithoutPlan(log: SessionLog, facts: Pick<ToolFacts, 'sketches'>): boolean {
+  let sketched = false;
+  for (const event of jobEvents(log)) {
+    if (event.kind === 'toolResult' && !event.isError && facts.sketches(event.name)) sketched = true;
+    if (event.kind === 'plan' || (event.kind === 'gateAsked' && event.scope === 'plan')) return false;
+  }
+  return sketched;
+}
+
 /** A partial edit is enough to make the zero-edit delivery nudge inappropriate. */
 export function hasLandedWrite(log: SessionLog): boolean {
   return landedWriteCount(log) > 0;

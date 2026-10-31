@@ -1,5 +1,5 @@
 /*
- * The logo beside the app name, shared by About and the tour's welcome step, in the readme
+ * The logo beside the app name, shared by About and the Help Center's opening page, in the readme
  * masthead's geometry (the name one fifth of the logo's width along, both on one line). The logo is
  * served from public/ through BASE_URL, so it loads under the dev site's path prefix as the favicon does.
  */
@@ -19,10 +19,9 @@ interface BrandLockupProps {
   size: number;
   /** Show the localized tagline under the name. */
   tagline?: boolean;
-  /** Drop the name and show the logo alone. The tour's welcome step already carries a step title
-   *  and a body, so the name would be a third piece of text competing in one small card, and it is
-   *  the one the picture carries anyway. The name then moves onto the image's `alt`, so it is still
-   *  what a screen reader announces. */
+  /** Drop the name and show the logo alone, for a page whose own title stands under it (Help's
+   *  opening page): the picture carries the name. The name then moves onto the image's `alt`, so it
+   *  is still what a screen reader announces. */
   logoOnly?: boolean;
 }
 

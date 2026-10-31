@@ -1,11 +1,12 @@
 import { ToolType } from '../../../state/editing/vocabulary';
 import type { ToolArming } from '../../../state/editing/arming';
 import type { GridState } from '../../../core/model/types';
-import type { CommandExecutor } from '../../../core/commands/command-executor';
+import type { CommandExecutor, RefusalHold } from '../../../core/commands/command-executor';
 import type { EditorView } from './view-seam';
 import type { CursorId } from '../../../assets/cursors/cursor-spec';
 import { createTools } from './tool-set';
 import { resolvePointer } from './pointer';
+import type { NoticeTone } from './types';
 import { createToolHost, type HostedTool, type HostedToolContext, type ToolHostDeps } from './host';
 
 /** What a manager reads from the editor it serves: the arming before every tool call, and the host
@@ -24,6 +25,8 @@ export class ToolManager {
   private readonly gridState: GridState;
   private readonly deps: ToolManagerDeps;
   private ctx: HostedToolContext;
+  /** What a quiet press has said so far, kept until it is known to stand (`confirmPress`). */
+  private held: { refusals: RefusalHold; notices: (() => void)[] } | null = null;
 
   constructor(view: EditorView | null, executor: CommandExecutor, gridState: GridState, deps: ToolManagerDeps) {
     this.view = view;
@@ -97,12 +100,17 @@ export class ToolManager {
     this.activeTool.onActivate(this.ctx);
   }
 
-  /** `eventTime` is the pointer event's `timeStamp`; each handler writes it into the context. */
-  handlePointerDown(screenX: number, screenY: number, eventTime?: number): void {
+  /** `eventTime` is the pointer event's `timeStamp`; each handler writes it into the context.
+   *  `dragThreshold` is the pressing pointer's, held for the press's moves. A `quiet` press keeps
+   *  its refusals and notices until `confirmPress` or its release reports them; a cancel drops them. */
+  handlePointerDown(screenX: number, screenY: number, eventTime?: number, dragThreshold?: number, quiet = false): void {
     const view = this.view;
     if (!view) return;
+    this.confirmPress();
+    if (quiet) this.held = { refusals: this.executor.holdRefusals(), notices: [] };
     this.refreshCtx();
     this.ctx.eventTime = eventTime;
+    this.ctx.dragThreshold = dragThreshold;
     view.projection.holdSurface?.();
     const { cell, point } = resolvePointer(view, this.activeTool, this.ctx, screenX, screenY);
     this.activeTool.onPointerDown(cell, point, this.ctx);
@@ -117,13 +125,16 @@ export class ToolManager {
     this.activeTool.onPointerMove(cell, point, this.ctx);
   }
 
-  /** With no view attached there is no point to release on, so the release cancels the stroke. */
-  handlePointerUp(screenX: number, screenY: number, eventTime?: number): void {
+  /** With no view attached there is no point to release on, so the release cancels the stroke.
+   *  `doubleTapMs` is the releasing pointer's double-click window. */
+  handlePointerUp(screenX: number, screenY: number, eventTime?: number, doubleTapMs?: number): void {
     const view = this.view;
     if (!view) { this.handlePointerCancel(); return; }
     this.refreshCtx();
     this.ctx.eventTime = eventTime;
+    this.ctx.doubleTapMs = doubleTapMs;
     const { cell, point } = resolvePointer(view, this.activeTool, this.ctx, screenX, screenY);
+    this.confirmPress();
     try {
       this.activeTool.onPointerUp(cell, point, this.ctx);
     } finally {
@@ -136,7 +147,24 @@ export class ToolManager {
   handlePointerCancel(): void {
     this.refreshCtx();
     this.activeTool.onPointerCancel?.(this.ctx);
+    this.held?.refusals.discard();
+    this.held = null;
     this.view?.projection.releaseSurface?.();
+  }
+
+  /** The quiet press stands: what it kept is reported, and the rest of it speaks as it goes. */
+  confirmPress(): void {
+    const held = this.held;
+    if (!held) return;
+    this.held = null;
+    held.refusals.release();
+    for (const notice of held.notices) notice();
+  }
+
+  /** Run `say` now, or keep it for a quiet press. */
+  private say(say: () => void): void {
+    if (this.held) this.held.notices.push(say);
+    else say();
   }
 
   /** The live arming, read in before every tool call. A snapshot, not getters: a tool must not
@@ -154,8 +182,12 @@ export class ToolManager {
   }
 
   private buildCtx(): HostedToolContext {
-    const { arming, ...channels } = this.deps;
-    const host = createToolHost({ ...channels, state: this.gridState, executor: this.executor, view: () => this.view });
+    const { arming, notify, reportGroundClipped, ...channels } = this.deps;
+    const host = createToolHost({
+      ...channels, state: this.gridState, executor: this.executor, view: () => this.view,
+      ...(notify ? { notify: (text: string, tone: NoticeTone) => this.say(() => notify(text, tone)) } : {}),
+      ...(reportGroundClipped ? { reportGroundClipped: () => this.say(reportGroundClipped) } : {}),
+    });
     return Object.assign(host, { arming: arming() });
   }
 }

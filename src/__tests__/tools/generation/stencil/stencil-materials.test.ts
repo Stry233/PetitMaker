@@ -47,8 +47,7 @@ describe('the materials a picture may be built from', () => {
     expect(flora.every((i) => i.category === ItemCategory.Flora)).toBe(true);
     expect(trees.every((i) => i.category === ItemCategory.Tree)).toBe(true);
     const mixed = new Set(paletteItems('mixed').map((i) => i.id));
-    // Everything but the trees: a tree stands far taller than a bloom, so a picture marked with both
-    // reads as a mess in game. A picture that wants trees asks for trees.
+    // Trees stand far taller than blooms, so a mixed picture leaves them out.
     for (const item of flora) expect(mixed.has(item.id)).toBe(true);
     for (const item of trees) expect(mixed.has(item.id)).toBe(false);
     expect(paletteItems('mixed').every((i) => i.category !== ItemCategory.Tree)).toBe(true);
@@ -64,24 +63,21 @@ describe('the materials a picture may be built from', () => {
       expect(entry.rgb).toBeGreaterThanOrEqual(0);
       expect(entry.rgb).toBeLessThanOrEqual(0xffffff);
     }
-    // The colours really differ, or matching a picture against them says nothing.
+    // Matching against near-identical colours would say nothing.
     expect(new Set(palette.map((e) => e.rgb)).size).toBeGreaterThan(5);
   });
 
   it('knows every material\'s colours from the catalog, with no canvas anywhere', () => {
-    // A sprite's colour is derived data in the catalog (`iconColor`, written by the project's
-    // extraction tooling and guarded by its own drift check), which is what lets the engine answer
-    // "what colour is this flower" in a worker and in the offline benchmark — a colour sampled from a
-    // canvas would leave anywhere without a page (both of those) with no palette at all.
+    // A sprite's colour is derived catalog data (`iconColor`), so a worker or the offline benchmark
+    // has a palette without a canvas.
     for (const material of ['mixed', 'flora', 'trees', 'roads'] as const) {
       const palette = declaredColorPalette(material);
-      // Every item, in catalog order: a colour two items match equally goes to the first.
+      // Catalog order, so a colour two items match equally goes to the first.
       expect(palette.map((e) => e.catalogId)).toEqual(paletteItems(material).map((i) => i.id));
       for (const entry of palette) {
         expect(entry.rgb).toBeGreaterThanOrEqual(0);
         expect(entry.rgb).toBeLessThanOrEqual(0xffffff);
       }
-      // A palette of one colour cannot match a picture: the derived colours really differ.
       expect(new Set(palette.map((e) => e.rgb)).size).toBeGreaterThan(Math.min(5, palette.length - 1));
     }
   });
@@ -92,7 +88,7 @@ describe('the materials a picture may be built from', () => {
       const entry = declaredColorPalette('mixed').find((e) => e.catalogId === item.id);
       expect(entry?.rgb).toBe(hexStringToNumber(item.color ?? item.iconColor!));
     }
-    // A road paints a colour instead of drawing a sprite, and that is the colour the map shows.
+    // A road paints a colour instead of drawing a sprite.
     for (const item of paletteItems('roads')) {
       expect(item.color).toMatch(/^#[0-9a-f]{6}$/);
       const entry = declaredColorPalette('roads').find((e) => e.catalogId === item.id);
@@ -157,7 +153,6 @@ describe('the decoration layer', () => {
     const side = 40;
     layStencilDecor(state, { origin: { x: 6, y: 6 }, stencil: edged(side) }, { palette: PALETTE, density: 0.1 }, (c) => e.execute(c));
     expect(state.objects.size).toBeGreaterThan(0);
-    // Every one of them sits on the seam, a cell either side of it.
     for (const obj of state.objects.values()) {
       const x = obj.position.x - 6;
       expect(Math.abs(x - (side / 2 - 0.5))).toBeLessThanOrEqual(1.5);
@@ -174,7 +169,7 @@ describe('the decoration layer', () => {
       state, { origin: { x: 6, y: 6 }, stencil: noisy(side) },
       { palette: PALETTE, density: 5 }, (c) => e.execute(c),
     );
-    expect(res.placed).toBeLessThanOrEqual(Math.floor(side * side * 0.15));   // a background takes at most 15% of the box
+    expect(res.placed).toBeLessThanOrEqual(Math.floor(side * side * 0.15)); // a background takes at most 15% of the box
     const at = new Set([...state.objects.values()].map((o) => `${o.position.x},${o.position.y}`));
     for (const obj of state.objects.values()) {
       for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
@@ -202,9 +197,7 @@ describe('the decoration layer', () => {
   });
 
   it('takes the cells the primary tiled, which is what a second element is for', () => {
-    // A picture paved in paths, decorated with one flower: the marked cell was a road a moment ago,
-    // and nothing may stand on a road (V-PLACE-COATED), so the mark has to take the cell rather than
-    // stand on it.
+    // Nothing may stand on a road (V-PLACE-COATED), so a flower marked on a paved cell takes the cell.
     const state = makeState(52, 52);
     const e = exec(state);
     const whole = e.beginStroke();
@@ -227,7 +220,7 @@ describe('the decoration layer', () => {
     const whole = e.beginStroke();
     const side = 10;
     const stencil = edged(side);
-    // Somebody else's tree, right on the seam where the decoration would most like to be.
+    // Someone else's tree on the seam, where the decoration would most like to go.
     const tree: PlacedObject = { id: 'theirs', catalogId: 'tree-apple', position: { x: 6 + side / 2, y: 8 }, rotation: 0, elevation: 0 };
     expect(e.execute(placeObjectCommand(tree)).success).toBe(true);
     layStencilDecor(state, { origin: { x: 6, y: 6 }, stencil }, { palette: PALETTE, density: 0.15 }, (c) => e.execute(c));
@@ -236,10 +229,8 @@ describe('the decoration layer', () => {
   });
 
   it('marks the colours the primary cannot say, not only the edges', () => {
-    // Two halves with the same light and dark in them, so the gradient says they are equally
-    // detailed; the left is drawn in the ramp's own greens and the right in a red of the same tone.
-    // What separates them is only how far the primary palette can reach, which is the half of
-    // salience an edge detector cannot see — a red bow on a green picture is a flat area.
+    // Two halves with equal gradients: the left in the ramp's greens, the right in a red of the same
+    // tone. Only the primary palette's reach tells them apart, which an edge detector cannot see.
     const side = 34, mid = Math.floor(side / 2);
     const s = flat(side, 0);
     for (let y = 0; y < side; y++) {
@@ -257,18 +248,15 @@ describe('the decoration layer', () => {
     );
     const marks = [...state.objects.values()];
     expect(marks.length).toBeGreaterThan(4);
-    // Most of them stand on the red half, and at least one well inside it rather than on the seam.
     const onRed = marks.filter((o) => o.position.x - 6 >= mid);
     expect(onRed.length).toBeGreaterThan(marks.length / 2);
     expect(onRed.some((o) => o.position.x - 6 > mid + 2)).toBe(true);
-    // And each one is the palette entry whose colour is the picture's there.
     for (const mark of onRed) expect(mark.catalogId).toBe('flower-dahlia');
     expect(whole.commit()).toEqual([]);
   });
 });
 
-/** A red of a given tone: the same brightness the ramp is drawing in, so only the hue is out of
- *  reach. `luma`'s own weights, solved for the scale of a fixed red direction. */
+/** A red with the given luma, so only its hue is out of the ramp's reach. */
 function redOfTone(tone: number): number {
   const dir = [1, 0.35, 0.35] as const;
   const k = Math.min(255, tone / (0.299 * dir[0] + 0.587 * dir[1] + 0.114 * dir[2]));
@@ -286,7 +274,7 @@ describe('the mixed material is a composition, not a palette', () => {
     const whole = e.beginStroke();
     const side = 16;
     const s = flat(side, hexStringToNumber(ELEVATION_COLORS[4]!));
-    // One bright mark the ramp cannot say, which is what a decoration is for.
+    // One bright mark the ramp cannot say.
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) s.color[y * side + x] = 0xe0407a;
     const decor = paletteItems('mixed').slice(0, 12).map((item, i) => ({ catalogId: item.id, rgb: 0xe0407a + i }));
     const plan: StencilPlan = {
@@ -295,36 +283,30 @@ describe('the mixed material is a composition, not a palette', () => {
     };
     const res = runStencilPlan(state, plan, 8, (c) => e.execute(c));
     expect(res.decorated).toBeGreaterThan(0);
-    // The ground under the picture is terrain, not a tiling of objects. The objects standing on it are
-    // this material's two: the decoration, and the paving a small box borrows for a region the ramp has
-    // no hue for (`stencil-small.ts:planBorrow` — this picture's bright mark is one, and the mixed
-    // material borrows freely).
+    // The ground is terrain. The objects on it are the decoration and the paving a small box borrows
+    // for a region the ramp has no hue for (`stencil-small.ts:planBorrow`), here the bright mark.
     expect(state.cells[6 + 1]![6 + 1]!.terrain?.type).toBe(TerrainType.Mountain);
     expect(res.coated).toBeGreaterThan(0);
     const kinds = new Set(decor.map((entry) => entry.catalogId));
     for (const object of state.objects.values()) {
       expect(kinds.has(object.catalogId) || isCoating(object.catalogId)).toBe(true);
     }
-    // An upper bound rather than a sum, because the bright mark is a feature here: in a box this small
-    // the accent is spent on it, and a mark takes its cell from the paving the region borrowed
-    // (`layStencilDecor` — a feature is the more specific statement of the two). So the count standing is
-    // what both laid, less the coatings the marks took.
+    // A bound, not a sum: a mark takes its cell from the borrowed paving (`layStencilDecor`), so what
+    // stands is what both laid less the coatings the marks replaced.
     expect(state.objects.size).toBeLessThanOrEqual(res.decorated! + res.coated!);
     expect(state.objects.size).toBeGreaterThan(res.coated! - res.decorated!);
     expect(whole.commit()).toEqual([]);
   });
 
   it('never plants a tree, whatever the picture asks for', () => {
-    // The catalogue less the trees is the material, so this holds by the palette rather than by a
-    // filter at the placement — which is what keeps it true for every picture at once.
+    // Holds by the palette, which has no trees, rather than by a filter at placement.
     const decor = paletteItems('mixed').map((item, i) => ({ catalogId: item.id, rgb: (i * 0x0a1b2c) & 0xffffff }));
     expect(decor.length).toBeGreaterThan(10);
     const state = makeState(30, 30);
     const e = exec(state);
     const whole = e.beginStroke();
     const plan: StencilPlan = {
-      // Two flat halves: a picture with ground a mark can stand on, which a cell-by-cell relief is
-      // not (nothing is flat beside a step, and the rules refuse a bloom there).
+      // Two flat halves give a mark flat ground; the rules refuse a bloom beside a step.
       read: 'color', stencil: twoTone(16), origin: { x: 6, y: 6 }, water: 'palette',
       decor: { palette: decor, density: 0.15 },
     };
@@ -346,8 +328,7 @@ describe('the image mode takes a height', () => {
       const state = makeState(24, 24);
       const e = exec(state);
       const whole = e.beginStroke();
-      // The brightest green on the ramp: matched against a deep palette it stands tall, against a
-      // shallow one it can only reach the top of what it was offered.
+      // The top layer's green: a deep palette builds it tall, a shallow one only to its own top.
       const plan: StencilPlan = {
         read: 'color', stencil: flat(8, hexStringToNumber(ELEVATION_COLORS[8]!)), origin: { x: 6, y: 6 },
       };
@@ -370,8 +351,7 @@ function twoTone(side: number): Stencil {
   return s;
 }
 
-/** A picture of alternating cells: detail everywhere, which is what the decoration must be bounded
- *  on. */
+/** Alternating cells: detail everywhere, so only the decoration's own cap bounds it. */
 function noisy(side: number): Stencil {
   const s = flat(side, 0);
   for (let y = 0; y < side; y++) {

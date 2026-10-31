@@ -57,7 +57,7 @@ const GROUP_OF: { [K in keyof FlatPanelProps]-?: keyof PanelShellProps } = {
   undoDepth: 'records', filed: 'records', cleared: 'records', otherMap: 'records', unknownMap: 'records',
   restored: 'records', storageNotice: 'records',
   bounds: 'region', marking: 'region', gateCells: 'region', onMarkRegion: 'region', onClearRegion: 'region',
-  pinned: 'dock', dockSide: 'dock', away: 'dock', pinBlocked: 'dock', onTogglePin: 'dock', onSwitchSide: 'dock',
+  pinned: 'dock', edge: 'dock', away: 'dock', pinBlocked: 'dock', onTogglePin: 'dock', onSwitchSide: 'dock',
   onCollapse: 'dock',
   onSend: 'verbs', onStop: 'verbs', onPause: 'verbs', onResume: 'verbs', onGateAnswer: 'verbs', onRetryNow: 'verbs',
   onRepair: 'verbs', onRecallSteer: 'verbs', onRewind: 'verbs', onRollBack: 'verbs', onRewindAll: 'verbs',

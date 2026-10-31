@@ -1,19 +1,17 @@
 /*
- * Dragging a selection: the cost of one pointer move through the real pointer machine, the drag
- * session and the overlay seam, over a visitor's save of about 1,200 objects. Each sample lands on a
- * new cell (the session skips moves within a cell), so it measures the whole per-cell preview:
- * validity, ghost cells and member plans. `move` steps away from the grabbed cell, where a refusal
- * usually stops at the first member that refuses; `away-and-home` adds the step back, where the
- * whole group is accepted, so every member is judged. See `_harness.ts` for the gate.
+ * Dragging a selection over a visitor's save of about 1,200 objects: one pointer move through the
+ * real pointer machine, drag session and overlay seam. Each sample lands on a new cell (the session
+ * skips moves within one), so it pays the whole preview. `move` steps away, where a refusal usually
+ * stops at the first refusing member; `away-and-home` adds the step back, where every member is
+ * judged. See `_harness.ts` for the gate.
  *
- * The commits of a selection that moves one cell right as a whole: `drop` is the release that
- * commits the move, then its `undo` and `redo`, a group `rotate` and a group `delete`. A listener
- * walks the selection on every `objects-changed`, as the selection ring does, and a drop must
- * announce its objects once: a 500-object move is 1,000 commands.
+ * Then the commits of a group moved one cell right: `drop`, its `undo` and `redo`, a group `rotate`
+ * and `delete`. A listener walks the selection on every `objects-changed`, as the selection ring
+ * does, so a drop announces its objects once: a 500-object move is 1,000 commands.
  *
- * The bound is a ratio on one machine, so it holds anywhere: `cold-probe` is one move plan that
- * rebuilds the lifted view (the object index and statistics of the map with one object off), and a
- * 500-object move must cost a bounded number of those, not one per member.
+ * The bound is a ratio on one machine: `cold-probe` is one move plan that rebuilds the lifted view
+ * (the map's object index and statistics with one object off), and a 500-object move costs a bounded
+ * number of those, not one per member.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,8 +58,8 @@ function loadSave(): Saved {
   return { state, executor: createExecutor(state, createDefaultRegistry(), useEditorStore.getState().eventBus) };
 }
 
-/** The `n` objects nearest the map's centre that stand legally where they are (the save holds a few
- *  that do not): a compact group, as a band would catch, that its own place accepts. */
+/** The `n` objects nearest the centre that stand legally where they are (a few in the save do not):
+ *  a compact group, as a band would catch. */
 function nearestGroup({ state, executor }: Saved, n: number): PlacedObject[] {
   const cx = state.template.width / 2, cy = state.template.height / 2;
   const centre = (o: PlacedObject) => { const r = objectRect(o); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };

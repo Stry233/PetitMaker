@@ -10,7 +10,7 @@ function stack(depth: number): CommandExecutor {
   let size = depth;
   return {
     historyDepth: () => size,
-    undo: () => { if (size === 0) return false; size -= 1; return true; },
+    undoEdit: () => { if (size === 0) return false; size -= 1; return true; },
   } as unknown as CommandExecutor;
 }
 

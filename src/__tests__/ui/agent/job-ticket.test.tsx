@@ -127,8 +127,7 @@ describe('JobTicket: newest-3 collapse', () => {
     const { getAllByTestId, getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     expect(getAllByTestId('op-row').length).toBe(3);
     const pill = getByTestId('ops-count-pill');
-    // The pill names the tail it left showing, not just the total: "5 steps" over three rows would
-    // read as a claim that all five are drawn below it.
+    // "5 steps" alone over three rows would claim all five are drawn.
     expect(pill.textContent).toBe('5 steps, last 3');
     fireEvent.click(pill);
     expect(getAllByTestId('op-row').length).toBe(5);
@@ -205,7 +204,6 @@ describe('OpRow: one line, expandable detail, muted read tools', () => {
     fireEvent.click(getByTestId('op-row'));
     const img = getByTestId('op-image') as HTMLImageElement;
     expect(img.src).toBe('data:image/png;base64,AAAA');
-    // The alt is the reader's caption, so it is a localized string rather than a file name.
     expect(img.alt).not.toBe('');
   });
 
@@ -305,12 +303,11 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     const job = makeJob({ plan, ops: [], checkpoints });
     const { getAllByTestId } = renderWithI18n(<JobTicket job={job} live onRewind={onRewind} />);
     const buttons = getAllByTestId('plan-rewind');
-    // Only the done stage the checkpoint named, so one control on a three-stage rail.
     expect(buttons.length).toBe(1);
     fireEvent.click(buttons[0]!);
     expect(onRewind, 'the press asks, as every take-back does').not.toHaveBeenCalled();
     fireEvent.click(document.querySelector<HTMLElement>('[data-testid="plan-rewind-confirm"]')!);
-    // The checkpoint itself: `undoIndex` is the watermark the shell rewinds to.
+    // `undoIndex` is the watermark the shell rewinds to.
     expect(onRewind).toHaveBeenCalledWith({ undoIndex: 7, label: 'stage', stageIndex: 0 });
   });
 
@@ -332,7 +329,6 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     const { getAllByTestId, queryAllByTestId } = renderWithI18n(<JobTicket job={job} live />);
     const stages = getAllByTestId('plan-stage');
     const connectors = queryAllByTestId('stage-connector');
-    // Three stages produce two connecting spines; the last stage has no continuation.
     expect(connectors.length).toBe(2);
     expect(stages[0]!.querySelector('[data-testid="stage-connector"]')).not.toBeNull();
     expect(stages[1]!.querySelector('[data-testid="stage-connector"]')).not.toBeNull();
@@ -364,8 +360,7 @@ describe('OpRow: a reverted row', () => {
   });
 
   it('shows the amber mark and a friendly reason, and never the raw REVERTED prefix', () => {
-    // What the fold hands the row is already the rule line rather than the tool's own banner
-    // (`project-view.ts:resultLine`), which is the whole point of that treatment.
+    // The fold hands the row the rule line, not the tool's banner (`project-view.ts:resultLine`).
     const op = makeOp({
       name: 'carve_river',
       status: 'revert',
@@ -374,12 +369,11 @@ describe('OpRow: a reverted row', () => {
     });
     const { getByTestId, container } = renderWithI18n(<OpRow op={op} />);
     const row = getByTestId('op-row');
-    // A revert opens on arrival: the friendly reason is the point of the row.
     expect(row.getAttribute('data-open')).toBe('true');
     expect(asColor(getByTestId('tick-dot').style.color)).toBe(asColor(tickInk.revert));
     const detail = getByTestId('op-detail');
     expect(container.textContent).not.toContain('REVERTED');
-    // Older logs without a keyed rule receive a localized explanation.
+    // A log with no keyed rule gets the generic localized explanation.
     expect(detail.textContent).toContain('The edit broke a rule and was undone.');
     expect(detail.textContent).not.toContain('V-WTR-02');
     expect(detail.textContent).not.toContain('Hint:');
@@ -393,13 +387,8 @@ describe('OpRow: a reverted row', () => {
   });
 
   /**
-   * A refusal reaches the reader in their own language, and the model's copy stays English.
-   *
-   * `tools/feedback.ts:formatErrors` writes the tool result for the model (`translateFor('en', …)`),
-   * which is right — the model reasons over stable rule feedback. A panel that lifted the rule out
-   * of that copy and showed it as-is would hand a Russian card three lines of English for a sentence
-   * that ships keyed in all seven locales. The refusal travels as its rule
-   * (`ToolResultDetail.violations`) and the well translates it.
+   * `tools/feedback.ts:formatErrors` writes the model's copy in English; the refusal also travels as
+   * its rule (`ToolResultDetail.violations`), which the panel translates for the reader.
    */
   it.each([
     ['ru', 'Размещение:'],
@@ -458,20 +447,17 @@ describe('OpRow: a reverted row', () => {
     act(() => useEditorStore.setState({ locale: 'en' }));
   });
 
-  /** Every locale says the app sent something to the model; ru's genitive said the model had
-   *  Answered, which is the opposite of what happened — a rule refused the call. */
+  /** A rule refused the call and the app sent that back to the model, which every locale must say. */
   it('names the direction of a sent-back refusal the same way in every locale', () => {
     for (const locale of Object.keys(translations) as Locale[]) {
       const line = translations[locale]['agent.op_detail_sent_back']!;
       expect(line, locale).toContain('{text}');
       expect(line, locale).not.toBe(translations[locale]['agent.op_detail_put_back']);
     }
-    // The one that reversed: the Russian wording reads as the model's own answer.
+    // This Russian wording would read as the model's own answer.
     expect(translations.ru['agent.op_detail_sent_back']).not.toContain('Ответ модели');
   });
 
-  /** A region rollback is refused work rather than broken work: the outline shield in the revert
-   *  ink, its own chip, and the sentence open on arrival. */
   it('[ASST-11] renders a region-blocked row with the shield, the kept-in-region chip and its reason', () => {
     const op = makeOp({
       name: 'place_object',
@@ -484,13 +470,12 @@ describe('OpRow: a reverted row', () => {
     expect(getByTestId('tick-dot').querySelector('use')?.getAttribute('href')).toBe('#pw-shield-hold');
     expect(getByTestId('op-detail').textContent).toContain('outside the area you marked');
     expect(container.textContent).not.toContain('OUT OF REGION');
-    // The chip yields its space to the open detail, so it reads once the row is folded shut.
+    // The chip shows once the row is folded shut.
     fireEvent.click(getByTestId('op-row'));
     expect(getByTestId('op-chip').textContent).toBe('kept in your region');
   });
 
-  /** A call the turn was cut off mid-arguments never reached a tool at all: the loop's own
-   *  `(system)` demand for a reissue is what the model was sent, and the panel says it plainly. */
+  /** A call cut off mid-arguments never reached a tool; the model was sent the loop's `(system)` note. */
   it('renders an unreadable call in the panel\'s own words, never the system note', () => {
     const op = makeOp({
       name: 'build_road',
@@ -498,15 +483,13 @@ describe('OpRow: a reverted row', () => {
       summary: '(system) The turn was cut off before the arguments were complete.',
     });
     const { getByTestId, container, queryByTestId } = renderWithI18n(<OpRow op={op} />);
-    // A refusal with a sentence opens on arrival, and its chip yields the space to it.
     expect(getByTestId('op-row').getAttribute('data-open')).toBe('true');
     expect(queryByTestId('op-chip')).toBeNull();
     expect(getByTestId('op-detail').textContent).toContain('asked for that wrong');
     expect(container.textContent).not.toContain('(system)');
   });
 
-  /** A proposal is not a record of work: a call awaiting an answer, one the answer turned into
-   *  words and one the user declined all wear the dashed outline. */
+  /** A call awaiting an answer, one answered in words and one declined are proposals, not work. */
   it('draws the three proposal rows as ghosts, and a landed one plainly', () => {
     for (const status of ['pending-gate', 'words', 'skipped'] as const) {
       const view = renderWithI18n(<OpRow op={makeOp({ status })} />);
@@ -524,7 +507,7 @@ describe('OpRow: a reverted row', () => {
     expect(asColor(getByTestId('tick-dot').style.color)).not.toBe(asColor(tickInk.error));
   });
 
-  /** A playbook says whose recipe the ops below it follow. Only a style skill is one. */
+  /** Only a style skill is a playbook. */
   it('chips a loaded skill with its title and stamps a playbook under the row', () => {
     const styled = renderWithI18n(
       <OpRow op={makeOp({ name: 'load_skill', isRead: true, skill: { name: 'cozy', kind: 'style', title: 'Cozy Village' } })} />,
@@ -542,8 +525,7 @@ describe('OpRow: a reverted row', () => {
 });
 
 describe('JobTicket: steer notes and side stamps', () => {
-  /** A revised plan stands over the rail it revised: the rail would otherwise change shape under
-   *  the user with nothing saying it had. */
+  /** Otherwise the rail would change shape with nothing saying why. */
   it('stamps a re-filed plan with its new stage count, above the rail', () => {
     const plan: NonNullable<JobView['plan']> = {
       stages: [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }, { label: 'E' }],
@@ -556,7 +538,6 @@ describe('JobTicket: steer notes and side stamps', () => {
       .toBeTruthy();
   });
 
-  /** The reachable n=1 case: a plan revised down to one stage names it as one stage, not the plural. */
   it('names a plan revised to one stage in the singular', () => {
     const plan: NonNullable<JobView['plan']> = {
       stages: [{ label: 'A' }], currentIndex: 0, doneCount: 0, revision: 2,
@@ -592,8 +573,7 @@ describe('JobTicket: steer notes and side stamps', () => {
     expect(stamps[3]!.querySelector('use')?.getAttribute('href')).toBe('#pw-pause');
   });
 
-  /** The compaction case: the run went on after the tidying, so the stamp stands where it happened
-   *  rather than under the rows that came after it. */
+  /** A compaction stamp stands where it happened, not under the rows that came after it. */
   it('files a stamp inside the flat op list, above the row it preceded', () => {
     const job = makeJob({
       ops: [makeOp({ callId: 'a' }), makeOp({ callId: 'b' })],
@@ -603,7 +583,6 @@ describe('JobTicket: steer notes and side stamps', () => {
     const stamp = getByTestId('stamp');
     expect(getByTestId('ops-list').contains(stamp)).toBe(true);
     const rows = getAllByTestId('op-row');
-    // Between the two rows: after the first, before the second.
     expect(rows[0]!.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(rows[1]!.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
@@ -680,11 +659,7 @@ describe('JobTicket: the says-line', () => {
     expect(settled.queryByTestId('says-caret')).toBeNull();
   });
 
-  /**
-   * The model writes markdown here too, and this seat is one clamped run of it: the emphasis is
-   * rendered rather than printed, and the breaks it wrote survive as breaks. Printed flat the line
-   * read `1. **Create a Lake**:` with its markers standing and every paragraph joined by a space.
-   */
+  /** The model writes markdown here: emphasis renders, and its breaks survive as breaks. */
   it('renders the emphasis it was written with and keeps the line breaks, in one clamped run', () => {
     const job = makeJob({ says: 'Two things.\n\n- **The lake** goes in first\n- Then the pines' });
     const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
@@ -693,11 +668,10 @@ describe('JobTicket: the says-line', () => {
     expect(line.querySelectorAll('strong')).toHaveLength(1);
     expect(line.textContent).not.toContain('**');
     expect(line.textContent).toContain('The lake');
-    // A list keeps the one marker this box can say it has, and the breaks between the items.
+    // A list item keeps its marker as text.
     expect(line.textContent).toContain('- The lake goes in first\n- Then the pines');
   });
 
-  /** Reasoning metadata is separate from the assistant's user-facing summary. */
   it('says nothing about the thinking a job did', () => {
     const job = makeJob({ says: 'Boardwalk first.', thought: { chars: 4096, turns: 3, marks: [], ms: 0 } });
     const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
@@ -707,8 +681,7 @@ describe('JobTicket: the says-line', () => {
 });
 
 describe('JobTicket: the order line and the region it was filed under', () => {
-  /** The record scrolls inside the job zone and the ticket can outgrow the room it has; the panel's
-   *  subject is the one thing that must not scroll away with it. */
+  /** The ticket can outgrow the job zone, and the order must not scroll away with it. */
   it('pins the order inside the visible scroll edge', () => {
     const { getByTestId } = renderWithI18n(<JobTicket job={makeJob()} live />);
     const order = getByTestId('ticket-order');
@@ -747,13 +720,12 @@ describe('JobTicket: a job on hold', () => {
       stages: [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }],
       currentIndex: 1, doneCount: 1, revision: 1,
     };
-    // After step n is a count of what is banked: one stage done reads "after step 1", never the
-    // index of the stage the job was working on when it stopped.
+    // "After step n" counts stages done, not the index of the stage in progress.
     const planned = renderWithI18n(<JobTicket job={makeJob({ plan })} live paused />);
     expect(planned.getByTestId('pausemark').textContent).toContain('paused after step 1 of 4');
     planned.unmount();
 
-    // Nothing banked names no step: the boundary is the whole of what the log can say.
+    // With nothing done, no step is named.
     const first = renderWithI18n(
       <JobTicket job={makeJob({ plan: { ...plan, currentIndex: 0, doneCount: 0 } })} live paused />,
     );
@@ -780,7 +752,6 @@ describe('JobTicket: a job on hold', () => {
     expect(running.queryByTestId('ticket-actions')).toBeNull();
   });
 
-  /** Resuming a held job uses the standard dark primary, not the attention color used for asks. */
   it('paints the hold\'s own Resume with the dark ink primary, never the ask colour', () => {
     const { getByTestId } = renderWithI18n(
       <JobTicket job={makeJob()} live paused onResume={() => {}} onStop={() => {}} />,

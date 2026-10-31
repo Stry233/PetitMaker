@@ -15,6 +15,8 @@ import { hexStringToNumber } from '../../../core/base/color';
 import { hasUsableWebGL, maxRenderScale } from '../../../platform/device/device-quality';
 import { BaseLayer } from '../layers/base-layer';
 import { resolveHistoryFlash } from '../../shared/overlay/error-flash';
+import { hideLoupe, loupeFramePainted, releaseLoupeSource, showLoupe, type LoupeSource } from '../../shared/overlay/loupe';
+import { LoupeRegion, type LoupeSquare } from './loupe-region';
 import { cullRect } from '../layers/chunk-grid';
 import { TerrainLayer } from '../layers/terrain-layer';
 import { ObjectLayer } from '../layers/object-layer';
@@ -37,6 +39,10 @@ import { cellsOn } from '../../../core/grid/grid-convert';
 // Sprites snap to whole device pixels: at fractional zooms an icon otherwise samples between
 // pixels, a uniform blur no texture LOD can fix.
 PIXI.settings.ROUND_PIXELS = true;
+// Nothing in the scene is a Pixi event target: the pointer machine listens on the container and
+// hit-tests through state/object-index. Without its event system Pixi adds no document listeners and
+// keeps no callback on its system ticker, which otherwise requests an animation frame on every frame.
+PIXI.extensions.remove(PIXI.EventSystem);
 
 export class MapRenderer implements ViewSettingsTarget {
   public readonly app: PIXI.Application;
@@ -66,6 +72,12 @@ export class MapRenderer implements ViewSettingsTarget {
   /** Whether this canvas is the view on screen. Hidden under the 3D view the loop draws nothing,
    *  dirty chunks accumulate, and the first presented frame (or a capture) flushes them. */
   private presenting = true;
+
+  /** This canvas as the magnifier's source while a touch press is on it. */
+  private readonly loupeSource: LoupeSource;
+
+  /** The loupe's own drawing of the scene, on WebGL only. */
+  private readonly loupeRegion: LoupeRegion | null;
 
   /** Detaches this renderer's bus handlers. */
   private detachBus: () => void = () => {};
@@ -102,7 +114,11 @@ export class MapRenderer implements ViewSettingsTarget {
     const painted = this.frames.advance();
     if (painted) {
       this.flushDirtyChunks();
+      // The loupe's own square renders before the frame, so its read-back does not also wait on
+      // the screen frame's GPU work; lent pixels are read from the frame once drawn.
+      if (this.loupeRegion) loupeFramePainted(this.loupeSource);
       this.app.render();
+      if (!this.loupeRegion) loupeFramePainted(this.loupeSource);
       this.frames.painted();
     }
     if (!this.frames.isOpen) {
@@ -111,11 +127,12 @@ export class MapRenderer implements ViewSettingsTarget {
     }
   };
 
-  /** Repaint the chunks the edits since the last frame dirtied, zone colours and terrain alike. */
+  /** Repaint what the edits since the last frame dirtied: zone colours, terrain and road surfaces. */
   private flushDirtyChunks(): void {
     if (!this.currentState) return;
     this.baseLayer.flushDirty(this.currentState);
     this.terrainLayer.flushDirty(this.currentState);
+    this.objectLayer.flushQueuedRoadRegions();
   }
 
   /** Runs `cb` after the next frame this renderer draws. */
@@ -148,14 +165,25 @@ export class MapRenderer implements ViewSettingsTarget {
       forceCanvas: useCanvas,
       preserveDrawingBuffer: true,
       autoStart: false,
-      // Nothing in the scene is a Pixi event target: the pointer machine listens on the container
-      // and hit-tests through state/object-index, and Pixi's own event system would walk the whole
-      // display list on every pointermove.
-      eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
     });
     container.appendChild(this.app.view as HTMLCanvasElement);
-    // The Canvas2D renderer has no context to lose.
+    // On WebGL the loupe's square is drawn at the loupe's resolution just before each frame; a moved
+    // finger asks for the next frame, which a move draws anyway. The Canvas2D renderer lends the
+    // pixels of its preserved frame.
     const gl = (this.app.renderer as { gl?: WebGLRenderingContext }).gl;
+    this.loupeRegion = gl
+      ? new LoupeRegion(this.app.renderer as PIXI.Renderer, this.app.stage, (square) => this.cullLoupe(square))
+      : null;
+    const loupeRegion = this.loupeRegion;
+    this.loupeSource = loupeRegion
+      ? {
+        canvas: this.app.view as HTMLCanvasElement,
+        requestFrame: () => this.requestRender(),
+        renderRegion: (square, outPx) => loupeRegion.render(square, outPx),
+        releaseRegion: () => loupeRegion.release(),
+      }
+      : { canvas: this.app.view as HTMLCanvasElement, requestFrame: () => this.requestRender() };
+    // The Canvas2D renderer has no context to lose.
     if (gl) {
       this.unwatchContext = watchContextLoss(this.app.view as HTMLCanvasElement, {
         isLost: () => gl.isContextLost(),
@@ -360,6 +388,8 @@ export class MapRenderer implements ViewSettingsTarget {
       animateRotation: (id, from, to, onFrame) => this.objectLayer.animateRotation(id, from, to, onFrame),
       animateGroupRotation: (turn, onFrame) => this.objectLayer.animateGroupRotation(turn, onFrame),
       animateRemove: (id: string) => this.objectLayer.animateRemove(id),
+      showLoupe: (at) => showLoupe(this.loupeSource, at),
+      hideLoupe,
       camera: {
         pan: (dx, dy) => {
           this.viewport.pan(dx, dy);
@@ -509,12 +539,24 @@ export class MapRenderer implements ViewSettingsTarget {
     return captureDetachedState(this.app, () => this.destroyed, state, capture);
   }
 
+  /** Shows only the chunks the loupe's `square` (css px of the canvas) reaches, or with null the
+   *  camera's chunks again. */
+  private cullLoupe(square: LoupeSquare | null): void {
+    const zoom = this.viewport.getZoom(), offset = this.viewport.getOffset();
+    if (!square) { this.cullLayers(zoom, offset); return; }
+    const rect = cullRect(offset.x + square.x, offset.y + square.y, zoom, square.side, square.side);
+    this.terrainLayer.cull(rect);
+    this.objectLayer.cull(rect);
+  }
+
   destroy(): void {
     this.destroyed = true;
+    this.loupeRegion?.release();
     this.glide.cancel?.();
     this.unwatchContext();
     this.restCheck?.cancel();
     this.frames.painted();  // a destroyed renderer never draws again; a waiter must not hang on it
+    releaseLoupeSource(this.loupeSource);
     this.detachBus();
     this.labelLayer.dispose();
     cancelAnimationFrame(this.numbersRefreshRaf);

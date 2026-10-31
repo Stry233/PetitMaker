@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The motion preference has to reach THREE gates that can't read the store themselves: the canvas rAF
+ * The motion preference has to reach three gates that can't read the store themselves: the canvas rAF
  * loops (the `motion-state` singleton), CSS (`<html data-reduced-motion>`), and Framer (<MotionConfig>
  * in App, covered by its own props). These tests pin the two that `useMotionEnabled` publishes,
  * including the cases a CSS media query cannot express on its own: "Reduced" while the OS says
@@ -8,9 +8,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { renderHook, render, screen, act, cleanup, waitFor, within } from '@testing-library/react';
+import { renderHook, render, screen, act, cleanup, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
-import { useMotionEnabled } from '../../../ui/session/use-motion-enabled';
+import { resolveReducedMotion, useMotionEnabled } from '../../../ui/session/use-motion-enabled';
+import { en } from '../../../i18n/locales/en';
 import { useEditorStore } from '../../../state/store';
 import { isMotionReduced, __resetMotionState } from '../../../platform/channels/motion-state';
 import { I18nProvider } from '../../../i18n/context';
@@ -102,8 +103,9 @@ describe('the CSS gate agrees with the attribute the hook writes', () => {
     expect(css).toContain(":root:not([data-reduced-motion='0'])");
   });
 
-  it('collapses component-owned CSS transitions, which Framer cannot see', () => {
-    expect(css).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
+  it('collapses component-owned CSS transitions, which Framer cannot see, to no time at all', () => {
+    expect(css).toMatch(/transition-duration:\s*0s\s*!important/);
+    expect(css).toMatch(/transition-delay:\s*0s\s*!important/);
     expect(css).toMatch(/animation-iteration-count:\s*1\s*!important/);
   });
 
@@ -116,44 +118,79 @@ describe('the CSS gate agrees with the attribute the hook writes', () => {
 
 /**
  * Each motion option's sample shows its own level under every preference, so the row still
- * explains the choice after Reduced is picked. The registry suite pins that nothing else lifts the
- * gate.
+ * explains the choice after Reduced is picked: Full's cell bounces, Reduced's lands still, and Auto's
+ * plays what the device resolves to. The registry suite pins that nothing else lifts the gate.
  */
 describe('the motion setting samples', () => {
   afterEach(cleanup);
 
-  function mountSettings(appReduces: boolean, osReduces: boolean) {
-    mockOsPrefers(osReduces);
-    useEditorStore.setState({ locale: 'en', motionPref: appReduces ? 'reduced' : 'full' });
+  /** `osReduces` null keeps the OS reading already stubbed. */
+  function mountSettings(pref: 'reduced' | 'full' | 'system', osReduces: boolean | null) {
+    if (osReduces !== null) mockOsPrefers(osReduces);
+    useEditorStore.setState({ locale: 'en', motionPref: pref });
     render(
-      <MotionConfig reducedMotion={appReduces ? 'always' : 'never'}>
+      <MotionConfig reducedMotion={resolveReducedMotion(pref, osReduces === true) ? 'always' : 'never'}>
         <I18nProvider>
           <SettingsModal open onClose={() => {}} />
         </I18nProvider>
       </MotionConfig>,
     );
-    const group = screen.getByRole('radiogroup', { name: 'Motion' });
-    const sampleOf = (name: string) =>
-      within(group).getByRole('radio', { name }).querySelector('[data-motion-sample]') as HTMLElement;
-    return { full: sampleOf('Full'), reduced: sampleOf('Reduced'), system: sampleOf('System') };
+    const group = screen.getByRole('radiogroup', { name: en['modal.settings_motion'] });
+    const levelOf = (name: string) =>
+      (within(group).getByRole('radio', { name }).querySelector('[data-motion-sample]') as HTMLElement).dataset.sampleLevel;
+    return {
+      group,
+      levels: () => ({ full: levelOf(en['modal.settings_motion_full']), reduced: levelOf(en['modal.settings_motion_reduced']), auto: levelOf(en['modal.settings_motion_system']) }),
+    };
   }
-  /** Mid-turn: a gated spin jumps straight to its end angle, a running one passes through others. */
-  const turned = (el: HTMLElement) => {
-    const deg = Number(/rotate\(([-\d.]+)deg\)/.exec(el.style.transform)?.[1] ?? 0);
-    return deg > 0 && deg < 360;
-  };
 
-  it.each([true, false])('spins Full and holds Reduced still when the app reduces motion: %s', async (appReduces) => {
-    const samples = mountSettings(appReduces, false);
-    await waitFor(() => expect(turned(samples.full)).toBe(true));
-    expect(turned(samples.system)).toBe(true);
-    expect(turned(samples.reduced)).toBe(false);
+  it.each(['reduced', 'full'] as const)('[UI-08] bounces Full and lands Reduced still whatever the app plays: %s', (pref) => {
+    const { levels } = mountSettings(pref, false);
+    expect(levels()).toEqual({ full: 'full', reduced: 'reduced', auto: 'full' });
   });
 
-  it('holds System still when the device asks for reduced motion', async () => {
-    const samples = mountSettings(true, true);
-    await waitFor(() => expect(turned(samples.full)).toBe(true));
-    expect(turned(samples.system)).toBe(false);
+  it('[UI-08] plays Auto as the device resolves it', () => {
+    const { levels } = mountSettings('full', true);
+    expect(levels()).toEqual({ full: 'full', reduced: 'reduced', auto: 'reduced' });
   });
 
+  it('[UI-08] names the device-following choice Auto', () => {
+    const { group } = mountSettings('system', false);
+    expect(within(group).getByRole('radio', { name: 'Auto' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('[UI-08] keeps every tile on one beat, also when Auto restarts on a changed device setting', () => {
+    let now = 1000;
+    const started: Array<{ startTime: CSSNumberish | null }> = [];
+    Object.defineProperty(document, 'timeline', { configurable: true, get: () => ({ currentTime: now }) });
+    Element.prototype.animate = function animate() {
+      const a = { startTime: null as CSSNumberish | null, cancel: () => {} };
+      started.push(a);
+      return a as unknown as Animation;
+    };
+    let reduce = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      get matches() { return reduce && q.includes('prefers-reduced-motion'); },
+      media: q,
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    try {
+      const { levels } = mountSettings('full', null);
+      expect(started).toHaveLength(6);
+      expect(new Set(started.map((a) => a.startTime))).toEqual(new Set([1000]));
+
+      // The OS asks for reduced motion mid-loop: Auto restarts on its new level, on the same beat.
+      now = 1730;
+      // A copy: the re-render resubscribes, and a Set visits entries added during its own iteration.
+      act(() => { reduce = true; [...listeners].forEach((fn) => fn()); });
+      expect(levels().auto).toBe('reduced');
+      expect(started.length).toBeGreaterThan(6);
+      expect(new Set(started.map((a) => a.startTime))).toEqual(new Set([1000]));
+    } finally {
+      delete (Element.prototype as { animate?: unknown }).animate;
+      delete (document as { timeline?: unknown }).timeline;
+    }
+  });
 });

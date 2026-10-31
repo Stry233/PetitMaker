@@ -13,6 +13,7 @@ const LITERAL_DIGITS: Readonly<Record<string, readonly string[]>> = {
   'help.terrain.line_b1': ['45'],
   'help.fig.rotate_2': ['90'],
   'help.objects.rotate_b1': ['90'],
+  'help.objects.rotate_b1_touch': ['90'],
   'help.select.rotate_b1': ['90'],
   'help.select.menu_b1': ['0', '90', '180', '270'],
   'help.notes.measure_b1': ['1', '84'],

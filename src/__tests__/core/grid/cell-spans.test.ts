@@ -54,7 +54,7 @@ describe('boundaryEdges', () => {
   });
 });
 
-/* ── span-native shape pipeline ──────────────────────────────────────── */
+/* span-native shape pipeline */
 
 import { dragShapeSpans, circleCells, rectCells as rectCellsReal } from '../../../core/grid/shapes';
 import type { GridId } from '../../../core/grid/grids';

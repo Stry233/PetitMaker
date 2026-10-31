@@ -1,5 +1,5 @@
 import { helpAttributes, inheritedHelpTarget } from './help-target';
-import { Fragment, useEffect, useId, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useUiPreview } from '../design/preview';
@@ -11,12 +11,17 @@ import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_IN
 import { roleFont, weightVars } from '../design/text-weight';
 import { framerMotion } from '../design/motion';
 import { ChevronIcon } from './line-glyphs';
-import { hoverFillMotion } from './hover-fill';
+import { ActionButton } from './ActionButton';
+import { ScrollArea } from './ScrollArea';
+import { Spinner } from './Spinner';
+import { CONTROL_CLEARANCE } from './use-scroll-row';
+import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
 
 const ANCHOR_GAP = 6;
 const MAX_HEIGHT = 320;
 const CARD_PADDING = 6;
-export const FLOAT_MENU_CONTENT_RADIUS = radii.lg - PANEL_EDGE_WIDTH - CARD_PADDING;
+/** The corner of a box inside the card, concentric with the card's own. */
+const CONTENT_RADIUS = radii.lg - PANEL_EDGE_WIDTH - CARD_PADDING;
 
 export interface FloatMenuItem {
   id: string;
@@ -28,6 +33,21 @@ export interface FloatMenuItem {
   separated?: boolean;
   /** Extra attributes for the row, such as its help target. */
   attrs?: Record<string, string>;
+  /** What a search matches the row by besides its id, where its label is not plain text. */
+  text?: string;
+}
+
+/** A field over the list that narrows its rows to what is typed. Every string is already translated. */
+export interface FloatMenuSearch {
+  /** The field's name and placeholder. */
+  label: string;
+  /** Said when the typed text matches no row. */
+  noMatches: string;
+  /** Said when the list is empty and nothing is typed; `noMatches` otherwise. */
+  empty?: string;
+  /** Offers the typed text as a choice of its own when no row's id is it: the label of that row. */
+  manual?: (typed: string) => ReactNode;
+  'data-testid'?: string;
 }
 
 interface FloatMenuProps {
@@ -52,8 +72,12 @@ interface FloatMenuProps {
   activeId?: string;
   /** A cap over the list. */
   header?: ReactNode;
-  /** The css `zoom` the card should draw at, matching whatever the row stands under. */
-  zoom?: number;
+  /** A field that filters the list, and with `manual` takes a choice the list lacks. */
+  search?: FloatMenuSearch;
+  /** The list is still arriving: a spinner stands in the search field, or over an empty list. */
+  loading?: boolean;
+  /** A muted note between the search field and the list. */
+  note?: ReactNode;
   /**
    * An element of the caller's own to hang the card from, in place of the menu's row: a field whose
    * suggestions the list offers, a control drawn in its window's own style. The card takes its width
@@ -78,8 +102,14 @@ interface FloatMenuProps {
   trigger?: { ref: RefObject<HTMLElement>; align?: 'start' | 'center' | 'end'; gap?: number; minWidth?: number; onMap?: boolean };
 }
 
+/**
+ * The one dropdown: a closed row (or the caller's own trigger or anchor) and a card on the body's
+ * layer, drawn at the zoom its row stands under (a window's touch lift, the frame's, the chrome's), so
+ * a caller never sizes it. Rows are one choice each; `search` adds a field that filters them and can
+ * take a typed choice, `loading` and `note` say what the list is waiting on.
+ */
 export function FloatMenu({
-  row, items = [], body, open, onOpen, onClose, onPick, activeId, header, zoom = 1,
+  row, items = [], body, open, onOpen, onClose, onPick, activeId, header, search, loading = false, note,
   anchor, width, keepFocus = false, highlightId,
   'aria-label': ariaLabel, 'data-testid': testId, trigger,
 }: FloatMenuProps) {
@@ -88,26 +118,36 @@ export function FloatMenu({
   const across = trigger?.align === 'end' ? 'right' : trigger?.align === 'start' ? 'left' : 'center';
   const pictured = useUiPreview();
   const menuId = useId();
-  const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
-  const { ref: cardRef, placement, style } = useFloatingPosition({
-    open: open && !pictured, anchor: rowRef, zoom, maxHeight: MAX_HEIGHT,
+  const [query, setQuery] = useState('');
+  if (!open && query !== '') setQuery('');
+  const searchBody = search ? (
+    <SearchList search={search} items={items} activeId={activeId} loading={loading} note={note} ariaLabel={ariaLabel}
+      query={query} onQuery={setQuery} onPick={(id) => { onPick?.(id); onClose(); }} />
+  ) : null;
+  const cardBody = searchBody ?? body;
+  // The card draws at the zoom its row stands under (a window's touch lift, the frame's, the chrome's),
+  // read off the row as it is placed.
+  const { ref: cardRef, piece, placement, rung, style, zoom } = useFloatingPosition({
+    open: open && !pictured, anchor: rowRef, zoom: 'anchor', maxHeight: MAX_HEIGHT,
     ...(trigger ? { align: trigger.align ?? 'start', gap: trigger.gap ?? ANCHOR_GAP } : { width: width ?? ('anchor' as const), gap: ANCHOR_GAP }),
   });
+  const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
   // The row the caller's keys reach stays in view in a list longer than the card.
   useEffect(() => {
     if (!open || highlightId === undefined) return;
     const rows = cardRef.current?.querySelectorAll<HTMLElement>('[data-item-id]') ?? [];
     Array.from(rows).find((row) => row.dataset.itemId === highlightId)?.scrollIntoView?.({ block: 'nearest' });
   }, [open, highlightId, cardRef]);
-  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: keepFocus ? 'none' : body ? 'contain' : 'menu', outside: true });
+  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: keepFocus ? 'none' : cardBody ? 'contain' : 'menu', outside: true });
 
   const card = (box: CSSProperties, origin: string) => (
     <motion.div
       ref={cardRef}
+      {...piece}
       id={menuId}
       tabIndex={-1}
       {...helpAttributes(inheritedHelpTarget(rowRef.current))}
-      role={body ? 'group' : 'menu'}
+      role={cardBody ? 'group' : 'menu'}
       aria-label={ariaLabel}
       onKeyDown={pictured ? undefined : routeSurfaceKeyDown}
       initial={{ opacity: 0, scale: 0.94 }}
@@ -116,28 +156,12 @@ export function FloatMenu({
       style={{ ...cardStyle, ...(trigger?.minWidth ? { minWidth: trigger.minWidth } : {}), ...(trigger?.onMap ? { boxShadow: 'none' } : {}), ...box, transformOrigin: origin }}
     >
       {header ? <div style={headStyle}>{header}</div> : null}
-      <SurfaceOwner.Provider value={scope}>{body}</SurfaceOwner.Provider>
-      {items.map((item) => (
+      <SurfaceOwner.Provider value={scope}>{cardBody}</SurfaceOwner.Provider>
+      {searchBody ? null : items.map((item) => (
         <Fragment key={item.id}>
           {item.separated ? <div style={dividerStyle} /> : null}
-          <motion.button
-            type="button"
-            {...item.attrs}
-            data-item-id={item.id}
-            {...(trigger ? { role: 'menuitem' } : { role: 'menuitemradio', 'aria-checked': item.id === activeId })}
-            disabled={item.disabled}
-            onClick={() => { onPick?.(item.id); onClose(); }}
-            {...(keepFocus ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})}
-            {...hoverFillMotion({
-              fill: item.id === highlightId && item.id !== activeId ? floatMenuHoverFill(false) : floatMenuItemFill(item.id === activeId),
-              hoverFill: item.disabled ? undefined : floatMenuHoverFill(item.id === activeId),
-            })}
-            transition={framerMotion('surface.arrive')}
-            style={floatMenuItemStyle(item.id === activeId, item.disabled)}
-          >
-            <span>{item.label}</span>
-            {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
-          </motion.button>
+          <MenuRow item={item} active={item.id === activeId} highlighted={item.id === highlightId} action={!!trigger}
+            keepFocus={keepFocus} onPick={() => { onPick?.(item.id); onClose(); }} />
         </Fragment>
       ))}
     </motion.div>
@@ -149,7 +173,7 @@ export function FloatMenu({
         ref={ownRow}
         type="button"
         data-testid={testId}
-        aria-haspopup={body ? true : 'menu'}
+        aria-haspopup={cardBody ? true : 'menu'}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onKeyDown={(event) => { if (!open && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); onOpen(); } }}
@@ -167,13 +191,108 @@ export function FloatMenu({
       ) : null}
       {open && !pictured ? createPortal(
         <>
-          <div style={{ ...layerStyle, zoom, ...weights }}>
+          <div style={{ ...layerStyle, zIndex: layerRung(rung), zoom, ...weights }}>
             {card(style, `${placement?.above ? 'bottom' : 'top'} ${across}`)}
           </div>
         </>,
         document.body,
       ) : null}
     </>
+  );
+}
+
+/** One row of the list: a choice (`menuitemradio`), or with `action` a command (`menuitem`). */
+function MenuRow({ item, active, highlighted = false, action = false, keepFocus = false, wraps = false, onPick }: {
+  item: FloatMenuItem; active: boolean; highlighted?: boolean; action?: boolean; keepFocus?: boolean;
+  /** Breaks a long unspaced label (a model id) rather than overflowing the card. */
+  wraps?: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <ActionButton
+      {...item.attrs}
+      data-item-id={item.id}
+      {...(action ? { role: 'menuitem' } : { role: 'menuitemradio', 'aria-checked': active })}
+      interaction="row"
+      disabled={item.disabled}
+      dim="caller"
+      onClick={onPick}
+      {...(keepFocus ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})}
+      fill={highlighted && !active ? floatMenuHoverFill(false) : floatMenuItemFill(active)}
+      {...(item.disabled ? {} : { hoverFill: floatMenuHoverFill(active) })}
+      fillTransition={framerMotion('surface.arrive')}
+      style={{ ...floatMenuItemStyle(active, item.disabled), flexShrink: 0, ...(wraps ? { overflowWrap: 'anywhere' } : null) }}
+    >
+      <span style={{ minWidth: 0 }}>{item.label}</span>
+      {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
+    </ActionButton>
+  );
+}
+
+/** The card's contents with a search field: the field, the note, and the narrowed list in its own
+ *  scroller, so the field stays put while the rows scroll. Arrow keys, Home and End walk the field and
+ *  the rows; Enter takes the exact id, the typed choice, or the one row left. */
+function SearchList({ search, items, activeId, loading, note, ariaLabel, query, onQuery, onPick }: {
+  search: FloatMenuSearch; items: readonly FloatMenuItem[]; activeId?: string; loading: boolean; note?: ReactNode;
+  ariaLabel?: string; query: string; onQuery: (query: string) => void; onPick: (id: string) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const typed = query.trim();
+  const needle = typed.toLocaleLowerCase();
+  const matches = items.filter((item) => `${item.id} ${item.text ?? (typeof item.label === 'string' ? item.label : '')}`.toLocaleLowerCase().includes(needle));
+  const manual = search.manual && typed !== '' && !items.some(({ id }) => id === typed) ? { id: typed, label: search.manual(typed) } : null;
+  const choices = manual ? [...matches, manual] : matches;
+  const navigate = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (event.target instanceof HTMLInputElement && ['Home', 'End'].includes(event.key)) return;
+    const controls = Array.from(box.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') ?? []);
+    const at = controls.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1
+      : (at + (event.key === 'ArrowDown' ? 1 : -1) + controls.length) % controls.length;
+    event.preventDefault();
+    controls[next]?.focus();
+  };
+  return (
+    <div ref={box} onKeyDown={navigate} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}>
+      <label className={FIELD_WRAP_CLASS} style={searchFieldStyle}>
+        <input
+          type="search"
+          data-testid={search['data-testid']}
+          className={FIELD_INPUT_CLASS}
+          aria-label={search.label}
+          placeholder={search.label}
+          spellCheck={false}
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          enterKeyHint="done"
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229) return;
+            event.preventDefault();
+            const exact = items.find(({ id }) => id === typed);
+            const id = exact?.id ?? manual?.id ?? (matches.length === 1 ? matches[0]?.id : undefined);
+            if (id) onPick(id);
+          }}
+          style={searchInputStyle}
+        />
+        {loading && <Spinner size={13} />}
+      </label>
+      {note ? <p style={{ ...noteStyle, padding: '0 8px' }}>{note}</p> : null}
+      <ScrollArea role="menu" aria-label={ariaLabel} gutter="stable" fade="both" style={{ flex: '1 1 auto' }}
+        contentStyle={{ display: 'flex', flexDirection: 'column', gap: 2, padding: CONTROL_CLEARANCE }}>
+        {choices.map((item) => (
+          <MenuRow key={item.id} item={item} active={item.id === activeId} wraps onPick={() => onPick(item.id)} />
+        ))}
+        {choices.length === 0 && !loading && (
+          <p role="status" style={{ ...noteStyle, padding: '8px 14px' }}>
+            {typed === '' && search.empty ? search.empty : search.noMatches}
+          </p>
+        )}
+      </ScrollArea>
+    </div>
   );
 }
 
@@ -246,10 +365,15 @@ const rowValue: CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
+/** The menu's layer: the popover rung, or one step over the window that holds its anchor where that
+ *  window stands higher (Help), the one offset that orders a surface over its own owner. */
+function layerRung(rung: number): number {
+  return Math.max(z.popover, rung + 1);
+}
+
 const layerStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: z.popover,
   pointerEvents: 'none',
 };
 
@@ -267,6 +391,23 @@ const cardStyle: CSSProperties = {
   padding: CARD_PADDING,
   boxShadow: shadows.menu,
   overflowY: 'auto',
+};
+
+/** The search field: an inset box the list's rows line up with, its corner following the card's. */
+const searchFieldStyle: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+  background: INSET, borderRadius: CONTENT_RADIUS, padding: '10px 12px',
+  borderWidth: 1, borderStyle: 'solid', borderColor: 'transparent',
+};
+
+const searchInputStyle: CSSProperties = {
+  flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
+  ...roleFont('field'), fontFamily: font.family, color: PLATE_INK, letterSpacing: 0,
+  cursor: cursors.text,
+};
+
+const noteStyle: CSSProperties = {
+  ...roleFont('note'), fontFamily: font.family, color: MUTED, lineHeight: 1.45, margin: 0,
 };
 
 const headStyle: CSSProperties = {

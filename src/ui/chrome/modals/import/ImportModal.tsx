@@ -11,7 +11,7 @@ import { useHandedImport } from './use-handed-import';
 import { useWindow, type WindowProps } from '../use-window';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { ImportDropZone, IMPORT_CARD_WIDTH, type ImportDropZoneProps } from './ImportDropZone';
-import { WindowHeader, windowFrame } from '../../../primitives/Window';
+import { WindowBody, WindowHeader, windowFrame } from '../../../primitives/Window';
 
 /** What the picker offers: map images, then map and planet files where JSON is read, then game
  *  videos where they are read, so the redirect card can answer a picked one. */
@@ -28,7 +28,9 @@ export function ImportCardBody({ onClose, ...props }: ImportDropZoneProps & { on
   return (
     <>
       <WindowHeader title={t('import.title')} reserve close={{ label: t('hint.close'), onPress: onClose }} style={{ marginBottom: 14 }} />
-      <ImportDropZone {...props} />
+      <WindowBody>
+        <ImportDropZone {...props} />
+      </WindowBody>
     </>
   );
 }
@@ -39,7 +41,7 @@ export function ImportModal(props: WindowProps) {
   const t = useT();
   const { open, close } = useWindow('import', props);
   return (
-    <ModalShell helpTarget={{ page: 'share', anchor: 'share-import' }} open={open} onClose={close} size="panel" width={IMPORT_CARD_WIDTH} cardStyle={{ ...windowFrame, overflowY: 'auto' }} ariaLabel={t('import.title')}>
+    <ModalShell helpTarget={{ page: 'share', anchor: 'share-import' }} open={open} onClose={close} size="panel" width={IMPORT_CARD_WIDTH} cardStyle={windowFrame} ariaLabel={t('import.title')}>
       <ImportBody open={open} onClose={close} />
     </ModalShell>
   );

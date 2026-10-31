@@ -1,13 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The slide's frames are written past React. The dock's travel is one animated fraction; rendering
- * it through React re-rendered the tree every frame, so the moving styles are written imperatively
- * on the motion value's change and React hears only when the fraction crosses an end.
- *
- * Pinned: the fraction moving notifies no React subscriber (crossing an end does); a mid-flight
- * render reads the live fraction; and the map plane's transform and clip carry the same travel in
- * the same `inset()` shape at every fraction, since Chrome will not interpolate a clip that changes
- * form between keyframes.
+ * The dock's travel is one animated fraction whose moving styles are written imperatively on its
+ * change, so React renders only when the fraction crosses an end. The map plane's clip keeps one
+ * `inset()` shape at every fraction, since Chrome will not interpolate a clip that changes form.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
@@ -16,7 +11,7 @@ import { useRef, type ReactNode } from 'react';
 
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
+import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { Shell } from '../../../ui/shell/Shell';
 import {
   DOCK_PARALLAX, PINNED_COLUMN_W, PINNED_DOCK_REF_W, frameZoomAt,
@@ -68,7 +63,7 @@ function enterSlide(): void {
 }
 
 beforeAll(async () => {
-  backing.set(TOUR_SEEN_KEY, '1');
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
   useEditorStore.setState({ locale: 'en', assistantOpen: true, assistantPinned: false });
   mountShell();
   await screen.findByTestId('shell-assistant-panel', undefined, { timeout: 30_000 });
@@ -85,7 +80,7 @@ afterEach(() => {
   vi.useRealTimers();
   cleanup();
   backing.clear();
-  backing.set(TOUR_SEEN_KEY, '1');
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
 });
 
 describe('the fraction moves without rendering', () => {
@@ -100,14 +95,12 @@ describe('the fraction moves without rendering', () => {
     vi.useFakeTimers();
     const { result } = stage();
     enterSlide();
-    // Into flight: the first change is a crossing (flat -> between), and it renders.
+    // Leaving rest is a crossing.
     act(() => { dockAside.set(0.01); });
     const settled = result.current.renders.current;
-    // Every frame after it is silent.
     act(() => { dockAside.set(0.4); });
     act(() => { dockAside.set(0.7); });
     expect(result.current.renders.current).toBe(settled);
-    // Landing is a crossing again, and the stage reads the landed fraction.
     act(() => { dockAside.set(1); });
     expect(result.current.renders.current).toBeGreaterThan(settled);
     expect(result.current.stage.aside).toBe(1);
@@ -144,13 +137,11 @@ describe('the sheet is written on the fraction\'s own change', () => {
       const tf = mapPlane().style.transform;
       const clip = mapPlane().style.clipPath;
       expect(parseFloat(tf.replace('translateX(', ''))).toBeCloseTo(travel, 6);
-      // The clip stays the same shape function with the same component count at every fraction,
-      // carrying the transform's own travel on both edges.
       const m = clip.match(/^inset\(0(?:px)? ([\d.]+)px 0(?:px)? ([\d.]+)px\)$/);
       expect(m, clip).not.toBeNull();
       expect(parseFloat(m?.[1] ?? '')).toBeCloseTo(travel, 6);
       expect(parseFloat(m?.[2] ?? '')).toBeCloseTo(travel, 6);
-      // The plane's box does not move mid-flight: the travel is the transform's, never the inset's.
+      // The travel is the transform's; the box itself does not move mid-flight.
       expect(mapPlane().style.left).toBe('0px');
       expect(mapPlane().style.pointerEvents).toBe('none');
     }
@@ -166,7 +157,7 @@ describe('the sheet is written on the fraction\'s own change', () => {
     expect(parseFloat(plane().style.left)).toBeCloseTo(0.5 * PINNED_COLUMN_W, 6);
     expect(parseFloat(plane().style.zoom)).toBeCloseTo(zoom, 6);
     expect(parseFloat(plane().style.getPropertyValue('--shell-zoom'))).toBeCloseTo(zoom, 6);
-    // The edge published for the surfaces outside the frame glides on the same write.
+    // The edge published for surfaces outside the frame moves on the same write.
     expect(parseFloat(document.documentElement.style.getPropertyValue('--pin-dock-left')))
       .toBeCloseTo(0.5 * PINNED_DOCK_REF_W, 6);
   });

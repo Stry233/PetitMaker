@@ -21,9 +21,8 @@ import {
 import { MODEL_CATALOG_URL, PROVIDER_IDS, providerBaseUrls } from '../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../pipelines/stylize/providers';
 
-// Canonical headers policy + platform adapters, with no external font hosts.
-// Security-relevant: this file's job is to prove the policy reproduces the
-// live protections exactly, with no Google Fonts hosts allowed.
+// The canonical headers policy and its platform adapters reproduce the live protections exactly,
+// with no external font hosts.
 
 describe('HEADERS_POLICY — shape', () => {
   it('lets connect-src reach data: URLs, which the embedded OCR core fetches its own WebAssembly from', () => {
@@ -99,9 +98,7 @@ describe('dev-only connect-src extension (VITE_EXTRA_CONNECT_SRC) — never in t
     expect(withExtraConnectSrc(HEADERS_POLICY, [])).toBe(HEADERS_POLICY);
     const extended = withExtraConnectSrc(HEADERS_POLICY, ['https://x.example.edu']);
     expect(extended.cspDirectives['connect-src']).toContain('https://x.example.edu');
-    // canonical policy is not mutated
     expect(HEADERS_POLICY.cspDirectives['connect-src']).not.toContain('https://x.example.edu');
-    // other directives untouched
     expect(extended.cspDirectives['script-src']).toEqual(HEADERS_POLICY.cspDirectives['script-src']);
     expect(HEADERS_POLICY.cspDirectives['script-src']).toEqual(["'self'", "'wasm-unsafe-eval'"]);
   });
@@ -305,13 +302,12 @@ describe('fonts.css — PW Rounded Sans self-hosted (renamed Quicksand, OFL-1.1 
 });
 
 describe('Quicksand woff2 name tables — renamed per OFL-1.1 clause 3 (Reserved Font Name)', () => {
-  // The shipped Quicksand-*.woff2 files are Modified Versions (variable→static instancing).
+  // The shipped Quicksand-*.woff2 files are Modified Versions (variable to static instancing).
   // OFL-1.1 clause 3 forbids a Modified Version from using the Reserved Font Name "Quicksand"
-  // in its name table without written permission, so the family/full/PostScript name records
-  // were rewritten to "PW Rounded Sans". A byte-level check is unreliable (woff2/brotli-compressed,
-  // and name-table strings are UTF-16BE for the Windows platform records) — this is a structural
-  // assertion on fonts.css (the only thing browsers/CSS actually consult for `url()`-sourced
-  // fonts) rather than a raw-byte scan of the binary. The name tables themselves are checkable
+  // in its name table without written permission, so the family, full and PostScript name records
+  // are "PW Rounded Sans". A byte-level check is unreliable (woff2 is brotli-compressed, and
+  // name-table strings are UTF-16BE for the Windows platform records), so this asserts on fonts.css,
+  // the only thing browsers consult for `url()`-sourced fonts. The name tables themselves can be read
   // with `fontTools.ttLib.TTFont(...)['name']`.
   const css = readFileSync('src/assets/fonts/fonts.css', 'utf8');
 

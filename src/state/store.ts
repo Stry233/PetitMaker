@@ -6,6 +6,7 @@ import { createEngineSlice, type EngineSlice } from './slices/engine';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotations';
 import { createPlanetSessionSlice, type PlanetSessionSlice } from './slices/planet-session';
 import { createRepairSessionSlice, type RepairSessionSlice } from './slices/repair-session';
+import { initialInputMode, readInputEnv } from '../platform/device/input-mode';
 
 export type { HintLevel, ViewMode };
 export type { ModalId, ShareSection };
@@ -32,9 +33,10 @@ export const useEditorStore = create<EditorStore>((publish, read, api) => {
   // Callers outside the slices read and write through the draft too while a batch runs.
   api.getState = get;
   api.setState = set;
+  const startMode = initialInputMode(readInputEnv());
   return {
-    ...createPrefsSlice(set, get, api),
-    ...createShellSlice(set, get, api),
+    ...createPrefsSlice(startMode)(set, get, api),
+    ...createShellSlice(startMode, batchStore)(set, get, api),
     ...createEditSlice(set, get, api),
     ...createEngineSlice(set, get, api),
     ...createAnnotationsSlice(set, get, api),

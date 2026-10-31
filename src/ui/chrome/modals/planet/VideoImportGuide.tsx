@@ -8,7 +8,7 @@
  */
 import { ActionButton } from '../../../primitives/ActionButton';
 import { useRef, useState, type CSSProperties, type DragEvent } from 'react';
-import { AnimatePresence, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import type { ImportFailure } from '../../../../pipelines/planet-scan';
 import { cursors, radii } from '../../../design/styles';
@@ -16,7 +16,7 @@ import { ERROR, FRAME_INK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { Disclosure } from '../../../primitives/Disclosure';
-import { PlayIcon } from '../../../primitives/line-glyphs';
+import { LoopVideo } from '../../../primitives/LoopVideo';
 import { ImportDropZone } from '../import/ImportDropZone';
 import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import/facts';
 import { SCAN_EXAMPLE, SCAN_EXAMPLE_SIZE } from './scan-example';
@@ -49,11 +49,6 @@ const frameStyle: CSSProperties = {
   position: 'relative', width: '100%', aspectRatio: `${SCAN_EXAMPLE_SIZE.width} / ${SCAN_EXAMPLE_SIZE.height}`, borderRadius: radii.md, overflow: 'hidden',
   background: FRAME_INK, border: `1.5px solid ${skin.line}`, boxSizing: 'border-box',
 };
-const mediaStyle: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' };
-const playStyle: CSSProperties = {
-  position: 'absolute', insetInlineStart: '50%', top: '50%', width: 56, height: 56, margin: '-28px 0 0 -28px', borderRadius: '50%', border: 'none',
-  background: skin.active, color: skin.ink, display: 'grid', placeItems: 'center', padding: 0, WebkitTapHighlightColor: 'transparent',
-};
 const failureStyle: CSSProperties = {
   ...roleFont('label'), color: ERROR, background: skin.inset, borderRadius: radii.md, padding: '10px 14px', lineHeight: 1.45,
   display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
@@ -74,28 +69,9 @@ function GuideLink({ anchor, label, testId }: { anchor: string; label: string; t
 
 function ExampleVideo() {
   const t = useT();
-  const reduced = useReducedMotionConfig() === true;
-  const ref = useRef<HTMLVideoElement>(null);
-  const [asked, setAsked] = useState(false);
-  const playing = !reduced || asked;
-  const play = () => {
-    setAsked(true);
-    void ref.current?.play().catch(() => setAsked(false));
-  };
   return (
-    <div style={frameStyle} data-testid="scan-example">
-      <video ref={ref} style={mediaStyle} muted loop playsInline autoPlay={!reduced} preload={reduced ? 'none' : 'auto'} poster={SCAN_EXAMPLE.poster}
-        aria-label={t('planet.scan_example')} data-testid="scan-example-video">
-        <source src={SCAN_EXAMPLE.webm} type="video/webm" />
-        <source src={SCAN_EXAMPLE.mp4} type="video/mp4" />
-      </video>
-      {!playing && (
-        <ActionButton interaction="tile" data-testid="scan-example-play" aria-label={t('planet.scan_play')} title={t('planet.scan_play')}
-          style={playStyle} onClick={play}>
-          <PlayIcon size={26} />
-        </ActionButton>
-      )}
-    </div>
+    <LoopVideo style={frameStyle} testId="scan-example" label={t('planet.scan_example')} playLabel={t('planet.scan_play')} poster={SCAN_EXAMPLE.poster}
+      sources={[{ src: SCAN_EXAMPLE.webm, type: 'video/webm' }, { src: SCAN_EXAMPLE.mp4, type: 'video/mp4' }]} />
   );
 }
 

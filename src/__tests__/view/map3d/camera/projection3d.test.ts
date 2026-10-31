@@ -127,7 +127,7 @@ describe('Projection3D', () => {
     const { host } = makeHost(state);
     const proj = new Projection3D(host);
     // The top screen edge ray descends past the map and lands far away on the
-    // infinite ground plane — a coherent far-off-map cell, exactly like a 2D
+    // infinite ground plane: a coherent far-off-map cell, exactly like a 2D
     // pointer parked way outside the map.
     const sky = cellUnder(proj, 400, 5, 'object');
     const offMap = sky.x < 0 || sky.y < 0 || sky.x >= 20 || sky.y >= 20;

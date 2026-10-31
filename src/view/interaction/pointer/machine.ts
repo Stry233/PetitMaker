@@ -8,7 +8,9 @@
  * menu.
  *
  * `resolvePress` decides what a press means; this machine executes the plan, routes each move to
- * the gesture that owns it, and re-samples a still pointer when the world under it changes.
+ * the gesture that owns it, and re-samples a still pointer when the world under it changes. A touch
+ * press the plan holds back waits here, with the hold timer, until `resolvePending` names the arm
+ * to run.
  */
 import { clientPoint } from '../../../platform/device/viewport-space';
 import { useEditorStore } from '../../../state/store';
@@ -16,10 +18,13 @@ import { getActiveToolManager, getActiveView } from '../../active-view';
 import { setMapWheelSink } from '../map-wheel';
 import { resolveNavTap, resolvePress, type PressFacts, type PressIntent, type PressPlan } from '../press/press-plan';
 import { isNavButton, PRIMARY_BUTTON } from '../press/pointer-buttons';
+import { modalityOf, pointerHovers, timingFor, travelledPast, type GestureTiming } from '../../../platform/input/gesture-timing';
+import { resolvePending, type PendingFacts } from '../press/pending';
 import { createCameraGestures } from '../camera-gestures';
 import { releaseTextFocus } from '../pointer-focus';
 import { noteNavGestureLost } from '../nav-gesture-hint';
 import { installKeyTracking } from '../../../platform/input/held-keys';
+import { holdEditInFlight } from '../../../state/edits-in-flight';
 import { setCursorDrag, setCursorPressSelects } from '../cursor-controller';
 import { buildPressFacts } from './press-facts';
 import { HoverProbe, clearCursorFacts } from './hover-probe';
@@ -28,8 +33,11 @@ import { BandSelect } from './band-select';
 import { TouchGesture } from './touch-gesture';
 import { RegionPointer } from './region-pointer';
 import { watchResampleTriggers } from './resampler';
-import { isCarried, registerCarryTarget, type CarryTarget } from './carry';
-import { armedItemOf } from '../../../state/editing/edit-mode';
+import { dropAt, isCarried, registerCarryTarget, type CarryTarget } from './carry';
+import { clearHoldPress, runTwoFingerTap, showHoldPress } from './gesture-channel';
+import { activeToolOf, armedItemOf } from '../../../state/editing/edit-mode';
+import type { ToolType } from '../../../state/editing/vocabulary';
+import type { BlockRef } from '../../../state/selection';
 
 type Point = { x: number; y: number };
 
@@ -46,6 +54,62 @@ interface PressState {
   /** The press landed on a member of a plural selection: a tap selects that object alone, while a
    *  drag moves the whole group. */
   collapseToOnUp: string | null;
+  /** A Ctrl press on a selected member: its tap takes the member out of the selection. */
+  toggleOnUp: BlockRef | null;
+  /** A touch press waiting to learn whether it is a tap, a drag or a hold. */
+  pending: PendingPress | null;
+  /** A touch drag or hold carries the armed item's preview: the pointer that holds it, and the
+   *  arming it began under. The release places the item where it lifts. */
+  previewing: { pointerId: number; arming: PressArming } | null;
+  /** The finger whose press magnifies the map: a stroke of a tool that `magnifies`, or a preview
+   *  over this map. It stands until that finger's press ends, through a blur that hides the loupe. */
+  loupe: number | null;
+  /** A finger's tool stroke that may still be the first finger of a pan: the tool keeps its
+   *  refusals until the press travels, is held or lifts (`confirmQuiet`). */
+  quiet: QuietPress | null;
+  /** The last waiting press that settled as a tap with a double-tap arm: where and when it lifted,
+   *  and the selection before its tap ran, which the double tap leaves standing. */
+  lastTap: { at: Point; time: number; selection: readonly BlockRef[] } | null;
+}
+
+/** A finger's tool stroke whose feedback waits: the finger, where it landed, its timing and the
+ *  hold timer that confirms it. */
+interface QuietPress { pointerId: number; from: Point; timing: GestureTiming; timer: ReturnType<typeof setTimeout> }
+
+/** The tool and armed item a press was resolved for. */
+interface PressArming { tool: ToolType; armedItemId: string | null }
+
+const armingNow = (): PressArming => {
+  const store = useEditorStore.getState();
+  return { tool: activeToolOf(store), armedItemId: armedItemOf(store) };
+};
+
+const sameArming = (a: PressArming, b: PressArming): boolean =>
+  a.tool === b.tool && a.armedItemId === b.armedItemId;
+
+/** A press whose plan is `pending`, from its landing until it resolves. */
+interface PendingPress {
+  pointerId: number;
+  /** The landing event, which the hold arm runs against. */
+  down: PointerEvent;
+  plan: PressPlan;
+  /** The facts at the landing: every arm acts on what the finger landed on. */
+  facts: PressFacts;
+  /** The landing point, in layout px. */
+  from: Point;
+  /** Travel from `from`, in layout px. */
+  dx: number;
+  dy: number;
+  /** Where the last swallowed move left the finger: the pinch tracker's baseline. */
+  last: Point;
+  timing: GestureTiming;
+  /** What the plan was resolved for. */
+  arming: PressArming;
+  /** The hold timer ran out with nothing to open: a release now does nothing, a drag still drags. */
+  held: boolean;
+  timer: ReturnType<typeof setTimeout>;
+  /** The hold ring this press shows (`gesture-channel.ts:showHoldPress`), or null. */
+  ring: number | null;
 }
 
 /**
@@ -56,7 +120,7 @@ interface PressState {
  * machine): re-sampling this position on a viewport change is what lets a live stroke keep painting,
  * and the hover and ghost keep tracking the cell they would actually land on.
  */
-interface PointerMemory { x: number; y: number; known: boolean }
+interface PointerMemory { x: number; y: number; known: boolean; pointerType: string }
 
 /**
  * A Ctrl gesture ended with something selected while an item was armed: the placement session is
@@ -95,10 +159,30 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   });
   const drag = new ObjectDrag();
   const band = new BandSelect();
-  const touch = new TouchGesture(gestures);
+  const touch = new TouchGesture(gestures, runTwoFingerTap);
   const region = new RegionPointer();
-  const press: PressState = { toolDown: false, leftPanning: false, panKeyPanning: false, toggleOffOnUp: false, collapseToOnUp: null };
-  const pointer: PointerMemory = { x: 0, y: 0, known: false };
+  const press: PressState = {
+    toolDown: false, leftPanning: false, panKeyPanning: false, toggleOffOnUp: false, collapseToOnUp: null, toggleOnUp: null,
+    pending: null, previewing: null, loupe: null, lastTap: null, quiet: null,
+  };
+  const pointer: PointerMemory = { x: 0, y: 0, known: false, pointerType: 'mouse' };
+  /** The release of this machine's hold on the live map (`state/edits-in-flight.ts`) while its press
+   *  can still change the map: a tool stroke, an object drag or an item preview. */
+  let mapHold: (() => void) | null = null;
+  /** Holds or lets go of the live map as the press opens or ends an edit; run after every handler. */
+  const syncMapHold = (): void => {
+    const editing = press.toolDown || drag.objectId !== null || press.previewing !== null;
+    if (editing && !mapHold) mapHold = holdEditInFlight(() => abortPress(), 'hand');
+    else if (!editing && mapHold) {
+      const release = mapHold;
+      mapHold = null;
+      release();
+    }
+  };
+  /** `handler`, followed by the hold's sync with whatever it left the press doing. */
+  const thenSyncHold = <A extends unknown[]>(handler: (...args: A) => void) => (...args: A): void => {
+    try { handler(...args); } finally { syncMapHold(); }
+  };
 
   // Takes any event-like value with a `target` (a real DOM Event, or a PointerSample built for the
   // resampler below): both need the same test of whether it is over this machine's own canvas.
@@ -109,15 +193,89 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   }
   const hover = new HoverProbe(isCanvasTarget);
 
-  const remember = (at: Point): void => { pointer.x = at.x; pointer.y = at.y; pointer.known = true; };
+  const remember = (at: Point, pointerType: string): void => {
+    pointer.x = at.x; pointer.y = at.y; pointer.known = true; pointer.pointerType = pointerType;
+  };
   /** The press's tap will never settle: it became a drag, or it ended. The window's release
    *  reaches this machine for presses it never saw (a panel control, the other view), so a flag
    *  left standing would act on one of those. */
-  const forgetTap = (): void => { press.toggleOffOnUp = false; press.collapseToOnUp = null; };
+  const forgetTap = (): void => { press.toggleOffOnUp = false; press.collapseToOnUp = null; press.toggleOnUp = null; };
+
+  /** A finger's press magnifies the map under `at`; a mouse or a pen, which shows its own hover
+   *  and leaves the cells in sight, never does. */
+  const showLoupe = (e: { pointerType: string; pointerId: number }, at: Point): void => {
+    if (pointerHovers(e)) return;
+    press.loupe = e.pointerId;
+    view()?.showLoupe(at);
+  };
+  const hideLoupe = (): void => {
+    if (press.loupe === null) return;
+    press.loupe = null;
+    view()?.hideLoupe();
+  };
+  /** A finger's stroke magnifies when its tool does under the arming and the press's drag stays the
+   *  stroke; a press whose drag the plan gave to the camera or the band is a click. */
+  const magnifyStroke = (e: PointerEvent, at: Point): void => {
+    if (!press.toolDown || press.leftPanning || band.armed) return;
+    const mgr = tools();
+    const tool = mgr?.getActiveTool();
+    const ctx = mgr?.getContext();
+    if (tool && ctx && tool.magnifies?.(ctx)) showLoupe(e, at);
+  };
+
+  /** The waiting press is over: it resolved, or the gesture ended without it. */
+  const endPending = (): void => {
+    if (!press.pending) return;
+    clearTimeout(press.pending.timer);
+    // Only this press's ring: a card held by another finger may be showing its own.
+    if (press.pending.ring !== null) clearHoldPress(press.pending.ring);
+    press.pending = null;
+  };
+
+  /** The quiet stroke is over without standing: it lifted, or it was taken back. */
+  const endQuiet = (): void => {
+    if (!press.quiet) return;
+    clearTimeout(press.quiet.timer);
+    press.quiet = null;
+  };
+
+  /** The quiet stroke stands: what the tool kept is reported, and the stroke speaks from here. */
+  const confirmQuiet = (): void => {
+    if (!press.quiet) return;
+    endQuiet();
+    tools()?.confirmPress();
+  };
+
+  /** A finger's stroke is quiet: a second finger may yet land and make it a pan. */
+  const beginQuiet = (e: PointerEvent, at: Point): void => {
+    endQuiet();
+    const timing = timingFor(e);
+    press.quiet = { pointerId: e.pointerId, from: at, timing, timer: setTimeout(confirmQuiet, timing.holdMs) };
+  };
+
+  /** A move of the quiet finger confirms the stroke once it is a drag, as a waiting press reads it. */
+  const quietMove = (e: PointerEvent, at: Point): void => {
+    const q = press.quiet;
+    if (!q || e.pointerId !== q.pointerId) return;
+    const facts = { heldMs: 0, dx: at.x - q.from.x, dy: at.y - q.from.y, pointers: Math.max(1, touch.fingers), released: false, timing: q.timing };
+    if (resolvePending(facts) === 'drag') confirmQuiet();
+  };
+
+  /** The machine's hold timer is the press's clock: it has been held the hold time once the timer
+   *  ran out. A pen is one pointer; fingers are the touch tracker's count. */
+  const pendingFacts = (p: PendingPress, released: boolean): PendingFacts => ({
+    heldMs: p.held ? p.timing.holdMs : 0, dx: p.dx, dy: p.dy, pointers: Math.max(1, touch.fingers),
+    released, timing: p.timing,
+  });
+
+  /** The plan was resolved for another tool or item: a second finger on a tool tile or a shelf
+   *  card changed it while this press waited. */
+  const pendingStale = (p: PendingPress): boolean => !sameArming(p.arming, armingNow());
 
   /** A second finger landed (or the touch was cancelled) while a touch stroke was live: the tool
    *  cancels its press and rolls back what it committed, since the finger meant to navigate. */
   const cancelTouchStroke = () => {
+    endQuiet();
     region.cancel();
     if (!press.toolDown) return;
     press.toolDown = false;
@@ -128,6 +286,10 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   /** A second finger landed: cancel whatever the first finger started (stroke, drag, region
    *  brush), since the gesture is navigation from here. */
   const abandonForNavigation = () => {
+    press.lastTap = null;
+    hideLoupe();
+    endPending();
+    press.previewing = null;
     cancelTouchStroke();
     drag.cancel();
     setCursorDrag('none');
@@ -163,10 +325,16 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
         if (f.toolGrabs && !f.multiSelectHeld) {
           setCursorDrag('object');
         }
-        tools()?.handlePointerDown(at.x, at.y, e.timeStamp);
+        // A finger's stroke says nothing until a second finger can no longer make it a pan.
+        tools()?.handlePointerDown(at.x, at.y, e.timeStamp, timingFor(e).dragThreshold, e.pointerType === 'touch');
+        if (e.pointerType === 'touch') beginQuiet(e, at);
+        magnifyStroke(e, at);
         return;
       case 'select':
-        store.setSelection([intent.block]);
+        store.setSelection([intent.block], intent.pick ? { pick: intent.pick } : undefined);
+        return;
+      case 'pick-cell':
+        store.pickCell(intent.cell);
         return;
       case 'toggle-select':
         store.toggleSelection(intent.block);
@@ -177,17 +345,23 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
       case 'collapse-select':
         press.collapseToOnUp = intent.id;
         return;
+      case 'toggle-on-release':
+        press.toggleOnUp = intent.block;
+        return;
       case 'move-selection':
-        drag.arm(intent.anchorId, at.x, at.y, f.macro);
+        drag.arm(intent.anchorId, at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold });
+        return;
+      case 'copy-selection':
+        drag.arm(intent.anchorId, at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold, copy: true });
         return;
       case 'band-select':
-        band.arm(intent.from, at.x, at.y);
+        band.arm(intent.from, at.x, at.y, timingFor(e).dragThreshold);
         // Neither the armed item's placement preview nor a brush's paint preview has anything
         // left to show: this gesture selects.
         view()?.overlay.clearGhost();
         return;
       case 'context-menu':
-        store.setContextMenu({ x: at.x, y: at.y, target: intent.block });
+        store.setContextMenu({ x: at.x, y: at.y, target: intent.block, mode: modalityOf(e) });
         return;
       case 'cancel-pending': {
         const mgr = tools();
@@ -196,7 +370,110 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
         if (t && c) t.cancelPending?.(c);
         return;
       }
+      case 'zoom-in':
+        view()?.camera.zoomStep(1, at.x, at.y);
+        return;
+      case 'preview-placement':
+        // From here the press is a carry of the armed item: this point and the moves that follow
+        // are the tool's hovers over this map, which draw its ghost under the finger.
+        press.previewing = { pointerId: e.pointerId, arming: armingNow() };
+        previewAt(e);
+        return;
     }
+  };
+
+  /** The hold timer ran out on `p`: the hold arm runs, and a press that opened something is spent. */
+  const holdPendingNow = (p: PendingPress): void => {
+    if (press.pending !== p) return;
+    if (pendingStale(p)) { endPending(); return; }
+    p.held = true;
+    press.lastTap = null;
+    if (resolvePending(pendingFacts(p, false)) !== 'hold') return;
+    const hold = p.plan.onHold ?? [];
+    if (hold.length === 0) return;
+    endPending();
+    for (const i of hold) runIntent(i, p.down, p.from, p.facts);
+  };
+
+  const holdPending = thenSyncHold(holdPendingNow);
+
+  const beginPending = (e: PointerEvent, at: Point, plan: PressPlan, f: PressFacts): void => {
+    endPending();
+    const timing = timingFor(e);
+    const p: PendingPress = {
+      pointerId: e.pointerId, down: e, plan, facts: f, from: at, dx: 0, dy: 0, last: at, timing,
+      arming: armingNow(), held: false,
+      timer: setTimeout(() => holdPending(p), timing.holdMs),
+      // A hold that opens a menu fills a ring around the finger until it does.
+      ring: plan.onHold?.some((i) => i.kind === 'context-menu') ? showHoldPress(at) : null,
+    };
+    press.pending = p;
+  };
+
+  /** A move of the waiting pointer. Inside the slop it is swallowed; past it the drag arm runs from
+   *  the landing point and the move goes on down the chain to the gesture that arm started. */
+  const pendingMove = (e: PointerEvent, at: Point): boolean => {
+    const p = press.pending;
+    if (!p || e.pointerId !== p.pointerId) return false;
+    if (pendingStale(p)) {
+      endPending();
+      touch.move(e, false); // a two-finger tap's slop check still hears the travel
+      return true;
+    }
+    p.dx = at.x - p.from.x;
+    p.dy = at.y - p.from.y;
+    if (resolvePending(pendingFacts(p, false)) !== 'drag') {
+      touch.move(e, false); // keeps the pinch baseline fresh for a second finger
+      p.last = at;
+      return true;
+    }
+    endPending();
+    press.lastTap = null;
+    for (const i of p.plan.onDrag) runIntent(i, e, p.from, p.facts);
+    if (press.previewing) {
+      touch.move(e, false); // the preview arm already showed this move; the tracker still hears it
+      return true;
+    }
+    // A finger pans by the tracker's deltas, which start at the last swallowed move: the travel
+    // inside the slop is applied here, so the map stays under the finger from the landing point.
+    if (press.leftPanning && e.pointerType === 'touch') {
+      gestures.touch({ panX: p.from.x - p.last.x, panY: p.from.y - p.last.y, scale: 1, twist: 0, midX: p.last.x, midY: p.last.y });
+    }
+    return false;
+  };
+
+  /** A tap releasing at `at` is the second of a double tap after `prev`: it landed inside the window
+   *  from the first one's release, and lifted inside the first one's slop. */
+  const followsTap = (prev: NonNullable<PressState['lastTap']>, p: PendingPress, at: Point): boolean =>
+    p.down.timeStamp - prev.time <= p.timing.doubleTapMs
+      && !travelledPast(at.x - prev.at.x, at.y - prev.at.y, p.timing.doubleTapSlop);
+
+  /** The waiting pointer lifted: a tap runs the tap arm here, as a press and release, or the
+   *  double-tap arm with the selection the first tap found; a press that was held, or that
+   *  travelled with no move to show it, ends with nothing. */
+  const pendingRelease = (e: PointerEvent, at: Point): boolean => {
+    const p = press.pending;
+    if (!p || e.pointerId !== p.pointerId) return false;
+    endPending();
+    const prev = press.lastTap;
+    press.lastTap = null;
+    if (pendingStale(p)) return true;
+    p.dx = at.x - p.from.x;
+    p.dy = at.y - p.from.y;
+    if (p.held || resolvePending(pendingFacts(p, true)) !== 'tap') return true;
+    const double = p.plan.onDoubleTap;
+    if (double && prev && followsTap(prev, p, at)) {
+      // The second tap gives back what the first changed, which leaves the first's undo step spent.
+      useEditorStore.getState().setSelection([...prev.selection], { record: false });
+      for (const i of double) runIntent(i, e, at, p.facts);
+      releasePrimary(e, at);
+      return true;
+    }
+    if (double) press.lastTap = { at, time: e.timeStamp, selection: useEditorStore.getState().selection };
+    for (const i of p.plan.onTap) runIntent(i, e, at, p.facts);
+    settleTap();
+    releasePrimary(e, at);
+    return true;
   };
 
   /**
@@ -220,7 +497,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   const leftDown = (e: PointerEvent, at: Point): void => {
     if (e.button !== PRIMARY_BUTTON) return;
     e.preventDefault();
-    const f = buildPressFacts(PRIMARY_BUTTON, at.x, at.y);
+    const f = buildPressFacts(PRIMARY_BUTTON, e.pointerType, at.x, at.y);
     if (!f) return;
     const plan = resolvePress(f);
     // Navigate-while-drawing: the pan-drag key is the camera, not an edit, so it leaves the hover
@@ -237,22 +514,26 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     store.setContextMenu(null);
     store.setDeletePopover(null);
     forgetTap();
+    if (plan.pending) { beginPending(e, at, plan, f); return; }
+    press.lastTap = null;
     runPlan(plan, e, at, f);
   };
 
-  const onPointerDown = (e: PointerEvent) => {
+  const onPointerDownNow = (e: PointerEvent) => {
     if (!isCanvasTarget(e)) return;
     releaseTextFocus(container);
     const at = clientPoint(e);
 
-    // Touch has no meaningful "position" once the finger lifts, so it never feeds the resampler.
-    if (e.pointerType !== 'touch') remember(at);
+    // A finger has no meaningful "position" once it lifts, so it never feeds the resampler.
+    if (pointerHovers(e)) remember(at, e.pointerType);
 
     if (touch.down(e, abandonForNavigation)) return;
     // Right or middle press: arm camera navigation. A tap opens the context menu on release.
     if (gestures.navDown(e)) return;
     leftDown(e, at);
   };
+
+  const onPointerDown = thenSyncHold(onPointerDownNow);
 
   /** Pan-drag key held, or a select-mode left drag: slide the camera and consume the move. */
   const panMove = (e: PointerEvent): boolean => {
@@ -281,13 +562,16 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     }
   };
 
-  const onPointerMove = (e: PointerEvent) => {
+  const onPointerMoveNow = (e: PointerEvent) => {
     if (isCarried(e.pointerId)) return; // the carry hands this pointer's moves to `carryTarget`
     const at = clientPoint(e);
     // "Here" means either this container is literally under the pointer, or a stroke already
     // started on it (a mid-stroke drag stays live even if the browser occasionally reports a target
     // outside the element, the same condition the tool feed below uses).
-    if (e.pointerType !== 'touch' && (press.toolDown || isCanvasTarget(e))) remember(at);
+    if (pointerHovers(e) && (press.toolDown || isCanvasTarget(e))) remember(at, e.pointerType);
+    if (pendingMove(e, at)) return;
+    if (previewMove(e)) return;
+    quietMove(e, at);
     if (panMove(e)) return;
     if (touch.move(e, press.leftPanning)) return;
     // Right or middle drag: orbit the camera where the view has one, otherwise pan.
@@ -295,11 +579,14 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     if (band.move(at.x, at.y)) return;
     if (region.move(at.x, at.y)) return;
     if (drag.move(at.x, at.y)) return;
-    if (region.hover(at.x, at.y, isCanvasTarget(e) && e.pointerType !== 'touch')) return;
+    if (region.hover(at.x, at.y, isCanvasTarget(e) && pointerHovers(e))) return;
+    if (press.toolDown && press.loupe === e.pointerId) showLoupe(e, at);
     if (!drag.dragging && (press.toolDown || isCanvasTarget(e))) feedTools(e, at);
     // Idle mouse hover: preview what a click would select as a grey box.
     if (!press.toolDown && !drag.dragging) hover.update(e);
   };
+
+  const onPointerMove = thenSyncHold(onPointerMoveNow);
 
   /** The Ctrl band's release. A tool-owned select state runs its own press under the band (the
    *  plan pairs them), so that stroke closes here first. */
@@ -307,7 +594,8 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     if (!band.armed) return false;
     if (press.toolDown) {
       press.toolDown = false;
-      tools()?.handlePointerUp(at.x, at.y, e.timeStamp);
+      endQuiet();
+      tools()?.handlePointerUp(at.x, at.y, e.timeStamp, timingFor(e).doubleTapMs);
     }
     band.release(at.x, at.y);
     disarmAfterCtrlSelect(hover);
@@ -320,7 +608,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     if (!isNavButton(e.button)) return false;
     const nav = gestures.navUp();
     if (nav.navigated && !nav.moved) {
-      const f = buildPressFacts(e.button, at.x, at.y);
+      const f = buildPressFacts(e.button, e.pointerType, at.x, at.y);
       if (f) for (const intent of resolveNavTap(f)) runIntent(intent, e, at, f);
     }
     return true;
@@ -328,8 +616,8 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
 
   /** The region brush's release. */
   const releaseRegion = (e: PointerEvent): boolean => {
-    if (!region.release(e.timeStamp)) return false;
-    if (e.pointerType === 'touch') view()?.overlay.clearGhost();
+    if (!region.release(e.timeStamp, timingFor(e).doubleTapMs)) return false;
+    if (!pointerHovers(e)) view()?.overlay.clearGhost();
     else resamplePointer();
     return true;
   };
@@ -339,7 +627,10 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   const settleTap = (): void => {
     if (drag.dragging) return;
     drag.cancel();
-    if (press.collapseToOnUp) {
+    if (press.toggleOnUp) {
+      useEditorStore.getState().toggleSelection(press.toggleOnUp);
+      press.toggleOnUp = null;
+    } else if (press.collapseToOnUp) {
       useEditorStore.getState().setSelection([{ kind: 'object', id: press.collapseToOnUp }]);
       press.collapseToOnUp = null;
     } else if (press.toggleOffOnUp) {
@@ -348,49 +639,91 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     }
   };
 
-  /** The primary button's own release: the pan ends, and an open stroke closes. */
+  /** The previewing pointer moved: over this map the tool hovers there, anywhere else (the object
+   *  bar, a panel) the preview leaves the map. */
+  const previewAt = (e: PointerEvent): void => {
+    if (carryTarget.over(e.clientX, e.clientY)) carryTarget.hover(e);
+    else carryTarget.leave();
+  };
+
+  /** A move of the previewing pointer. The pinch tracker hears it too, so a second finger landing
+   *  later pinches from where this one is. Under a changed arming the preview has nothing left to
+   *  show, and stays only so its release places nothing. */
+  const previewMove = (e: PointerEvent): boolean => {
+    const preview = press.previewing;
+    if (!preview || preview.pointerId !== e.pointerId) return false;
+    touch.move(e, false);
+    if (sameArming(preview.arming, armingNow())) previewAt(e);
+    else carryTarget.leave();
+    return true;
+  };
+
+  /** The previewing pointer lifted: the item lands where it lifts and the map settles, through the
+   *  carry's own drop and settle, so a release off this map places nothing and a refused cell
+   *  refuses as a click there would. An arming changed under the preview places nothing either. */
+  const releasePreview = (e: PointerEvent): boolean => {
+    const preview = press.previewing;
+    if (!preview || preview.pointerId !== e.pointerId) return false;
+    press.previewing = null;
+    if (sameArming(preview.arming, armingNow())) dropAt(carryTarget, e);
+    carryTarget.settle(e);
+    return true;
+  };
+
+  /** The primary button's own release: the pan ends, a preview lands, and an open stroke closes. */
   const releasePrimary = (e: PointerEvent, at: Point): void => {
     if (e.button !== PRIMARY_BUTTON) return;
     press.leftPanning = false;
     gestures.navUp();
     setCursorDrag('none');
     if (press.panKeyPanning) { press.panKeyPanning = false; return; }
+    if (releasePreview(e)) return;
     if (!press.toolDown) return;
     press.toolDown = false;
-    tools()?.handlePointerUp(at.x, at.y, e.timeStamp);
-    if (e.pointerType === 'touch') view()?.overlay.clearGhost();
+    endQuiet();
+    tools()?.handlePointerUp(at.x, at.y, e.timeStamp, timingFor(e).doubleTapMs);
+    if (!pointerHovers(e)) view()?.overlay.clearGhost();
     else resamplePointer();
   };
 
-  /** A release goes to the first gesture that owns it, in this order: touch navigation, the band,
-   *  a nav button, the region brush, an object drop; anything else settles a tap and releases the
-   *  primary button. */
-  const onPointerUp = (e: PointerEvent) => {
+  /** A release goes to the first gesture that owns it, in this order: touch navigation, a waiting
+   *  press, the band, a nav button, the region brush, an object drop; anything else settles a tap
+   *  and releases the primary button. */
+  const onPointerUpNow = (e: PointerEvent) => {
     if (isCarried(e.pointerId)) return;
+    // The loupe follows its finger's press, whichever gesture below claims the release.
+    if (press.loupe === e.pointerId) hideLoupe();
     if (touch.up(e)) return; // navigation fingers never reach the tool/select paths
     const at = clientPoint(e);
+    if (pendingRelease(e, at)) return;
     if (releaseBand(e, at) || releaseNav(e, at) || releaseRegion(e)) return;
     if (drag.dragging && drag.objectId) {
       forgetTap();
       drag.drop(at.x, at.y);
+      // The move latch arms one move, which this drop was.
+      const store = useEditorStore.getState();
+      if (store.moveLatched) store.setMoveLatched(false);
       return;
     }
     settleTap();
     releasePrimary(e, at);
   };
 
-  // The browser cancels touches (incoming call, edge swipe, palm rejection): abort any live
-  // stroke like a pinch would, and drop every in-flight gesture state without committing.
-  const onPointerCancel = (e: PointerEvent) => {
+  const onPointerUp = thenSyncHold(onPointerUpNow);
+
+  /** Ends the press with nothing committed: whatever it started (stroke, drag, preview, band,
+   *  region brush, pan) is dropped and the tool rolls back what it laid. `cancelled` is the browser's
+   *  cancel of a touch, which the pinch tracker hears too; without one the press is taken back from
+   *  outside (`state/edits-in-flight.ts`), and its later moves and release find nothing to continue. */
+  const abortPress = (cancelled?: PointerEvent) => {
+    press.lastTap = null;
+    hideLoupe();
+    endPending();
+    press.previewing = null;
     press.leftPanning = false;
     press.panKeyPanning = false;
-    if (e.pointerType === 'touch') {
-      cancelTouchStroke();
-      touch.cancelled(e);
-    } else if (press.toolDown) {
-      press.toolDown = false;
-      tools()?.handlePointerCancel();
-    }
+    cancelTouchStroke();
+    if (cancelled?.pointerType === 'touch') touch.cancelled(cancelled);
     gestures.cancel();
     drag.cancel();
     forgetTap();
@@ -398,7 +731,12 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     region.cancel();
     band.cancel();
     view()?.overlay.clearGhost();
+    syncMapHold();
   };
+
+  // The browser cancels touches (incoming call, edge swipe, palm rejection): abort any live
+  // stroke like a pinch would, and drop every in-flight gesture state without committing.
+  const onPointerCancel = (e: PointerEvent) => abortPress(e);
 
   const onContextMenu = (e: MouseEvent) => {
     if (isCanvasTarget(e)) e.preventDefault();
@@ -411,8 +749,13 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     if (isNavButton(e.button) && isCanvasTarget(e)) e.preventDefault();
   };
 
-  // A nav drag still armed when focus leaves never got its release.
-  const onWindowBlur = () => gestures.windowBlurred();
+  // A nav drag still armed when focus leaves never got its release, and a waiting press never will.
+  // The loupe goes with the focus, but its press lives on: the next move shows it again.
+  const onWindowBlur = () => {
+    if (press.loupe !== null) view()?.hideLoupe();
+    endPending();
+    gestures.windowBlurred();
+  };
 
   // A tool fed by a re-sample writes the store (a notes drag sets its draft or moves its note on
   // every move), which is itself a re-sample trigger; without the latch the two feed each other
@@ -423,12 +766,15 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
    * pointer event changed what it means: the camera moving under a still cursor, or the armed
    * item's rotation changing. Otherwise a live stroke freezes on stale cells and the hover box or
    * ghost tracks a cell a click would no longer hit. Skipped while a gesture owns the pointer
-   * through its own move handling (orbit or pan, an object drag, the band, the region brush, a
-   * pinch), which the tools must not hear mid-gesture. Every camera move a gesture makes happens
-   * under one of those flags, so a re-sample never feeds the 'viewport-changed' it answers.
+   * through its own move handling (a waiting touch press, orbit or pan, an object drag, the band,
+   * the region brush, a pinch), which the tools must not hear mid-gesture. Every camera move a
+   * gesture makes happens under one of those flags, so a re-sample never feeds the
+   * 'viewport-changed' it answers.
    */
   function resamplePointer(): void {
-    if (!pointer.known || resampling) return;
+    if (press.pending || !pointer.known || resampling) return;
+    // A pen preview under a changed arming shows nothing until it lifts.
+    if (press.previewing && !sameArming(press.previewing.arming, armingNow())) return;
     if (gestures.isNavigating() || press.leftPanning || press.panKeyPanning || drag.dragging || band.armed || region.painting || touch.navigating) return;
     resampling = true;
     try {
@@ -438,7 +784,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
       // the "no stroke active" half of the same fact, gated (inside the hover probe) on the hovered
       // cell actually changing, same as a real drag.
       if (!press.toolDown) {
-        hover.update({ clientX: pointer.x, clientY: pointer.y, pointerType: 'mouse', target: container });
+        hover.update({ clientX: pointer.x, clientY: pointer.y, pointerType: pointer.pointerType, target: container });
       }
     } finally {
       resampling = false;
@@ -476,13 +822,15 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     },
     hover(e) {
       const at = clientPoint(e);
-      if (e.pointerType !== 'touch') remember(at);
+      if (pointerHovers(e)) remember(at, e.pointerType);
       tools()?.handlePointerMove(at.x, at.y, e.timeStamp);
       hover.update({ clientX: e.clientX, clientY: e.clientY, pointerType: e.pointerType, target: container });
+      showLoupe(e, at);
       // A drop always reaches the tool: it never selects what it lands on instead.
       setCursorPressSelects(false);
     },
     leave() {
+      hideLoupe();
       view()?.overlay.clearGhost();
       view()?.overlay.clearHover();
       hover.forget();
@@ -495,13 +843,14 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
       const store = useEditorStore.getState();
       store.setContextMenu(null);
       store.setDeletePopover(null);
-      tools()?.handlePointerDown(at.x, at.y, e.timeStamp);
-      tools()?.handlePointerUp(at.x, at.y, e.timeStamp);
+      tools()?.handlePointerDown(at.x, at.y, e.timeStamp, timingFor(e).dragThreshold);
+      tools()?.handlePointerUp(at.x, at.y, e.timeStamp, timingFor(e).doubleTapMs);
     },
     settle(e) {
+      hideLoupe();
       hover.forget();
-      if (e.pointerType === 'touch') { view()?.overlay.clearGhost(); return; }
-      remember(clientPoint(e));
+      if (!pointerHovers(e)) { view()?.overlay.clearGhost(); return; }
+      remember(clientPoint(e), e.pointerType);
       resamplePointer();
     },
   };
@@ -522,6 +871,11 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   eventBus.on('viewport-changed', onViewportChanged);
 
   return () => {
+    hideLoupe();
+    endPending();
+    endQuiet();
+    mapHold?.();
+    mapHold = null;
     container.removeEventListener('pointerdown', onPointerDown);
     container.removeEventListener('pointerleave', onPointerLeave);
     window.removeEventListener('pointermove', onPointerMove);

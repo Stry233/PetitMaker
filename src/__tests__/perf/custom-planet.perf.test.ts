@@ -5,9 +5,8 @@
  * 256 × 256 planets carry that build copied over them and then settled by the rules: the
  * `worstCasePlanet()` archipelago, held to four times the baseline (it has 2.8 times the cells, so
  * a linear operation stays under the bound and a superlinear one does not), and a planet whose
- * ground fills the whole canvas, reported beside it. With PETIT_PERF_DUMP set to a directory, the
- * share map and the two filled maps are written there as save files for browser measurements. See `_harness.ts` for
- * the gate and methodology.
+ * ground fills the whole canvas, reported beside it. PETIT_PERF_DUMP names a directory to receive
+ * the three maps as save files for browser measurements. `_harness.ts` holds the gate.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

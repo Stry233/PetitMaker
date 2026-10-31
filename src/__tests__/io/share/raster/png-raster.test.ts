@@ -33,11 +33,11 @@ describe('PNG chunks and raster codec', () => {
     expect(decoded.data).toEqual(data);
   });
   it('rejects unsupported PNG formats (depth, interlace, color type)', async () => {
-    // Build a PNG with unsupported color type (grayscale = 0)
+    // Grayscale (color type 0) is unsupported.
     const ihdr = new Uint8Array(13);
     const dv = new DataView(ihdr.buffer);
     dv.setUint32(0, 10, false); dv.setUint32(4, 10, false);
-    ihdr[8] = 8; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0; // colorType=0
+    ihdr[8] = 8; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
     const sig = [137, 80, 78, 71, 13, 10, 26, 10];
     const png = new Uint8Array([...sig, ...buildChunk('IHDR', ihdr), ...buildChunk('IEND', new Uint8Array(0))]);
     await expect(decodePng(png)).rejects.toThrow(/Unsupported PNG format/);

@@ -1,5 +1,5 @@
 /* ── Global cursor coverage ──────────────────────────────────
-   The values come from ui/design/cursors/cursor-vars, which writes the four custom properties onto
+   The values come from ui/design/cursors/cursor-vars, which writes the custom properties onto
    <html>. Each keyword after the var is what the browser uses before that writer has run (the
    first paint) and if the image is ever rejected — a bare var() with no fallback would make the
    declaration invalid and hand the surface back to the OS. */

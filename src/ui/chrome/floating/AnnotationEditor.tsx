@@ -12,7 +12,6 @@
  * the others' cells into the FIRST-picked zone, which keeps its tag, number and colour.
  */
 import { helpTargetAttr } from '../../session/help-targets';
-import { viewportSize } from '../../../platform/device/viewport-space';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getActiveView, onProjectionChange } from '../../../view/active-view';
@@ -21,11 +20,19 @@ import { zoneLabelAnchor } from '../../../core/model/annotation/geometry';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { flipMeasures, mergeZones, removeNotes } from '../../../editor/editing/annotation-edit';
-import { btnReset, cursors, font, z, radii, UNAVAILABLE } from '../../design/styles';
+import { btnReset, cursors, font, z, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
+import { TOUCH_TARGET } from '../../design/scale';
 import { MeasurementHandles } from './MeasurementHandles';
-import { framerMotion } from '../../design/motion';
+import { presence } from '../../design/motion';
+import { ActionButton } from '../../primitives/ActionButton';
+import { useChromeLayer, useChromeLayerZoom } from '../../primitives/chrome-layer';
+import { useFloatingPosition } from '../../primitives/use-floating-position';
+import { useVersioned } from '../../primitives/use-versioned';
+
+/** Between the verb row and the note it stands over, in the row's px. */
+const ROW_GAP = 16;
 
 /** Where a note's chrome stands: the note's own anchor, projected. */
 function anchorOf(note: MapAnnotation): { x: number; y: number } {
@@ -38,16 +45,17 @@ export function AnnotationEditor() {
   const mode = useEditorStore((s) => s.editMode.mode);
   const eventBus = useEditorStore((s) => s.eventBus);
   const selection = useEditorStore((s) => s.annotationSelection);
+  const data = useEditorStore((s) => s.gridState?.annotations);
+  // The notes are edited in place, so they are read again on each annotation epoch.
   const epoch = useEditorStore((s) => s.annotationsEpoch);
-  // The projection is not reactive, so the camera and the view report through a tick.
-  const [tick, setTick] = useState(0);
+  // The projection is not reactive, so the camera and the view render the editor again through a tick.
+  const [, setTick] = useState(0);
   useEffect(() => onProjectionChange(eventBus, () => setTick((n) => n + 1)), [eventBus]);
-  void epoch;
-  void tick;
 
-  const items = useEditorStore.getState().gridState?.annotations?.items ?? [];
-  const picked = selection.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
-  const data = useEditorStore.getState().gridState?.annotations;
+  const picked = useVersioned(() => {
+    const items = data?.items ?? [];
+    return selection.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
+  }, [data, selection, epoch]);
   const measurement = picked.length === 1 && picked[0]?.kind === 'measure' ? picked[0] : null;
   return (
     <>
@@ -55,7 +63,7 @@ export function AnnotationEditor() {
       ? <MeasurementHandles key={measurement.id} note={measurement} /> : null}
     <AnimatePresence>
       {mode === 'annotate' && data?.visible && picked.length > 0
-        ? <SelectedVerbs key={`verbs-${picked[picked.length - 1]!.id}-${picked.length}`} notes={picked} />
+        ? <SelectedVerbs key={`verbs-${picked[picked.length - 1]!.id}-${picked.length}`} notes={picked} locked={data.locked === true} />
         : null}
     </AnimatePresence>
     </>
@@ -72,46 +80,47 @@ function screenAnchor(note: MapAnnotation): { x: number; y: number; behind: bool
   return { x: s.x, y: s.y, behind: s.behind === true };
 }
 
-function SelectedVerbs({ notes }: { notes: MapAnnotation[] }) {
+/** The verb row over the selected notes, re-reading its anchor on every render of the editor. */
+function SelectedVerbs({ notes, locked }: { notes: MapAnnotation[]; locked: boolean }) {
   const t = useT();
   // The row stands at the LAST-picked note: that is where the hand already is.
   const note = notes[notes.length - 1]!;
   const at = screenAnchor(note);
-  if (!at || at.behind) return null;
-  const s = () => useEditorStore.getState();
-  const locked = s().gridState?.annotations?.locked === true;
+  const shown = !!at && !at.behind;
+  // Touch mode draws the row at least at its own size, so its verbs stay a fingertip's reach.
+  const layer = useChromeLayer({ control: TOUCH_TARGET });
+  const zoom = useChromeLayerZoom(TOUCH_TARGET);
+  const floating = useFloatingPosition({ open: shown, anchor: at ?? { x: 0, y: 0 }, zoom, align: 'center', prefer: 'above', gap: ROW_GAP });
+  if (!shown) return null;
   const mergeable = notes.length > 1 && notes.every((n) => n.kind === 'zone');
   const flippable = notes.every(n => n.kind === 'measure');
   const verb = (label: string, onPress: () => void, danger?: boolean) => (
-    <button
-      type="button"
+    <ActionButton
+      interaction="pill"
       disabled={locked}
       onClick={onPress}
       style={{
-        ...btnReset, cursor: cursors.clickable,
+        ...btnReset, ...(locked ? null : { cursor: cursors.clickable }),
         padding: '6px 10px', borderRadius: radii.chip,
         fontFamily: font.family, ...roleFont('chip'),
         color: danger ? DANGER_INK : PLATE_INK,
-        opacity: locked ? UNAVAILABLE : 1,
       }}
     >
       {label}
-    </button>
+    </ActionButton>
   );
   return (
     <motion.div
+      ref={floating.ref}
+      {...floating.piece}
       {...helpTargetAttr('notes', 'notes-select')}
-      initial={{ scale: 0.85, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.85, opacity: 0, transition: framerMotion('surface.leave') }}
-      transition={framerMotion('surface.pop')}
+      {...presence('surface.pop', { scale: 0.85, opacity: 0 }, { leave: 'surface.leave' })}
       style={{
-        position: 'fixed',
-        left: Math.max(8, Math.min(viewportSize().width - 190, at.x - 85)),
-        top: Math.max(60, at.y - 56),
+        ...layer, ...floating.style,
         zIndex: z.canvasControls,
         display: 'flex', gap: 2, padding: 4,
         background: PLATE, border: PANEL_EDGE, borderRadius: radii.md,
+        visibility: floating.placement ? 'visible' : 'hidden',
       }}
     >
       {mergeable ? verb(t('annot.merge'), () => mergeZones(notes.map((n) => n.id))) : null}

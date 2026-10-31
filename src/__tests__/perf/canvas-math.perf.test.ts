@@ -77,7 +77,7 @@ describe.runIf(PERF)('perf: canvas-math', () => {
     const events: { e: WheelLike; t: number }[] = [];
     let t = 0;
     for (let i = 0; i < 500; i++) {
-      t += i % 2 === 0 ? 16 : 8; // ~60fps ticks, some doubled — inside and outside the sticky window
+      t += i % 2 === 0 ? 16 : 8; // ~60fps ticks, some doubled, landing inside and outside the sticky window
       const touchpad = i % 3 !== 0;
       events.push({
         t,

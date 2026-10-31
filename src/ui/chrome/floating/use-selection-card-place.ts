@@ -22,7 +22,7 @@ import { easingCss, seconds } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
 import { clearMapArea } from '../../primitives/map-edge';
 import { useObservedSize } from '../../primitives/use-observed-size';
-import { cardBoxStyle, holdPlace, placeSelectionCard, tailStyle, type HeldPlace, type ScreenBounds } from './selection-card-layout';
+import { cardBoxStyle, holdPlace, placeFittedCard, tailStyle, type HeldPlace, type ScreenBounds } from './selection-card-layout';
 
 /** Screen bounds of what is selected, in visual px, or null when it cannot be placed. */
 function selectionBounds(sel: readonly BlockRef[], gs: GridState, proj: ViewProjection): ScreenBounds | null {
@@ -92,6 +92,10 @@ export function facingAngle(facing: string, obj: PlacedObject | null, proj: View
   return Math.atan2(b.x - a.x, a.y - b.y) * 180 / Math.PI;
 }
 
+/** The longest the header's name may run, and the least it shortens to for a narrow map area, in css px. */
+export const TITLE_MAX = 220;
+const TITLE_MIN = 48;
+
 /** The card's parts the placement writes to, by ref. */
 export interface CardRefs {
   box: RefObject<HTMLDivElement>;
@@ -102,8 +106,9 @@ export interface CardRefs {
 }
 
 /** Places the card for a header `row` css px tall with a pointer of side `tail`, drawn at `zoom`:
- *  the refs to attach to its parts, and whether its details grow upward from the header. */
-export function useSelectionCardPlace(zoom: number, locale: string, row: number, tail: number): { refs: CardRefs; growUp: boolean } {
+ *  the refs to attach to its parts, whether its details grow upward from the header, and whether
+ *  the header's name has been cut short for this card. */
+export function useSelectionCardPlace(zoom: number, locale: string, row: number, tail: number): { refs: CardRefs; growUp: boolean; nameCut: boolean } {
   const box = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -111,6 +116,7 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
   const scroll = useRef<HTMLDivElement>(null);
   const refs = useRef<CardRefs>({ box, header, body, tail: pointer, scroll }).current;
   const [growUp, setGrowUp] = useState(true);
+  const [nameCut, setNameCut] = useState(false);
   const reduced = useReducedMotionConfig() === true;
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
@@ -132,16 +138,21 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
     const sel = state.selection;
     const z = zoomRef.current;
     const vp = viewportSize();
-    const size = { w: header.offsetWidth * z, h: header.offsetHeight * z, body: (refs.body.current?.offsetHeight ?? 0) * z };
     const positions = memberPositions(sel, gsLive);
     // A move or a turn removes a member before placing it back; wait for it to land.
     if (hold.current && positions.includes('-')) return;
+    const drawn = box.style.visibility === 'visible' ? visualRect(header) : null;
+    // The header is read with its name at its natural width, so the fit below never feeds on itself.
+    const title = header.querySelector<HTMLElement>('[data-card-title]');
+    box.style.setProperty('--title-max', `${TITLE_MAX}px`);
+    const parts = { title: (title?.offsetWidth ?? 0) * z, others: (header.offsetWidth - (title?.offsetWidth ?? 0)) * z };
+    const natural = { w: header.offsetWidth * z, h: header.offsetHeight * z, body: (refs.body.current?.offsetHeight ?? 0) * z };
     const next = {
       members: sel.map((b) => (b.kind === 'object' ? b.id : cellKey(b.x, b.y))).join(','),
       positions,
       rotations: memberRotations(sel, gsLive),
       camera: cameraSignature(proj),
-      frame: `${z}|${vp.width}x${vp.height}|${Math.round(size.w)}x${Math.round(size.h)}`,
+      frame: `${z}|${vp.width}x${vp.height}|${Math.round(natural.w)}x${Math.round(natural.h)}`,
     };
     const decision = holdPlace(hold.current, next, adoptPositions.current);
     adoptPositions.current = false;
@@ -150,10 +161,22 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
     // A relocation of the card's own (a moved member, a new side, a new size) travels; following
     // the camera does not, or the card would trail the map it rides on.
     const travel = decision.travel && !reducedRef.current && box.style.visibility === 'visible';
-    const from = travel ? visualRect(header) : null;
+    const from = travel ? drawn : null;
     if (!travel) { moveAnim.current?.cancel(); moveAnim.current = null; }
-    const area = clearMapArea(vp);
-    const p = placeSelectionCard(bounds, size, vp, { area, prefer: decision.prefer });
+    // The right-hand column narrows the map only level with its own controls, here the header's row;
+    // opened details may pass a column's label further up. The name shortens to fit that width.
+    const fit = placeFittedCard(bounds, parts, natural, vp,
+      { areaAt: (rows) => clearMapArea(vp, rows), prefer: decision.prefer, titleMin: TITLE_MIN * z, titleMax: TITLE_MAX * z });
+    const { placement: p, area, size } = fit;
+    if (title) {
+      box.style.setProperty('--title-max', `${fit.titleCap / z}px`);
+      // A name cut short says itself in full on hover; a touch name wraps instead (`SelectionCard.tsx`).
+      const cut = title.scrollWidth > title.clientWidth + 1 || title.scrollHeight > title.clientHeight + 1;
+      if (cut) title.title = title.textContent ?? ''; else title.removeAttribute('title');
+      // Once cut, the name stays cut for this card: a details line it adds can move the card, and
+      // a fit that let go again could move it back.
+      if (cut) setNameCut(true);
+    }
     hold.current = { ...next, bounds, side: p.visible ? p.side : undefined };
     if (!p.visible) { box.style.visibility = 'hidden'; return; }
     box.style.visibility = 'visible';
@@ -212,9 +235,9 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
       box?.removeEventListener('wheel', onWheel);
     };
   }, [place, refs]);
-  // The header row's own size moves where it fits.
-  useObservedSize(() => refs.header.current, () => place(), [place], { immediate: false });
+  // The header row's own size, and the details' (a line they gain), move where it fits.
+  useObservedSize(() => [refs.header.current, refs.body.current], () => place(), [place], { immediate: false });
   // A chrome-scale change rescales the `zoom` subtree without emitting anything.
   useLayoutEffect(() => { place(); }, [zoom, locale, place]);
-  return { refs, growUp };
+  return { refs, growUp, nameCut };
 }

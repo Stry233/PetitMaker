@@ -3,8 +3,8 @@
  * mints a new one, since an id must be unique across runs, not reproducible) and the save's own
  * wall-clock stamp.
  *
- * A plain module, not a `.test.ts` — importing a test file re-runs its `describe`/`it` blocks
- * during collection (they execute as a side effect of the import), which is what `_pixi-env.ts`
+ * A plain module, not a `.test.ts`: importing a test file re-runs its `describe`/`it` blocks
+ * during collection (they execute as a side effect of the import), which is what `pixi-env.ts`
  * sidesteps the same way for the canvas suite.
  */
 import { serialize } from '../../io/save/json-codec';

@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The cursor answers a question with several inputs, and only one of them is where the pointer is.
- * A modifier going down, a selection changing, a tool switch, an object appearing — each changes
- * the answer at a standing cursor, and none of them may wait for the user to jiggle the mouse.
- *
- * `hoverInputs` is the one list of those inputs; the subscription that re-samples and the gate
- * that decides whether to recompute both read it. These drive the real handlers with no pointer
- * event after the change. Sibling of `placement-rotation-resample.test.tsx`.
+ * A modifier, a selection change, a tool switch or a new object changes the cursor under a standing
+ * pointer without waiting for the mouse to move. `hoverInputs` lists those inputs for both the
+ * re-sampling subscription and the recompute gate; these tests send no pointer event after the change.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -137,12 +133,11 @@ describe('the multi-select key going down under a stationary pointer', () => {
 
 describe('grabbing a selected object', () => {
   it('closes the hand while the drag is live, whatever tool armed it, and lets go on drop', () => {
-    // The open hand marks a cell where a press would grab something; the press closes it. Without
-    // a drag state at all, the press looked identical to hovering.
+    // The open hand marks a grabbable cell; the press closes it.
     activate([{ kind: 'object', id: OBJ_ID }]);
     el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
 
-    expect(el.style.cursor).toBe(cursorCss('hand-open')); // hover: this can be grabbed
+    expect(el.style.cursor).toBe(cursorCss('hand-open'));
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
     expect(el.style.cursor).toBe(cursorCss('hand-closed'));
@@ -151,7 +146,7 @@ describe('grabbing a selected object', () => {
     expect(el.style.cursor).toBe(cursorCss('hand-closed'));
 
     window.dispatchEvent(new MouseEvent('pointerup', { button: 0, buttons: 0, clientX: 95, clientY: 55, bubbles: true }));
-    // Back to the hover reading, not stuck on the closed hand.
+    // Back to the hover reading.
     expect(el.style.cursor).toBe(cursorCss('hand-open'));
   });
 
@@ -194,15 +189,12 @@ describe('every non-pointer input updates the cursor with no mouse movement', ()
 });
 
 /**
- * The refusal badge asks a tool whether the hovered cell would be refused, and the tool layer is a
- * mirror the canvas writes in an effect — after the store has already told its subscribers. So the
- * order below is the app's, not a convenience: the store first, the mirror second, `tool-synced`
- * last. A probe run on the store change alone answers for the tool being left and caches that
- * answer under the new inputs, which is what left the badge on the eraser over a cell the eraser
- * allows, through every later pointer move that stayed in the cell.
+ * The tool layer is a mirror the canvas writes in an effect after the store has notified, so the
+ * order below is the app's: store, mirror, then `tool-synced`. A probe on the store change alone
+ * would answer for the old tool and cache that under the new inputs.
  */
 describe('the refusal badge across a tool switch under a stationary pointer', () => {
-  /** Move the tool layer the way PixiCanvas's sync effect does, and say so. */
+  /** Moves the tool layer as PixiCanvas's sync effect does, then announces it. */
   function syncToolLayer(tm: ToolManager, tool: ToolType): void {
     setStoreState({ ...armedEditMode({ tool: tool }) });
     tm.setActiveTool(tool);
@@ -231,8 +223,7 @@ describe('the refusal badge across a tool switch under a stationary pointer', ()
   });
 
   it('follows a change of SURFACE, which moves no field the store subscription watches', () => {
-    // Mountain and tile are one ToolType and one designMode apart from `contentType`, so the tool
-    // and the pointer stay put and the sync is the only thing that can ask again.
+    // Mountain and road differ only in `contentType`, so the sync is the only thing that asks again.
     activate();
     const gs = useEditorStore.getState().gridState!;
     // A cliff on (12,12)'s right: the mountain brush stacks against it, the road brush is refused

@@ -3,7 +3,7 @@
  *
  * A perf number is only comparable to itself on the same input, so every fixture here is
  * deterministic: real planet templates, the real generator at a fixed (seed, config), the plaza
- * standing as it does in the app. Fixtures are cached per key — building the dense map costs
+ * standing as it does in the app. Fixtures are cached per key: building the dense map costs
  * seconds, and a suite asks for it many times.
  */
 import { CommandExecutor } from '../../core/commands/command-executor';
@@ -24,14 +24,14 @@ export interface World {
   executor: CommandExecutor;
 }
 
-/** A live world over `state`: full rule registry, road lookup, load values — the app's own wiring. */
+/** A live world over `state` with the app's own wiring: full rule registry, road lookup, load values. */
 export function makeWorld(state: GridState): World {
   const bus = new EventBus<EditorEvents>();
   const executor = createExecutor(state, createDefaultRegistry(), bus);
   return { state, bus, executor };
 }
 
-/** A bare template world (plaza placed, nothing else) — the map a new session opens on. */
+/** A bare template world (plaza placed, nothing else): the map a new session opens on. */
 export function templateWorld(templateId = 'hexia'): World {
   const template = getMapTemplate(templateId);
   const state: GridState = {
@@ -55,7 +55,7 @@ const cache = new Map<string, World>();
 
 /**
  * The dense generated map: full-richness terrain, water, streets and dressing on the real
- * template — the object- and terrain-heavy map the renderers and indexes are sized for.
+ * template: the object- and terrain-heavy map the renderers and indexes are sized for.
  */
 export function denseIsland(seed = ISLAND_SEED, templateId = 'hexia'): World {
   const key = `${templateId}:${seed}`;

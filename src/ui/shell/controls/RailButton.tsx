@@ -1,31 +1,32 @@
 /** A rail button and the group it stands in, shared by the rail's three groups. */
 import { ActionButton } from '../../primitives/ActionButton';
-import {
-  useRef, useState, type CSSProperties, type ReactNode,
-} from 'react';
+import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion, type TargetAndTransition } from 'framer-motion';
 import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
 import { helpTargetAttr } from '../../session/help-targets';
 import type { HelpPageId } from '../../help/page-schema';
 import { btnReset, cursors, pressable, z, radii, UNAVAILABLE } from '../../design/styles';
 import { usePressRepeat } from './use-press-repeat';
+import { useReveal } from '../../primitives/use-reveal';
 import {
   type RailCell, } from '../frame';
 import { useTransition } from '../../design/motion/use-motion';
 import { cssMotion } from '../../design/motion';
 import { ACTIVE, INK, PLATE, PLATE_INK, plateShapeEdge } from '../../design/tokens';
-import { useFrameReadableWeight } from '../use-frame-zoom';
-import { EDGE_RIGHT, RAIL, TEXT } from '../units';
+import { useFrameReadableWeight, useFrameZoom } from '../use-frame-zoom';
+import { RAIL, TEXT } from '../units';
 import { useLocalReflow } from './use-local-reflow';
 import { useNaturalWidth } from './use-natural-width';
+import { useMorph } from '../../primitives/morph';
+import { TouchReach } from '../../primitives/TouchReach';
 
 /** Apply the frame veil clock to caller-owned CSS properties. */
 export const veilTransition = (hidden: boolean, ...properties: string[]) =>
   cssMotion(hidden ? 'frame.veil' : 'frame.unveil', [...properties]);
-/** A group: a column against the right edge, its members close enough to read as one thing. */
+/** A group: a column against the right edge, its members close enough to read as one thing. Its
+ *  `top` and `right` come from the frame's plan (`frame-plan.ts:planFrame`). */
 export const group: CSSProperties = {
   position: 'fixed',
-  right: EDGE_RIGHT,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -42,13 +43,21 @@ export const inGroup: CSSProperties = { pointerEvents: 'auto' };
  *  other button in the app answers with (`styles.ts:pressable`) rather than restated, so the rail
  *  acknowledges a pointer by the same amount the modals and the mode blocks do. */
 export const HOVER_SCALE = pressable.whileHover.scale;
-/** Rail cells and groups glide between discrete reflows on the rail's own reflow motion. */
-export const useRailReflow = (x: number, y: number, place: string, enabled = true) => useLocalReflow(x, y, place, { motionId: 'rail.group.reflow', enabled });
+/** Rail cells and groups glide between discrete reflows on the rail's own reflow motion, or ride a scale
+ *  glide a refold happens in (`useLocalReflow`). `drawnY` is where a group stands that the live rail
+ *  writer has moved since the last render. */
+export const useRailReflow = (x: number, y: number, place: string, enabled = true, drawnY?: () => number | null) =>
+  useLocalReflow(x, y, place, { motionId: 'rail.group.reflow', enabled, ...(drawnY ? { drawnY } : {}) });
 /**
  * A round rail control: a fixed hit box under a pointer-transparent plate that grows with its localized
  * name toward the map, the glyph never moving.
  */
-export function RailButton({ label, onPress, disabled, on, arrival, files, grow, repeat, cell, veiled, dim, unavailable, tourTarget, helpTarget, children }: {
+export function RailButton({
+  morph, label, onPress, disabled, on, arrival, files, grow, repeat, cell, veiled, dim, unavailable, tourTarget, helpTarget, children,
+}: {
+  /** Its piece of the chrome's morph (`primitives/morph.ts`), unique on the page: a rail button moves
+   *  on its own, its group drawing nothing, so a refold carries each button to its new cell. */
+  morph: string;
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -83,16 +92,20 @@ export function RailButton({ label, onPress, disabled, on, arrival, files, grow,
 }) {
   const weightAt = useFrameReadableWeight();
   const reach = useTransition('rail.name.reach');
-  const [hovered, setHovered] = useState(false);
+  const reveal = useReveal();
   const nameRef = useRef<HTMLSpanElement>(null);
   // Re-measured on the word itself, which is what a language change is.
   const nameW = useNaturalWidth(nameRef, label, 0.5);
 
+  const piece = useMorph(`rail-${morph}`);
+  const zoom = useFrameZoom();
   const held = usePressRepeat({ action: onPress, intervalMs: repeat ?? 0 });
-  // The pointer is on it. A disabled button is named explicitly rather than left to the browser:
-  // no pointer event is delivered to one, so `hovered` cannot turn on, but a button that goes
-  // disabled while the pointer rests on it (undo, running out of stack) gets no leave either.
-  const reached = hovered && !disabled;
+  const repeating = repeat !== undefined && !disabled;
+  // Reached for: hovered in PC mode, held in touch mode (`useReveal`). A disabled button is named
+  // explicitly rather than left to the browser: no pointer event is delivered to one, so the reveal
+  // cannot turn on, but a button that goes disabled while the pointer rests on it (undo, running
+  // out of stack) gets no leave either.
+  const reached = reveal.shown && !disabled;
   const open = reached;
   const plateW = RAIL.button + (open ? nameW + RAIL.namePad : 0);
   // The end the plate is pinned to, and so the end everything it does happens away from: the pill
@@ -119,16 +132,21 @@ export function RailButton({ label, onPress, disabled, on, arrival, files, grow,
     <ActionButton
       interaction="tap" dim="caller"
       {...arrival}
-      {...(repeat === undefined || disabled ? { onClick: onPress } : held)}
+      {...(repeating ? held : { onClick: onPress })}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
+      {...piece}
       aria-label={label}
+      data-name-open={open}
       // No `title`: the pill is this button's name, and a native tooltip arriving over it a second
       // later is the same word said twice in two type faces.
       disabled={disabled}
       {...(unavailable ? { 'aria-disabled': true } : {})}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => { setHovered(false); if (repeat !== undefined && !disabled) held.onPointerLeave(); }}
+      {...reveal.bind}
+      onPointerDown={(e) => { reveal.bind.onPointerDown(); if (repeating) held.onPointerDown(e); }}
+      onPointerUp={() => { reveal.bind.onPointerUp(); if (repeating) held.onPointerUp(); }}
+      onPointerCancel={() => { reveal.bind.onPointerCancel(); if (repeating) held.onPointerCancel(); }}
+      onPointerLeave={() => { reveal.bind.onPointerLeave(); if (repeating) held.onPointerLeave(); }}
       style={{
         ...btnReset,
         ...inGroup,
@@ -158,7 +176,7 @@ export function RailButton({ label, onPress, disabled, on, arrival, files, grow,
           display: 'flex', alignItems: 'center',
           // The button's whole ink, so the veil and the two dimmings are drawn here rather than on
           // the element (see its style above): a fade of the drawing is a fade of the button.
-          opacity: veiled ? 0 : disabled || unavailable ? UNAVAILABLE : dim && !hovered ? 0.45 : 1,
+          opacity: veiled ? 0 : disabled || unavailable ? UNAVAILABLE : dim && !reveal.shown ? 0.45 : 1,
           transition: veilTransition(!!veiled, 'opacity'),
           // The drawing takes no pointer events, so the square underneath it is the whole of what
           // hit-testing sees whatever this shape is doing.
@@ -182,6 +200,7 @@ export function RailButton({ label, onPress, disabled, on, arrival, files, grow,
         </span>
         {grow === 'right' ? name : null}
       </motion.span>
+      <TouchReach w={RAIL.button} h={RAIL.button} zoom={zoom} />
     </ActionButton>
   );
 }

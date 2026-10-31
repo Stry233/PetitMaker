@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { resolveBuildInfo, resolveVersion } from './build-info-core.mts';
+import { STAMP_PATH, resolveBuildInfo, resolveVersion } from './build-info-core.mts';
 import { collectLiteFiles, createLiteArchive, writeLiteArchive } from './lite-package-core.mts';
 
 const archive = createLiteArchive(collectLiteFiles('dist-lite'));
 for (const advisory of archive.advisories) console.warn(`Lite size advisory: ${advisory}`);
-const { info } = resolveBuildInfo({ readStamp: () => readFileSync('build-info.json', 'utf8') });
+const { info } = resolveBuildInfo({ readStamp: () => readFileSync(STAMP_PATH, 'utf8') });
 const version = resolveVersion({
   pkgVersion: JSON.parse(readFileSync('package.json', 'utf8')).version,
   buildNumber: info.buildNumber, release: info.release, lastRelease: info.lastRelease,

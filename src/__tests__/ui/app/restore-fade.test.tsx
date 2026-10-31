@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The resume-from-last fade, which is an order: a restore is not one commit. The map swap, the
- * camera apply (a later effect) and the first painted frame (later still, and in 3D behind an async
- * scene rebuild) are three separate moments, and the fade has to stay engaged across all of them.
- * Releasing on a frame count instead showed the empty map fading in and left the camera to snap
- * afterwards — the discontinuity the fade exists to hide.
- *
- * These pin the sequence, the deferred 3D view, and the two safety nets: a restore that throws and a
- * view that never reports a paint both still release (a canvas parked at opacity 0 is the one
- * unacceptable outcome). Reduced motion skips the hide entirely.
+ * The resume-from-last fade stays engaged across the map swap, the camera apply (a later effect) and
+ * the first painted frame (in 3D, behind an async scene rebuild); releasing on a frame count would show
+ * the empty map fading in and the camera snapping. A restore that throws and a view that never paints
+ * both still release, and reduced motion skips the hide.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
@@ -98,8 +93,8 @@ describe('useRestoreFade', () => {
   });
 
   it('waits for the view that renders the RESTORED map, not the one still showing the old one', async () => {
-    // The 3D case: the scene is rebuilt behind an async import, so the registered view keeps
-    // rendering the previous map for a while. Its frames must not count.
+    // In 3D the scene rebuilds behind an async import, so the registered view still renders the
+    // previous map for a while.
     const previous = makeState(8, 8) as GridState;
     const restored = makeState(8, 8) as GridState;
     const stale = makeView(previous);
@@ -109,12 +104,12 @@ describe('useRestoreFade', () => {
     act(() => { setActiveView(stale.view); });
     act(() => { begin(); });
     act(() => { settle(restored); });
-    expect(stale.pending()).toBe(0);       // never armed: it shows the wrong map
+    expect(stale.pending()).toBe(0);
     act(() => { stale.paint(); });
     await nextFrame();
-    expect(opacity()).toBe('0');           // still covered — the empty map must not fade in
+    expect(opacity()).toBe('0');
 
-    act(() => { setActiveView(rebuilt.view); });  // the rebuilt scene registers itself
+    act(() => { setActiveView(rebuilt.view); });
     act(() => { rebuilt.paint(); });
     expect(opacity()).toBe('0');
     await nextFrame();
@@ -127,7 +122,7 @@ describe('useRestoreFade', () => {
     render(<Host />);
     act(() => { begin(); });
     expect(opacity()).toBe('1');
-    act(() => { settle(restored); });      // nothing to release, nothing to gate
+    act(() => { settle(restored); });
     expect(opacity()).toBe('1');
     await nextFrame();
     expect(opacity()).toBe('1');
@@ -159,6 +154,6 @@ describe('useRestoreFade', () => {
     act(() => { vi.advanceTimersByTime(3999); });
     expect(opacity()).toBe('0');
     act(() => { vi.advanceTimersByTime(1); });
-    expect(opacity()).toBe('1');           // a hidden canvas is never the resting state
+    expect(opacity()).toBe('1');
   });
 });

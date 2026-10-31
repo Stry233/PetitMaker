@@ -65,8 +65,8 @@ describe('computeLockedCorners — terrain', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Water, 0); // touching only at the BR point (a pinch)
-    // a diagonal never pins a convex corner — same as mountain+mountain / water+water. (The bank lock is
-    // EDGE-only, so it only fires when water shares an edge; here the shared point is a diagonal.)
+    // a diagonal never pins a convex corner, same as mountain+mountain / water+water. (The bank lock is
+    // edge-only, so it only fires when water shares an edge; here the shared point is a diagonal.)
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')[3], 'mountain BR rounds toward the diagonal water').toBe(false);
     expect(computeLockedCorners(state, roadLookup(state), 6, 6, 'terrain')[0], 'water TL rounds toward the diagonal mountain').toBe(false);
   });
@@ -89,14 +89,14 @@ describe('computeLockedCorners — terrain', () => {
 
   it('a mountain at a DIAGONAL water pinch (mountain CONTINUES on the diagonal) is a bank, not a tip — locked', () => {
     // (6,5).BL has water on its W(5,5) and S(6,6) edges, but those two water cells meet only at the diagonal
-    // point and the mountain continues on the SW diagonal (5,6) — a diagonal water pinch around continuous
+    // point and the mountain continues on the SW diagonal (5,6), a diagonal water pinch around continuous
     // terrain (e.g. a base), not a rock in water. So the corner stays square, mirroring the m+m / m+w pinch:
     // all three combos behave identically at a pinch, on the ground or on a base.
     const s = makeState(10, 10);
     const Mt = TerrainType.Mountain, Wt = TerrainType.Water;
     setTerrain(s, 5, 5, Wt, 0); setTerrain(s, 6, 6, Wt, 0); // the two diagonal water cells (edges of (6,5).BL)
     setTerrain(s, 6, 5, Mt, 1);                             // the mountain at the pinch
-    setTerrain(s, 5, 6, Mt, 1);                             // SW diagonal — the mountain continues → not a tip
+    setTerrain(s, 5, 6, Mt, 1);                             // SW diagonal, the mountain continues → not a tip
     expect(computeLockedCorners(s, roadLookup(s), 6, 5, 'terrain')[2], 'pinch around continuous terrain → locked').toBe(true);
     setTerrain(s, 5, 6, Wt, 0);                             // remove the continuation → now fully in water
     expect(computeLockedCorners(s, roadLookup(s), 6, 5, 'terrain')[2], 'a genuine peninsula tip → free').toBe(false);
@@ -141,7 +141,7 @@ describe('computeLockedCorners — terrain', () => {
     setTerrain(state, 6, 5, TerrainType.Mountain, 2); // east rim (same level)
     setTerrain(state, 5, 4, TerrainType.Mountain, 2); // north rim (same level)
     setTerrain(state, 5, 6, TerrainType.Mountain, 1); // South bank lowered → a real drop (cascade / peeled bank)
-    // The drop makes this cell a capped waterfall face — falling water, so the whole cell locks
+    // The drop makes this cell a capped waterfall face (falling water), so the whole cell locks,
     // not only the drop side.
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([true, true, true, true]);
   });
@@ -152,8 +152,8 @@ describe('computeLockedCorners — terrain', () => {
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
-    // the SE water cell (6,6): its islet-facing TL corner is pinned (interior water) — we round the ground
-    // islet cell itself (option A), never the surrounding water.
+    // The SE water cell (6,6): its islet-facing TL corner is pinned (interior water). The ground
+    // islet cell itself is rounded, never the surrounding water.
     expect(computeLockedCorners(state, roadLookup(state), 6, 6, 'terrain')[0], 'water toward the islet stays square').toBe(true);
   });
 
@@ -168,8 +168,8 @@ describe('computeLockedCorners — terrain', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 5, TerrainType.Mountain, 2); // taller cliff on the right: at layer 1 the cells are contiguous
-    // The low cell's corners toward the cliff (TR, BR) are not corners of the layer-1 silhouette — the
-    // taller neighbour's base covers that edge — so they stay square; only the open-ground corners cut.
+    // The low cell's corners toward the cliff (TR, BR) are not corners of the layer-1 silhouette: the
+    // taller neighbour's base covers that edge, so they stay square; only the open-ground corners cut.
     expect(computeLockedCorners(state, roadLookup(state), 5, 5, 'terrain')).toEqual([false, true, false, true]);
   });
 

@@ -12,7 +12,6 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
     setTerrain(state, 5, 3, TerrainType.Water, 2);
     setTerrain(state, 6, 3, TerrainType.Mountain, 2);
     setTerrain(state, 5, 2, TerrainType.Mountain, 2);
-    // Front row at y=4: all at elev 1
     setTerrain(state, 4, 4, TerrainType.Mountain, 1);
     setTerrain(state, 5, 4, TerrainType.Mountain, 1);
     setTerrain(state, 6, 4, TerrainType.Mountain, 1);
@@ -21,15 +20,14 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
 
   it('rejects non-uniform front row', () => {
     // M W M at y=3 elev 2, capped E/W, wall at y=2.
-    // Front row at y=4: (4,4)=M@1, (5,4)=ground(0), (6,4)=M@1 -> non-uniform
+    // Front row at y=4: (4,4)=M@1, (5,4)=ground(0), (6,4)=M@1.
     const state = makeState(10, 10);
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
     setTerrain(state, 5, 3, TerrainType.Water, 2);
     setTerrain(state, 6, 3, TerrainType.Mountain, 2);
     setTerrain(state, 5, 2, TerrainType.Mountain, 2);
-    // Front row at y=4: non-uniform
     setTerrain(state, 4, 4, TerrainType.Mountain, 1);
-    // (5,4) is ground (elev 0) -- different from 1
+    // (5,4) stays ground (elev 0)
     setTerrain(state, 6, 4, TerrainType.Mountain, 1);
     expect(waterfallAdjacentUniformityRule.validate(state).length).toBeGreaterThan(0);
   });
@@ -65,7 +63,7 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
     for (let x = 3; x <= 7; x++) setTerrain(state, x, 2, TerrainType.Mountain, 2);
     // Front row at y=4: all at elev 1 except (5,4) at elev 2
     for (let x = 3; x <= 7; x++) setTerrain(state, x, 4, TerrainType.Mountain, 1);
-    setTerrain(state, 5, 4, TerrainType.Mountain, 2); // different!
+    setTerrain(state, 5, 4, TerrainType.Mountain, 2);
     expect(waterfallAdjacentUniformityRule.validate(state).length).toBeGreaterThan(0);
   });
 
@@ -80,13 +78,12 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
     setTerrain(state, 4, 4, TerrainType.Mountain, 1);
     setTerrain(state, 5, 4, TerrainType.Mountain, 1);
     setTerrain(state, 6, 4, TerrainType.Mountain, 1);
-    // North side at y=2: uniform ground (all 0)
     expect(waterfallAdjacentUniformityRule.validate(state)).toHaveLength(0);
   });
 
   it('front row at map edge -- no violation (all out-of-bounds)', () => {
     const state = makeState(10, 10);
-    // Waterfall near north edge, flow north -> front row is off-map
+    // Waterfall near the north edge flows north, so the front row is off-map.
     setTerrain(state, 4, 1, TerrainType.Mountain, 1);
     setTerrain(state, 5, 1, TerrainType.Water, 1);
     setTerrain(state, 6, 1, TerrainType.Mountain, 1);
@@ -96,7 +93,6 @@ describe('V-WTR-03: Waterfall Adjacent Row Uniformity', () => {
   });
 
   it('allows fully enclosed water (no waterfall face)', () => {
-    // Water surrounded by mountains on all sides at same elev -> no face
     const state = makeState(10, 10);
     for (let y = 3; y <= 5; y++)
       for (let x = 2; x <= 7; x++)

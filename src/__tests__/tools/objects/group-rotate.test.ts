@@ -1,11 +1,8 @@
 /**
- * Group rotate: the selection turns as one rigid body.
- *
- * A quarter turn does two things at once: every member's position turns about the selection's
- * bounding-box centre, and every member's own rotation advances by the same 90 degrees. The
- * Footprint turns, not the anchor — a 3x1 becomes 1x3, so its anchor moves by an amount that
- * depends on its own extent. Rotating anchors alone drifts wide members outward, invisibly in one
- * turn; four turns landing every member exactly home is the test that sees it.
+ * Group rotate: the selection turns as one rigid body. Each member's footprint turns about the
+ * bounding-box centre and its own rotation advances 90 degrees; a 3x1 becomes 1x3, so its anchor moves
+ * by an amount that depends on its extent. Rotating anchors alone drifts wide members outward, which
+ * only four turns home reveal.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../core/commands/command-executor';
@@ -87,8 +84,8 @@ describe('rotateGroup', () => {
   });
 
   it('returns home after four turns when the box centre is off the lattice', () => {
-    // A 2x1 bounding box centres on a cell edge: the true centre is half a cell off the grid in
-    // both axes, so the rigid arrangement is nudged half a cell. Successive nudges must cancel.
+    // The 2x1 box centres at (5, 4.5), half a cell off in one axis only, so each turn nudges the
+    // arrangement half a cell; the nudges must cancel.
     const { gs, exec } = mapWith([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }]);
     const before = snapshot(gs, ['a', 'b']);
     for (let i = 0; i < 4; i++) expect(rotateGroup(exec, gs, ['a', 'b'], 1).blockedBy).toBeNull();
@@ -127,8 +124,7 @@ describe('rotateGroup', () => {
   });
 
   it('refuses the whole rotation when an unrotatable member is non-square, naming it', () => {
-    // A span cannot swap its extent, so carrying it reshapes the bounding box turn by turn and
-    // walks the whole arrangement off its starting cells.
+    // A span cannot swap its extent, so carrying it would walk the arrangement off its cells.
     const { gs, exec } = mapWith([{ id: 'house', x: 4, y: 4 }, { id: 'span', x: 8, y: 4, catalogId: 'rot-span' }]);
     const before = snapshot(gs, ['house', 'span']);
     const res = rotateGroup(exec, gs, ['house', 'span'], 1);
@@ -195,8 +191,7 @@ describe('rotateGroup', () => {
 
   describe('the animation spec (what a view is asked to tween)', () => {
     it('describes the whole turn ONCE: one pivot, one sweep, every member', () => {
-      // One spec, not one signal per member: a rigid body has one clock, and a view that received
-      // members separately could not give them one.
+      // A rigid body has one clock, so the view gets one spec rather than a signal per member.
       const { gs, exec } = mapWith([
         { id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }, { id: 'c', x: 6, y: 4 },
       ]);
@@ -213,11 +208,10 @@ describe('rotateGroup', () => {
       let turn: GroupRotation | null = null;
       rotateGroup(exec, gs, ['wide', 't'], 1, (spec) => { turn = spec; });
       const spec = turn as unknown as GroupRotation;
-      // The 3x1 'wide' was at (4,4): centre (5.5, 4.5). Its centre is what turns rigidly (the anchor
-      // does not — the extent swaps), so that is the point the animation must travel from.
+      // The 3x1 'wide' at (4,4) has centre (5.5, 4.5); the centre turns rigidly, the anchor does not.
       expect(spec.members[0]).toEqual({ id: 'wide', from: { x: 5.5, y: 4.5 }, spun: true });
       expect(spec.members[1]!.from).toEqual({ x: 8.5, y: 6.5 });
-      // And the rotation of that start about the pivot is where the member really landed.
+      // That start, turned about the pivot, is where the member landed.
       const now = gs.objects.get('wide')!.position;
       const size = getPlacedObjectSize(gs.objects.get('wide')!);
       const { pivot } = spec;

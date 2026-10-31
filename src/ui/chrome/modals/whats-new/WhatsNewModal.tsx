@@ -7,19 +7,17 @@ import { parseLegalMarkdown } from '../../../../legal/markdown';
 import { LegalMarkdown } from '../../../primitives/LegalMarkdown';
 import { APP_VERSION } from '../../../../platform/build/build-info';
 import { font } from '../../../design/styles';
+import { useSurfaceZoom } from '../../../design/scale';
 import { isDenseScript, roleFont } from '../../../design/text-weight';
 import { ModalShell } from '../../../primitives/ModalShell';
-import { WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
+import { WindowBody, WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { ScrollArea } from '../../../primitives/ScrollArea';
 import { MUTED } from '../../../design/tokens';
-import { skin } from '../../../design/window-skin';
 import { currentNotes, notesLanguage } from './current';
 import { localeTag } from '../../../../i18n/locale-info';
 import { recordSeenVersion } from '../../../../io/storage/seen-version-facts';
 
 const card: CSSProperties = { ...windowFrame, gap: 14 };
-const body: CSSProperties = { flex: '1 1 auto', minHeight: 0 };
 const sections: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 };
 const release: CSSProperties = { ...roleFont('chip'), fontFamily: font.family, color: MUTED };
 
@@ -32,6 +30,7 @@ export function WhatsNewModal() {
   const notes = useMemo(() => (open ? currentNotes(locale) : []), [open, locale]);
   const title = t('whatsnew.title', { version: APP_VERSION });
   const lang = notesLanguage(locale);
+  const zoom = useSurfaceZoom();
 
   const close = () => { recordSeenVersion(); closeWindow(); };
   const fullChangelog = () => { close(); openAbout('changelog'); };
@@ -39,17 +38,17 @@ export function WhatsNewModal() {
   return (
     <ModalShell helpTarget={{ page: 'settings', anchor: 'settings-about' }} open={open} onClose={close} size="document" ariaLabel={title} cardStyle={card}>
       <WindowHeader title={title} reserve close={{ label: t('hint.close'), onPress: close }} />
-      <ScrollArea gutter="stable" surface={skin.plate} tabIndex={0} role="region" aria-label={title} style={body}
+      <WindowBody tabIndex={0} role="region" aria-label={title}
         contentStyle={sections} lang={localeTag(lang)} data-testid="whats-new-notes">
         {notes.map((n) => (
           <section key={n.version}>
             {(notes.length > 1 || n.version !== APP_VERSION) && (
               <div style={release}>{n.heading.replace(/[[\]]/g, '')}</div>
             )}
-            <LegalMarkdown nodes={parseLegalMarkdown(n.body)} dense={isDenseScript(lang)} />
+            <LegalMarkdown nodes={parseLegalMarkdown(n.body)} dense={isDenseScript(lang)} zoom={zoom} />
           </section>
         ))}
-      </ScrollArea>
+      </WindowBody>
       <WindowFooter
         tertiary={<ActionButton appearance="secondary" onClick={fullChangelog}>{t('whatsnew.full_changelog')}</ActionButton>}
         primary={<ActionButton appearance="primary" onClick={close}>{t('whatsnew.got_it')}</ActionButton>}

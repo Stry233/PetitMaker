@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeImage, __resetDecodes } from '../../../platform/async/http-cache';
+import { decodeImage, fetchIntoCache, __resetDecodes } from '../../../platform/async/http-cache';
 
 beforeEach(() => { __resetDecodes(); });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -63,5 +63,19 @@ describe('shared icon decoding', () => {
     expect(await decodeImage('/missing.png')).toBe(false);
     expect(await decodeImage('/missing.png')).toBe(false);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('fetching into the cache', () => {
+  it('reports every body byte as it streams, and whether the file arrived', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(3000)); controller.enqueue(new Uint8Array(500)); controller.close(); },
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body)));
+    const chunks: number[] = [];
+    expect(await fetchIntoCache('/font.woff2', undefined, (bytes) => chunks.push(bytes))).toBe(true);
+    expect(chunks).toEqual([3000, 500]);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    expect(await fetchIntoCache('/font.woff2')).toBe(false);
   });
 });

@@ -102,7 +102,7 @@ function arm(item: string | null, ...objects: PlacedObject[]): void {
   });
 }
 
-/** Press, optionally drag, release — screen coords are macro cells × 10 (+5 to land mid-cell). */
+/** Press, optionally drag, release; screen coords are macro cells × 10 (+5 to land mid-cell). */
 function gesture(from: { x: number; y: number }, to = from): void {
   const sx = from.x * 10 + 5, sy = from.y * 10 + 5;
   const ex = to.x * 10 + 5, ey = to.y * 10 + 5;
@@ -160,8 +160,7 @@ describe('Ctrl while an item is armed', () => {
   });
 
   it('keeps the item armed when the band caught nothing', () => {
-    // An empty band changed nothing, so there is nothing to edit and no reason to drop the item
-    // the user picked in the panel — an accidental Ctrl-drag must not cost them their selection.
+    // An accidental Ctrl-drag that selects nothing must not cost the armed item.
     arm(ARMED, tree('a', 3, 3));
     setHeld(true);
 
@@ -201,9 +200,8 @@ describe('a plain click while an item is armed', () => {
   });
 
   it('attempts on a LOCKED object, so the refusal reaches the toast', () => {
-    // The user-visible symptom: a click on the central plaza did nothing and said nothing. The
-    // press has to reach the placer for the placement to be attempted, refused, and reported —
-    // Toast listens for `validation-failed`, and no command means no event.
+    // The press must reach the placer so the refusal is reported: Toast listens for
+    // `validation-failed`, and no command means no event.
     arm(ARMED, { ...tree('plaza', 5, 5), locked: true });
     setHeld(false);
     const failures: unknown[] = [];
@@ -277,10 +275,8 @@ describe('the cursor says which of the two a click would do', () => {
 
 describe('a coating armed', () => {
   it('never reaches this decision: every coating is brush-mode, which the placer refuses', () => {
-    // The Build panel paints roads; no placement-category tile offers them, and
-    // `ObjectPlacerTool.onPointerDown` returns on a non-point item. The rule would not misfire
-    // anyway: a coating over an existing coating is legal (the overlap rule exempts the covered
-    // one), so it places and strips rather than selecting.
+    // `ObjectPlacerTool.onPointerDown` returns on a non-point item. Even so, a coating over a coating
+    // is legal, so it would place rather than select.
     for (const id of ['path-overgrown-dirt', 'path-cobblestone']) {
       const item = getCatalogItem(id);
       expect(item?.traits.some((tr) => tr.type === 'surfaceCoating')).toBe(true);

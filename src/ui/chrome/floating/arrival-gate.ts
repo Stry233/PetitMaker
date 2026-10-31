@@ -12,16 +12,11 @@ import type { I18nKey } from '../../../i18n/keys';
 export interface ArrivalFacts {
   /** The boot splash still covers the app. */
   splashActive: boolean;
-  /** Something stands in front of the app because it cannot be used as held (the portrait guard). */
-  blocked: boolean;
   /** The first-launch tour is running. */
   tourRunning: boolean;
-  /** The first-launch offer has been answered: the tour started, or it was waived. Until then a
-   *  browser on its very first visit may be a frame away from opening the tour. */
+  /** The offer of this build's tour has been answered: the tour started, or it was waived. Until
+   *  then a visit may be a frame away from opening the tour. */
   tourSettled: boolean;
-  /** The tour's send-off card is still up. It belongs to the run that just ended, so the greeting
-   *  waits for it the same way it waited for the tour. */
-  tourDoneOpen: boolean;
   /** The What's new window is up. It speaks first; the greeting follows it. */
   whatsNewOpen: boolean;
   /** A landmark repair is asked or under way: its window or its plate stands where the notice would,
@@ -33,18 +28,24 @@ export interface ArrivalFacts {
  * The saved-session offer is not a gate. It asks whether to pick the last map back up; the notice
  * says which planet is under you, which is true either way. So they stand together, and answering
  * one answers the other: resuming re-announces the arrival as 'restored' into the notice already up,
- * and a hand on the notice declines the offer through the shell's own dismissal.
+ * and a hand on the notice declines the offer through the shell's own dismissal. Setting to work
+ * withdraws both alike.
  */
 
 /** Whether the arrival notice may go up right now. */
 export function arrivalOpens(f: ArrivalFacts): boolean {
   return !f.splashActive
-    && !f.blocked
     && !f.tourRunning
     && f.tourSettled
-    && !f.tourDoneOpen
     && !f.whatsNewOpen
     && !f.repairOpen;
+}
+
+/** Whether the notice itself goes up: when an arrival may be said, and the visitor has no mode, menu,
+ *  window or assistant open (`session/engagement.ts`), since a greeting standing is withdrawn as soon
+ *  as they set to work. The menu's bubbles and What's new share only the first half. */
+export function arrivalNoticeOpens(f: ArrivalFacts, visitorBusy: boolean): boolean {
+  return arrivalOpens(f) && !visitorBusy;
 }
 
 /** The phrase the notice opens with, above the planet's name. A lead-in, so each locale writes

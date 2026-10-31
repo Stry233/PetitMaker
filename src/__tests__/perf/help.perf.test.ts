@@ -1,13 +1,8 @@
 /*
- * The Help Center's CPU-side costs, no renderer.
- *
- * Every Help figure is a real `SandboxWorld` (a live `GridState` + `CommandExecutor` + full rule
- * registry) driven by a scene's `run(ctx, t)` timeline (`figures/scenes/`); a mounted page pays
- * one such world per figure, settled through the same `on`/`during(ctx,1)` calls the reduced-motion
- * player's `finishAll` makes. This suite times exactly that path with a no-op `DemoView` (matching
- * `__tests__/ui/help/catalog.test.ts`'s own stub) standing in for the overlay layer, plus the
- * search index, the page catalog's own string resolution, and the memoized facts record. See
- * `_harness.ts` for the gate and methodology.
+ * The Help Center's CPU-side costs, no renderer. Each figure is a real `SandboxWorld` driven by its
+ * scene timeline; this times settling every scene as the reduced-motion player's `finishAll` does,
+ * with a no-op `DemoView`, plus the search index, page string resolution and the memoized facts.
+ * See `_harness.ts` for the gate and methodology.
  */
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
@@ -24,8 +19,7 @@ installHelpTables();
 
 const s = perfSuite('help');
 
-/** Every mark a no-op: the same stub `__tests__/ui/help/catalog.test.ts` runs every scene against
- *  to hold the catalog contract, standing in for the real overlay layer. */
+/** Every mark a no-op, as in `__tests__/ui/help/catalog.test.ts`. */
 const NO_VIEW: DemoView = {
   clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
   clearSelection: () => {}, band: () => {}, paintGhost: () => {}, region: () => {}, route: () => {},
@@ -115,9 +109,7 @@ describe.runIf(PERF)('perf: help', () => {
   });
 
   it('catalog: resolve every page\'s own title, section and Q&A strings', async () => {
-    // Mirrors `search.ts:buildIndex`'s own walk (title, lede, section title/body, qa) but for one
-    // locale rather than the search blob's bilingual merge — the cost a full documentation crawl
-    // pays, as distinct from the search index's own bench above.
+    // `search.ts:buildIndex`'s walk for one locale, without the search blob's English twin.
     function resolveAllPages(locale: Locale): number {
       const facts = helpFacts(locale);
       let n = 0;
@@ -156,8 +148,7 @@ describe.runIf(PERF)('perf: help', () => {
   });
 
   it('facts: the memoized record every reader receives', async () => {
-    // `helpFacts` caches per locale (facts.ts's module-level map): every call after the first for a
-    // given locale is the map lookup this bench measures, which is what every subsequent reader pays.
+    // `helpFacts` caches per locale, so after the first call this is the lookup every reader pays.
     await s.bench('facts/help-facts-en', () => { helpFacts('en'); });
     await s.bench('facts/help-facts-zh', () => { helpFacts('zh'); });
   });

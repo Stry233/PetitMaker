@@ -1,12 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The generate shelf: the candidate mechanic, the maze marks, the three bands and the ranges.
- *
- * The candidate mechanic runs the real generator on a detached copy, so the map the user built is
- * untouched by a batch and two rerolls, and a candidate's picture is the map clicking it produces.
- * The component tests stub candidate building and keep the rest real: which cells the maze marks,
- * what a run takes, where each slider's ends come from. The row of names is pinned by the declared
- * height under it, since jsdom lays nothing out.
+ * The generate shelf: the candidate mechanic, the maze marks, the three bands and the ranges. A
+ * candidate runs the real generator on a detached copy, so the user's map is untouched and a
+ * candidate's picture is the map clicking it produces. The component tests stub candidate building
+ * and keep the rest real.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LOCALES } from '../../../../../core/model/locale';
@@ -28,10 +25,8 @@ vi.mock('../../../../../editor/operations', async (importOriginal) => {
 });
 
 /**
- * A picture kind's plan is rasterized on a real canvas, which jsdom does not have — so every card of
- * those kinds would be refused before anything this file is about could happen. The plan itself is
- * proved against the engine (`__tests__/tools/stencil-*`); what a shelf test needs is that there is
- * one.
+ * A picture kind's plan is rasterized on a real canvas, which jsdom lacks; the plan itself is proved
+ * in `__tests__/tools/generation/stencil/`, and a shelf test only needs one to exist.
  */
 vi.mock('../../../../../tools/generation/stencil/stencil-plan', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../../tools/generation/stencil/stencil-plan')>();
@@ -43,14 +38,13 @@ vi.mock('../../../../../tools/generation/stencil/stencil-plan', async (importOri
       stencil: { width: 1, height: 1, coverage: new Uint8Array([255]), color: new Uint32Array([0]) },
       origin: { x: 0, y: 0 },
     })),
-    // The real peek reads the real module cache, which the mocked builder above never files; the
-    // default answers "not cached", which is the slow path every existing test walks.
+    // The mocked builder never files into the real cache, so the peek always answers "not cached".
     peekStencilPlan: vi.fn(() => undefined),
   };
 });
 
-/** The shelf under test is the development one: every kind offers its own card. The release
- *  state is exercised explicitly through `hasCustomCard`'s build argument below. */
+/** The development shelf, where every kind offers its own card; the release state goes through
+ *  `hasCustomCard`'s build argument below. */
 vi.mock('../../../../../platform/build/build-info', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../../platform/build/build-info')>();
   return { ...actual, IS_DEV_BUILD: true };
@@ -82,35 +76,36 @@ import { createDefaultRegistry } from '../../../../../rules';
 import { useEditorStore } from '../../../../../state/store';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { GenerateShelf } from '../../../../../ui/shell/bars/generate/GenerateShelf';
+import { ModeBar } from '../../../../../ui/shell/controls/ModeBar';
 import * as textRaster from '../../../../../tools/generation/stencil';
 import * as rasterModule from '../../../../../tools/generation/stencil/stencil-raster';
 import { fitTextGrid } from '../../../../../tools/generation/stencil/stencil-text-grid';
 import { fontModel } from '../../../../tools/generation/stencil/_text-fonts';
 import { MazeEndpoints } from '../../../../../ui/shell/bars/generate/MazeEndpoints';
 import {
-  BODY_H, CANDIDATES, GAP, PAD, SEED_DIGITS, SLIDERS, STRIP, TABS,
-  hasCustomCard, maxElevationFor,
+  CANDIDATES, GAP, PAD, SEED_DIGITS, SLIDERS, STRIP, TABS,
+  bodyHeight, hasCustomCard, maxElevationFor,
 } from '../../../../../ui/shell/bars/generate/generate-shelf';
 import { batchSeeds, kindConfig } from '../../../../../tools/generation/kinds';
 import { IMAGE_POOL, sampleName } from '../../../../../ui/shell/bars/generate/stencil-samples';
 import { APP_NAME, brandName } from '../../../../../i18n/terms/brand';
 import { ROW, SCROLL, SEARCH, SHELF_BOX, tabRowGap } from '../../../../../ui/shell/bars/objects/object-shelf';
 import { SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../../../../ui/shell/units';
+import { LANDSCAPE_BAR } from '../../../../../ui/shell/frame-plan';
 import { makeState, placeCmd } from '../../../../_support/map-state';
 import { ELEVATION_MAX } from '../../../../../core/game/profile';
 import { createExecutor } from '../../../../../state/executor';
 import { ItemCategory } from '../../../../../config/catalog/categories';
 
+/** The block's height on the landscape plan the tests mount under. */
+const BODY_H = bodyHeight(LANDSCAPE_BAR.tabsTop);
+
 /** Small enough that a batch of real generations is cheap, large enough that they build something. */
 const SIZE = 40;
 
 /**
- * The map itself: cells, objects, and the per-cell and per-object taint that says who made each of
- * them. Object ids are kept: nothing about a candidate reaches this map, so every id it carried is
- * still the id it carries.
- *
- * The ledger is compared separately, because it is a history that never rewinds. A candidate must
- * not add to it at all, not even the `reverted` entry an undone edit of any kind leaves behind.
+ * The map with its cells, objects, ids and authorship taint. The ledger is compared separately: it
+ * never rewinds, so a candidate must not add to it at all, not even a `reverted` entry.
  */
 function snapshot(state: GridState): string {
   const parsed = JSON.parse(serialize(state));
@@ -125,9 +120,7 @@ function ledger(state: GridState): { id: string; status: string }[] {
   return parsed.provenance?.ledger ?? [];
 }
 
-/** The same map by value, with the object ids dropped: an id is minted per placement and is
- *  deliberately not seed-derived, so two runs of one recipe build the same map under different
- *  ids. What must match is everything else. */
+/** The map by value without object ids, which are minted per placement and not seed-derived. */
 function mapValue(state: GridState): string {
   const parsed = JSON.parse(serialize(state));
   return JSON.stringify({
@@ -170,16 +163,26 @@ function mount() {
   );
 }
 
-/**
- * Move the clock `ms` forward. `beforeEach` fakes `setTimeout` with the clock still advancing in
- * real time, so the shelf's debounces fire here at once while `waitFor` polls as usual.
- */
+/** The shelf in the mode bar, which stands the scope screen in its place while a region is selected. */
+function mountInBar() {
+  useEditorStore.getState().setEditMode({ mode: 'generate' });
+  return render(
+    <MotionConfig reducedMotion="always">
+      <I18nProvider>
+        <ScaleProvider value={0.5}>
+          <ModeBar mode="generate" surface={null} />
+        </ScaleProvider>
+      </I18nProvider>
+    </MotionConfig>,
+  );
+}
+
+/** Move the faked `setTimeout` clock `ms` forward; it still advances in real time, so `waitFor` polls. */
 async function elapse(ms: number): Promise<void> {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 }
 
-/** Let the debounced picture pass fire and finish. The bar prints no report, so what says it has
- *  stopped working is its own actions coming back: they are refused while a batch is being built. */
+/** Let the debounced picture pass finish, read off New batch, which is refused while a batch builds. */
 async function settle(): Promise<void> {
   await elapse(420);
   await waitFor(() => expect(
@@ -187,8 +190,8 @@ async function settle(): Promise<void> {
   ).toBe('false'));
 }
 
-/** Type a recipe number into the last card and confirm it, which is the one way to make the batch
- *  deterministic: every other card's seed is drawn from a random base per mount. */
+/** Type a recipe number into the last card, the one deterministic card: the others draw their seeds
+ *  from a random base per mount. */
 async function typeRecipe(seed: number): Promise<void> {
   fireEvent.change(screen.getByLabelText('Your own recipe'), { target: { value: String(seed) } });
   fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
@@ -224,8 +227,7 @@ afterEach(() => {
   useEditorStore.getState().setEditMode({ mode: null });
 });
 
-/** Terrain and a tree the person put there, so the map under the shelf is somebody's work rather
- *  than a generator's. One stroke group, so it is one undo entry like any hand edit. */
+/** Terrain and a tree laid by hand in one stroke group, so the map under the shelf is a person's work. */
 function buildByHand(kit: EditContext): void {
   const watermark = kit.executor.beginStroke();
   const cells: MacroCoord[] = [];
@@ -249,8 +251,7 @@ const painted = (state: GridState): number => state.cells.flat().filter((c) => c
 describe('a candidate', () => {
   it('leaves a map that somebody built exactly as it was, through a batch and two rerolls', async () => {
     const kit = makeKit();
-    // An island first, so the recorded recipe holds something a candidate could overwrite, then
-    // hand work on top of it: an empty map would pass this test without proving anything.
+    // An island first, so the recorded recipe holds something a candidate could overwrite.
     await generateMap(kit, { config: island(4242), region: null });
     buildByHand(kit);
 
@@ -271,13 +272,12 @@ describe('a candidate', () => {
     expect(snapshot(kit.state)).toBe(before);
     expect(kit.executor.historyDepth()).toBe(stack);
     expect(kit.state.generation).toEqual(recipe);
-    // Not "restores the ledger": nothing is written to it, because nothing here happened to this map.
     expect(ledger(kit.state)).toEqual(wrote);
   }, 300_000);
 
   it('does not move the scope that Clear is bounded by', async () => {
     const kit = makeKit();
-    await generateMap(kit, { config: island(4242), region: null });   // the whole map, so Clear is unbounded
+    await generateMap(kit, { config: island(4242), region: null });   // the whole map: Clear is unbounded
     expect(painted(kit.state)).toBeGreaterThan(0);
 
     await generateCandidate(kit, { config: island(88), region: rect(2, 2, 6, 6) });
@@ -293,9 +293,7 @@ describe('a candidate', () => {
 
     await generateMap(kit, { config: island(31415), region: null });
 
-    // By value, which is the whole of what a picture can show: the card is a photograph of this
-    // grid taken by the renderer that draws the live one, so two grids that agree here cannot
-    // photograph differently.
+    // The card is drawn by the live renderer, so grids equal by value photograph alike.
     expect(mapValue(kit.state)).toBe(mapValue(candidate!.state));
   }, 60_000);
 
@@ -311,8 +309,7 @@ describe('a candidate', () => {
 });
 
 describe('the maze ends', () => {
-  /** An end asked for inside the maze is a destination: it stays inside, on a cell a walker can
-   *  stand on, never moved out to the map's edge as if every end were a hole in the wall. */
+  /** An end asked for inside the maze stays inside, on a cell a walker can stand on. */
   it('reports an interior request as a place inside, not as a hole in the wall', async () => {
     const kit = makeKit();
     const asked = { entrance: { x: 12, y: 14 }, exit: null };
@@ -325,12 +322,7 @@ describe('the maze ends', () => {
     expect(kit.state.cells[landed!.y]![landed!.x]!.terrain ?? null).toBeNull();
   }, 30_000);
 
-  /**
-   * The ends are opt-in: a landed default maze puts no marks up, and the way's switch stands beside
-   * the ends' own refusing, since it answers for a pair nobody has chosen. Flipping "in and out"
-   * adopts the landed pair, so the marks appear where the maze's ends already are and the way
-   * becomes something that can be asked for.
-   */
+  /** The ends are opt-in; "In and out" adopts the landed pair, and only then can the way be shown. */
   it('keeps the map clear of marks by default, and adopts the landed pair when the ends are chosen', async () => {
     installKit();
     setActiveView({
@@ -361,11 +353,7 @@ describe('the maze ends', () => {
     ).toBeNull();
   }, 60_000);
 
-  /**
-   * A toggle may not move the controls beside it, its own included. A way's switch that arrives with
-   * the ends pushes the ends' switch along the strip, and the control the hand has just pressed is
-   * somewhere else by the time the hand leaves it.
-   */
+  /** A toggle may not move the controls beside it, its own included. */
   it('leaves the strip the same shape whichever way the ends switch is thrown', async () => {
     installKit();
     mount();
@@ -383,15 +371,11 @@ describe('the maze ends', () => {
     expect(shape()).toEqual(before);
   }, 30_000);
 
-  /**
-   * The drag is the whole interaction, so it is driven here rather than described: a press on the
-   * mark, a move over the map, a release. An end is a recipe input — the carve grows out from the
-   * entrance — so the drop re-runs the landed recipe with the moved pair as gates, and the whole
-   * maze answers rather than one cell of wall.
-   */
+  /** An end is a recipe input (the carve grows out from the entrance), so a drop re-runs the landed
+   *  recipe with the moved pair as gates. */
   it('re-runs the recipe with the dropped end as an input', async () => {
     const kit = installKit();
-    // A projection that is the map's own grid, so the test can aim at a cell by name.
+    // A projection that is the map's own grid, so a cell can be aimed at by name.
     setActiveView({
       projection: {
         screenToPoint: (x: number, y: number) => ({ x: Math.round(x) + 0.5, y: Math.round(y) + 0.5 }),
@@ -404,8 +388,7 @@ describe('the maze ends', () => {
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
     await settle();
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    // The maze has to be standing before the drag: a drop while a run is landing is refused, and a
-    // refused drop would leave this asserting on the marks alone.
+    // A drop while a run is landing is refused, so the maze must be standing first.
     await waitFor(() => expect(kit.executor.historyDepth()).toBeGreaterThan(0));
     await waitFor(() => expect(screen.queryByTestId('shell-gate-entrance')).not.toBeNull());
 
@@ -417,9 +400,8 @@ describe('the maze ends', () => {
     const to = onTopOrBottom ? { x: wx + 6, y: wy } : { x: wx, y: wy + 6 };
     const undoBefore = kit.executor.historyDepth();
 
-    // jsdom has no PointerEvent, and the fallback event RTL builds for one carries no coordinates —
-    // which is the whole of what a drag is. A MouseEvent under the pointer event's own name has
-    // them, and the listeners are on the window by name.
+    // jsdom has no PointerEvent and RTL's fallback carries no coordinates; a MouseEvent under the
+    // pointer event's name has them.
     const at = (type: string, c: { x: number; y: number }): MouseEvent =>
       new MouseEvent(type, { clientX: c.x, clientY: c.y, bubbles: true });
     await act(async () => {
@@ -432,7 +414,7 @@ describe('the maze ends', () => {
     const now = mark().getAttribute('data-cell')!;
     expect(now).not.toBe(was);
     expect(mark().getAttribute('data-kind')).toBe('hole');
-    // The drop was a generation: one more entry to undo, and the new way in is open on the map.
+    // The drop was a generation: one more undo entry, and the new way in is open.
     await waitFor(() => expect(kit.executor.historyDepth()).toBe(undoBefore + 1));
     const [nx, ny] = now.split(',').map(Number) as [number, number];
     expect(kit.state.cells[ny]![nx]!.terrain ?? null).toBeNull();
@@ -443,12 +425,7 @@ describe('the maze ends', () => {
     expect(screen.queryByTestId('shell-gate-entrance')).toBeNull();
   });
 
-  /**
-   * The ends are settings, not properties of a landed maze: the moment they are asked for the
-   * marks stand, draggable, with no card clicked — they are inputs to every run the tab can make.
-   * Showing them only after a landing makes the inputs unreachable until the thing they are inputs
-   * To has already run without them.
-   */
+  /** The ends are inputs to every run, so they must be reachable before the first one. */
   it('offers both marks the moment the ends are chosen, before any run', async () => {
     installKit();
     setActiveView({
@@ -464,11 +441,8 @@ describe('the maze ends', () => {
   });
 
   /**
-   * The way is a drape, and it fits the corridor: a road's flat sweep reaches the wall beside
-   * every corridor lane, so the answer cannot legally be paved — it is drawn instead, on the
-   * Terrain grid, because the walls render on the terrain grid and the visible corridor floor between
-   * two of them is the corridor cell's terrain-shifted rect. The drape follows the switch both
-   * ways, and every cell of it is corridor or gate, never wall.
+   * A road's flat sweep reaches the wall beside every corridor lane, so the way cannot be paved; it is
+   * drawn on the terrain grid, where the walls render, and never crosses a wall.
    */
   it('drapes the way over the corridors when switched on, and takes it down when off', async () => {
     const kit = installKit();
@@ -487,9 +461,7 @@ describe('the maze ends', () => {
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
     await settle();
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    // The marks stand before any run (the test above pins that), so the gate-entrance wait grants
-    // the run no time; the undo stack is what says the run actually landed. Without it, the click's
-    // macrotask yield (generateMap's own) can outrun this test and the drape reads an empty maze.
+    // The marks stand before any run, so only the undo stack says the run landed.
     await waitFor(() => expect(kit.executor.historyDepth()).toBeGreaterThan(0));
     await waitFor(() => expect(screen.queryByTestId('shell-gate-entrance')).not.toBeNull());
 
@@ -497,7 +469,6 @@ describe('the maze ends', () => {
     expect(shown.length, 'the drape went up').toBeGreaterThan(0);
     const route = shown[shown.length - 1]!;
     expect(route.length).toBeGreaterThan(1);
-    // Corridor floor or a gate's own ring cell — never a standing wall away from the two holes.
     const gates = ['shell-gate-entrance', 'shell-gate-exit']
       .map((id) => screen.getByTestId(id).getAttribute('data-cell'));
     for (const c of route) {
@@ -510,13 +481,8 @@ describe('the maze ends', () => {
     expect(cleared, 'the drape came down').toBeGreaterThan(before);
   });
 
-  /**
-   * The walk belongs to the map, not to the card. Choosing the ends re-photographs the batch, and
-   * the shelf lets go of the card it landed when it does — but the maze standing on the map is
-   * untouched by a setting moving, so its walk is still the answer. Dropped with the card, the way's
-   * first press would do nothing at all, with the drape only appearing once another candidate was
-   * clicked.
-   */
+  /** Choosing the ends lets go of the landed card, but the maze on the map is unchanged, so its walk is
+   *  still the way. */
   it('shows the way of the maze already standing, on the first press', async () => {
     const kit = installKit();
     const shown: MacroCoord[][] = [];
@@ -527,11 +493,11 @@ describe('the maze ends', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
     await settle();
-    // Landed with the ends left to the generator, which is the state a visitor arrives in.
+    // Landed with the ends left to the generator.
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
     await waitFor(() => expect(kit.executor.historyDepth()).toBeGreaterThan(0));
 
-    // Then the ends, which is a recipe setting and drops the batch's pictures.
+    // The ends are a recipe setting, so the batch's pictures drop.
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
     await settle();
 
@@ -548,7 +514,7 @@ describe('a run', () => {
     await settle();
 
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    // The map records the recipe it was built from, which only a full run is reproducible from.
+    // Only a full run records the recipe it was built from.
     await waitFor(() => expect(kit.state.generation).toBeTruthy());
 
     let outside = 0;
@@ -558,8 +524,6 @@ describe('a run', () => {
     expect(outside).toBeGreaterThan(0);
   }, 60_000);
 
-  /** The scope is the painted region, which is the whole point of the chip: a run acts where the
-   *  visitor said and nowhere else, and the region survives it so the chip still reads. */
   it('stays inside the painted region, and leaves it painted', async () => {
     const kit = installKit();
     const region = rect(6, 6, 18, 18);
@@ -583,12 +547,8 @@ describe('a run', () => {
 });
 
 describe('the three bands', () => {
-  /**
-   * A change of kind swaps the block, and the swap is announced. Other recipes and other settings
-   * arrive together, so the block under the names is made again and comes in on the object shelf's
-   * own category motion rather than changing under the eye with nothing said. The names themselves
-   * stand outside it and do not move.
-   */
+  /** New recipes and settings arrive together, so the block comes in on the object shelf's category
+   *  motion rather than changing in place; the names stand outside it. */
   it('makes the block under the names again when the kind changes', async () => {
     installKit();
     mount();
@@ -606,9 +566,8 @@ describe('the three bands', () => {
     expect(screen.getByRole('tab', { name: 'Maze' }).parentElement, 'the names stay put').toBe(names);
   }, 30_000);
 
-  /** The two shelves stack different things under the row of names, so what has to agree is where
-   *  its bottom edge lands. Each side is added up here the way its own component
-   *  lays it out, since the bug this pins is one shelf's stack drifting from the other's. */
+  /** The two shelves stack different things under the names, so each is added up the way its own
+   *  component lays it out. */
   it('stands its bottom edge on the floor the object shelf uses', () => {
     const floor = SHELF_TABS.floor;
     // The generate shelf: the shelf's own bottom padding, the block, and the room over it.
@@ -621,13 +580,11 @@ describe('the three bands', () => {
     expect(tabRowGap()).toBeGreaterThan(0);
   });
 
-  /** A control standing in the row of names is centred on the words' ink, whatever its own height:
-   *  that is one rule for the object shelf's search field and for anything the generator ever puts
-   *  there. Hung off the line box instead, a tall control sits low against the names. */
+  /** Hung off the line box instead, a tall control would sit low against the names. */
   it('centres what stands beside the names on the same line, at any control height', () => {
     const middles = [SEARCH.h, 42, 38, 90].map((h) => standsInNameRow(h) + h / 2);
     for (const mid of middles) expect(mid).toBeCloseTo(middles[0]!, 6);
-    // Above the mark and its gap, which is where the line box that carries the names ends.
+    // Above the mark and its gap, where the names' line box ends.
     expect(middles[0]!).toBeGreaterThan(SHELF_TABS.underline + SHELF_TABS.underlineGap);
   });
 
@@ -645,8 +602,6 @@ describe('the three bands', () => {
 });
 
 describe('the row of names', () => {
-  /** The kinds are the names: a row reading "Island" over a three-way toggle asking the same
-   *  question below it is a heading that says nothing. */
   it('offers every kind of island and nothing else', async () => {
     installKit();
     mount();
@@ -654,13 +609,10 @@ describe('the row of names', () => {
     expect(screen.getAllByRole('tab').map((el) => el.textContent))
       .toEqual(['Maze', 'Letter', 'Picture', 'Planet']);
     expect(TABS.map((tab) => tab.id)).toEqual(['maze', 'text', 'image', 'island']);
-    // Nothing stands beside them: no recipe field, and no actions.
     expect(screen.queryByLabelText('Seed')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
   }, 30_000);
 
-  /** Clear is undo's job by another name, and the one destructive action that has no place on the
-   *  shelf. The menu carries it. */
   it('offers no Clear, which the menu carries instead', async () => {
     installKit();
     mount();
@@ -669,11 +621,8 @@ describe('the row of names', () => {
   }, 30_000);
 });
 
-/**
- * The scope: a chip in the strip, and a screen behind it rather than a swap. Finishing a region
- * invalidates every candidate, so the shelf leaves and comes back with a new batch — cards left
- * standing would be a promise the next stroke breaks.
- */
+/** Finishing a region invalidates every candidate, so the scope screen takes the cards away and Done
+ *  brings a new batch. */
 describe('the scope chip', () => {
   it('says the whole island until a region is painted, and then the count', async () => {
     installKit();
@@ -689,9 +638,9 @@ describe('the scope chip', () => {
     expect(within(screen.getByTestId('shell-gen-scope')).getByText('Whole planet')).toBeTruthy();
   }, 60_000);
 
-  it('opens a screen of its own, taking the cards with it', async () => {
+  it('opens a screen of its own in the bar\'s place, hiding the cards', async () => {
     installKit();
-    mount();
+    mountInBar();
     await settle();
     expect(screen.getAllByRole('button', { name: /^Recipe/ }).length).toBe(CANDIDATES);
 
@@ -699,14 +648,28 @@ describe('the scope chip', () => {
     expect(useEditorStore.getState().selectingRegion).toBe(true);
     expect(screen.getByTestId('shell-scope-screen')).toBeTruthy();
     expect(screen.queryAllByRole('button', { name: /^Recipe/ })).toHaveLength(0);
-    expect(screen.queryByTestId('shell-gen-strip')).toBeNull();
+    expect(screen.getByTestId('shell-mode-bar').contains(screen.getByTestId('shell-gen-strip'))).toBe(true);
+    expect(screen.getByTestId('shell-mode-bar').getAttribute('aria-hidden')).toBe('true');
   }, 30_000);
 
-  /** The return is the regeneration: nothing is photographed while the screen is up, and Done is
-   *  what starts the batch that answers the region just painted. */
+  it('offers a picture kind\'s scope only the figures it can fill, at its least side', async () => {
+    installKit();
+    mountInBar();
+    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    await settle();
+    fireEvent.click(screen.getByTestId('shell-gen-scope'));
+    const scope = screen.getByTestId('shell-scope-screen');
+    expect(within(scope).getByLabelText('Rectangle')).toBeTruthy();
+    expect(within(scope).queryByLabelText('Line')).toBeNull();
+    expect(useEditorStore.getState().regionRequest.minSide).not.toBeNull();
+
+    fireEvent.click(within(scope).getByText(/^Done|^At least/));
+    expect(useEditorStore.getState().regionRequest.minSide).toBeNull();
+  }, 30_000);
+
   it('builds no candidate while the screen is up, and a fresh batch on Done', async () => {
     installKit();
-    mount();
+    mountInBar();
     await settle();
     fireEvent.click(screen.getByTestId('shell-gen-scope'));
     vi.mocked(barrelCandidate).mockClear();
@@ -718,20 +681,13 @@ describe('the scope chip', () => {
     fireEvent.click(screen.getByText(/^Done/));
     await settle();
     expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(CANDIDATES);
-    // And the batch is built for the region that was painted, not for the whole island.
     expect(vi.mocked(barrelCandidate).mock.calls[0]![1].region).toHaveLength(49);
   }, 60_000);
 
-  /**
-   * A card with no picture has nothing to land.
-   *
-   * Painting a region too small for the picture kind blanks the cards and says why on them — but the
-   * Plan behind each card survives, so a click on the blank card would still build the picture the
-   * last region was fitted for. The card stands (nothing on this shelf vanishes), and it refuses.
-   */
+  /** A region too small for the picture kind blanks the cards, but each card's plan survives, so a
+   *  click would build the picture fitted to the last region. */
   it.each([7, 20])('builds pictures in a %i-cell box and refuses a stale card after shrinking below the minimum', async (side) => {
     installKit();
-    // Big enough for a picture to start with, so the cards are real.
     useEditorStore.setState({ region: rect(2, 2, side + 1, side + 1) });
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
@@ -740,7 +696,7 @@ describe('the scope chip', () => {
     expect(cards().length).toBeGreaterThan(0);
     expect(cards()[0]!.getAttribute('aria-disabled')).toBe('false');
 
-    // Now paint one the kind cannot work in.
+    // Too small for the kind.
     act(() => { useEditorStore.setState({ region: rect(2, 2, 7, 7) }); });
     await settle();
     vi.mocked(barrelGenerateMap).mockClear();
@@ -754,16 +710,12 @@ describe('the scope chip', () => {
 });
 
 describe('the batch tile', () => {
-  /** New batch belongs beside the pictures it replaces, not in the row of names at the other end
-   *  of the shelf. It is a tile after the last card, which is where the eye already is once every
-   *  card has been turned down. */
   it('stands at the end of the cards, drawn as a mark', async () => {
     installKit();
     mount();
     await settle();
 
-    // The recipes scroll and the pair does not, which is what lets a card keep one size at every
-    // window: the count and the picture stop being the same decision.
+    // The recipes scroll and the pair does not, so a card keeps one size at every window.
     const pair = screen.getByTestId('shell-gen-batch').parentElement!;
     expect([...pair.children]).toEqual([
       screen.getByTestId('shell-gen-batch'), screen.getByTestId('shell-gen-clear'),
@@ -772,19 +724,19 @@ describe('the batch tile', () => {
     const line = pair.parentElement!;
     const cardRun = line.children[0] as HTMLElement;
     expect(cardRun.style.overflowX).toBe('auto');
-    // The five drawn for the visitor, and the one that is theirs, all scrolling together.
+    // The drawn candidates and the visitor's own card scroll together.
     expect(cardRun.children).toHaveLength(CANDIDATES + 1);
 
     const tile = screen.getByRole('button', { name: 'New batch' });
     expect(tile.textContent).toBe('');
     expect(tile.querySelector('img')).not.toBeNull();
 
-    // Same plate, same size: the pair reads as one kind of control. What keeps a hand from sliding
-    // off one onto the other is the `GAP`, which is wider than the row's own.
+    // One size for the pair; the gap between them keeps a hand from sliding onto the other.
     const clear = screen.getByTestId('shell-gen-clear');
     expect(clear.style.width).toBe(tile.style.width);
     expect(clear.style.height).toBe(tile.style.height);
-    expect(parseFloat(clear.style.marginLeft)).toBeGreaterThan(0);
+    expect(parseFloat(clear.style.left) + parseFloat(clear.style.top)).toBeGreaterThan(
+      Math.min(parseFloat(tile.style.width), parseFloat(tile.style.height)));
   }, 30_000);
 
   it('draws another batch of recipes, and leaves what is on the map standing', async () => {
@@ -800,16 +752,10 @@ describe('the batch tile', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New batch' }));
     await settle();
     expect(shownSeeds()).not.toEqual(before);
-    // Asking another question is not retracting the answer already given.
     expect(kit.executor.historyDepth()).toBe(depth);
     expect(kit.state.generation).toBeTruthy();
   }, 60_000);
 
-  /**
-   * A click is the answer, so there is no second button to give it. A Keep that finalises what a
-   * click provisionally applied makes the click mean less than it looks like it means and puts the
-   * difference nowhere a person can read.
-   */
   it('offers nothing that confirms a click, because the click was the confirmation', async () => {
     installKit();
     mount();
@@ -818,14 +764,8 @@ describe('the batch tile', () => {
   }, 30_000);
 });
 
-/**
- * This row draws no scrollbar of its own (see the batch tile's own comment): the fade
- * (`ui/primitives/scroll-fade.ts`) is the only signal that there is more to see. jsdom lays
- * nothing out, so what is worth pinning is that the row's own scroll metrics decide the mask. The
- * mask arrives and leaves over a settle loop rather than popping, so this reads it back with
- * `waitFor` against the real `requestAnimationFrame` instead of synchronously against the
- * triggering scroll event.
- */
+/** The row draws no scrollbar, so the fade is the only sign of more. The mask settles over frames, so
+ *  it is read back with `waitFor` against the real `requestAnimationFrame`. */
 describe('the recipe row fades where it can still travel', () => {
   it('carries the mask only where scroll metrics say there is room', async () => {
     installKit();
@@ -853,18 +793,10 @@ describe('the recipe row fades where it can still travel', () => {
   }, 30_000);
 });
 
-/**
- * The last card, which is the visitor's own. It replaces the seed field and its confirm step: a
- * seed was never a setting, it is a candidate you name yourself.
- */
+/** The last card is the visitor's own: a seed is a candidate you name yourself, not a setting. */
 describe('the card you type', () => {
   const field = () => screen.getByLabelText('Your own recipe');
 
-  /**
-   * Two states, and the first one is the field. A card showing a picture frame with the place to
-   * type on a small line underneath puts that place where nobody looks; standing the field where
-   * the picture will be says both what the card is for and where to type.
-   */
   it('holds the field where its picture will be, and builds nothing until it has a number', async () => {
     installKit();
     mount();
@@ -872,18 +804,15 @@ describe('the card you type', () => {
 
     const card = screen.getByTestId('shell-candidate-custom');
     expect(within(card).getByLabelText('Your own recipe')).toBeTruthy();
-    // An empty field has nothing to confirm, so the confirm is not there to press yet.
     expect(within(card).queryByRole('button', { name: 'Use this recipe number' })).toBeNull();
     fireEvent.change(field(), { target: { value: '2' } });
     expect(within(card).getByRole('button', { name: 'Use this recipe number' })).toBeTruthy();
     fireEvent.change(field(), { target: { value: '' } });
-    // Every generation this batch asked for was one of the ones drawn: an empty card is not a recipe.
+    // An empty card is not a recipe.
     expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(CANDIDATES);
   }, 30_000);
 
-  /** The confirm belongs to the field, not to the candidate: clicking a filled card still adopts it
-   *  with no second step, but "I have finished typing" needs a button, since Enter alone is
-   *  invisible. Either says it. */
+  /** Enter alone is invisible, so finishing the number also has a button. */
   it.each(['button', 'enter'])('takes a typed number as a recipe (%s)', async (how) => {
     installKit();
     mount();
@@ -896,11 +825,9 @@ describe('the card you type', () => {
     await settle();
 
     expect(vi.mocked(barrelCandidate).mock.calls.map((c) => c[1].config.seed)).toEqual([24680]);
-    // The picture takes the field's place, and the number moves to the line as the way back to it.
     expect(await screen.findByRole('button', { name: 'Recipe: 24680' })).toBeTruthy();
     expect(screen.queryByLabelText('Your own recipe')).toBeNull();
-    // The pill's own reading, not only its aria-label: the number plus the edit mark that makes it
-    // discoverable as the way back to typing.
+    // The visible text too, not only the aria-label.
     expect(screen.getByRole('button', { name: 'Change the recipe number' }).textContent).toBe('#24680 ✎');
   }, 30_000);
 
@@ -930,12 +857,11 @@ describe('the card you type', () => {
     await typeRecipe(24680);
 
     fireEvent.click(screen.getByRole('button', { name: 'Change the recipe number' }));
-    // The two faces cross on the registry's own motion, so the field arrives a frame later.
+    // The faces cross on a registry motion, so the field arrives a frame later.
     await waitFor(() => expect((field() as HTMLInputElement).value).toBe('24680'));
   }, 30_000);
 
-  /** It is the one card a new batch does not replace: a batch that overwrote a number somebody
-   *  typed would lose the only thing on this shelf they authored. */
+  /** A typed number is the only thing on this shelf the visitor authored. */
   it('keeps its number through a new batch, while the others are drawn again', async () => {
     installKit();
     mount();
@@ -949,7 +875,7 @@ describe('the card you type', () => {
 
     expect(screen.getByRole('button', { name: 'Recipe: 13579' })).toBeTruthy();
     expect(shownSeeds().filter((n) => n !== 13579)).not.toEqual(drawn);
-    // And it is not re-photographed for it: a batch is three generations, not four.
+    // Nor is it re-photographed.
     expect(vi.mocked(barrelCandidate).mock.calls.map((c) => c[1].config.seed)).not.toContain(13579);
   }, 60_000);
 
@@ -963,8 +889,6 @@ describe('the card you type', () => {
     await waitFor(() => expect(kit.state.generation?.seed).toBe(31415));
   }, 60_000);
 
-  /** Each kind's card is its own: a recipe number half-typed on one tab never shows up as another
-   *  tab's letters or number, and coming back finds the field as it was left. */
   it('keeps what each tab typed to that tab', async () => {
     installKit();
     mount();
@@ -1007,19 +931,8 @@ describe('the card you type', () => {
   }, 60_000);
 });
 
-/**
- * The click itself does what a Keep button would, and the two halves of it are separate: another
- * candidate replaces the one standing, and anything else lets go of it.
- */
 describe('a candidate that has been clicked', () => {
-  /**
-   * Each click is its own undo step, and three of them leave three.
-   *
-   * Undoing the bar's own previous apply before landing the next holds the history at one entry and
-   * one redo however many islands have been looked at, and the fourth card cannot be taken back to
-   * the third. What such an undo is for is making a candidate's fingerprint match again; clearing
-   * the scope before the replay does that instead, which is what a generation does anyway.
-   */
+  /** Each click is its own undo step, so every card looked at can be walked back to. */
   it('leaves one undo step per card clicked, and every one of them walks back', async () => {
     const kit = installKit();
     mount();
@@ -1033,27 +946,20 @@ describe('a candidate that has been clicked', () => {
       await waitFor(() => expect(kit.executor.historyDepth()).toBe(depth + i + 1));
       maps.push(mapValue(kit.state));
     }
-    // Three different islands, or the three steps would be three names for one edit.
     expect(new Set(maps).size).toBe(3);
 
-    // And back down through them, in order. Undo is the way back this bar promises.
     for (const i of [1, 0]) {
       act(() => { kit.executor.undo(); });
       expect(mapValue(kit.state)).toBe(maps[i]);
     }
     act(() => { kit.executor.undo(); });
     expect(kit.executor.historyDepth()).toBe(depth);
-    // Every one of them is still ahead, rather than a single redo for the whole session.
     expect(kit.executor.canRedo()).toBe(true);
   }, 120_000);
 });
 
-/**
- * One island kind. Land, Isles and Lakes are three biases of one generator, and a split into three
- * kinds makes the thing being tuned three things where the references describe one style. What
- * remains in the config is the field, which the engine still reads and every saved recipe still
- * carries.
- */
+/** One island kind; the land, isles and lakes biases stay a config field the engine reads and saved
+ *  recipes carry. */
 describe('the island kind', () => {
   const designedOf = (config: GenerateConfig): DesignedConfig => {
     if (config.algorithm !== 'designed') throw new Error(`the island kind ran ${config.algorithm}`);
@@ -1061,14 +967,11 @@ describe('the island kind', () => {
   };
 
   it('records the one bias the interface still means', () => {
-    // `mixed` is the bias that neither suppresses the water the richness knob asks for nor
-    // amplifies it, which is why the recipe's default (`recipe.ts:defaultConfig`) is the one the
-    // shelf stopped offering the choice at.
+    // `mixed` neither suppresses nor amplifies the water richness asks for.
     expect(designedOf(kindConfig({ ...ISLAND, kind: 'island', seed: 1 })).mode).toBe('mixed');
   });
 
-  /** An old recipe still replays. A saved map names the bias it was built under, and two of the
-   *  three names are ones this interface does not produce; the engine reads them all. */
+  /** Two of the three biases a saved map can name are ones this interface no longer produces. */
   it.each(['earth', 'water', 'mixed'] as const)('generates a saved %s recipe', async (mode) => {
     const kit = makeKit();
     await generateMap(kit, {
@@ -1091,8 +994,7 @@ describe('the island kind', () => {
     expect(maxElevationFor('island')).toBe(ELEVATION_MAX);
 
     fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!);
-    // The map records the recipe it was built from, so this is the chosen kind arriving at the
-    // engine rather than at another piece of component state.
+    // The recorded recipe shows the kind reached the engine.
     await waitFor(() => expect(kit.state.generation?.algorithm).toBe('designed'));
   }, 60_000);
 });
@@ -1120,16 +1022,9 @@ describe('the sliders', () => {
     await settle();
     expect(screen.queryByRole('slider', { name: 'Scenery richness' })).toBeNull();
     expect(screen.queryByRole('slider', { name: 'Corridor' })).not.toBeNull();
-    // Both knobs draw on the one track the design gives them.
     expect(SLIDERS.upper.track.y).toBeLessThan(SLIDERS.maxLayer.track.y);
   }, 30_000);
 
-  /**
-   * A track is as long as its own row can spare, and only the picture's row is crowded: it carries
-   * six material segments beside its two knobs, where the island carries two knobs alone. Every
-   * other kind draws the design's own track, since a shorter one is a coarser setting under the
-   * same hand and nothing on those rows was asking for the width.
-   */
   it('keeps the same slider length across generator kinds', async () => {
     installKit();
     mount();
@@ -1142,15 +1037,13 @@ describe('the sliders', () => {
     const tight = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
 
     expect(drawn).toBe(tight);
-    // Whatever the length, the knob travels between marks inside the track it is drawn on.
+    // The knob's travel stays inside the drawn track.
     for (const shape of [SLIDERS.upper, SLIDERS.maxLayer]) {
       expect(shape.first).toBeGreaterThanOrEqual(shape.track.x);
       expect(shape.last).toBeLessThanOrEqual(shape.track.x + shape.track.w);
     }
   }, 30_000);
 
-  /** They stand inside the plate, so the two of them plus the strip's other contents are one
-   *  row rather than a column bolted beside the cards. */
   it('stands in the strip inside the plate', async () => {
     installKit();
     mount();
@@ -1161,8 +1054,8 @@ describe('the sliders', () => {
   }, 30_000);
 });
 
-/** A candidate that is not a real run. These two tests are about what the bar hands to the click;
- *  the landing itself is proved against the engine in `editor/operations/generate-operation.slow.test.ts`. */
+/** A candidate that is not a real run; the landing itself is proved in
+ *  `editor/operations/generate-operation.slow.test.ts`. */
 function fakeCandidate(): Candidate {
   return {
     state: makeState(SIZE, SIZE),
@@ -1175,15 +1068,10 @@ function fakeCandidate(): Candidate {
 }
 
 describe('clicking a card', () => {
-  /**
-   * A card is its own answer. The batch is asked for all at once and each picture lands as its own
-   * run comes back, so a card showing a picture is a finished offer whatever the four beside it are
-   * still building. Refused while any of them is in flight, it would spend most of a minute on a
-   * full map as a finished card doing nothing when pressed.
-   */
+  /** Each picture lands as its own run comes back, so a card with one is a finished offer whatever the
+   *  rest are still building. */
   it('lands a finished card while the rest of the batch is still being built', async () => {
     installKit();
-    // A picture per candidate, so a finished card is one that has an image standing in it.
     setMapRenderer({
       captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
     } as unknown as MapRenderer);
@@ -1191,7 +1079,6 @@ describe('clicking a card', () => {
     let asked = 0;
     vi.mocked(barrelCandidate).mockImplementation(async () => {
       asked += 1;
-      // The first card's run comes back; every other one is still out.
       return asked === 1 ? made : new Promise<Candidate | null>(() => {});
     });
     vi.mocked(barrelGenerateMap).mockResolvedValue(made.outcome);
@@ -1257,17 +1144,8 @@ describe('clicking a card', () => {
   }, 30_000);
 });
 
-/**
- * A run that throws rolls itself back, so the map, the undo stack and the cards are all exactly as
- * they were: there is nothing on the screen for the visitor to read the refusal off except the card
- * they clicked.
- */
 describe('the scope highlight', () => {
-  /**
-   * A landed run leaves the highlight standing: the region is still the bound on every run after
-   * this one, and the drape is what says so. It comes down in exactly one place — the scope
-   * screen's own Clear, where the region itself is emptied — never as a side effect of using it.
-   */
+  /** The region still bounds every later run; only the scope screen's own Clear takes the drape down. */
   it('stays up after a run has landed', async () => {
     installKit();
     let cleared = 0;
@@ -1291,12 +1169,8 @@ describe('the scope highlight', () => {
 });
 
 describe('a click on its way to the map', () => {
-  /**
-   * Landing is not instant and the card says so. A replay is about a tenth of a second; a card
-   * landing on a map that already carries an island runs the recipe for real, which is most of a
-   * second on a full map. With nothing saying so the app simply stops, which reads as a freeze.
-   * The waiting is drawn on the card that was clicked, where the eye is.
-   */
+  /** Landing on a map that already carries an island runs the recipe for real, most of a second on a
+   *  full map, which would read as a freeze with nothing drawn. */
   it('says so on the card that was clicked, until it has landed', async () => {
     installKit();
     let land = (): void => {};
@@ -1319,9 +1193,11 @@ describe('a click on its way to the map', () => {
   }, 60_000);
 });
 
+/** A run that throws rolls itself back, so the clicked card is the only place to read the refusal. */
 describe('a click that does not reach the map', () => {
   it('is said on the card that was clicked, and clears itself', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Faking requestAnimationFrame here would stall Framer's frame loop for the rest of the file.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
     try {
       installKit();
       vi.mocked(barrelCandidate).mockImplementation(async () => fakeCandidate());
@@ -1332,7 +1208,6 @@ describe('a click that does not reach the map', () => {
       const cards = screen.getAllByRole('button', { name: /^Recipe/ });
       await act(async () => { fireEvent.click(cards[1]!); });
       await waitFor(() => expect(screen.queryByText('Did not build')).not.toBeNull());
-      // On that card, and on none of the others.
       expect(within(cards[1]!).queryByText('Did not build')).not.toBeNull();
       expect(within(cards[0]!).queryByText(/^Recipe/)).not.toBeNull();
 
@@ -1345,12 +1220,8 @@ describe('a click that does not reach the map', () => {
   }, 30_000);
 });
 
-/**
- * A batch the shelf has already photographed comes back whole. Every part of it is cached — the
- * candidates under their (ground, recipe) key, the pictures per candidate grid — so returning to a
- * kind must stand its cards up at once rather than blanking them, sitting out the settle, and
- * asking the pool for maps it already holds.
- */
+/** Candidates are cached by (ground, recipe) and pictures per candidate grid, so returning to a kind
+ *  stands its cards up at once. */
 describe('returning to a kind already photographed', () => {
   it('stands the batch up at once: no pending cards, no rebuilt candidates', async () => {
     __resetCandidateCache();
@@ -1358,7 +1229,7 @@ describe('returning to a kind already photographed', () => {
     setMapRenderer({
       captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
     } as unknown as MapRenderer);
-    // The real builder, so the candidate cache is filed exactly as the app files it.
+    // The real builder, so the candidate cache is filed as the app files it.
     vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
     mount();
 
@@ -1366,21 +1237,19 @@ describe('returning to a kind already photographed', () => {
     const pictured = (): number => cards().filter((c) => c.querySelector('img[src^="data:image/png"]')).length;
     await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
 
-    // The shelf opens on the maze; the island is the second kind photographed, and the return to
-    // the maze is the moment under test.
+    // The shelf opens on the maze; the return to it is under test.
     fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
     await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
 
     const built = vi.mocked(barrelCandidate).mock.calls.length;
     fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
-    // Microtasks only — the settle timer has not fired, so any picture standing is the cache's.
+    // Microtasks only: the settle timer has not fired, so any picture is the cache's.
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
     expect(pictured(), 'the cards never went pending').toBe(CANDIDATES);
     expect(vi.mocked(barrelCandidate).mock.calls.length, 'no candidate was rebuilt').toBe(built);
   }, 60_000);
 
-  /** The picture kinds ride one more cache — the built plan — and return the same way once it and
-   *  the candidates both answer. */
+  /** The picture kinds also cache their built plan. */
   it('stands a letter batch up the same way, without rasterizing a plan', async () => {
     __resetCandidateCache();
     installKit();
@@ -1400,8 +1269,7 @@ describe('returning to a kind already photographed', () => {
     vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
     mount();
 
-    // A letter card is named by its word, not by a recipe number, so the count is of the cards'
-    // pictures themselves.
+    // A letter card is named by its word, so the pictures themselves are counted.
     const pictured = (): number => document.querySelectorAll('img[src^="data:image/png"]').length;
     fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
     await waitFor(() => expect(pictured()).toBeGreaterThan(0), { timeout: 20_000 });
@@ -1420,10 +1288,9 @@ describe('returning to a kind already photographed', () => {
 });
 
 /**
- * The picture kinds' own strip. A letter stands one layer on the ground it is written on, so it has
- * no tallest layer to choose and the knob is gone from that kind entirely; the picture's heights are
- * its colours, so the knob it inherited is the depth of the terrain ramp and it goes with the ramp
- * when the picture is tiled with items instead.
+ * The picture kinds' strip. A letter stands one layer on its ground, so it has no tallest layer; a
+ * picture's heights are its colours, so its tallest layer is the depth of the terrain ramp and means
+ * nothing when the picture is tiled with items.
  */
 describe('what a picture is built from', () => {
   const knobs = (): string[] =>
@@ -1433,11 +1300,7 @@ describe('what a picture is built from', () => {
   const segment = (testId: string, name: string): HTMLElement =>
     within(screen.getByTestId(testId)).getByRole('button', { name });
 
-  /**
-   * What stands in the strip, in order, and nothing about what state it is in: each control by its
-   * own name, so a knob that went missing, arrived, or changed places between two materials shows up
-   * as a different shape.
-   */
+  /** Each control in the strip by name, in order, regardless of state. */
   const stripShape = (): string[] =>
     [...screen.getByTestId('shell-gen-strip').children].map((c) => {
       const own = c.getAttribute('data-testid') ?? c.querySelector('[data-testid]')?.getAttribute('data-testid');
@@ -1457,15 +1320,11 @@ describe('what a picture is built from', () => {
   it('gives a letter no tallest layer at all, since it stands one layer on its own ground', async () => {
     await open('Letter');
     expect(knobs()).not.toContain('Tallest layer');
-    // And the material is still there: what a letter is made of is the whole of its settings now.
     expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Objects', 'Prints']);
   }, 30_000);
 
-  // A knob that cannot act stands dimmed and refusing rather than leaving the row, so the strip
-  // keeps one shape across every material of both modes and nothing shifts under the pointer.
-
-  /** Arm the letter's item, so that choosing Objects is a material change rather than a trip
-   *  through the item shelf. That trip is the declared screen idiom and not what is under test. */
+  /** Arm the letter's item, so choosing Objects is a material change rather than a trip through the
+   *  item shelf. */
   async function armItem(): Promise<void> {
     await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Objects')); });
     const name = localizedName(getCatalogByCategory(ItemCategory.Flora)[0]!.name, 'en');
@@ -1492,28 +1351,24 @@ describe('what a picture is built from', () => {
     const layer = () => screen.getByRole('slider', { name: 'Tallest layer' });
     expect(layer().getAttribute('aria-disabled')).toBeNull();
 
-    // Mixed is terrain with objects at its anchor points, so the ramp is still its ground and the
-    // knob still means something.
+    // Mixed is terrain with objects at its anchor points, so the ramp is still its ground.
     await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Mixed')); });
     expect(layer().getAttribute('aria-disabled')).toBeNull();
 
     await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Flowers')); });
-    // Tiled with items, a picture has no ramp to be deep. The knob stays where it was, refusing.
     expect(layer().getAttribute('aria-disabled')).toBe('true');
     expect(layer().getAttribute('aria-valuetext')).toBe('n/a');
 
     cleanup();
     await open('Letter');
-    // The letter's own standing knob is the item its shape is tiled with.
+    // A letter's dimmed control is the item its shape is tiled with.
     const chip = () => screen.getByTestId('shell-gen-item');
     expect(chip().getAttribute('aria-disabled')).toBe('true');
     await armItem();
     expect(chip().getAttribute('aria-disabled')).toBe('false');
   }, 60_000);
 
-  /** Roads are a palette of nine and twenty surfaces and the object split is three readings of the
-   *  catalogue, so both are a picture's. A letter is tiled with one item, which the item shelf
-   *  chooses. */
+  /** A letter is tiled with one item, which the item shelf chooses. */
   it('offers the object split and the path surfaces to a picture, and neither to a letter', async () => {
     await open('Picture');
     expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Mixed', 'Flowers', 'Trees', 'Paths']);
@@ -1522,8 +1377,7 @@ describe('what a picture is built from', () => {
     expect(segments('shell-gen-fill')).toEqual(['Mountain', 'Water', 'Objects', 'Prints']);
   }, 30_000);
 
-  /** There is no accent switch: mixed carries the idea, so a picture's decoration follows from the
-   *  material rather than from a knob standing beside it. */
+  /** Mixed carries the accent, so decoration follows from the material. */
   it('offers no accent switch on either picture kind', async () => {
     await open('Picture');
     expect(screen.queryByRole('switch', { name: 'Accent' })).toBeNull();
@@ -1532,13 +1386,7 @@ describe('what a picture is built from', () => {
     expect(screen.queryByRole('switch', { name: 'Accent' })).toBeNull();
   }, 30_000);
 
-  /**
-   * The ramp is as deep as the kind allows, not as deep as the last kind left it.
-   *
-   * The shelf opens on the maze, whose walls stop at layer 3, and one shared value would carry that
-   * ceiling into the picture: every picture told in three greens by default, a flat,
-   * sparse result. Each kind keeps its own.
-   */
+  /** Each kind keeps its own tallest layer, so the maze's ceiling of 3 does not carry into a picture. */
   it('gives a picture the whole ramp even after the maze, which caps at three', async () => {
     await open('Maze');
     const layer = () => screen.getByRole('slider', { name: 'Tallest layer' });
@@ -1551,15 +1399,11 @@ describe('what a picture is built from', () => {
     expect(layer().getAttribute('aria-valuenow')).toBe(String(ELEVATION_MAX));
   }, 30_000);
 
-  /**
-   * The armed item is switchable at any time. Choosing objects for a letter opens the item shelf
-   * once, on the way in; without the chip nothing on screen would say which item was chosen or
-   * offer another: the chip is both.
-   */
+  /** The chip names the chosen item and is the way back to the shelf that changes it. */
   it('keeps a letter\'s chosen item on the strip, and reopens the shelf that changes it', async () => {
     await open('Letter');
     await act(async () => { fireEvent.click(segment('shell-gen-fill', 'Objects')); });
-    // The shelf that chooses one stands in for this one, exactly as the scope screen does.
+    // The item shelf stands in for this one, as the scope screen does.
     expect(screen.queryByTestId('shell-gen-strip')).toBeNull();
 
     const item = getCatalogByCategory(ItemCategory.Flora)[0]!;
@@ -1570,17 +1414,13 @@ describe('what a picture is built from', () => {
 
     const chip = screen.getByTestId('shell-gen-item');
     expect(chip.textContent).toContain(name);
-    // And it is the way back: the whole point of the chip over a one-time trip through the shelf.
     fireEvent.click(chip);
     expect(screen.queryByTestId('shell-gen-strip')).toBeNull();
   }, 30_000);
 });
 
-/**
- * A word refused before it is built. The region gate answers for one glyph; a row of them divides
- * the region's width between themselves, so the floor scales with the word and the card says which
- * to change rather than photographing a row of smudges.
- */
+/** The region gate answers for one glyph; a word divides the region's width between its glyphs, so
+ *  the floor scales with the word and the card says so rather than picturing smudges. */
 describe('a word too long for its region', () => {
   it('leaves the pending state after fonts load even when no batch sample fits', async () => {
     installKit();
@@ -1685,12 +1525,7 @@ describe('a word too long for its region', () => {
   }, 30_000);
 });
 
-/**
- * What a text run did with the ground it was given. The three buckets are separate things and each
- * count is only true of its own, so the toast names the largest rather than adding them up — and a
- * run that wrote nothing because the ground is already at the top speaks whatever the counts say,
- * being otherwise indistinguishable from a run with nothing to write.
- */
+/** The three buckets are separate, so the toast names the largest rather than adding them up. */
 describe('the outcome of a letter', () => {
   const outcome = (
     stencil: { offBase: number; unsupported: number; atCeiling: number }, placed: number, budget?: 'adapted',
@@ -1703,8 +1538,7 @@ describe('the outcome of a letter', () => {
     [{ offBase: 6, unsupported: 1, atCeiling: 0 }, 20, /6 cells were left out: they stand on different ground/],
     [{ offBase: 0, unsupported: 4, atCeiling: 0 }, 20, /4 cells .* edge of the ground below/],
     [{ offBase: 3, unsupported: 0, atCeiling: 9 }, 0, /9 cells .* already at the tallest layer/],
-    // One cell is an ordinary outcome here: a word clips a step by a single cell all the time, so
-    // the singular is a reading the app ships rather than an edge case.
+    // A word often clips a step by a single cell, so the singular ships.
     [{ offBase: 1, unsupported: 0, atCeiling: 0 }, 20, /^1 cell was left out: it stands on different ground\.$/],
   ])('says the largest reason a word came up short (%#)', async (counts, placed, said) => {
     installKit();
@@ -1722,9 +1556,8 @@ describe('the outcome of a letter', () => {
   }, 30_000);
 
   it('says so when a run laid none of it, where nothing else can', async () => {
-    // The silent press. A run whose glyph had no ink to lay never reaches the ground, so it reports
-    // no base tier at all and every bucket above is empty. Left unsaid, that leaves the map and the
-    // screen unchanged, which reads as a broken button.
+    // A glyph with no ink never reaches the ground, so no bucket counts it; unsaid, the press would
+    // read as a broken button.
     installKit();
     vi.mocked(barrelGenerateMap).mockResolvedValue({
       cells: [], placed: 0, removedCells: 0, removedObjects: 0, violations: [], cancelled: false,
@@ -1773,10 +1606,6 @@ describe('the outcome of a letter', () => {
   }, 30_000);
 });
 
-/**
- * The two things a run that laid nothing has to get right, held directly rather than through a mount:
- * that it says something at all, and that it says the right kind's line.
- */
 describe('the picture examples', () => {
   it('resolves the logo and every registered neighbor portrait', () => {
     expect(IMAGE_POOL.length).toBeGreaterThanOrEqual(CANDIDATES);
@@ -1824,11 +1653,8 @@ describe('the batch', () => {
   }, 60_000);
 });
 
-/**
- * Which kinds offer the visitor's own card is decided when the app is built. A development build
- * offers every card; a released build withholds the Letter and Picture ones, and the shelf shows
- * the row without them rather than a card that cannot be used.
- */
+/** A development build offers every own card; a release withholds the Picture one and shows the row
+ *  without it. */
 describe('the own card per build', () => {
   type Shelf = typeof import('../../../../../ui/shell/bars/generate/generate-shelf');
   const released = async (): Promise<(kind: Parameters<Shelf['hasCustomCard']>[0]) => boolean> => {
@@ -1866,11 +1692,8 @@ describe('the own card per build', () => {
   }, 30_000);
 });
 
-/**
- * Reduced motion swaps every animated part for its settled state at once. Returning to a kind whose
- * batch is cached repaints its pictures from promises while the row of names and the two scroll rows
- * re-measure on each render, which must not feed itself into a render loop.
- */
+/** Returning to a cached kind repaints from promises while the scroll rows re-measure each render;
+ *  under reduced motion that must not become a render loop. */
 describe('the shelf under reduced motion', () => {
   it('walks Maze, Letter, Planet and back to Maze without failing', async () => {
     __resetCandidateCache();

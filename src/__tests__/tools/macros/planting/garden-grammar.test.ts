@@ -1,11 +1,7 @@
 /**
- * Garden grammar: the press reads what it is `BESIDE`.
- *
- * What is pinned here is the choice (building before road before wild, from the object index alone),
- * the two compositions it leads to, the navigation regulation both of them keep (nothing on a
- * house's gate strip, nothing on a paved cell), and the two claims that make the feature honest —
- * the ghost previews the composition the press will lay, and a hold over one lays it again rather
- * than growing it into a wood.
+ * Garden grammar: a planting press reads what it stands beside (building before road before open
+ * ground), lays a bed or a border that keeps gate strips and pavement clear, previews exactly what it
+ * lays, and a hold relays the same composition rather than growing it.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, it, expect } from 'vitest';
@@ -81,7 +77,7 @@ function planted(state: GridState): Map<string, PlacedObject> {
 const shapeOf = (state: GridState): string => [...state.objects.values()]
   .map((o) => `${o.catalogId}@${o.position.x},${o.position.y}`).sort().join('|');
 
-/** The cells at Chebyshev ring `d` around a footprint — the bed's own geometry, restated. */
+/** The cells at Chebyshev ring `d` around a footprint. */
 function ring(obj: PlacedObject, d: number): MacroCoord[] {
   const r = objectRect(obj);
   const x0 = Math.floor(r.x) - d, x1 = Math.ceil(r.x + r.w) - 1 + d;
@@ -115,8 +111,7 @@ describe('which grammar a press falls under', () => {
     const kit = setup();
     const out = applyMacro(kit, 'patch-flora', { seed: 4, at: OPEN, radius: RADIUS });
     expect(out.changes).toBeGreaterThan(0);
-    // Not a composition: a stand is drawn from the ecology and reaches more than a ring's worth of
-    // species (a bed is one colour and an accent).
+    // A wild stand is drawn from the ecology, so it holds more species than a bed's colour and accent.
     const species = new Set([...kit.state.objects.values()].map((o) => o.catalogId));
     expect(species.size).toBeGreaterThan(2);
   });
@@ -142,7 +137,7 @@ describe('the bed around a building', () => {
       bedded++;
     }
     expect(bedded, 'the ring is too small to be a bed').toBeGreaterThan(12);
-    // One colour with an accent through it, not a species lottery.
+    // One colour and an accent.
     expect(new Set([...kit.state.objects.values()]
       .filter((o) => categoryOf(o) === ItemCategory.Flora).map((o) => o.catalogId)).size).toBeLessThanOrEqual(2);
   });
@@ -151,7 +146,6 @@ describe('the bed around a building', () => {
     const { kit, cabin } = withCabin();
     expect(applyMacro(kit, 'patch-tree', { seed: 4, at: BESIDE, radius: RADIUS }).changes).toBeGreaterThan(0);
     const at = planted(kit.state);
-    // A tree against the wall is a hedge nobody can get past.
     for (const c of ring(cabin, 1)) expect(at.has(`${c.x},${c.y}`), `a tree stands against the wall at ${c.x},${c.y}`).toBe(false);
     const framed = ring(cabin, 2).filter((c) => at.has(`${c.x},${c.y}`));
     expect(framed.length, 'the house was not framed at all').toBeGreaterThan(6);
@@ -167,7 +161,6 @@ describe('the border along a road', () => {
     const flora = [...kit.state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Flora);
     expect(flora.length).toBeGreaterThan(8);
     for (const o of flora) {
-      // Beside the road, never on it, and never further than the border row.
       expect(o.position.y, `a flower was planted on the road at ${o.position.x},${o.position.y}`).not.toBe(ROAD_Y);
       expect(Math.abs(o.position.y - ROAD_Y)).toBe(1);
     }
@@ -179,7 +172,7 @@ describe('the border along a road', () => {
     const trees = [...kit.state.objects.values()].filter((o) => categoryOf(o) === ItemCategory.Tree);
     expect(trees.length).toBeGreaterThan(3);
     for (const o of trees) expect(Math.abs(o.position.y - ROAD_Y)).toBe(1);
-    // A line with gaps to walk through: fewer trees than the border has cells.
+    // Gaps to walk through: one side carries fewer trees than the disc is wide.
     const border = trees.filter((o) => o.position.y === ROAD_Y - 1).length;
     expect(border).toBeLessThan(2 * RADIUS);
   });
@@ -207,7 +200,7 @@ describe('a composition does not grow', () => {
     const bed = shapeOf(kit.state);
     expect(bed.length).toBeGreaterThan(0);
 
-    // The next burst of the same hold: its own seed, the hold's anchor seed, one step older.
+    // The next burst of the same hold: its own seed, the hold's anchor seed, the next stage.
     const next = applyMacro(kit, 'patch-flora', {
       seed: 5, at: BESIDE, radius: RADIUS, stage: 2, anchorSeed: 4,
     });

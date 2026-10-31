@@ -1,8 +1,10 @@
 /**
  * Drag-to-move as an edit: the session a press on a selected object begins, which previews the drop
  * as the pointer travels and commits it on release (one object as an atomic remove and place, a
- * plural selection as one group move), or reports why it was refused. The pointer side keeps the
- * drag threshold and reads the map point under the pointer; everything the drop means is here.
+ * plural selection as one group move), or reports why it was refused. A copy drag (Ctrl, EDIT-60)
+ * carries a copy of the selection instead and places it whole, leaving the originals. The pointer
+ * side keeps the drag threshold and reads the map point under the pointer; everything the drop
+ * means is here.
  */
 import type { CommandExecutor } from '../../../core/commands/command-executor';
 import type { GridState, MacroCoord, PlacedObject, Refusal } from '../../../core/model/types';
@@ -18,6 +20,11 @@ import { planObjectMove } from '../../placement/probe';
 import { moveObject } from '../../objects/actions';
 import { groupMembers, moveGroup, planGroupMove } from '../../objects/group-actions';
 import type { ToolOverlay } from '../runtime/view-seam';
+import type { NoticeTone } from '../runtime/types';
+import type { Translate } from '../../../i18n/keys';
+import type { Arrangement } from '../../../state/clipboard';
+import { copyArrangement, pasteArrangement, planPaste, type PasteDoor } from '../../objects/arrangement';
+import { reportPaste, showCopyGhost } from './paste';
 
 /** What a drag reads and writes outside the map: the session's map, executor and selection, and the
  *  channel a refusal is reported on. */
@@ -25,13 +32,17 @@ export interface ObjectDragPort {
   state(): GridState | null;
   executor(): CommandExecutor | null;
   selection(): readonly BlockRef[];
+  /** Selects what a drop moved or placed; the drop's undo step carries it. */
   setSelection(blocks: BlockRef[]): void;
   report(refusal: Refusal | null | undefined): void;
+  /** Says what a copy drag left out, in `t`'s words. */
+  notify(text: string, tone: NoticeTone): void;
+  t: Translate;
 }
 
 /** The view a preview draws on and a drop plays its landing cue in. */
 export interface ObjectDragView {
-  overlay: Pick<ToolOverlay, 'showGhost' | 'showObjectMove'>;
+  overlay: Pick<ToolOverlay, 'showGhost' | 'showObjectMove' | 'showGroupPlacementGhost'>;
   plopObject(id: string): void;
 }
 
@@ -72,14 +83,23 @@ export class ObjectDragSession {
   // lands on the same cell as the previous one changes nothing about the ghost, so this skips
   // re-running the group's O(members) validity re-check and rebuilding the ghost geometry.
   private lastGhostKey: string | null = null;
+  /** A copy drag's arrangement and where its outline stood when it was picked up. */
+  private copy: { arrangement: Arrangement; origin: MacroCoord } | null = null;
 
   constructor(private readonly port: ObjectDragPort) {}
 
   /** Begins a move of the selection anchored on `anchorId`, grabbed at map point `grab`, or at
    *  `fallback` (the pressed cell) when no view reads the pointer. Returns whether it began. */
-  begin(anchorId: string, grab: MapPoint | null, fallback: MacroCoord): boolean {
-    const obj = this.port.state()?.objects.get(anchorId);
-    if (!obj) return false;
+  begin(anchorId: string, grab: MapPoint | null, fallback: MacroCoord, copy = false): boolean {
+    const gs = this.port.state();
+    const obj = gs?.objects.get(anchorId);
+    if (!gs || !obj) return false;
+    this.copy = null;
+    if (copy) {
+      const taken = copyArrangement(gs, groupDragIds(this.port.selection(), anchorId) ?? [anchorId]);
+      if (!taken.arrangement) return false;
+      this.copy = { arrangement: taken.arrangement, origin: taken.origin };
+    }
     this.objectId = anchorId;
     // The grab offset, at the same granularity the preview and the drop read the pointer at
     // (offset {0,0}: nothing is grabbed yet): half-cell for a halfStep ramp or bridge, so a grab
@@ -94,6 +114,7 @@ export class ObjectDragSession {
   /** Ends the session without committing anything. */
   cancel(): void {
     this.objectId = null;
+    this.copy = null;
   }
 
   /** Draws the drop the pointer at `point` would make: the footprint wash and the moved bodies,
@@ -103,6 +124,16 @@ export class ObjectDragSession {
     const executor = this.port.executor();
     const obj = this.objectId ? gs?.objects.get(this.objectId) : undefined;
     if (!obj || !executor || !gs) return;
+    if (this.copy) {
+      const { dx, dy } = this.groupDelta(obj, point);
+      const ghostKey = `copy|${dx}|${dy}`;
+      if (ghostKey === this.lastGhostKey) return;
+      this.lastGhostKey = ghostKey;
+      const { arrangement, origin } = this.copy;
+      const plan = planPaste(executor.getRegistry(), gs, arrangement, { x: origin.x + dx, y: origin.y + dy });
+      showCopyGhost(view.overlay, plan.objects, plan.valid);
+      return;
+    }
     const groupIds = groupDragIds(this.port.selection(), obj.id);
     if (groupIds) {
       // A group drag moves by whole cells: half steps would push the members without halfStep
@@ -147,11 +178,31 @@ export class ObjectDragSession {
   /** Commits the drop at map point `point` and ends the session. */
   commit(view: ObjectDragView, point: MapPoint): void {
     const movedId = this.objectId;
+    const copy = this.copy;
     this.objectId = null;
+    this.copy = null;
     const gs = this.port.state();
     const executor = this.port.executor();
     const obj = movedId ? gs?.objects.get(movedId) : undefined;
     if (!obj || !gs || !executor) return;
+
+    if (copy) {
+      const { dx, dy } = this.groupDelta(obj, point);
+      if (dx === 0 && dy === 0) return;
+      const door: PasteDoor = {
+        state: gs, registry: executor.getRegistry(),
+        execute: (cmd) => executor.execute(cmd), beginStroke: () => executor.beginStroke(),
+      };
+      const at = { x: copy.origin.x + dx, y: copy.origin.y + dy };
+      const capped = planPaste(door.registry, gs, copy.arrangement, at).capped;
+      const res = pasteArrangement(door, copy.arrangement, at, (placed) => view.plopObject(placed.id));
+      this.port.report(res.refusal);
+      if (res.placed.length === 0) return;
+      reportPaste({ ...res, nearby: false, noRoom: false, capped }, this.port.t, this.port.notify);
+      // The copy becomes the selection, so the next Ctrl+drag carries the pattern on.
+      this.port.setSelection(res.placed.map((id) => ({ kind: 'object', id })));
+      return;
+    }
 
     const groupIds = groupDragIds(this.port.selection(), obj.id);
     if (groupIds) {

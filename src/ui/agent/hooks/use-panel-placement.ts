@@ -1,6 +1,7 @@
 /*
  * Where the panel stands: free inside the frame, or pinned to a window edge where it follows the
- * sheet's parallax. Pin intent persists; a narrow window releases the pin without clearing it.
+ * sheet's parallax. Pin intent persists; a narrow window releases the pin without clearing it. On an
+ * upright window the open panel always stands at the foot, as deep as the dock's depth.
  */
 import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type RefObject } from 'react';
 import { showToast } from '../../../platform/channels/toast-bus';
@@ -9,9 +10,11 @@ import { useEditorStore } from '../../../state/store';
 import { cssMotion } from '../../design/motion';
 import { z } from '../../design/styles';
 import {
-  DOCK_PARALLAX, PANEL_LEFT, PINNED_PANEL, dockEdge, dockTravelSign, panelMaxHeight, panelTop,
+  PINNED_PANEL, bottomDockHeight, dockDrift, dockEdge, panelMaxHeight, panelTop,
 } from '../../shell/panel-frame';
-import { dockAside, useDockStage, usePinRoom } from '../../shell/use-dock';
+import { axisOf, dockAside, useDockDepth, useDockStage, usePinRoom } from '../../shell/use-dock';
+import { useFrameLayout } from '../../shell/frame-layout';
+import { LANDSCAPE_BAR, LANDSCAPE_PANEL } from '../../shell/frame-plan';
 import { GATE_BORROW, JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../desk/plate';
 
 /** Minimum usable height: fixed panel chrome plus the minimum job zone. */
@@ -32,20 +35,26 @@ export function usePanelPlacement({ t, veiled, planGateStanding }: {
   const switchSide = useCallback(() => {
     setSide(useEditorStore.getState().assistantDockSide === 'left' ? 'right' : 'left');
   }, [setSide]);
-  // Notify only when an already-usable pin loses room.
+  const { place, edge, aside } = useDockStage();
+  const axis = axisOf(edge);
+  const depth = useDockDepth();
+  // Notify only when an already-usable pin loses room on a wide window; an upright one docks at its
+  // foot whatever the width, so a turn to it loses nothing.
   const hadRoom = useRef(pinRoom);
   useEffect(() => {
     const lost = hadRoom.current && !pinRoom;
     hadRoom.current = pinRoom;
-    if (lost && pinIntent) showToast(t('agent.pin_no_room'), 'info');
-  }, [pinRoom, pinIntent, t]);
+    if (lost && pinIntent && axis === 'x') showToast(t('agent.pin_no_room'), 'info');
+  }, [pinRoom, pinIntent, axis, t]);
 
-  const { place, side, aside } = useDockStage();
+  const layout = useFrameLayout();
+  const { left, top } = layout?.panel ?? LANDSCAPE_PANEL;
+  const tabsTop = (layout?.bar ?? LANDSCAPE_BAR).tabsTop;
   const pinned = place === 'ground';
-  const maxHeight = pinned
-    ? PINNED_PANEL.height
-    : panelMaxHeight(mode, PANEL_LEAST, planGateStanding ? GATE_BORROW : 0);
-  const drift = (1 - aside) * DOCK_PARALLAX * dockTravelSign(side) * -1;
+  const maxHeight = !pinned
+    ? panelMaxHeight(mode, PANEL_LEAST, planGateStanding ? GATE_BORROW : 0, { top, tabsTop })
+    : edge === 'bottom' ? bottomDockHeight(depth) : PINNED_PANEL.height;
+  const drift = dockDrift(aside, edge);
   // MotionValue updates transform between React renders; cleanup removes the parallax transform.
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -55,20 +64,19 @@ export function usePanelPlacement({ t, veiled, planGateStanding }: {
     const off = dockAside.on('change', (v) => {
       const el = wrap.current;
       if (!el) return;
-      const d = (1 - v) * DOCK_PARALLAX * dockTravelSign(side) * -1;
-      el.style.transform = d !== 0 ? `translateX(${d}px)` : '';
+      el.style.transform = dockDrift(v, edge);
     });
     return () => {
       off();
       if (wrap.current) wrap.current.style.transform = '';
     };
-  }, [pinned, side]);
+  }, [pinned, edge]);
   const away = place === 'leaving' || place === 'folded';
   const wrapper: CSSProperties = useMemo(() => ({
     position: 'fixed',
-    ...(pinned
-      ? { [dockEdge(side)]: PINNED_PANEL.edge, top: PINNED_PANEL.top, bottom: 0 }
-      : { left: PANEL_LEFT, top: panelTop(PANEL_LEAST) }),
+    ...(!pinned ? { left, top: panelTop(PANEL_LEAST, top) }
+      : edge === 'bottom' ? { left: 0, right: 0, bottom: 0, height: maxHeight, flexDirection: 'column' }
+      : { [dockEdge(edge)]: PINNED_PANEL.edge, top: PINNED_PANEL.top, bottom: 0 }),
     display: 'flex',
     // Invisible pin phases must not intercept map input.
     pointerEvents: away ? 'none' : 'auto',
@@ -77,15 +85,15 @@ export function usePanelPlacement({ t, veiled, planGateStanding }: {
     opacity: veiled ? 0 : 1,
     visibility: veiled ? 'hidden' : 'visible',
     transition: cssMotion(veiled ? 'frame.veil' : 'frame.unveil', ['opacity', 'visibility']),
-    ...(pinned && drift !== 0 ? { transform: `translateX(${drift}px)` } : null),
-  } as CSSProperties), [pinned, side, drift, planGateStanding, veiled, away]);
+    ...(pinned && drift !== '' ? { transform: drift } : null),
+  } as CSSProperties), [pinned, edge, maxHeight, left, top, drift, planGateStanding, veiled, away]);
 
   return {
     wrapRef: wrapRef as RefObject<HTMLDivElement>,
     wrapper,
     maxHeight,
     place,
-    side,
+    edge,
     pinned,
     pinBlocked: !pinRoom,
     togglePin,

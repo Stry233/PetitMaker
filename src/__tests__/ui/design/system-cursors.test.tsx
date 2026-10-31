@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The "System cursors" preference, end to end.
- *
- * A custom CSS cursor is an image, so it cannot honour the pointer size or theme a user set in
- * their operating system. Flipping the preference must reach all three places a cursor is
- * resolved, and flipping it back must restore the app's own set.
- *
- * The three: `cursorCss` (which the canvas and a handful of components call), the four custom
- * properties on <html> (which every DOM surface reads through `cursors.css` and the `cursors`
- * tokens), and the canvas controller's already-written surface.
+ * The "System cursors" preference, end to end. An image cursor cannot honour the OS pointer size or
+ * theme, so the preference reaches all three places a cursor is resolved: `cursorCss`, the four
+ * custom properties on <html> that DOM surfaces read, and the canvas controller's written surface.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
@@ -44,13 +38,12 @@ afterEach(() => {
 
 describe('system cursors: the value producer', () => {
   it('hands back a bare keyword for EVERY id, badge included', () => {
-    // Resolve first, so the memo is warm: a cached url() must not be able to answer for a
-    // preference it was not built under.
+    // Warm the memo first, so a cached url() would show.
     for (const id of DRAWN) cursorCss(id);
 
     for (const id of CURSOR_IDS) {
       expect(cursorCss(id, { system: true })).toBe(CURSORS[id].fallback);
-      // A keyword cursor cannot carry the forbidden badge, so the badge cannot resurrect an image.
+      // A keyword cursor carries no forbidden badge, so the badge cannot bring an image back.
       expect(cursorCss(id, { forbidden: true, system: true })).toBe(CURSORS[id].fallback);
     }
   });
@@ -60,7 +53,7 @@ describe('system cursors: the value producer', () => {
 
     for (const id of DRAWN) {
       expect(cursorCss(id)).toContain('url(');
-      // The keyword is still there, as the mandatory fallback after the image.
+      // The keyword stays as the fallback after the image.
       expect(cursorCss(id).endsWith(CURSORS[id].fallback)).toBe(true);
     }
   });
@@ -81,8 +74,7 @@ describe('system cursors: the DOM', () => {
   });
 
   it('re-publishes when the store flips, without the component being told', () => {
-    // The gate: with `[]` deps on the effect, nothing after the first mount can change what
-    // <html> carries.
+    // The hook follows the store after mount, not only on it.
     function Host() { useCursorVars(); return null; }
     render(<Host />);
     expect(domProp('clickable')).toContain('url(');
@@ -104,8 +96,8 @@ describe('system cursors: the DOM', () => {
 
 describe('system cursors: the canvas', () => {
   it('repaints the surface even though nothing about the cursor STATE changed', () => {
-    // The gate: the controller skips a write whose resolved value matches the last one, and the
-    // preference changes what every id resolves to without touching any of its inputs.
+    // The controller skips a write matching the last resolved value, and the preference changes what
+    // an id resolves to without touching the cursor state.
     const el = document.createElement('div');
     registerCursorSurface(el);
     setToolCursor('mountain');

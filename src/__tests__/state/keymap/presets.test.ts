@@ -34,8 +34,8 @@ describe('keymap presets', () => {
 
   it('pro reproduces the pre-game-layout defaults exactly', () => {
     const pro = presetBinds(PRESETS.find((p) => p.id === 'pro')!);
-    // The frozen 2026-08-09 shipped layout. This fixture is history, not derivation:
-    // if it fails, the pro map drifted, not this list.
+    // The shipped layout, frozen: this fixture is a record, not a derivation. If it fails, the pro
+    // map drifted, not this list.
     const frozen: Record<string, string> = {
       'surface.mountain': '1', 'surface.river': '2', 'surface.road': '3',
       'tool.move': 'v', 'tool.brush': 'b', 'tool.erase': 'e', 'tool.rect': 'r',

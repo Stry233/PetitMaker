@@ -4,6 +4,73 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.673] - 2026-10-31
+
+### Added
+
+- Added a touch mode. PetitMaker switches to it when you use a finger or a pen and back when you use a mouse or keyboard. In touch mode buttons and text are larger, and holding a control shows its name.
+- Added an upright layout. On an upright screen or a narrow window, the modes move to the bottom, panels open upward from there, and the layer control, undo and redo move to the right. The assistant opens below the map and its edge can be dragged to resize it; a handle at the top of the object shelf sets the shelf's height.
+- Added copy, cut and paste for objects. Select objects and press Ctrl+C, Ctrl+X and Ctrl+V, or use Paste in the right-click menu or the touch long-press menu. Click a cell first to paste with it as the top-left corner. A copy keeps the objects' arrangement, facing and height differences, and can be pasted into PetitMaker open in another tab. Hold Ctrl and drag selected objects to drag out a copy.
+- Added placing many objects at once. The Object brush beside the object shelf's search offers Place and Paint; Paint lays objects along a brush shape with a Spacing you choose. Ctrl+click several cards to place them in turn.
+- Added touch gestures: hold an object to open its menu, tap with two fingers to undo, double tap empty map to zoom in, pinch to zoom and twist to turn the 3D view.
+- Added Multi-select for touch. Choose Multi-select in an object's menu, then tap objects to add or remove them, or drag to select an area.
+- Added a magnifier. While you place an object or use a brush, the eraser, Edge Cut or a note tool on a touchscreen, the cells under your finger show enlarged above it.
+- Added the welcome tips, which replace the first-launch tour. Each card has a demonstration recorded in your language, and most cards offer Show me to try the steps in the editor, which is put back afterwards. People who saw the old tour see the tips once more; Settings and Help open them again.
+- Added planning on the map for the assistant. For work across several areas or a whole map, it draws the plan as annotations first and builds after you approve it. The plan's annotations stay on the map after building.
+- Added building from annotations. The assistant can build from the zones, tag chips and routes you drew, and tells you what it could not build.
+- Added a folded mode row for narrow windows. When the top row cannot fit every mode, the modes stack into one, which opens when pressed.
+- Added search to the Model menu in Map illustration, where you can also type a model ID.
+
+### Changed
+
+- Placing objects by touch now shows where the object will go and places it when you lift your finger, and the card stays selected so you can keep placing. Before, an object was placed as soon as your finger touched the map.
+- Selecting and deselecting objects can be undone. Undoing an edit brings back the selection with it.
+- After the last of an item with a limit per map is placed, its card is deselected.
+- An object larger than one cell is centred on the pointer while you place it. Before, the pointer held its top left corner.
+- UI scale changes in 5% steps instead of 10%. Touch mode has a scale of its own.
+- On short screens, a window's title and buttons stay in place and only the content between them scrolls. Before, the whole window scrolled.
+- In a narrow window, Help shows its list of pages and the page separately. Before, the list stood above the page.
+- The notice showing your current planet moves below the modes, hides once you start working, and shows behind open windows.
+- Escape cancels a stroke, a move or a placement in progress.
+- The editor opens sooner on slow connections.
+- Painting and erasing on large maps is faster, especially near roads and in the 3D view.
+- While you use touch, Help describes touch controls. Help search also finds the words shown on its pages.
+- On a phone held upright, the editor opens in the upright layout. Before, it asked you to turn the device.
+- The installed app turns with the screen and enters Immersive mode at your first tap. Before, it was landscape only.
+- The Motion setting's System choice is renamed Auto, and each choice shows a preview.
+- The Cursor setting's Painted choice is renamed Built-in.
+- Save and share switches to For a friend faster.
+- Sliders glide between their stops as you drag them.
+- Busy buttons such as Export show a loading animation.
+- The QQ channel's name in About and on the contact pages is updated.
+
+### Fixed
+
+- Fixed search results in Help not showing.
+- Fixed the loading screen stopping short of 100% and taking half a minute to open the editor in some browsers.
+- Fixed the map check in Save and share often not finishing on phones and slower computers.
+- Fixed the first tap on the map on a touchscreen only closing a hint bubble.
+- Fixed moving the map with two fingers while a tool is picked showing failure messages.
+- Fixed road corner cuts keeping their direction when a selection is rotated.
+- Fixed a two-finger twist turning the 3D view the opposite way.
+- Fixed some layers not showing in the layer panel at large UI scales.
+- Fixed the current layer's name being cut off in the layer control in short windows or at large UI scales.
+- Fixed the assistant panel covering the paving styles in Roads and the tags in Annotations.
+- Fixed rows overlapping in the assistant's build progress.
+- Fixed the menu opening off screen after leaving the planet editor or a hand repair.
+- Fixed the assistant's character covering the object shelf and the Generate category names in short windows.
+- Fixed the assistant's character changing pose while you read its pages in Help.
+- Fixed the buttons above a selected annotation sitting off centre, ignoring UI scale, and being covered near the top of the window.
+- Fixed lists and panels jumping at the end of their animations when UI scale is not 100%.
+- Fixed the version line and the source link in About running under the close button.
+- Fixed the Regional load window having no Close button.
+- Fixed Help wrongly saying that a right-click selects terrain.
+- Fixed pages opened from What's this? or a hint's Help link being covered by search results in Help.
+- Fixed the control name in What's this? being cut off in narrow windows and covering the control at the top of the window.
+- Fixed the What's this? banner running past the window edges in narrow windows in some languages.
+- Fixed the Chunk bounds picture in Settings drawing solid lines while the map draws dashed ones.
+- Fixed the lettering on a maze's start and end marks not updating its weight after a language switch.
+
 ## [1.8.35] - 2026-10-22
 
 ### Fixed

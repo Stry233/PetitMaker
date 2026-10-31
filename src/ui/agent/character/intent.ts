@@ -2,10 +2,12 @@
  * The one channel every surface drives the live character through. She lives in an eager layer
  * outside the panel's lazy chunk, so surfaces publish what they ask of her here rather than reaching
  * for her element: a standing intent (a pose, the dream plume, a shoulder badge) and one-shot cues.
- * A standing value is cleared by the surface that set it when it goes.
+ * A standing value is cleared by the surface that set it when it goes. A pictured subtree publishes
+ * nothing: `useCharacterChannel` hands it a silent channel, so a Help figure never moves her.
  */
 import { useSyncExternalStore } from 'react';
 import { createSignal } from '../../../core/base/signal';
+import { useUiPreview } from '../../design/preview';
 import type { IconId } from '../parts/sprite';
 import type { BadgeId } from './badges';
 import type { BodyPart, PoseName } from './poses';
@@ -47,14 +49,28 @@ function patch(next: Partial<CharacterIntent>): void {
   if (merged.pose !== was.pose || merged.dream !== was.dream) intent.emit(merged);
 }
 
-/** Publishes the pose the standing surface calls for, or null to hand her back to the phase. */
-export function setIntentPose(pose: PoseName | null): void { patch({ pose }); }
+/** What a surface may ask of the live character. */
+export interface CharacterChannel {
+  /** Publishes the pose the standing surface calls for, or null to hand her back to the phase. */
+  setPose(pose: PoseName | null): void;
+  /** Publishes the dream plume the keyless rest shows. */
+  setDream(dream: DreamBadge): void;
+  /** Plays a one-shot on the live character, if one is listening. */
+  cue(cue: CharacterCue): void;
+}
 
-/** Publishes the dream plume the keyless rest shows. */
-export function setIntentDream(dream: DreamBadge): void { patch({ dream }); }
+const LIVE: CharacterChannel = {
+  setPose: (pose) => patch({ pose }),
+  setDream: (dream) => patch({ dream }),
+  cue: (cue) => cues.emit(cue),
+};
 
-/** Plays a one-shot on the live character, if one is listening. */
-export function cueCharacter(cue: CharacterCue): void { cues.emit(cue); }
+const SILENT: CharacterChannel = { setPose: () => {}, setDream: () => {}, cue: () => {} };
+
+/** The channel a surface publishes through: the live one, or a silent one inside a pictured subtree. */
+export function useCharacterChannel(): CharacterChannel {
+  return useUiPreview() ? SILENT : LIVE;
+}
 
 /** Listens for cues; returns the unsubscribe. */
 export function onCharacterCue(listener: (cue: CharacterCue) => void): () => void {

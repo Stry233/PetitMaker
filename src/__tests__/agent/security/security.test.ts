@@ -151,8 +151,8 @@ describe('vault', () => {
   afterEach(async () => { vi.unstubAllGlobals(); await deleteVault(); });
 
   it('falls back to null when IndexedDB is unavailable (jsdom)', async () => {
-    // jsdom has no indexedDB → the vault must decline, not throw; key-storage
-    // then keeps the base64 fallback.
+    // jsdom has no indexedDB: the vault declines rather than throws, and key-storage keeps the
+    // base64 fallback.
     expect(typeof indexedDB).toBe('undefined');
     expect(await sealSecret('top secret')).toBeNull();
   });

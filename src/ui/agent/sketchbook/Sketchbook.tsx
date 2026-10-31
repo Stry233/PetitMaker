@@ -16,7 +16,7 @@ import { cursors, font, radii } from '../../design/styles';
 import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
 import { ActionButton } from '../../primitives/ActionButton';
 import { LoadingDots } from '../../primitives/LoadingDots';
-import { cueCharacter } from '../character/intent';
+import { useCharacterChannel, type CharacterChannel } from '../character/intent';
 import { Icon } from '../parts/sprite';
 import { MapShot } from '../parts/map-shot';
 import { edge, POSTCARD } from '../panel-skin';
@@ -312,6 +312,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
   const [beat, setBeat] = useState(0);
   const [wiping, setWiping] = useState(false);
   const capRef = useRef<HTMLSpanElement>(null);
+  const character = useCharacterChannel();
 
   const idea = ideas.length > 0 ? ideas[beat % ideas.length]! : null;
   const words = idea
@@ -337,7 +338,7 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
       if (b !== at) {
         // The first beat is the card arriving, which the builder already drew: she takes up the
         // pencil from the second on.
-        if (at >= 0) scribble();
+        if (at >= 0) scribble(character);
         at = b; wiped = false; ritualled = false;
         setWiping(false);
         setBeat(b);
@@ -345,14 +346,14 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
       const into = now - b * SKETCH.cycle;
       if (!ritualled && into >= SKETCH.ritual) {
         ritualled = true;
-        if (b % SKETCH.ritualEvery === SKETCH.ritualEvery - 1) ritual();
+        if (b % SKETCH.ritualEvery === SKETCH.ritualEvery - 1) ritual(character);
       }
       if (!wiped && into >= SKETCH.erase) { wiped = true; setWiping(true); }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [reduced, ideas.length]);
+  }, [character, reduced, ideas.length]);
 
   /** The caption fades out, changes, then fades in (`sketchEngine.swapCap`); `capText` holds the shown words apart from the decided ones. It stands still on first paint and under reduced motion. */
   const first = useRef(true);
@@ -418,14 +419,14 @@ export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
 }
 
 /** She takes up the pencil: the note badge, a lean over the page, and the hand's own rhythm. */
-function scribble(): void {
-  cueCharacter({ kind: 'garnish', moves: GARNISH.scribble, badge: { id: 'note', ms: SCRIBBLE_BADGE_MS } });
+function scribble(character: CharacterChannel): void {
+  character.cue({ kind: 'garnish', moves: GARNISH.scribble, badge: { id: 'note', ms: SCRIBBLE_BADGE_MS } });
 }
 
 /** One small thing between sketches, in turn. Never two at once, never a show. */
 let nextRitual = 0;
-function ritual(): void {
+function ritual(character: CharacterChannel): void {
   const name = RITUALS[nextRitual % RITUALS.length]!;
   nextRitual++;
-  cueCharacter({ kind: 'garnish', moves: GARNISH[name] });
+  character.cue({ kind: 'garnish', moves: GARNISH[name] });
 }

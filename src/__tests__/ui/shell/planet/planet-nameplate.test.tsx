@@ -14,15 +14,20 @@ import { listPlanets } from '../../../../io/storage/planet-library';
 import { CommandType, TerrainType, type MacroCoord } from '../../../../core/model/types';
 import { CellZone } from '../../../../core/game/zones';
 import { Shell } from '../../../../ui/shell/Shell';
-import { MODE_ROW_TOP, blockCentre, cornerArt, planFrame, sessionModes, topRightHeight } from '../../../../ui/shell/frame';
-import { FIT_FLOOR, fittedUiScale } from '../../../../ui/design/scale';
+import { MODE_ROW_TOP, blockCentre, cornerArt, sessionModes, topRightHeight } from '../../../../ui/shell/frame';
+import { planFrame } from '../../../../ui/shell/frame-plan';
+import { NO_DOCK, TOUCH_TARGET, fittedUiScale, uiScaleOf } from '../../../../ui/design/scale';
+import { ARRANGEMENT_ROOM } from '../../../../ui/shell/panel-frame';
+import { InputModeProvider } from '../../../../ui/design/input-mode';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
 import { MODE, MODE_PLATE_W, MODE_SCALE, ZOOM } from '../../../../ui/shell/units';
-import { NAME_LEAST, PLATE_ROW, nameplateSpan, nameplateTop, toastBandShift, type NameplateSpan } from '../../../../ui/shell/planet/nameplate-layout';
+import { NAME_LEAST, PANEL_GAP, PLATE_ROW, nameplateBottom, nameplateSpan, nameplateTop, toastBandShift, type NameplateSpan } from '../../../../ui/shell/planet/nameplate-layout';
 import { TOAST_BAND_SHIFT_VAR, TOAST_BAND_TOP, bandTop } from '../../../../ui/chrome/floating/toast-band';
 import { MenuSheet } from '../../../../ui/shell/controls/MenuSheet';
 import { startPlanetEditing, stopPlanetEditing } from '../../../../editor/session/planet-editing';
 import { setStoreState } from '../../../_support/store';
+import { JSDOM_WINDOW, atScale, sizeWindow } from '../../../_support/viewport';
+import { TOUCH_UI_ZOOM_DEFAULT } from '../../../../platform/storage/prefs';
 import type { PlanetSession } from '../../../../state/slices/planet-session';
 import { anchoredOrigin } from '../../../../ui/primitives/AnchoredConfirm';
 import type { TextKey } from '../../../../i18n/keys';
@@ -33,10 +38,6 @@ vi.mock('../../../../pipelines/moderation/text/reviewer', async (original) => ({
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
 
-/** The fit floor a touch-primary device gets. */
-const TOUCH_FLOOR = 0.5;
-/** Where the plate's box ends, in chrome css px. */
-const nameplateBottom = (frameZoom: number, chromeZoom: number) => nameplateTop(frameZoom, chromeZoom) + PLATE_ROW;
 const store = () => useEditorStore.getState();
 const t = (key: TextKey, params?: Record<string, string | number>) => translate(key, params);
 
@@ -89,6 +90,22 @@ describe('placement', () => {
     const zoom = Number(plate().style.zoom);
     expect(parseFloat(plate().style.top)).toBeCloseTo(nameplateTop(ZOOM * zoom, zoom), 6);
   });
+
+  it('[UI-27] draws Back, the name and Done a fingertip tall on a phone at touch mode\'s default', () => {
+    sizeWindow(390, 844);
+    atScale(TOUCH_UI_ZOOM_DEFAULT);
+    render(
+      <InputModeProvider inputMode="touch"><Shell onRestoreSession={() => {}}><div /></Shell></InputModeProvider>,
+      { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
+    );
+    enter();
+    const zoom = Number(plate().style.zoom);
+    for (const button of within(plate()).getAllByRole('button')) {
+      expect(parseFloat(button.style.height) * zoom, button.getAttribute('aria-label') ?? '').toBeGreaterThanOrEqual(TOUCH_TARGET - 1e-9);
+    }
+    sizeWindow(JSDOM_WINDOW.w, JSDOM_WINDOW.h);
+    atScale(1);
+  });
 });
 
 interface Box { left: number; right: number; top: number; bottom: number }
@@ -110,9 +127,9 @@ describe('across the window', () => {
 
   it('never meets the mode row or the corner at any window and UI scale', () => {
     const windows = [[1440, 900], [1280, 800], [1024, 768], [390, 844], [844, 390], [780, 360], [2560, 1440]] as const;
-    for (const [vw, vh] of windows) for (const floor of [FIT_FLOOR, TOUCH_FLOOR]) {
+    for (const [vw, vh] of windows) for (const touch of [false, true]) {
       for (let ui = 0.6; ui <= 1.8001; ui += 0.1) {
-        const chrome = fittedUiScale(vw, vh, ui, 0, floor);
+        const chrome = uiScaleOf({ vw, vh, dock: NO_DOCK, touch, upright: vh > vw, uiZoom: ui, room: touch ? ARRANGEMENT_ROOM : null });
         const frameZoom = chrome * ZOOM;
         const layout = planFrame(vw / frameZoom, vh / frameZoom, layoutOptions);
         const span = nameplateSpan(vw, frameZoom, chrome, layout, sessionCount);
@@ -131,7 +148,7 @@ describe('across the window', () => {
         };
         for (let width = 160; width <= 560; width += 20) {
           const plate = { ...placed(span, width * chrome), ...band };
-          const where = `${vw}x${vh} ui ${ui.toFixed(1)} floor ${floor} plate ${width}`;
+          const where = `${vw}x${vh} ui ${ui.toFixed(1)} touch ${touch} plate ${width}`;
           for (const block of blocks) expect(meets(plate, block), where).toBe(false);
           expect(meets(plate, corner), where).toBe(false);
           expect(plate.left, where).toBeGreaterThanOrEqual(0);
@@ -170,11 +187,13 @@ describe('across the window', () => {
 });
 
 describe('the toast band', () => {
-  it('moves below the plate by the gap the plate keeps', () => {
-    for (const [frameZoom, zoom] of [[1.25, 1], [0.625, 0.5], [1.5, 1.2]] as const) {
-      const shift = toastBandShift(frameZoom, zoom);
+  it('moves below the plate by the gap the plate keeps, whatever zoom the plate draws at', () => {
+    // [frame zoom, plate zoom, chrome zoom]: PC plates draw at the chrome's, a touch plate above it.
+    for (const [frameZoom, zoom, chrome] of [[1.25, 1, 1], [0.625, 0.5, 0.5], [1.5, 1.2, 1.2], [0.625, 1, 0.5]] as const) {
+      const shift = toastBandShift(nameplateBottom(frameZoom, zoom), zoom, chrome);
       expect(shift).toBeGreaterThan(0);
-      expect(TOAST_BAND_TOP + shift).toBeGreaterThan(nameplateBottom(frameZoom, zoom));
+      // In screen px, the band's top stands the gap below the plate's foot.
+      expect((TOAST_BAND_TOP + shift) * chrome).toBeCloseTo(nameplateBottom(frameZoom, zoom) * zoom + PANEL_GAP * chrome, 6);
     }
     expect(bandTop(TOAST_BAND_TOP)).toBe(`calc(${TOAST_BAND_TOP}px + var(${TOAST_BAND_SHIFT_VAR}, 0px))`);
   });
@@ -185,9 +204,35 @@ describe('the toast band', () => {
     expect(root.getPropertyValue(TOAST_BAND_SHIFT_VAR)).toBe('');
     enter();
     const zoom = Number(plate().style.zoom);
-    expect(parseFloat(root.getPropertyValue(TOAST_BAND_SHIFT_VAR))).toBeCloseTo(toastBandShift(ZOOM * zoom, zoom), 6);
+    expect(parseFloat(root.getPropertyValue(TOAST_BAND_SHIFT_VAR))).toBeCloseTo(toastBandShift(nameplateBottom(ZOOM * zoom, zoom), zoom, zoom), 6);
     act(() => { stopPlanetEditing(); });
     await waitFor(() => expect(root.getPropertyValue(TOAST_BAND_SHIFT_VAR)).toBe(''));
+  });
+
+  it('[UI-27] stands below a plate touch mode draws above the chrome zoom on a phone', () => {
+    const size = { w: innerWidth, h: innerHeight };
+    const setSize = (w: number, h: number) => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: w });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: h });
+      window.dispatchEvent(new Event('resize'));
+    };
+    setSize(390, 844);
+    try {
+      render(
+        <InputModeProvider inputMode="touch" shape="portrait"><Shell onRestoreSession={() => {}}><div /></Shell></InputModeProvider>,
+        { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
+      );
+      enter();
+      const zoom = Number(plate().style.zoom);
+      const chrome = uiScaleOf({ vw: 390, vh: 844, dock: NO_DOCK, touch: true, upright: true, uiZoom: store().uiZoom, room: null });
+      expect(zoom).toBeGreaterThan(chrome);
+      // In screen px: the band's top under the plate's foot by the gap.
+      const plateFoot = (parseFloat(plate().style.top) + PLATE_ROW) * zoom;
+      const bandTopPx = (TOAST_BAND_TOP + parseFloat(document.documentElement.style.getPropertyValue(TOAST_BAND_SHIFT_VAR))) * chrome;
+      expect(bandTopPx).toBeCloseTo(plateFoot + PANEL_GAP * chrome, 4);
+    } finally {
+      setSize(size.w, size.h);
+    }
   });
 });
 

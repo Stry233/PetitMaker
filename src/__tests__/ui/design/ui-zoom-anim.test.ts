@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
-// ui-zoom-anim — the shared application-layer tween for uiZoom. The store's
+// ui-zoom-anim: the shared application-layer tween for uiZoom. The store's
 // uiZoom is the persisted target (written once per user action); this module
-// eases a live value toward it so every consumer (menu scale, chrome scale,
-// centre offset) animates in lockstep, whichever path set the target (the
-// Settings slider's release commit, Ctrl+/-, the reset chip, arrow keys).
+// eases one live value toward it, which every per-frame writer reads, whichever
+// path set the target (the Settings slider's release commit, Ctrl+/-, the reset
+// chip, arrow keys).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useEditorStore } from '../../../state/store';
 import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';
-import { useAnimatedUiZoom, useUiZooming, __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
+import { uiZoomLive, useSettledUiZoom, __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
+import { useScaleMoving } from '../../../ui/design/scale';
 import { setStoreState } from '../../_support/store';
 
 beforeEach(() => {
@@ -23,52 +24,58 @@ afterEach(() => {
   __resetMotionState();
 });
 
-describe('useAnimatedUiZoom', () => {
+/** The live value, as the per-frame writers read it. */
+const live = () => uiZoomLive.get();
+
+describe('the live UI zoom', () => {
   it('starts at the store value with nothing in flight', () => {
-    const { result } = renderHook(() => useAnimatedUiZoom());
-    expect(result.current).toBe(1);
+    expect(live()).toBe(1);
+  });
+
+  it('renders read the settled target at once, never a frame of the follow', () => {
+    const { result } = renderHook(() => useSettledUiZoom());
+    act(() => { useEditorStore.getState().setUiZoom(1.5); });
+    expect(result.current).toBe(1.5);
+    expect(live()).toBe(1);
   });
 
   it('eases toward a new target set via setUiZoom (the slider-release / Ctrl+/- path) — an intermediate frame sits strictly between old and new, and it settles exactly at the target', () => {
-    const { result } = renderHook(() => useAnimatedUiZoom());
     act(() => {
       useEditorStore.getState().setUiZoom(1.5); // e.g. a slider release commit
     });
     // One frame in: still animating, strictly between 1.0 and 1.5.
     act(() => { vi.advanceTimersByTime(16); });
-    expect(result.current).toBeGreaterThan(1);
-    expect(result.current).toBeLessThan(1.5);
+    expect(live()).toBeGreaterThan(1);
+    expect(live()).toBeLessThan(1.5);
 
     // Enough frames to converge.
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(result.current).toBe(1.5);
+    expect(live()).toBe(1.5);
   });
 
   it('a retarget mid-flight is interruptible: it redirects from the current live value, never restarts from the original start', () => {
-    const { result } = renderHook(() => useAnimatedUiZoom());
     act(() => { useEditorStore.getState().setUiZoom(1.8); });
     act(() => { vi.advanceTimersByTime(16); }); // now partway toward 1.8
-    const midway = result.current;
+    const midway = live();
     expect(midway).toBeGreaterThan(1);
     expect(midway).toBeLessThan(1.8);
 
-    // Retarget down to 0.6 before convergence — the live value should move
-    // Down from `midway`, never jump back up toward 1.8 first.
+    // Retarget down to 0.6 before convergence: the live value should move
+    // down from `midway`, never jump back up toward 1.8 first.
     act(() => { useEditorStore.getState().setUiZoom(0.6); });
     act(() => { vi.advanceTimersByTime(16); });
-    expect(result.current).toBeLessThan(midway);
+    expect(live()).toBeLessThan(midway);
 
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(result.current).toBe(0.6);
+    expect(live()).toBe(0.6);
   });
 
   it('reduced motion snaps instantly — no intermediate frame', () => {
     setReducedMotion(true);
-    const { result } = renderHook(() => useAnimatedUiZoom());
     act(() => { useEditorStore.getState().setUiZoom(1.5); });
-    expect(result.current).toBe(1.5); // already settled, synchronously
+    expect(live()).toBe(1.5); // already settled, synchronously
     act(() => { vi.advanceTimersByTime(1000); }); // nothing left to animate
-    expect(result.current).toBe(1.5);
+    expect(live()).toBe(1.5);
   });
 
   it('persists the target once (setUiZoom writes localStorage synchronously); the animation never touches the store', () => {
@@ -83,9 +90,9 @@ describe('useAnimatedUiZoom', () => {
   });
 });
 
-describe('useUiZooming (the layout/px-rounding gate)', () => {
+describe('useScaleMoving (the layout/px-rounding gate)', () => {
   it('is false at rest, true only while the tween is in flight, then false again', () => {
-    const { result } = renderHook(() => useUiZooming());
+    const { result } = renderHook(() => useScaleMoving());
     expect(result.current).toBe(false);
     act(() => { useEditorStore.getState().setUiZoom(1.6); });
     act(() => { vi.advanceTimersByTime(16); });
@@ -96,7 +103,7 @@ describe('useUiZooming (the layout/px-rounding gate)', () => {
 
   it('reduced motion never animates, so it never reports zooming', () => {
     setReducedMotion(true);
-    const { result } = renderHook(() => useUiZooming());
+    const { result } = renderHook(() => useScaleMoving());
     act(() => { useEditorStore.getState().setUiZoom(2); });
     act(() => { vi.advanceTimersByTime(16); });
     expect(result.current).toBe(false);
@@ -108,15 +115,13 @@ describe('the follow is time-based', () => {
   function runAt(hz: number, ms: number): number {
     const frames: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
-    const { result, unmount } = renderHook(() => useAnimatedUiZoom());
     act(() => { useEditorStore.getState().setUiZoom(1.5); });
     const step = 1000 / hz;
     for (let i = 1; i <= Math.round(ms / step) && frames.length > 0; i++) {
       const cb = frames.shift()!;
       act(() => { cb(i * step); });
     }
-    const value = result.current;
-    unmount();
+    const value = live();
     raf.mockRestore();
     setStoreState({ uiZoom: 1 });
     __resetUiZoomAnim();

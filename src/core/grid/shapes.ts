@@ -1,6 +1,6 @@
 /*
  * The figures the paint tools, the region brush, Smart Build, the agent's terraform tools and the
- * Help figures lay, as cells: the brush footprint, 4-connected lines, rectangles, circles and the
+ * Help figures lay, as cells: the brush footprint, 4-connected lines, rectangles, circles, ellipses, polygons and the
  * anchor-chain spline's spine. Pure and map-free.
  */
 import { splineSamples, type CurveAnchor } from '../base/spline';
@@ -107,6 +107,49 @@ export function circleCells(center: MacroCoord, rx: number, ry: number): MacroCo
     }
   }
   return cells;
+}
+
+/** The cells an axis-aligned ellipse inscribed in the inclusive box (x1,y1)-(x2,y2) covers: each
+ *  cell whose centre lies inside it, with a half-cell allowance so the box's middle row and column
+ *  run edge to edge. A one-cell box covers that cell. */
+export function ellipseCells(x1: number, y1: number, x2: number, y2: number): MacroCoord[] {
+  const xa = Math.min(x1, x2), xb = Math.max(x1, x2), ya = Math.min(y1, y2), yb = Math.max(y1, y2);
+  const cx = (xa + xb) / 2, cy = (ya + yb) / 2, ax = (xb - xa) / 2 + 0.5, ay = (yb - ya) / 2 + 0.5;
+  const cells: MacroCoord[] = [];
+  for (let y = Math.ceil(ya); y <= Math.floor(yb); y++) {
+    for (let x = Math.ceil(xa); x <= Math.floor(xb); x++) {
+      if (((x - cx) / ax) ** 2 + ((y - cy) / ay) ** 2 <= 1) cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/** The cells a closed polygon covers: each cell whose coordinate point lies inside it or on its
+ *  outline, so a polygon through four rectangle corners covers what `rectCells` does. Vertices are
+ *  in cell coordinates and may be fractional; under three vertices covers nothing. */
+export function polygonCells(vertices: readonly MacroCoord[]): MacroCoord[] {
+  if (vertices.length < 3) return [];
+  const xs = vertices.map((v) => v.x), ys = vertices.map((v) => v.y);
+  const cells: MacroCoord[] = [];
+  for (let y = Math.ceil(Math.min(...ys)); y <= Math.floor(Math.max(...ys)); y++) {
+    for (let x = Math.ceil(Math.min(...xs)); x <= Math.floor(Math.max(...xs)); x++) {
+      if (insidePolygon(vertices, x, y)) cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/** Even-odd containment with the outline counted inside. */
+function insidePolygon(v: readonly MacroCoord[], x: number, y: number): boolean {
+  let inside = false;
+  for (let i = 0, j = v.length - 1; i < v.length; j = i++) {
+    const a = v[i]!, b = v[j]!;
+    const cross = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+    if (Math.abs(cross) < 1e-9 && x >= Math.min(a.x, b.x) && x <= Math.max(a.x, b.x)
+      && y >= Math.min(a.y, b.y) && y <= Math.max(a.y, b.y)) return true;
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 export function lineCells(start: MacroCoord, end: MacroCoord, width: number): MacroCoord[] {

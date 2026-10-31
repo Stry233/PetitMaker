@@ -6,6 +6,7 @@ export const liteAliases = [
   { find: /^.*\/providers-list$/, replacement: resolve('src/legal/providers-list-lite.ts') },
   { find: /^pixi\.js-legacy$/, replacement: resolve('src/view/map2d/pixi-lite.ts') },
   { find: /^.*\/edition-surfaces$/, replacement: resolve('src/ui/lite/edition-surfaces.tsx') },
+  { find: /^.*\/reel-files$/, replacement: resolve('src/ui/lite/tour-reel-files.ts') },
   { find: /^.*\/edition-export$/, replacement: resolve('src/ui/lite/edition-export.ts') },
   { find: /^.*\/edition-review$/, replacement: resolve('src/editor/review/edition-review-lite.ts') },
   { find: /^.*\/use-stylize-versions$/, replacement: resolve('src/ui/lite/use-stylize-versions.ts') },

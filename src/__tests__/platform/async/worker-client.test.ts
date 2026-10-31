@@ -129,6 +129,18 @@ describe('createWorkerClient', () => {
     expect(spawned[0]!.terminate).toHaveBeenCalledOnce();
   });
 
+  it('times out only after quietMs without a message, each message restarting the wait', async () => {
+    vi.useFakeTimers();
+    const client = createWorkerClient<number, string>({ spawn, idleMs: 0 });
+    const answer = client.request<string>({ message: 1, quietMs: 500, read: (data) => (data === 'working' ? undefined : data) });
+    for (let i = 0; i < 4; i++) { await vi.advanceTimersByTimeAsync(400); spawned[0]!.reply('working'); }
+    const outcome = expect(answer).rejects.toMatchObject({ kind: 'timeout', heard: true });
+    await vi.advanceTimersByTimeAsync(500);
+    await outcome;
+    expect(spawned[0]!.terminate).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('cancels through the signal without consulting the fallback', async () => {
     const client = createWorkerClient({ spawn, idleMs: 0 });
     const controller = new AbortController();

@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The dialect wire, over a scripted `fetch`: one shared error-shape table (the agent error-zoo
- * pattern, `agent/providers/error-zoo.test.ts` — a row states the shape, its class, and a
- * near-miss that must not match), plus per-dialect request assertions for the wire placement each
- * dialect's own convention demands.
+ * The dialect wire over a scripted `fetch`: one error-shape table run through every dialect (each row
+ * a shape, its class and near misses, as in `agent/providers/error-zoo.test.ts`), plus each dialect's
+ * request shape.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,15 +18,14 @@ import { listModelIds } from '../../../../pipelines/stylize/dialects/http';
 import { STYLIZE_PROVIDERS } from '../../../../pipelines/stylize/providers';
 import { StylizeError, type DialectConfig, type StylizeDialect, type StylizeImage } from '../../../../pipelines/stylize/dialects/types';
 
-/* ── fixtures ─────────────────────────────────────────────────────────────── */
+/* fixtures */
 
 const TINY_PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGP8z0AaYCJRPcOoBmIAE1GqkMCoBmIAyRoAQC4BH1m1rqAAAAAASUVORK5CYII=';
 const SOURCE_DATA_URL = `data:image/png;base64,${TINY_PNG_B64}`;
 const STYLE_DATA_URL = `data:image/png;base64,${TINY_PNG_B64}`;
 const LAYOUT_DATA_URL = `data:image/png;base64,${TINY_PNG_B64}`;
-// Distinguishable bytes from the fixture above, so a test can prove which role's blob was sent
-// rather than merely that a blob of the right length arrived.
+// Bytes distinct from the fixture above, so a test can tell which role's blob was sent.
 const OTHER_B64 = 'AAECAwQFBgcICQ==';
 const OTHER_STYLE_DATA_URL = `data:image/png;base64,${OTHER_B64}`;
 
@@ -63,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/* ── the error-shape table, driven through every dialect ─────────────────── */
+/* the error-shape table, driven through every dialect */
 
 interface Row {
   what: string;
@@ -75,8 +73,7 @@ interface Row {
 const ROWS: Row[] = [
   { what: '401 unauthenticated', status: 401, body: { error: { message: 'invalid api key' } }, status_: 'bad_key' },
   { what: '403 forbidden', status: 403, body: { error: { message: 'forbidden' } }, status_: 'bad_key' },
-  // Near miss: a 400 is not a credential status, whatever its body says; with no model/moderation/
-  // content wording it is an address/shape problem, not a decline.
+  // Near miss: a 400 is never a credential status, whatever its body says.
   { what: '400 that merely resembles a credential complaint', status: 400, body: { error: { message: 'invalid api key shape' } }, status_: 'bad_response' },
 
   { what: '400 naming the model', status: 400, body: { error: { message: "the model `gpt-nope` does not exist" } }, status_: 'refused' },
@@ -86,7 +83,7 @@ const ROWS: Row[] = [
   { what: '400 with unrelated wording', status: 400, body: { error: { message: "invalid value for 'temperature'" } }, status_: 'bad_response' },
 
   { what: '429 rate limited', status: 429, body: { error: { message: 'quota exceeded' } }, status_: 'refused' },
-  // An account that may not spend: the key is accepted, so the request is declined rather than the key rejected.
+  // An account that may not spend: the key is accepted and the request declined.
   { what: '402 payment required', status: 402, body: { error: { message: 'Insufficient balance' } }, status_: 'refused' },
   { what: '403 overdue account', status: 403, body: { error: { code: 'AccountOverdueError', message: 'The request failed because your account has an overdue balance.' } }, status_: 'refused' },
   { what: '403 exhausted quota', status: 403, body: { error: { message: 'You exceeded your current quota, please check your plan and billing details.' } }, status_: 'refused' },
@@ -127,7 +124,7 @@ describe('scrub', () => {
   });
 });
 
-/* ── every dialect surfaces the table's own statuses over its real generate() call ────────────── */
+/* every dialect surfaces the table's own statuses over its real generate() call */
 
 describe('every dialect classifies its own generate() failures the same way', () => {
   const cases: Array<{ id: string; dialect: StylizeDialect }> = [
@@ -171,7 +168,7 @@ describe('every dialect classifies its own generate() failures the same way', ()
   }
 });
 
-/* ── the dialect barrel ────────────────────────────────────────────────────── */
+/* the dialect barrel */
 
 describe('DIALECTS', () => {
   it('names all six dialects', () => {
@@ -217,7 +214,7 @@ describe.each(Object.entries(DIALECTS).filter(([id]) => id !== 'ark-images'))('t
   });
 });
 
-/* ── gemini: request shape, wire placement, listModels, judge ────────────────────────────────── */
+/* gemini: request shape, wire placement, listModels, judge */
 
 describe.each([
   ['openai-images', openaiImagesDialect],
@@ -324,7 +321,7 @@ describe('gemini dialect', () => {
   });
 });
 
-/* ── openai-images: multipart request shape, wire placement, listModels ──────────────────────── */
+/* openai-images: multipart request shape, wire placement, listModels */
 
 describe('openai-images dialect', () => {
   it('POSTs images/edits multipart with the source FIRST among image[] entries, and a bearer header', async () => {
@@ -369,7 +366,7 @@ describe('openai-images dialect', () => {
   });
 });
 
-/* ── openai-compatible: JSON body mapping, listModels ─────────────────────────────────────────── */
+/* openai-compatible: JSON body mapping, listModels */
 
 describe('openai-compatible dialect', () => {
   it('POSTs images/generations with source/style/layout mapped to image/image2/image3, and a bearer header', async () => {
@@ -414,7 +411,7 @@ describe('openai-compatible dialect', () => {
   });
 });
 
-/* ── ark-images: one JSON call, source-first image array, preset size, no provider watermark ──── */
+/* ark-images: one JSON call, source-first image array, preset size, no provider watermark */
 
 describe('ark-images dialect', () => {
   it('POSTs images/generations JSON with the source first, the 2K preset size, b64_json, and watermark off', async () => {
@@ -471,7 +468,7 @@ describe('ark-images dialect', () => {
   });
 });
 
-/* ── stepfun-images: single-image multipart, no size field, listModels, capabilities ──────────── */
+/* stepfun-images: single-image multipart, no size field, listModels, capabilities */
 
 describe('stepfun-images dialect', () => {
   it('POSTs images/edits multipart with model/image/prompt/response_format, no size field, and a bearer header', async () => {
@@ -532,7 +529,7 @@ describe('stepfun-images dialect', () => {
   });
 });
 
-/* ── modelscope-images: JSON images-array convention, tolerant response parse, listModels ───────── */
+/* modelscope-images: JSON images-array convention, tolerant response parse, listModels */
 
 describe('modelscope-images dialect', () => {
   it('POSTs images/generations with the images array in style-then-source order, no header beyond auth/content-type', async () => {

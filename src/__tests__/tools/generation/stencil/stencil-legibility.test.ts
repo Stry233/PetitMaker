@@ -1,14 +1,7 @@
 /**
- * The legibility reading, on grids whose answers are known by construction.
- *
- * `_stencil-image.ts`'s tonal measures answer "did the reduction keep the picture's light and dark".
- * These four answer "can the picture still be READ", which is the question a small box raises,
- * and each is monotone with one named failure: the backdrop eating the subject, coherent areas
- * arriving as fragments, water arriving as specks, and two hues arriving as one colour.
- *
- * Every case here is a hand-built stencil and a hand-built result, so a number is checked against
- * arithmetic rather than against a picture. What these numbers do on real pictures is the evaluation
- * harness's business, not a test's.
+ * The legibility measures on hand-built stencils and results whose answers are known by construction.
+ * Each catches one failure: the backdrop eating the subject, areas arriving as fragments, water as
+ * specks, and two hues as one colour.
  */
 import { describe, it, expect } from 'vitest';
 import type { Stencil } from '../../../../tools/generation/recipe';
@@ -59,8 +52,7 @@ describe('the cells that share a label, as regions', () => {
   });
 
   it('does not wrap a row into the next one', () => {
-    // 'a' at the end of row 0 and at the start of row 1 are not neighbours, whatever the flat index
-    // arithmetic says.
+    // The end of row 0 and the start of row 1 are adjacent by flat index but not on the grid.
     const regions = sameLabelRegions(3, 2, (i) => ([0, 0, 1, 1, 0, 0][i] === 1 ? 1 : null));
     expect(regions.map((r) => r.length)).toEqual([1, 1]);
   });
@@ -85,9 +77,8 @@ describe('presence: the share of the picture that arrived at all', () => {
   });
 
   it('is taken over the FOOTPRINT, so a subject keyed out of the reading still reads 0', () => {
-    // The failure this measure exists for: the backdrop pass took the whole picture, so the subject
-    // reading is empty and every measure taken over it is vacuous — while the picture's own ink is
-    // still there, unbuilt. `bare` reads 0 (nothing missing) on the same case.
+    // The backdrop pass took the whole picture, so measures over the subject are vacuous while the
+    // picture's ink stays unbuilt.
     const footprint = stencilOf(['ssss', 'ssss'], ink);
     const nothing = stencilOf(['....', '....'], ink);
     const score = scoreLegibility(builtOf(['....', '....'], {}), nothing, footprint);
@@ -115,8 +106,7 @@ describe('region survival: the source\'s areas arriving as areas', () => {
   });
 
   it('falls when an area arrives as fragments rather than as an area', () => {
-    // The right average tier over the left area and the right count of each, laid as a checkerboard:
-    // every tonal measure is content and the area is gone.
+    // The right tiers in the right counts, scattered: tonal measures pass while the area is gone.
     const truth = stencilOf(['aaabbb', 'aaabbb', 'aaabbb'], ink);
     const built = builtOf(['xyxyyy', 'yxyyyy', 'xyxyyy'], { x: TIER_A, y: TIER_B });
     const score = scoreLegibility(built, truth, truth);
@@ -131,7 +121,7 @@ describe('region survival: the source\'s areas arriving as areas', () => {
   });
 
   it('ignores source areas below the size an area means anything at', () => {
-    const truth = stencilOf(['ab', 'aa'], ink);       // 'b' is one cell
+    const truth = stencilOf(['ab', 'aa'], ink);
     const score = scoreLegibility(builtOf(['xx', 'xx'], { x: TIER_A }), truth, truth);
     expect(score.sourceRegions).toBe(1);
     expect(REGION_MIN).toBeGreaterThan(1);
@@ -151,7 +141,7 @@ describe('water cohesion: bodies rather than specks', () => {
   const truth = stencilOf(['sssss', 'sssss', 'sssss'], ink);
 
   it('is the share of the water that sits in a body', () => {
-    // Three cells in one body, two specks apart from it and from each other.
+    // One three-cell body and two separate specks.
     const built = builtOf(['ww.w.', 'w....', '...w.'], { w: WATER });
     const score = scoreLegibility(built, truth, truth);
     expect(score.waterCells).toBe(5);
@@ -171,8 +161,7 @@ describe('water cohesion: bodies rather than specks', () => {
 });
 
 describe('hue separability: two colours arriving as two', () => {
-  // Equally light, far apart in hue, both properly coloured: exactly the pair the green ramp cannot
-  // tell apart, and the pair a viewer reads the picture by.
+  // Equally light and far apart in hue: the pair the green ramp cannot tell apart by tone.
   const RED = 0xd23c3c, BLUE = 0x3c5cd2;
   const ink = { r: RED, b: BLUE };
   const truth = stencilOf(['rrrbbb', 'rrrbbb'], ink);
@@ -201,8 +190,7 @@ describe('hue separability: two colours arriving as two', () => {
   });
 
   it('offers no pair when the two differ in LIGHTNESS, which the ramp can say', () => {
-    // A dark red and a light blue are separable by tone alone, so the ramp is not being asked to
-    // carry hue and this measure has nothing to report.
+    // A dark red and a light blue are separable by tone alone, so hue has nothing to carry.
     const toned = stencilOf(['rrrbbb', 'rrrbbb'], { r: 0x3c1010, b: 0xa8c0ff });
     const score = scoreLegibility(builtOf(['xxxxxx', 'xxxxxx'], { x: TIER_A }), toned, toned);
     expect(score.huePairs).toBe(0);

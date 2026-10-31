@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The change-planet card eases its height whenever its content changes: the next step, a language
- * change, the verb's busy dots. The glide runs off a named change (`useSizeGlide`'s `change`), and a
- * change the name misses snaps and starts the next glide from a stale size, so there is one case per
- * fact that can change the height.
+ * The change-planet card eases its height whenever its content changes. The glide runs off a named
+ * change (`useSizeGlide`'s `change`); a change the name misses snaps and leaves the next glide a stale
+ * size, so each fact that can change the height has a case. Heights are stubbed.
  *
- * Its own file because Framer's frame loop stops for the rest of any file that installed fake
- * timers, as the change-planet suite does. Heights are stubbed: this pins that the window asks for
- * the glide, leaves no inline height behind, and takes the new height outright under reduced motion.
+ * A separate file because Framer's frame loop stops for the rest of any file that installs fake
+ * timers, as the change-planet suite does.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-library/react';
@@ -29,7 +27,7 @@ function grid(template: MapTemplate): GridState {
   return { template, cells: createGrid(template), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
-/** A planet with something built on it, so choosing another planet leads to the next step. */
+/** A planet with something built on it, so choosing another one leads to the next step. */
 function worldWithBuild(template: MapTemplate = HEXIA) {
   const state = grid(template);
   const cell = state.cells[60]?.[60];
@@ -51,15 +49,14 @@ function show(reduced = false) {
 const body = () => screen.getByTestId('planet-body');
 const verb = () => screen.getByTestId('planet-switch');
 
-/** Choosing another planet and pressing Next: the list gives way to the next step. */
+/** Choose another planet and press the verb. */
 function nextStep(nextHeight: number) {
   height = nextHeight;
   fireEvent.click(screen.getByTestId(`planet-${TAFA.id}`));
   fireEvent.click(verb());
 }
 
-/** The card is a different height now, and it travelled there rather than jumping. Clipping is the
- *  signal: the window puts it on for exactly as long as the glide runs. */
+/** The card glides to `nextHeight`; clipping is on exactly while the glide runs. */
 async function expectGlide(nextHeight: number, change: () => void) {
   height = nextHeight;
   change();
@@ -86,7 +83,6 @@ describe('the change-planet card', () => {
     expect(body().style.overflow).toBe('');
     nextStep(220);
     expect(screen.getByRole('radio', { name: 'Start fresh' })).toBeTruthy();
-    // Clipped while it travels, so no row re-lays itself out on the way.
     expect(body().style.overflow).toBe('hidden');
     expect(body().style.height).toBe('400px');
     // A leftover inline height would make the next measurement describe this glide.

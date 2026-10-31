@@ -1,24 +1,17 @@
 // @vitest-environment jsdom
 /**
- * The five windows the menu opens, and the menu itself.
+ * The menu and the five windows it opens, plus the share window: reachability, not pixels.
  *
- * The risk in repainting a window is not that a pixel moves but that a feature quietly stops being
- * reachable. These drive the reaching: the menu opens each window, every settings row still writes
- * its preference, a rebind survives the keyboard page's own export and import, and all five reach
- * the screen.
- *
- * The shell is mounted from a reset module graph, so nothing here may use the outer `_store` helper
- * (see its header note): the re-imported graph carries its own store. A test that opens a lazy window
- * waits for it: a chunk still loading at the next reset evaluates half-bound into the next graph.
+ * The shell mounts from a reset module graph with its own store, so the outer `_store` helper is off
+ * limits. A test that opens a lazy window waits for it: a chunk still loading at the next reset
+ * evaluates half-bound into the next graph.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import type { ModalId } from '../../../../state/store';
 
-// The first mount here pays for transforming the whole shell graph, which is a second or two of
-// work no assertion in this file is about and which the default 5s budget has to cover on top of
-// the test itself. A loaded machine turns that into a failure that says nothing.
+// The first mount transforms the whole shell graph, which a loaded machine cannot fit in 5 s.
 vi.setConfig({ testTimeout: 20_000 });
 
 /** Mount the shell from a reset graph, and hand back that graph's own store. */
@@ -36,9 +29,8 @@ async function mountShell() {
   return { view, useEditorStore };
 }
 
-/** Load the lazy window chunks (Help) from the mounted shell's own graph. Each mount re-evaluates
- *  them in a fresh graph, and with transforms cold that alone outlasts a query's one-second wait;
- *  loaded first, an open leaves only React's retry, which the query's first poll sees. */
+/** Loads the lazy window chunks (Help) in the mounted shell's graph; cold, they outlast a query's
+ *  one-second wait. */
 async function loadLazyWindows(): Promise<void> {
   const { loadHelpModal } = await import('../../../../ui/help/loaders');
   await loadHelpModal();
@@ -59,13 +51,8 @@ const ROWS: readonly [label: string, modal: ModalId][] = [
   ['About', 'about'],
 ];
 
-/** The whole sheet, in order, and it is five windows and nothing else. The keyboard window is
- * not among them: its door is the keymap miniature at the bottom of Settings.
- *
- * Clear does not belong here: this menu holds actions about the session, and clearing
- * takes back the last generation, bounded by that run's region and by the map's own authorship.
- * Nobody undoing a generation hunts for it under a menu beside Settings. It stands beside the batch
- * tile in the generate shelf, where the other thing you do to a whole batch already is. */
+/** The whole sheet, in order. The keyboard window opens from the keymap miniature in Settings, and
+ *  Clear stands beside the batch tile in the generate shelf. */
 const SHEET: readonly string[] = [
   'Change a planet', 'Import map', 'Settings', 'Help', 'About',
 ];
@@ -82,8 +69,7 @@ describe('the menu', () => {
     expect(items.map((el) => el.textContent)).toEqual(SHEET);
   });
 
-  /** Every row here opens something: a row that acts on the map belongs to the shelf it acts on,
-   *  not to this sheet. */
+  /** A row that acts on the map belongs to the shelf it acts on. */
   it('offers nothing that acts on the map', async () => {
     await mountShell();
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
@@ -101,7 +87,7 @@ describe('the menu', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: label }));
     expect(useEditorStore.getState().modals[modal]).toBe(true);
-    // The sheet is a menu, not a window: choosing from it puts it away.
+    // Choosing from the sheet puts it away.
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     expect((await screen.findAllByRole('dialog', { name: label })).length).toBeGreaterThan(0);
   });
@@ -111,7 +97,7 @@ describe('the menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     await screen.findByRole('menu');
 
-    // From the focused row, as a key press arrives: the menu hears it before the shortcuts on the window.
+    // From the focused row, so the menu hears it before the window's shortcuts.
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     const open = Object.values(useEditorStore.getState().modals).filter(Boolean);
@@ -146,10 +132,8 @@ describe('the save-and-share button', () => {
 describe('the shell puts every window on screen', () => {
   it('mounts all five at once', async () => {
     const { useEditorStore } = await mountShell();
-    // Every window is a dialog with its own title as the accessible name. All five at once is not a
-    // real session, but it is the cheapest proof that the shell's tree refuses none of them. Help is
-    // a lazy chunk, loaded first, so the awaited act flushes React's retry and no query waits on a
-    // clock. The same act waits out the one frame the assistant character re-seats itself on.
+    // All five at once is not a real session, but proves the shell's tree refuses none. The awaited
+    // act also waits out the frame the assistant character re-seats itself on.
     await loadLazyWindows();
     await act(async () => {
       for (const [, id] of ROWS) useEditorStore.getState().setModal(id, true);

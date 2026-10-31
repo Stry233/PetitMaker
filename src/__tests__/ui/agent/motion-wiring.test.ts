@@ -1,15 +1,7 @@
 /**
- * The registry and the panel say the same thing.
- *
- * A declaration nothing runs and a motion nothing declared are the same defect from two sides:
- * without this scan the registry accumulates entries with no call site while animations (a ticket
- * turning, a tape filling) grow numbers of their own. Neither side is visible from inside one file,
- * which is why this is a test.
- *
- * Modelled on `__tests__/ui/design/motion-registry.test.ts`'s own call-site scan. Scope is the
- * `panel.*` ids: the `character.*` entries name motions the character makes beside a pose (the
- * eyelid blink, the morph leap), and a pose's own keyframes live in
- * `character/poses.ts`, a table that predates the registry and is its own subject.
+ * Every `panel.*` motion in the registry has a call site, and no panel source times its own motion.
+ * The scan mirrors `__tests__/ui/design/motion-registry.test.ts`; pose keyframes live in
+ * `character/poses.ts` and are out of scope.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -23,13 +15,9 @@ import EXEMPT from './motion-wiring-allowlist.json';
 
 const DIR = 'src/ui/agent';
 
-/**
- * The one           motion family the panel does not drive. Docking moves the panel and the whole
- * interface together, so the sequence and the fraction every surface multiplies live in the shell
- * (`ui/shell/use-dock.ts`) rather than behind the panel's lazy boundary — which puts the call sites for
- * `panel.pin.*` there. Named as a file rather than by widening the scan to `ui/shell`, whose own
- * motions are `motion-registry.test.ts`'s subject.
- */
+/** Docking moves the panel and the whole interface together, so the `panel.pin.*` call sites live in
+ *  the shell, outside the panel's lazy boundary. Only this file is added, since `ui/shell` motions are
+ *  `motion-registry.test.ts`'s subject. */
 const DOCK_DRIVER = 'src/ui/shell/use-dock.ts';
 
 function sources(dir: string): { path: string; text: string }[] {
@@ -45,8 +33,6 @@ describe('every declared panel motion has a runner', () => {
     expect(panelIds.length).toBeGreaterThan(0);
   });
 
-  /** A declaration nothing names is a promise about the interface that the interface does not keep:
-   *  it reads as "this moves" to everyone downstream of the registry, and nothing moves. */
   it('names every one of them at a call site', () => {
     const unwired = panelIds.filter((id) => !allText.includes(`'${id}'`) && !allText.includes(`"${id}"`));
     expect(unwired).toEqual([]);
@@ -54,8 +40,7 @@ describe('every declared panel motion has a runner', () => {
 });
 
 describe('no panel motion is chosen at a call site', () => {
-  // The shell's own offender set, plus the two CSS spellings a hand-written transition or animation
-  // string can carry a number in.
+  // The shell's offender set, plus a number in a hand-written CSS transition or animation string.
   const OFFENDER = /duration:\s*[0-9.]+|stiffness:\s*[0-9]+|damping:\s*[0-9]+|cubic-bezier\(|ease:\s*\[|transition:\s*[`'"][^`'"]*[0-9]s|animation:\s*[`'"][^`'"]*[0-9]s/;
   /** The files and folders (trailing slash) that time their own motion, each with its reason in
    *  `motion-wiring-allowlist.json`. */
@@ -76,14 +61,9 @@ describe('no panel motion is chosen at a call site', () => {
   });
 });
 
-/**
- * The three gates, on the panel's side of them.
- *
- * Framer-driven motion is gated by App's own `<MotionConfig>`; a hand-written CSS transition is
- * gated twice, by `animations.css`'s catch-all under `[data-reduced-motion='1']` and by the caller
- * passing the answer it already holds into `cssMotion` — the same JS+CSS double gate the rest of the
- * panel wears, so a component is testable without touching the document attribute.
- */
+/** Framer motion is gated by App's `<MotionConfig>`. A CSS transition is gated both by
+ *  `animations.css` under `[data-reduced-motion='1']` and by the flag passed to `cssMotion`, so a
+ *  component is testable without the document attribute. */
 describe('the adapter honours reduced motion, and reads its numbers from the declaration', () => {
   it('collapses a CSS transition outright rather than shortening it', () => {
     expect(cssMotion('panel.dock.paper', ['background-color'], true)).toBe('none');
@@ -103,9 +83,7 @@ describe('the adapter honours reduced motion, and reads its numbers from the dec
     expect(value.split(', ').filter((part) => /^(width|opacity) /.test(part))).toHaveLength(2);
   });
 
-  /** The dock flip's leave is a declared fraction of the entry's own length (see the entry's own
-   *  comment): `outSeconds` is the one reader, so DeskHeader's call site does no multiplication of
-   *  its own and a retune of either number moves both halves together. */
+  /** The flip's leave is a declared share of its length, read only through `outSeconds`. */
   it('derives the flip\'s leave length from the registry\'s own declared share', () => {
     const share = MOTIONS['panel.dock.flip'].outShare;
     expect(share).toBeGreaterThan(0);
@@ -116,14 +94,8 @@ describe('the adapter honours reduced motion, and reads its numbers from the dec
   });
 });
 
-/**
- * The flip's profile is three segments and three shapes, and the weight is in the spacing of them.
- *
- * Framer spaces keyframes evenly unless told otherwise, so a three-frame rotation with one curve
- * over it puts the overshoot at the halfway mark and gives the settle back as long as the whole
- * approach: the landing reads as a swing rather than as weight. And a departure is not an arrival
- * reversed — it accelerates away, having no mark to settle on.
- */
+/** Framer spaces keyframes evenly, which would put the flip's overshoot at the halfway mark; the
+ *  registry declares where it sits, a curve per segment, and an accelerating curve for the leave. */
 describe('a flip asks the registry for its profile, not for a curve', () => {
   const flip = MOTIONS['panel.dock.flip'];
 
@@ -137,7 +109,6 @@ describe('a flip asks the registry for its profile, not for a curve', () => {
   it('spaces the keyframes by that declaration and gives each segment its own easing', () => {
     const profile = flipProfile('panel.dock.flip') as { times?: number[]; ease?: unknown[] };
     expect(profile.times).toEqual([0, flip.overshootAt, 1]);
-    // One easing per segment, so the array is one shorter than the keyframe list.
     expect(profile.ease).toHaveLength(2);
     expect(profile.ease![0]).toEqual(CURVES[flip.curve].ease);
     expect(profile.ease![1]).toEqual(CURVES[flip.landCurve!].ease);
@@ -147,7 +118,6 @@ describe('a flip asks the registry for its profile, not for a curve', () => {
     const out = outMotion('panel.dock.flip') as { duration?: number; ease?: unknown };
     expect(out.duration).toBeCloseTo(outSeconds('panel.dock.flip'));
     expect(out.ease).toEqual(CURVES[flip.outCurve!].ease);
-    // The accelerating leave is not the landing's curve: one motion reversed is not the other.
     expect(out.ease).not.toEqual(CURVES[flip.curve].ease);
   });
 
@@ -156,8 +126,6 @@ describe('a flip asks the registry for its profile, not for a curve', () => {
       .toBeCloseTo(outSeconds('panel.dock.flip') + seconds('panel.dock.flip'));
   });
 
-  /** An entry with no declared overshoot keeps the plain transition: the default spacing is what
-   *  every other keyframe motion in the panel wants. */
   it('leaves a motion that declares no overshoot exactly as it was', () => {
     expect(flipProfile('panel.op.enter')).toEqual(framerMotion('panel.op.enter'));
   });

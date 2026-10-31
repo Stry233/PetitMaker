@@ -19,9 +19,9 @@ const SEEDS = [12345, 777, 42, 2026];
 const SHIFTS = [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [0, 2], [-2, -2], [-2, -4]] as const;
 /** Half-cell and whole-cell offsets, so the plaza's edges fall both on and between cell lines. */
 const GRID_OFFSETS = [[-0.5, -0.5], [0.5, 0], [0, 0.5], [0.5, 0.5], [1, 1], [-1, 1]] as const;
-/** Seeds typical of each template's batch. Over fifty seeds on Tafa, the barest line any offset
- *  leaves paved reads a median of 0.69, and four seeds, 777 among them, read under the floor at one
- *  offset; Tafa takes 1308, which reads that median. */
+/** Seeds typical of each template's batch. Over fifty Tafa seeds the least-paved movement line has a
+ *  median of 0.69 and four seeds, 777 among them, fall under the floor at one offset; Tafa takes 1308,
+ *  which sits at that median. */
 const GRID_SEEDS: Readonly<Record<string, readonly number[]>> = { hexia: [777, 2026], tafa: [1308, 2026] };
 /** The least share of each plaza face that pavement lines. */
 const FACE_PAVED_MIN = 0.5;

@@ -63,4 +63,18 @@ describe('floating placement', () => {
       expect(Number(up.box.top) + height).toBe(500 - 8);
     }
   });
+
+  it('stands a card that fits neither side whole over its anchor when asked, and caps it otherwise', () => {
+    const at = { anchor: { left: 200, right: 200, top: 200, bottom: 200, width: 0 }, zoom: 1, width: 240, height: 260, viewport: { width: 844, height: 390 } };
+    const capped = placeFloating(at);
+    expect(Number(capped.box.maxHeight)).toBeLessThan(260);
+    const whole = placeFloating({ ...at, overlap: true });
+    expect(whole.box.maxHeight).toBe(390 - 16);
+    expect(Number(whole.box.top)).toBe(200 - 130);
+    expect(whole.above, 'over its anchor, not above it').toBe(false);
+    const tall = placeFloating({ ...at, height: 600, overlap: true });
+    expect(tall.box.maxHeight, 'taller than the window: capped to it').toBe(390 - 16);
+    expect(tall.box.top).toBe(8);
+    expect(placeFloating({ ...at, height: 100, overlap: true }).box, 'a card a side holds opens on that side').toEqual(placeFloating({ ...at, height: 100 }).box);
+  });
 });

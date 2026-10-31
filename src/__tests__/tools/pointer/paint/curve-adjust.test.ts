@@ -1,10 +1,7 @@
 /**
  * The curve's adjust phase: after it is drawn the anchors stay, and moving one re-lays the curve.
- *
- * The property that matters is that a tweak produces the curve that would have been drawn at those
- * anchors: restore-then-relay, not a patch over the path standing there. A mountain curve stacks on
- * what is under it, so painting over the previous path raises it twice, and a cell that path covered
- * has to go back to what it held before the curve rather than to bare ground.
+ * A tweak produces the curve that would have been drawn at those anchors (restore, then relay): a
+ * mountain curve stacks on what is under it, so the old path's cells go back to what they held.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { DrawingTool } from '../../../../tools/pointer/paint/drawing-tool';
@@ -90,7 +87,6 @@ describe('moving an anchor', () => {
   });
 
   it('[EDIT-37] does not stack the mountain twice where the paths overlap', () => {
-    // Restore-then-relay, not patch: painting over the standing path would raise those cells again.
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }, { x: 20, y: 10 }]);
     const endElev = state.cells[10]?.[4]?.terrain?.elevation;
@@ -241,9 +237,8 @@ describe('a tweak the rules refuse', () => {
     state.cells.flat().filter((c) => c?.terrain?.type === TerrainType.Water).length;
 
   it('[EDIT-38] reverts the map AND the anchors, rather than leaving handles on a curve that is gone', () => {
-    // `commitStroke` stops reverting as soon as the state is legal, which for a stroke that
-    // restores and then re-lays can leave the restore standing and the new curve gone. The handles
-    // must never describe a curve the map does not have.
+    // `commitStroke` stops reverting once the state is legal, which can leave the restore standing
+    // and the new curve gone; the handles must not describe a curve the map lacks.
     const { state, ctx, tool } = waterWorld();
     draw(tool, ctx, [{ x: 10, y: 20 }, { x: 20, y: 20 }]);
     const laid = water(state);
@@ -280,8 +275,8 @@ describe('a tweak the rules refuse', () => {
     // and lays no new one. No post-stroke violation is reported for that, only an empty result.
     const { state, ctx, tool } = world();
     draw(tool, ctx, [{ x: 6, y: 6 }, { x: 10, y: 6 }]);
-    // Dragging one anchor off the map is a legal partial tweak — the in-bounds part is laid, the
-    // same as drawing over the edge — so the revert must not fire for it.
+    // Dragging one anchor off the map is a legal partial tweak (the in-bounds part is laid, the
+    // same as drawing over the edge), so the revert must not fire for it.
     moveCurveAnchor(0, 200, 200, true);
     const partial = painted(state);
     expect(partial).toBeGreaterThan(0);
@@ -311,11 +306,11 @@ describe('tile curves', () => {
     const at = (x: number, y: number) => roads(state).some((o) => o.position.x === x && o.position.y === y);
     expect(at(12, 18), 'the new position').toBe(true);
     expect(at(12, 10), 'the old one').toBe(false);
-    expect(roads(state).length).toBeGreaterThan(laid * 0.5); // still a road of comparable length
+    expect(roads(state).length).toBeGreaterThan(laid * 0.5);
   });
 
   it('put back a road the curve paved over, rather than leaving bare ground', () => {
-    // The baseline records coatings as well as terrain: a tweak has to restore what it displaced.
+    // The baseline records coatings as well as terrain.
     const { state, ctx, tool } = tileWorld();
     draw(tool, ctx, [{ x: 2, y: 6 }, { x: 30, y: 6 }]);
     click(tool, ctx, { x: 35, y: 35 });                     // finish that road
@@ -350,9 +345,7 @@ describe('a path that clips ground it may not build on', () => {
   }
 
   it('lays the part it can, instead of nothing at all', () => {
-    // The plan batches a shape into one command per elevation and a command is refused whole if any
-    // single cell in it is, so a path that so much as clips the sea has to retry cell by cell or it
-    // paints nothing at all.
+    // One command per elevation is refused whole if any cell is, so a clipping path retries per cell.
     const { state, ctx, tool } = zonedWorld();
     draw(tool, ctx, [{ x: 10, y: 20 }, { x: 30, y: 20 }]);
     expect(painted(state)).toBeGreaterThan(0);
@@ -378,16 +371,14 @@ describe('a path that clips ground it may not build on', () => {
   });
 
   it('clears the OLD curve when adjusting, even where it crossed the sea', () => {
-    // The baseline covers every cell the curve asked for, forbidden ones included, and one of those in
-    // a batch refuses the whole restore: the previous curve then stands while the new one is laid over
-    // it and the map holds both, which is why the restore splits per cell.
+    // The baseline includes the forbidden cells the curve asked for, and one of those refuses a
+    // batched restore whole, leaving both curves standing; the restore therefore splits per cell.
     const { state, ctx, tool } = zonedWorld();
     draw(tool, ctx, [{ x: 10, y: 20 }, { x: 30, y: 20 }]);
     const laid = painted(state);
     moveCurveAnchor(0, 10, 30, true);
     expect(isMountain(state, 10, 20), 'where the old curve started').toBe(false);
     expect(isMountain(state, 10, 30), 'where it starts now').toBe(true);
-    // Not both curves at once: the count is of one curve, not two.
     expect(painted(state)).toBeLessThan(laid * 1.6);
   });
 
@@ -418,8 +409,8 @@ describe('with auto edge-trim on', () => {
     state.cells.flat().filter((c) => c?.terrain).length;
 
   it('leaves nothing behind on the old path, however far the curve is dragged', () => {
-    // The trim pass sweeps the stroke and its 8-neighbour border, so a tweak that only restored the
-    // path itself left the border patches standing. Dragged back and forth they piled into a ridge.
+    // The trim pass sweeps the stroke and its 8-neighbour border, so a tweak must restore the border
+    // patches as well as the path, or dragging back and forth piles them into a ridge.
     const { state, ctx, tool } = world('round');
     draw(tool, ctx, [{ x: 6, y: 6 }, { x: 14, y: 14 }, { x: 22, y: 6 }]);
     const first = terrainCells(state);
@@ -429,8 +420,8 @@ describe('with auto edge-trim on', () => {
   });
 
   it('does not let a leftover patch refuse the curve its own ground', () => {
-    // A Γ patch left standing reads through the surface as its base, which is what made the
-    // 3x3-support rule turn down cells that were perfectly buildable.
+    // A Γ patch left standing reads through the surface as its base, which would make the
+    // 3x3-support rule turn down cells that are perfectly buildable.
     const { state, ctx, tool } = world('round');
     draw(tool, ctx, [{ x: 6, y: 10 }, { x: 14, y: 16 }, { x: 22, y: 10 }]);
     const fresh = painted(state);

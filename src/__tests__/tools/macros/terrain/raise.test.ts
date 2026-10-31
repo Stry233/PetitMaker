@@ -1,14 +1,8 @@
 /**
- * One verb that grows, through the press that ships it.
- *
- * Every case here goes through `applyMacro`, not through `raiseTerrain`, because a rise is the
- * builder plus the replay plus the post-stroke commit and the three can disagree. `terrace.test.ts`
- * already proves the ring geometry is legal by construction on painted cells; what is proved here is
- * that a press lays those rings on a live map, climbs one rung per stage, leaves alone everything it
- * did not raise, and says what the ground refused.
- *
- * The fixture is `macro-quality.test.ts`'s shape: a grass plain with a sea border, so a disc near
- * the middle has room and the map's own edge is never the thing under test.
+ * The raise macro through `applyMacro`, since the builder, the replay and the post-stroke commit can
+ * disagree. `terrace.test.ts` holds the ring geometry; here a press lays the rings on a live map,
+ * climbs one rung per stage, leaves alone what it did not raise, and reports what the ground refused.
+ * The fixture is a grass plain with a sea border, as in `macro-quality.test.ts`.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';
@@ -71,8 +65,8 @@ function raisedCells(state: GridState): MacroCoord[] {
 const shapeOf = (state: GridState): string => state.cells
   .map((row) => row.map((c) => (c.terrain ? `${c.terrain.type}:${c.terrain.elevation}` : '.')).join(' ')).join('\n');
 
-/** A wedding cake written straight into the cells: one tier per ring, legal by construction without
- *  going through the executor. Somebody's hand-built mountain, for the hold to step around. */
+/** A hand-built stepped cone written straight into the cells, one tier per ring, for the hold to
+ *  step around. */
 function raiseCone(state: GridState, at: MacroCoord, radius: number, peak: number): MacroCoord[] {
   const cells: MacroCoord[] = [];
   for (let y = at.y - radius; y <= at.y + radius; y++) {
@@ -117,7 +111,7 @@ describe('a raise', () => {
     const out = raise(kit);
     expect(out.changes).toBeGreaterThan(0);
     expect(out.peak).toBe(ladderPeak(1));
-    // The footing is bare grass, so the summit tier is the elevation standing.
+    // On bare grass the summit tier is the standing elevation.
     expect(summit(kit.state)).toBe(ladderPeak(1));
     expect(kit.registry.validatePostStroke(kit.state)).toEqual([]);
   });
@@ -134,8 +128,7 @@ describe('a raise', () => {
   });
 
   it('reaches the rung it is asked for while the footprint can carry it', () => {
-    // A radius-8 disc at the steep step still has a core at tier 6, so these four rungs are the
-    // ladder itself rather than the erosion running out.
+    // A radius-8 disc at the steep step keeps a core at tier 6, so erosion does not cap these rungs.
     for (let stage = 1; stage <= 4; stage++) {
       const kit = makeKit();
       expect(raise(kit, { radius: 8, steepness: 'steep', stage }).peak).toBe(ladderPeak(stage));
@@ -155,35 +148,29 @@ describe('a raise', () => {
     const steep = makeKit(); raise(steep, { ...opts, steepness: 'steep' });
 
     expect(shapeOf(wide.state)).not.toBe(shapeOf(steep.state));
-    // One outline, one flat top: the same seed draws the same rim, so the two masses can only
-    // differ above the tier the rings start nesting at.
+    // The same seed draws the same rim, so the masses differ only above the flat top.
     expect(massAt(wide.state, FLAT_TOP)).toBe(massAt(steep.state, FLAT_TOP));
-    // And above it the wider step eats more of the core per tier, so it stands narrower and lower.
+    // Above it the wider step eats more of the core per tier.
     expect(massAt(wide.state, FLAT_TOP + 1)).toBeLessThan(massAt(steep.state, FLAT_TOP + 1));
     expect(summit(wide.state)).toBeLessThanOrEqual(summit(steep.state));
     for (const kit of [wide, steep]) expect(kit.registry.validatePostStroke(kit.state)).toEqual([]);
   });
 
-  /**
-   * The contract. A hold raises the ground it stands on and the mass it has already raised, and
-   * nothing else: somebody's mountain inside the disc keeps every tier it had, and the summit steps
-   * away from it rather than leaning on it.
-   */
+  /** A hold raises its footing and its own mass, nothing else: a mountain inside the disc keeps every
+   *  tier, and the summit steps away from it. */
   it('grows only its own mass, burst after burst', () => {
     const kit = makeKit();
     const cone = raiseCone(kit.state, { x: 25, y: 20 }, 3, 4);
     const coneWas = new Map(cone.map((c) => [`${c.x},${c.y}`, surface(kit.state, c.x, c.y)]));
 
-    // What the tool holds for the length of one press: the footing read once at the anchor, and the
-    // cells each burst raised. Both reset on re-anchor.
+    // Held for one press: the footing read once at the anchor, and the cells each burst raised.
     const footing = raiseFooting(kit.state, FLAT, 8);
     const held = new Set<number>();
     let peak = 0;
     for (let stage = 1; stage <= 5; stage++) {
       const was = new Set(raisedCells(kit.state).map((c) => `${c.x},${c.y}:${surface(kit.state, c.x, c.y)}`));
       const out = raise(kit, { radius: 8, steepness: 'steep', stage, footing, heldCells: [...held] });
-      // It climbs while the footprint carries it and never falls back: the hole the cone leaves
-      // means the top rung of this disc is its own, not the rung the stage asked for.
+      // It never falls back; the cone's hole means it may stop below the stage's rung.
       expect(out.peak, `burst ${stage} lost height`).toBeGreaterThanOrEqual(peak);
       expect(out.peak, `burst ${stage} climbed past its rung`).toBeLessThanOrEqual(ladderPeak(stage));
       peak = out.peak!;
@@ -198,8 +185,7 @@ describe('a raise', () => {
     }
     expect(peak).toBeGreaterThan(FLAT_TOP);
 
-    // The summit is the hold's own, and it keeps the erosion's distance from the mass it stepped
-    // around: a cell standing at the top is never up against the cone.
+    // No summit cell touches the cone.
     const top = summit(kit.state);
     for (const c of raisedCells(kit.state)) {
       if (surface(kit.state, c.x, c.y) !== top || coneWas.has(`${c.x},${c.y}`)) continue;

@@ -108,7 +108,7 @@ describe('the reduced shell', () => {
     mount();
     enter();
     await waitFor(() => expect(queryButton('Roads')).toBeNull());
-    const row = button('Terrain').parentElement!;
+    const row = screen.getByRole('group', { name: 'Modes' });
     expect(within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Terrain', 'Water', 'Objects']);
     expect(queryButton('Mountains')).toBeNull();
     expect(queryButton('Generate')).toBeNull();
@@ -142,6 +142,18 @@ describe('the reduced shell', () => {
     const menu = await screen.findByRole('menu');
     expect(within(menu).getAllByRole('menuitem').map((row) => row.textContent))
       .toEqual([t('modal.settings_title'), t('modal.help_title'), t('modal.about_title')]);
+  });
+
+  it('hangs the menu card from the menu button again once the session ends', async () => {
+    mount();
+    enter();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Open menu' })).toHaveLength(1));
+    act(() => { stopPlanetEditing(); store().setModal('newProject', false); });
+    // The session's corner leaves after its exit motion, while the map's corner already stands.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Open menu' })).toHaveLength(1));
+    fireEvent.click(button('Open menu'));
+    const menu = await screen.findByRole('menu');
+    await waitFor(() => expect(menu.style.left).not.toBe('-10000px'));
   });
 
   it('gives the mountain bar the two ground materials, grass named Ground while the ground stays flat, and no smart build or trim', async () => {
@@ -232,7 +244,7 @@ describe('keys in the session', () => {
     enter();
     paintGround(island());
     expect(placeSessionLandmark({ x: 110, y: 105 }, 0).success).toBe(true);
-    act(() => { store().setContextMenu({ x: 10, y: 10, target: { kind: 'object', id: ANCHOR_LANDMARK.id } }); });
+    act(() => { store().setContextMenu({ x: 10, y: 10, target: { kind: 'object', id: ANCHOR_LANDMARK.id }, mode: 'pc' }); });
     fireEvent.click(screen.getByRole('menuitem', { name: t('context.rotate_270') }));
     expect(store().gridState!.objects.get(ANCHOR_LANDMARK.id)!.rotation).toBe(270);
     expect(store().commandExecutor!.canUndo()).toBe(true);

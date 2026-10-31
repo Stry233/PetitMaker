@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // The drawn hint tokens. Arrows and mice are asserted as SVG rather than characters: a font
 // arrow glyph varies by OS and reads too thin at cap size, so the panel draws them.
-// Plain DOM checks (toBe / toBeTruthy) match sibling UI tests; the locale is seeded because
-// I18nProvider reads it from the store and the detector would otherwise follow the host.
+// The locale is seeded because I18nProvider reads it from the store and the detector would
+// otherwise follow the host.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { I18nProvider } from '../../../../i18n/context';

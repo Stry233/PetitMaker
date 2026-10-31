@@ -1,12 +1,8 @@
 /**
- * prettyModel v2 — friendly names derived from a real cross-platform corpus
- * (OpenAI + OpenRouter public catalog + Perplexity's Router catalog + an Open WebUI/ollama campus
- * gateway).
- * Rules under test: version dots survive, glued family+version splits
- * (llama3.1), dash-versions join (opus-4-8 → 4.8), dates drop (both -20250414
- * and split -2025-04-14 and MMDD like -0125), sizes/quant uppercase (70b→70B,
- * fp16→FP16), ollama :tags fold in (:latest drops), vendor prefixes drop, and
- * brand casing (GPT/GLM/QwQ/DeepSeek/o3…).
+ * Friendly model names over ids from OpenAI, OpenRouter, Perplexity's Router and an ollama gateway:
+ * version dots survive, glued versions split (llama3.1), dash versions join (opus-4-8 to 4.8), dates
+ * drop in every shape, sizes and quants uppercase, ollama tags fold in (`:latest` drops), vendor
+ * prefixes drop, and brands keep their casing.
  */
 import { describe, it, expect } from 'vitest';
 import { prettyModel, shortModel } from '../../../../ui/agent/connection/pretty-model';
@@ -60,8 +56,7 @@ const CASES: [string, string][] = [
   ['recycling-test-bot', 'Recycling Test Bot'],
   // openrouter :free routing tag survives as a suffix word
   ['google/gemma-4-26b-a4b-it:free', 'Gemma 4 26B A4B IT Free'],
-  // perplexity's Router catalog: the slug's creator prefix names who serves the model, so dropping
-  // it leaves the model's own name, and the MoE active-parameter suffix uppercases like a quant.
+  // Perplexity's Router: the prefix names the server, and the MoE active-parameter suffix uppercases.
   ['perplexity/kimi-k3', 'Kimi K3'],
   ['perplexity/glm-5.2', 'GLM 5.2'],
   ['perplexity/deepseek-v4-flash-0731', 'DeepSeek V4 Flash'],
@@ -80,10 +75,7 @@ describe('prettyModel', () => {
   });
 });
 
-/**
- * The short form, for the one line that carries a model name beside a second fact and cannot wrap
- * (the dock's manage meta: "Claude Sonnet 4.5, Checkpoint" ellipsized the oversight word away).
- */
+/** The short form, for a line that pairs the model name with another fact and cannot wrap. */
 describe('shortModel', () => {
   const CUT: [string, string][] = [
     ['claude-sonnet-4-5', 'Claude Sonnet'],

@@ -61,7 +61,7 @@ export function AnchoredConfirm({
   const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom, align, gap: ANCHOR_GAP, prefer, lockSide });
   useSurfaceScope({ open: !!anchor && present && !!floating.placement, root: floating.ref, trigger, onClose: content.onCancel, focus: 'contain', outside: true });
   return (
-    <motion.div ref={floating.ref} role="dialog" aria-label={content.title} data-testid={testId}
+    <motion.div ref={floating.ref} {...floating.piece} role="dialog" aria-label={content.title} data-testid={testId}
       {...helpAttributes(helpTarget)}
       {...anchoredCardMotion(reduced)}
       style={{

@@ -22,11 +22,22 @@ vi.mock('../../../../ui/shell/warm/loaders', () => ({ loadNewTagCard: item('load
 const files = vi.hoisted(() => ({ counted: ['/a.bin', '/b.bin'], background: ['/runtime.wasm'] }));
 vi.mock('../../../../ui/shell/warm/files', () => ({ warmFiles: vi.fn(async () => files) }));
 const fetched = vi.hoisted(() => [] as string[]);
-vi.mock('../../../../platform/async/http-cache', () => ({ prefetchIntoCache: vi.fn(async (url: string) => { fetched.push(url); return true; }) }));
+/** Files whose fetch never answers. */
+const stalled = vi.hoisted(() => new Set<string>());
+const decoded = vi.hoisted(() => new Set<string>());
+vi.mock('../../../../platform/async/http-cache', () => ({
+  prefetchIntoCache: vi.fn(async (url: string) => {
+    fetched.push(url);
+    if (stalled.has(url)) await new Promise(() => {});
+    return true;
+  }),
+  decodeImage: vi.fn(async (url: string) => { decoded.add(url); return true; }),
+}));
 const device = vi.hoisted(() => ({ webgl2: true, tier: 'full' as 'full' | 'core' | 'minimal' | 'none' }));
 vi.mock('../../../../platform/device/device-quality', () => ({ hasWebGL2: () => device.webgl2, warmTier: () => device.tier }));
 
 import { startWarm, __resetWarm } from '../../../../ui/shell/warm/schedule';
+import { allIconUrls } from '../../../../assets/icon-urls';
 import { loadHelpModal, loadWhatsThisLayer } from '../../../../ui/shell/edition-surfaces';
 import * as windowLoaders from '../../../../ui/chrome/loaders';
 import * as frameLoaders from '../../../../ui/shell/warm/loaders';
@@ -52,7 +63,8 @@ async function codeStarted(tier: typeof device.tier): Promise<string[]> {
 }
 
 afterEach(() => {
-  device.webgl2 = true; device.tier = 'full'; fetched.length = 0; __resetWarm();
+  vi.unstubAllGlobals();
+  device.webgl2 = true; device.tier = 'full'; fetched.length = 0; stalled.clear(); decoded.clear(); __resetWarm();
   started.log.length = 0; started.running = 0; started.peak = 0; started.fail.clear();
 });
 
@@ -80,7 +92,7 @@ describe('the warm schedule', () => {
     await run.settled;
     expect(started.peak).toBe(2);
     expect(started.log).toEqual(FULL);
-    expect(run.done()).toBe(run.total());
+    expect(run.settledItems()).toHaveLength(run.items().length);
   });
 
   it('starts the first item at once and waits for an idle moment before each later one', async () => {
@@ -95,9 +107,42 @@ describe('the warm schedule', () => {
     const run = startWarm();
     expect(startWarm()).toBe(run);
     await run.planned;
-    expect(run.total()).toBe(FULL.length + files.counted.length);
+    expect(run.items().map((item) => item.url)).toEqual([...FULL.map(() => undefined), ...files.counted]);
     await run.settled;
-    expect(run.done()).toBe(run.total());
+    expect(run.settledItems()).toHaveLength(run.items().length);
     await vi.waitFor(() => expect(fetched).toEqual([...files.counted, ...files.background]));
+  });
+
+  it('decodes every catalog icon in the background, on a device that warms nothing else too', async () => {
+    device.tier = 'none';
+    const icons = allIconUrls().filter((url) => !url.startsWith('data:'));
+    expect(icons.length).toBeGreaterThan(0);
+    await startWarm().settled;
+    await vi.waitFor(() => expect(decoded.size).toBe(new Set(icons).size), { timeout: 10_000 });
+  });
+
+  it('[UI-37] settles its counted items while a background file is still downloading', async () => {
+    stalled.add(files.background[0]!);
+    const run = startWarm();
+    await run.settled;
+    expect(run.items().map((item) => item.url)).not.toContain(files.background[0]);
+    await vi.waitFor(() => expect(fetched).toContain(files.background[0]));
+  });
+
+  it('[UI-37] settles its counted items while the loading screen waits on them in an engine that grants no idle moment', async () => {
+    vi.stubGlobal('requestIdleCallback', () => 0);
+    const run = startWarm();
+    run.rush();
+    await run.settled;
+    expect(run.settledItems()).toHaveLength(run.items().length);
+  });
+
+  it('waits for idle moments again once the loading screen lets go', async () => {
+    vi.stubGlobal('requestIdleCallback', () => 0);
+    const run = startWarm();
+    run.rush()();
+    await run.planned;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(run.settledItems()).toHaveLength(1);
   });
 });

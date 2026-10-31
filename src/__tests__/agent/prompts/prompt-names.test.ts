@@ -25,6 +25,7 @@ function nudgeTexts(): Record<string, string> {
     repeatRefusal: nudges.repeatRefusal(GUIDES, { error: 'refused', repeats: 2 }),
     deliveryNudge: nudges.deliveryNudge(),
     reviewNudge: nudges.reviewNudge(GUIDES),
+    unfiledSketchNudge: nudges.unfiledSketchNudge(GUIDES),
     unfinishedPlanNudge: nudges.unfinishedPlanNudge(GUIDES, { stageCount: 3, current: 1, nextLabel: 'stage' }),
     verbatimRetryNudge: nudges.verbatimRetryNudge(GUIDES, 1),
     revertNudge: `${nudges.revertNudge(GUIDES, 'paint_terrain', 1)}\n${nudges.revertNudge(GUIDES, 'paint_terrain', 4)}`,

@@ -6,7 +6,7 @@
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { framerMotion } from '../../../design/motion';
-import { font, interactionProfiles, radii, cursors } from '../../../design/styles';
+import { font, radii, cursors } from '../../../design/styles';
 import { inkTint } from '../../../design/tokens';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
@@ -14,6 +14,7 @@ import { useWeightVars } from '../../../design/scale';
 import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
 import { BOARD_IN, CLUSTER_IN, ROW_IN, ROW_IN_REDUCED } from './motion';
 import { KEY_ROWS, NUMPAD, NUMPAD_COLS, NUMPAD_ROWS_N, NAV, NAV_COLS, NAV_ROWS_N, CATEGORY_COLOR, comboFor, type KeyDef, type Layer } from './layout';
+import { useInteractionProfiles } from '../../../design/input-mode';
 
 // Keycap metrics, sized so the labels stay legible after the chrome zoom shrinks the card.
 const UNIT = 60;
@@ -27,6 +28,10 @@ const clusterW = (units: number): number => units * UNIT + (units - 1) * GAP;
 const BOARD_UNITS = Math.max(...KEY_ROWS.map((r) => r.reduce((s, k) => s + (k.w ?? 1), 0)));
 export const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
 export const KEYBOARD_H = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
+/** Room above and beside the keys for a key's hover lift and the selection ring, in board px. */
+export const BOARD_RING = 6;
+/** The board's laid-out width at zoom 1, its ring included. */
+export const BOARD_OUTER_W = KEYBOARD_W + 2 * BOARD_RING;
 
 export function KeyboardBoard({ layer, index, aliases, selectedId, label, zoom, onPick, onToggleMod }: {
   layer: Layer;
@@ -42,6 +47,7 @@ export function KeyboardBoard({ layer, index, aliases, selectedId, label, zoom, 
   const reduced = useReducedMotionConfig();
   // The board's fitting zoom shrinks its keycap text below the card's, so it resolves its own weights.
   const weights = useWeightVars(zoom);
+  const profiles = useInteractionProfiles();
   const rowIn = reduced ? ROW_IN_REDUCED : ROW_IN;
   const pick = onPick;
   const toggleMod = onToggleMod;
@@ -102,8 +108,8 @@ export function KeyboardBoard({ layer, index, aliases, selectedId, label, zoom, 
         onClick={onClick}
         title={cmd ? label(cmd.id) : undefined}
         animate={{ backgroundColor: bg }}
-        whileHover={interactive ? interactionProfiles.keyboardKey.whileHover : undefined}
-        whileTap={interactive ? interactionProfiles.keyboardKey.whileTap : undefined}
+        whileHover={interactive ? profiles.keyboardKey.whileHover : undefined}
+        whileTap={interactive ? profiles.keyboardKey.whileTap : undefined}
         transition={{ default: framerMotion('control.settle'), backgroundColor: framerMotion('control.tint') }}
      >
         {/* The engraved glyph never changes with the layer, so it stays put and is not animated. */}
@@ -167,7 +173,7 @@ export function KeyboardBoard({ layer, index, aliases, selectedId, label, zoom, 
       variants={BOARD_IN}
       initial="hidden"
       animate="show"
-      style={{ display: 'flex', gap: BOARD_GAP, alignItems: 'flex-start', width: 'max-content', flex: '0 0 auto', padding: '6px 6px 0', zoom, ...weights }}
+      style={{ display: 'flex', gap: BOARD_GAP, alignItems: 'flex-start', width: 'max-content', flex: '0 0 auto', padding: `${BOARD_RING}px ${BOARD_RING}px 0`, zoom, ...weights }}
        >
       {board(KEY_ROWS)}
       {gridBoard(NAV, NAV_COLS, NAV_ROWS_N, 98)}

@@ -125,6 +125,7 @@ export const DOM_CURSORS = {
   blocked: '--pw-cursor-blocked',
   text: '--pw-cursor-text',
   help: '--pw-cursor-help',
+  busy: '--pw-cursor-busy',
 } as const satisfies Partial<Record<CursorId, string>>;
 
 export type DomCursorId = keyof typeof DOM_CURSORS;

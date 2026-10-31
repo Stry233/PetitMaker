@@ -158,8 +158,8 @@ This project includes the following third-party open-source packages, resolved f
 | protobufjs | 7.6.5 | BSD-3-Clause | Daniel Wirtz <dcode+protobufjs@dcode.io> | https://protobufjs.github.io/protobuf.js/ |
 | punycode | 1.4.1 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/punycode |
 | qrcode-generator | 2.0.4 | MIT | Kazuhiko Arase | — |
-| qs | 6.16.0 | BSD-3-Clause | — | https://github.com/ljharb/qs |
-| re2js | 2.8.6 | MIT | Oleksii Vasyliev | https://github.com/le0pard/re2js#readme |
+| qs | 6.16.1 | BSD-3-Clause | — | https://github.com/ljharb/qs |
+| re2js | 2.9.0 | MIT | Oleksii Vasyliev | https://github.com/le0pard/re2js#readme |
 | react | 18.3.1 | MIT | — | https://reactjs.org/ |
 | react-dom | 18.3.1 | MIT | — | https://reactjs.org/ |
 | regenerator-runtime | 0.13.11 | MIT | Ben Newman <bn@cs.stanford.edu> | — |

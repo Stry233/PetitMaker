@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Dragging a halfStep object through the real pointer path steps in half cells. A drag site that
- * computes `placement cell + grabOffset` is already whole-stepped before any snap runs, so the
- * object could start on the half grid but never reach it by dragging. `object-drag-move.test.ts`
- * calls `planObjectMove` with a hand-picked x.5 and never exercises that arithmetic.
- *
- * This drives `usePointerInteraction` over a view reporting a continuous point: a drag inside one
- * whole placement cell must still move the object by half a cell.
+ * Dragging a halfStep object through `usePointerInteraction` steps in half cells: a drag inside one
+ * whole placement cell still moves the object by half a cell. A drag computing `placement cell +
+ * grabOffset` would be whole-stepped before any snap runs.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -36,9 +32,7 @@ __setCatalogItem({
   traits: [{ type: 'halfStep' }],
 });
 
-/** 1 cell = 10 screen px (half cell = 5px). The view reports the continuous point, as the real
- *  2D/3D projections do; its half-cell point (round(2·p)/2) is what a floor-derived drag path never
- *  reads. */
+/** 1 cell = 10 screen px. The view reports the continuous point, as the real projections do. */
 function makeView() {
   const overlay = {
     showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(),
@@ -73,9 +67,8 @@ let el: HTMLElement;
 let gs: GridState;
 let executor: CommandExecutor;
 
-/** A real ToolManager over the given objects, hand mode (no item armed), the given object
- *  pre-selected so a press on it arms drag-to-move. Returns the mocked overlay so a test can
- *  inspect the live ghost mid-drag (before any drop). */
+/** A real ToolManager over `objects` with no item armed and the objects selected, so a press on one
+ *  arms drag-to-move. Returns the mocked overlay for reading the live ghost. */
 function arm(objects: PlacedObject[], size = 20): { overlay: ReturnType<typeof makeView>['overlay'] } {
   gs = makeState(size, size);
   for (const obj of objects) gs.objects.set(obj.id, obj);
@@ -94,8 +87,7 @@ function arm(objects: PlacedObject[], size = 20): { overlay: ReturnType<typeof m
   return { overlay };
 }
 
-/** Press at `from`, drag to `to`, release — raw screen px, not macro cells (the whole point here
- *  is picking pixels that straddle a half boundary without crossing a whole one). */
+/** Press at `from`, drag to `to`, release, in screen px so a move can cross a half boundary only. */
 function drag(from: { x: number; y: number }, to: { x: number; y: number }): void {
   el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: from.x, clientY: from.y }));
   window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: to.x, clientY: to.y }));
@@ -117,16 +109,12 @@ afterEach(() => {
 
 describe('dragging a halfStep object through the real pointer path', () => {
   it('steps in HALF cells, never getting stuck at the offset it started with', () => {
-    // The slab sits at (4.5, 5); its footprint is [4.5, 5.5) x [5, 6), and the press must land on
-    // it: map point (5.1, 5.5) does.
+    // The footprint is [4.5, 5.5) x [5, 6), so the press at map point (5.1, 5.5) lands on it.
     const slab: PlacedObject = { id: 'r', catalogId: 'hs-drag-slab', position: { x: 4.5, y: 5 }, rotation: 0, elevation: 0 };
     arm([slab]);
 
-    // Press at (51, 55): half-cell point (5.0, 5.5) → grabOffset = (4.5 - 5.0, 5 - 5.5) = (-0.5, -0.5).
-    // Drag to (55, 55): the placement cell is still (5, 5) — the same whole cell as the press,
-    // never crossing a whole-cell boundary — but the half-cell point is now (5.5, 5.5). Only a drag
-    // that actually reads the half-cell point can move the slab at all here: anchor = half + grabOffset =
-    // (5.5 - 0.5, 5.5 - 0.5) = (5.0, 5.0).
+    // The press's half-cell point (5.0, 5.5) gives grabOffset (-0.5, -0.5). At (55, 55) the placement
+    // cell is still (5, 5) but the half-cell point is (5.5, 5.5), so the anchor becomes (5.0, 5.0).
     drag({ x: 51, y: 55 }, { x: 55, y: 55 });
 
     const moved = gs.objects.get('r');
@@ -138,7 +126,6 @@ describe('dragging a halfStep object through the real pointer path', () => {
     const tree: PlacedObject = { id: 't', catalogId: 'tree-apple', position: { x: 5, y: 5 }, rotation: 0, elevation: 0 };
     arm([tree]);
 
-    // A real whole-cell drag: press mid-cell (5,5), drag to mid-cell (8,8).
     drag({ x: 55, y: 55 }, { x: 85, y: 85 });
 
     const moved = gs.objects.get('t');
@@ -149,13 +136,9 @@ describe('dragging a halfStep object through the real pointer path', () => {
   });
 
   it('the live drag ghost of a half-anchored ramp reads its OWN planned elevation, not the ground under a half index', () => {
-    // `gs.cells[y]?.[x]` with a fractional x is undefined, so an inline whole-cell lookup always
-    // reads elevation 0 — the ghost "sinks to ground" for exactly the decks the half grid exists
-    // for. Same cliff shape as
-    // object-drag-move.test.ts's half-anchor case: a mountain band at y <= 9, a shoulder at
-    // x = 7 and a water bank at x = 4 for y in [10, 14] leave a lane only the half anchor at
-    // x = 4.5 clears, so the heightDrop trait re-detects there and stamps elevation 1 (the
-    // mountain's own height) on the validated candidate — the value the ghost must read.
+    // `gs.cells[y]?.[x]` with a fractional x is undefined, so a whole-cell lookup would read elevation
+    // 0. A mountain band at y <= 9, a shoulder at x = 7 and a water bank at x = 4 for y in [10, 14]
+    // leave a lane only the half anchor at x = 4.5 clears, where heightDrop stamps elevation 1.
     const S = 24;
     const ramp: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 15, y: 9 }, rotation: 0, elevation: 1 };
     const { overlay } = arm([ramp], S);
@@ -165,8 +148,7 @@ describe('dragging a halfStep object through the real pointer path', () => {
       setTerrain(gs, 4, y, TerrainType.Water, 0);
     }
 
-    // Press exactly on the ramp's own anchor (15, 9): grabOffset {0, 0}. Drag to screen (45, 100)
-    // — the half-cell point is (4.5, 10) — so the drop anchor is the half-anchored lane at x = 4.5.
+    // Pressed on the ramp's anchor, so grabOffset is zero; (45, 100) is the half-cell point (4.5, 10).
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 150, clientY: 90 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 45, clientY: 100 }));
 

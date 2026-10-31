@@ -14,8 +14,8 @@ const addRoad = (state: any, x: number, y: number, id = `road-${x}-${y}`) =>
 const addStall = (state: any, x: number, y: number, id = `blocker-${x}-${y}`) =>
   state.objects.set(id, { id, catalogId: 'building-stall', position: { x, y }, rotation: 0, elevation: 0 });
 
-// A building placed over a road removes the road. The removal must be tied to the placement: it happens
-// Only if the placement is legal, and the two undo together as one step (never leave the road gone with
+// A building placed over a road removes the road. The removal is tied to the placement: it happens
+// only if the placement is legal, and the two undo together as one step (never leave the road gone with
 // no building on top).
 describe('ObjectPlacerTool: placing over a road', () => {
   it('places a building above the road with one undo step', () => {

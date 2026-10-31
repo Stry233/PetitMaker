@@ -10,11 +10,8 @@ import { PREFS } from '../../../platform/storage/prefs';
 beforeEach(() => {
   localStorage.clear();
   vi.useFakeTimers();
-  // The store is a module singleton (like useAgentStore), so a test that leaves an order
-  // appended with no jobEnd/incident would otherwise carry an "active job" into the next test —
-  // and hydrate() deliberately no-ops on an active job, so it cannot be relied on alone to reset
-  // between tests. clearSession() bypasses that guard on purpose (it is an
-  // explicit fresh start, never a re-mount) and always lands a clean, unwired-then-rewired log.
+  // The store is a module singleton and hydrate() no-ops on an active job, so a test that leaves an
+  // order unfinished would carry it into the next; clearSession() resets regardless.
   useAgentSession.getState().clearSession();
 });
 
@@ -28,14 +25,9 @@ const FRAME_MS = 20;
 
 describe('the log the store BOOTS on', () => {
   /**
-   * The boot log carries the subscription, and nothing has to ask for it. A session belongs to a
-   * map, so the app calls `hydrate()` only when a map is restored — every other launch runs on the
-   * log the store made for itself, and were that one unwired an append would reach nobody: no epoch
-   * bump, so the panel never re-renders while a job runs, and no debounced save, so the session is
-   * never written and there is nothing to restore next time either.
-   *
-   * A fresh module is the only way to see that state: the suite's own `clearSession()` re-adopts,
-   * which masks it.
+   * The app calls `hydrate()` only when a map is restored, so every other launch runs on the boot
+   * log, which has to be wired for epochs and saves by itself. A fresh module is the only way to see
+   * it: the suite's `clearSession()` re-adopts and would mask an unwired boot log.
    */
   it('bumps the epoch on an append with no hydrate() ever called', async () => {
     vi.resetModules();
@@ -106,12 +98,8 @@ describe('agent session store', () => {
     expect(second).toBe(first);
   });
 
-  /**
-   * A streaming delta costs a full re-fold of the log, for every reader, so an epoch per delta
-   * makes the panel cost token-rate x log-length. These hold the coalescing that bounds it to the
-   * display's own rate, and the two escapes that keep the coalesced value from ever being read
-   * beside a log that has already moved past it.
-   */
+  /** Every epoch re-folds the log for every reader, so one per delta would cost token rate times log
+   *  length. An append and a clear bypass the coalescing so live parts never lag the log. */
   describe('setLive is coalesced to one epoch per frame', () => {
     it('many deltas in one frame publish once, with the LAST snapshot', () => {
       useAgentSession.getState().hydrate();
@@ -138,7 +126,7 @@ describe('agent session store', () => {
 
       expect(useAgentSession.getState().live).toEqual([{ kind: 'text', text: 'half a sen', done: false }]);
 
-      // And nothing is owed afterwards: the frame that would have published it finds it taken.
+      // The frame that would have published it finds nothing left to publish.
       const epochAfterAppend = useAgentSession.getState().epoch;
       vi.advanceTimersByTime(FRAME_MS);
       expect(useAgentSession.getState().epoch).toBe(epochAfterAppend);
@@ -161,18 +149,16 @@ describe('agent session store', () => {
       useAgentSession.getState().hydrate();
       append(useAgentSession.getState().log, { kind: 'order', text: 'build', mapContext: 'ctx' });
 
-      // Two readers, no argument between them: the same call answers both.
       expect(panelView(useAgentSession.getState())).toBe(panelView(useAgentSession.getState()));
 
-      // Publishing the facts (what the panel chunk does as it loads) changes the store, so a standing
-      // reader re-folds rather than keeping a view built without it.
+      // The panel chunk publishes the facts as it loads; a standing reader then re-folds.
       const view = panelView(useAgentSession.getState());
       const facts = stubFacts();
       setToolFacts(facts);
       expect(useAgentSession.getState().toolFacts).toBe(facts);
       expect(panelView(useAgentSession.getState())).not.toBe(view);
 
-      setToolFacts(undefined); // the store is a singleton: hand the next test back unpublished facts
+      setToolFacts(undefined); // the store is a singleton
     });
 
     /** Open transcripts need each arriving character; unchanged snapshots need no new projection. */
@@ -183,7 +169,7 @@ describe('agent session store', () => {
         while (unwire.length > 0) unwire.pop()?.();
       });
 
-      /** Snapshots the store's own update count, which is what a re-fold hangs off. */
+      /** Counts store updates, each of which costs readers a re-fold. */
       function countUpdates(): () => number {
         let n = 0;
         unwire.push(useAgentSession.subscribe(() => { n += 1; }));
@@ -262,8 +248,7 @@ describe('agent session store', () => {
         expect(updates()).toBe(3);
       });
 
-      /** The gate skips a publish, it does not discard a snapshot: the "never read a coalesced
-       *  value beside a log that has moved" rule still owns the append. */
+      /** The gate skips a publish without discarding the snapshot, so an append still flushes it. */
       it('an append still takes the snapshot the gate left standing', () => {
         startTurn();
         const log = useAgentSession.getState().log;
@@ -288,7 +273,7 @@ describe('agent session store', () => {
         useAgentSession.getState().setLive(null);
         expect(useAgentSession.getState().live).toBeNull();
 
-        // And the skipped snapshot is gone with it: no frame revives it behind the clear.
+        // No later frame revives the skipped snapshot behind the clear.
         vi.advanceTimersByTime(FRAME_MS);
         expect(useAgentSession.getState().live).toBeNull();
       });
@@ -332,8 +317,7 @@ describe('agent session store', () => {
   it('hydrate no-ops while a job is active, keeping the same log adopted (no split-brain, no synthetic paused)', () => {
     useAgentSession.getState().hydrate();
     append(useAgentSession.getState().log, { kind: 'order', text: 'build', mapContext: 'ctx' });
-    // No jobEnd/incident: the job is still active. Flush the pending debounced save so hydrate's
-    // internal flush has nothing new to do, isolating the no-op behavior under test.
+    // No jobEnd, so the job is active. Settling the debounced save leaves hydrate's own flush idle.
     vi.advanceTimersByTime(600);
 
     const liveLog = useAgentSession.getState().log;
@@ -342,8 +326,7 @@ describe('agent session store', () => {
     expect(useAgentSession.getState().log).toBe(liveLog);
     expect(useAgentSession.getState().log.events.some((e) => e.kind === 'paused')).toBe(false);
 
-    // Epoch semantics still hold on the retained log: an append after the no-op hydrate still
-    // bumps epoch through the same, still-wired subscription.
+    // The retained log's subscription is still wired.
     const epochBefore = useAgentSession.getState().epoch;
     append(useAgentSession.getState().log, { kind: 'steer', text: 'go faster' });
     expect(useAgentSession.getState().epoch).toBe(epochBefore + 1);
@@ -361,13 +344,8 @@ describe('agent session store', () => {
   });
 
   /**
-   * `restored`: the one thing that tells a held job the user is standing in from one the session was
-   * found holding.
-   *
-   * The log cannot answer it — a paused job is a paused job whichever page it was paused in — and the
-   * two are different screens, so the fact lives here. It falls on the first append, which is the
-   * moment the session stops being what was read back: a job resumed and paused again in this page
-   * is a live hold, not an offer.
+   * `restored` tells a hold made in this page from one read back from storage, which the log alone
+   * cannot. It falls on the first append: a job resumed and paused again here is a live hold.
    */
   describe('restored: the session came back from storage', () => {
     it('is false on a boot log, true after a hydrate that found one, and false again on the first append', () => {
@@ -375,7 +353,7 @@ describe('agent session store', () => {
 
       append(useAgentSession.getState().log, { kind: 'order', text: 'build', mapContext: 'ctx' });
       append(useAgentSession.getState().log, { kind: 'jobEnd', outcome: 'done' });
-      vi.advanceTimersByTime(600); // the debounced save
+      vi.advanceTimersByTime(600);
 
       useAgentSession.getState().hydrate();
       expect(useAgentSession.getState().restored).toBe(true);
@@ -391,8 +369,8 @@ describe('agent session store', () => {
     });
   });
 
-  /** The corrupt bytes are handed up and held, because the fresh log saves over them within the
-   *  second: the notice offers to export the evidence, so the evidence has to outlive the read. */
+  /** The fresh log saves over the corrupt bytes within a second, so the store holds them for the
+   *  notice that offers to export them. */
   it('keeps the unreadable bytes for the notice that is about them, and drops them with it', () => {
     localStorage.setItem(PREFS.agentLogV3.key, '{not json');
     useAgentSession.getState().hydrate();
@@ -418,7 +396,7 @@ describe('agent session store', () => {
   });
 
   describe('storageNotice: the storage banner\'s producer', () => {
-    afterEach(() => vi.restoreAllMocks()); // a permanent setItem mock must not leak into the next test
+    afterEach(() => vi.restoreAllMocks());
 
     it('a debounced save that returns pruned sets storageNotice to pruned', () => {
       useAgentSession.getState().hydrate();
@@ -500,11 +478,10 @@ describe('the leave verbs: filing a settled record away, and clearing one', () =
 
     const before = useAgentSession.getState().filed;
     useAgentSession.getState().fileAway(4);
-    // The same answer twice is not a change: a re-file must not churn every reader of the set.
+    // A re-file keeps the same set, so readers do not churn.
     expect(useAgentSession.getState().filed).toBe(before);
   });
 
-  /** A cleared record is filed by construction: there is no card left for it to stand as. */
   it('clears a record, which files it too', () => {
     useAgentSession.getState().clearRecord(7);
     expect(marks()).toEqual({ filed: [7], cleared: [7] });
@@ -523,9 +500,8 @@ describe('the leave verbs: filing a settled record away, and clearing one', () =
     expect(marks()).toEqual({ filed: [1, 2], cleared: [2] });
   });
 
-  /** The seqs belong to the log they were made against. A storage envelope that did not come back
-   *  (absent, or a version this build cannot read) takes its marks with it, or the first record of
-   *  the next session inherits a stranger's answer. */
+  /** Seqs are local to a log: when the stored log is absent or unreadable, its marks go too, or the
+   *  next session's first record would inherit them. */
   it('drops the marks when the log they belong to does not come back', () => {
     useAgentSession.getState().fileAway(1);
     localStorage.removeItem(PREFS.agentLogV3.key);

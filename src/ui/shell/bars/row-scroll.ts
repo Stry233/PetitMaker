@@ -10,3 +10,14 @@ export function reveal(el: HTMLElement | null | undefined): void {
   if (left < 0) row.scrollLeft += Math.max(left, right);
   else if (right > 0) row.scrollLeft += Math.min(left, right);
 }
+
+/** Scrolls `container` alone so `el` stands at its middle along `axis`: `el`'s offset is summed up its
+ *  offset parents to `container`, which must be positioned, so the zoom never enters it. */
+export function centreIn(container: HTMLElement, el: HTMLElement, axis: 'x' | 'y'): void {
+  let at = 0;
+  for (let node: HTMLElement | null = el; node && node !== container; node = node.offsetParent as HTMLElement | null) {
+    at += axis === 'x' ? node.offsetLeft : node.offsetTop;
+  }
+  if (axis === 'x') container.scrollLeft = at + el.offsetWidth / 2 - container.clientWidth / 2;
+  else container.scrollTop = at + el.offsetHeight / 2 - container.clientHeight / 2;
+}

@@ -89,7 +89,7 @@ export function installPlanetCanvas(template: MapTemplate, registry: RuleRegistr
         state.objects.set(landmark.id, movable);
         bumpObjectsVersion(state, { removed: [landmark], added: [movable] });
       }
-      store.clearSelection();
+      store.clearSelection({ record: false });
       store.setDeletePopover(null);
       store.setSelectingRegion(false);
       store.setRegion([]);

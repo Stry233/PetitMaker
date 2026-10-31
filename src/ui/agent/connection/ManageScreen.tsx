@@ -20,7 +20,6 @@ import { font } from '../../design/styles';
 import { DANGER_INK, INK, PLATE_INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { ActionButton } from '../../primitives/ActionButton';
-import { useFrameZoom } from '../../shell/use-frame-zoom';
 import { Icon } from '../parts/sprite';
 import { motion } from 'framer-motion';
 import { framerMotion } from '../../design/motion';
@@ -65,7 +64,6 @@ export function ManageScreen({
   onDone, onNeedKey, onStopJob, onSetAside, onClearJobs, listModels = defaultListModels, liveConnection,
 }: ManageScreenProps) {
   const t = useT();
-  const zoom = useFrameZoom();
   const settings = useAgentConnection();
   const [provOpen, setProvOpen] = useState(false);
   const url = useEndpointDraft(settings.customBaseUrl);
@@ -160,7 +158,6 @@ export function ManageScreen({
             noteNextJob();
           }}
           activeId={provider}
-          zoom={zoom}
           items={[
             ...PROVIDER_ROSTER.map((id) => ({ id, label: providerName(id, t) })),
             { id: 'custom', label: providerName('custom', t), separated: true },
@@ -231,7 +228,6 @@ export function ManageScreen({
           loader={provider !== 'custom'}
           hint={QUIRKS[provider].modelHintKey !== undefined ? t(QUIRKS[provider].modelHintKey) : undefined}
           onPick={(id) => { settings.setModel(id); noteNextJob(); }}
-          zoom={zoom}
         />
         {down && (
           <p data-testid="manage-model-blocked" style={NOTE_STYLE}>

@@ -109,9 +109,7 @@ describe('useCursor', () => {
   });
 
   it('follows the annotation ARMING, which switches without ever touching activeTool', () => {
-    // All five annotate armings are the one ToolType.Annotate, and the tool's cursorFor answers by
-    // ctx.annotationTool: a dep array missing it leaves the drawing arming's pen on screen while
-    // the select state grabs notes.
+    // Every annotate arming is ToolType.Annotate, whose cursorFor reads ctx.annotationTool.
     const tm = makeTestToolManager();
     tm.setActiveTool(ToolType.Annotate);
     registerToolManager(tm);
@@ -123,11 +121,8 @@ describe('useCursor', () => {
   });
 
   it('follows the build MATERIAL, which switches without ever touching activeTool', () => {
-    // All five shape modes and all three materials are the one ToolType.TerrainBrush, and the
-    // brush's cursor reads the arming's contentType. Picking River from the Build panel
-    // calls setEditMode with just the surface, and the resolver keeps the same TerrainBrush tool
-    // across all three, so a dep array missing contentType leaves the mountain peak on screen
-    // while the brush paints water. Drives the real store transition.
+    // Every shape mode and material is ToolType.TerrainBrush, whose cursor reads the arming's
+    // contentType; picking River from the Build panel changes only the surface.
     const tm = makeTestToolManager();
     tm.setActiveTool(ToolType.TerrainBrush);
     registerToolManager(tm);
@@ -138,7 +133,6 @@ describe('useCursor', () => {
     const { getByTestId } = render(<Host />);
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('mountain'));
 
-    // activeTool is not touched: picking River from the Build panel is the whole gesture.
     act(() => {
       useEditorStore.getState().setEditMode({ mode: 'water' });
     });
@@ -165,10 +159,8 @@ describe('useCursor', () => {
   });
 
   it('picks up the tool a frame later when no ToolManager is registered yet at mount', async () => {
-    // PixiCanvas registers its ToolManager in an effect that runs after usePointerInteraction
-    // (and useCursor); on first mount there is nothing to read, so the surface shows the
-    // controller's plain default until the retry lands. The hook must retry on the next
-    // frame rather than silently leaving the container stuck there.
+    // PixiCanvas registers its ToolManager in an effect that runs after useCursor's, so the hook
+    // shows the plain default on first mount and retries next frame.
     registerToolManager(null);
     const { getByTestId } = render(<Host />);
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('select'));
@@ -188,8 +180,7 @@ describe('useCursor', () => {
     expect(getByTestId('surface-3d').style.cursor).toBe(cursorCss('eraser'));
     expect(getByTestId('surface-2d').style.cursor).toBe('');
 
-    // The leg that catches a blind register(null): flipping back must hand the surface back to
-    // 2D, not leave both blank (or leave 3D holding a stale claim).
+    // Flipping back hands the cursor to 2D rather than leaving both blank or 3D holding a stale claim.
     act(() => { setStoreState({ viewMode: '2d' }); });
     expect(getByTestId('surface-2d').style.cursor).toBe(cursorCss('eraser'));
     expect(getByTestId('surface-3d').style.cursor).toBe('');

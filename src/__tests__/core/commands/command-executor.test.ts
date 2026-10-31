@@ -124,11 +124,11 @@ describe('commitStroke — cut reconciliation', () => {
 
     // The painted neighbour locks (5,5)'s BR corner; reconciliation squares it.
     expect(state.cells[5]![5]!.terrain!.corners).toBeUndefined();
-    // The paint + its reconcile fold into one atomic undo entry — never separate steps.
+    // The paint + its reconcile fold into one atomic undo entry, never separate steps.
     expect(start.size).toBe(1);
 
     // One undo reverts the paint and its reconcile together: the original cut returns and the paint is gone.
-    // (A separate reconcile step would let undo restore the cut while the locking neighbour stayed — an
+    // (A separate reconcile step would let undo restore the cut while the locking neighbour stayed: an
     // illegal locked-but-cut corner.)
     executor.undo();
     expect(state.cells[5]![5]!.terrain!.corners).toEqual(['square', 'square', 'square', 'fan']);
@@ -154,7 +154,7 @@ describe('commitStroke — cut reconciliation', () => {
     expect(state.cells[6]![6]!.terrain, 'reconcile removed the now-unsupported fillet').toBeNull();
     expect(start.size, 'erase + reconcile folded into one entry').toBe(1);
 
-    // One undo restores both the erased wrap and the removed fillet — never the fillet alone (an orphan).
+    // One undo restores both the erased wrap and the removed fillet, never the fillet alone (an orphan).
     executor.undo();
     expect(state.cells[5]![5]!.terrain?.type, 'wrapping mountain restored').toBe(TerrainType.Mountain);
     expect(state.cells[6]![6]!.terrain?.patchOnly, 'fillet restored (with its support), not orphaned').toBe(true);
@@ -362,7 +362,7 @@ describe('collapsed strokes and auto-revert', () => {
       afterRotation: 90,
     } as TrimCornersCommand);
     start.commit();
-    expect(start.size).toBe(1); // collapsed
+    expect(start.size).toBe(1);
 
     executor.undo();
     const after = state.objects.get(road.id)!;

@@ -18,7 +18,7 @@ import type { ViewCamera } from '../../tools/pointer/runtime';
 import type { DragKind } from './cursor-controller';
 import { pinchWheelFactor, WheelClassifier, type PinchDelta } from './gestures';
 import { isNavButton } from './press/pointer-buttons';
-import { travelledPast, DRAG_THRESHOLD } from './press/travel';
+import { travelledPast, timingFor } from '../../platform/input/gesture-timing';
 import { navDragVerb, wheelVerb, type CameraCaps } from './press/camera-verbs';
 
 /** The verbs a gesture drives: a camera-only surface (the export shot editor) offers these and
@@ -115,7 +115,7 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
       if (!navigating) return false;
       const cam = host.camera();
       if (!cam) return true;
-      if (travelledPast(clientPoint(e).x - downX, clientPoint(e).y - downY, DRAG_THRESHOLD)) {
+      if (travelledPast(clientPoint(e).x - downX, clientPoint(e).y - downY, timingFor(e).dragThreshold)) {
         moved = true;
       }
       if (navDragVerb(capsOf(cam)) === 'orbit') cam.orbit!(clientPoint(e).x - lastX, clientPoint(e).y - lastY);

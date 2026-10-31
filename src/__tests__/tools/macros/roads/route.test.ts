@@ -55,11 +55,8 @@ describe('capEnter', () => {
 
 describe('the alignment discount', () => {
   it('planRoute takes a genuinely longer detour when the discount makes it genuinely cheaper, and stays direct otherwise', () => {
-    // Open ground; a "standing street" alignment one row below the direct line. `straighten()` has to be
-    // Cost-aware or this collapses back to the direct line: a detour that pays for itself only under a
-    // profile's own cost function looks, geometrically, like pure waste, and a purely geometric slack test
-    // takes it away. This exercises the real pipeline end to end (planRoute → buildLegCells → straighten),
-    // not just astar's raw output.
+    // A standing-street alignment one row below the direct line. The detour pays only under the cost
+    // function, so a purely geometric `straighten()` would undo it; the whole pipeline runs, not just A*.
     const W = 30, H = 20;
     const state = makeState(W, H);
     const a = analyzeTerrain(state);
@@ -78,8 +75,8 @@ describe('the alignment discount', () => {
     expect(planBare).toBeTruthy();
 
     const onStreet = (cells: MacroCoord[]): number => cells.filter((c) => c.y === 11).length;
-    expect(onStreet(planStyled.cells)).toBeGreaterThan(0);       // the discounted detour survives straightening
-    expect(onStreet(planBare.cells)).toBe(0);                    // without it, the direct line has no reason to wander
+    expect(onStreet(planStyled.cells)).toBeGreaterThan(0); // the discounted detour survives straightening
+    expect(onStreet(planBare.cells)).toBe(0); // without it, the direct line has no reason to wander
   });
 
   it('stacked with the scenic bonus (align + water, the worst case), the route still walks a valid connected line', () => {
@@ -92,8 +89,7 @@ describe('the alignment discount', () => {
     for (let x = 5; x <= 40; x++) { const i = 20 * W + x; road.add(i); alignment.set(i, 'x'); } // paved, aligned, and within SCENIC_REACH of the water
     const world: RouteWorld = { a, portals: [], regionAdj: new Map(), road, occupied: new Set(), style: { ...DEFAULT_STYLE, alignment } };
 
-    // Both taps stay on the same side of the water band (no crossing needed): the point is to
-    // exercise the align+scenic stack over a real search, not to route across a divide.
+    // Both taps on one side of the water: the subject is the stacked discounts, not a crossing.
     const plan = planRoute(world, { x: 5, y: 5 }, { x: 40, y: 15 }, 'scenic');
     expect(plan).toBeTruthy();
     // A negative-edge-corrupted reconstruction is the first place a jump or a repeat would show up.
@@ -148,8 +144,7 @@ describe('planRoute', () => {
 
   it('two bends never fall within TUNING.minRun cells of each other', () => {
     const state = makeState(30, 30);
-    // Two single-cell decorations, three cells apart, directly on the straight line — otherwise open
-    // ground gives straighten() room to reroute around them without violating TUNING.minRun spacing.
+    // Two flowers three cells apart on the straight line, with open ground around them to detour through.
     const deco = (id: string, x: number, y: number): void => {
       const obj: PlacedObject = { id, catalogId: 'flower-daisy', position: { x, y }, rotation: 0, elevation: 0 };
       state.objects.set(id, obj);
@@ -195,10 +190,8 @@ describe('planRoute', () => {
       return { world, leftId, rightId, a };
     }
 
-    // Symmetric around from/to's own row, so the (toward-relative) square term is identical for both
-    // candidates whichever row they sit on — only span may decide. Approach cells sit one cell clear
-    // of the water column on each side: the column erodes its own neighbours' openness too (x=18/20),
-    // so the nearest genuinely open bank cells are x=17 and x=21.
+    // Placed symmetrically about the taps' row so only span decides. Approaches sit at x=17 and x=21
+    // because the water column also closes its neighbours (x=18 and x=20).
     function portals(leftId: number, rightId: number, narrowY: number, wideY: number): Portal[] {
       const narrow: Portal = { kind: 'bridge', regionA: leftId, regionB: rightId, anchor: { x: 19, y: narrowY }, approachA: { x: 17, y: narrowY }, approachB: { x: 21, y: narrowY }, cost: 1 };
       const wide: Portal = { kind: 'bridge', regionA: leftId, regionB: rightId, anchor: { x: 19, y: wideY }, approachA: { x: 17, y: wideY }, approachB: { x: 27, y: wideY }, cost: 1 };
@@ -256,9 +249,8 @@ describe('planRoute', () => {
   it('a plant in the way is reported, never routed through', () => {
     const W = 20, H = 30;
     const state = makeState(W, H);
-    // Mountain walls 4 apart (x=9, x=13), full map height: the two grass columns touching a wall
-    // (x=10, x=12) erode to non-open too, leaving x=11 as the single open column — the only line,
-    // with no way around the ends since the walls run the map's whole height.
+    // Full-height mountain walls at x=9 and x=13 close their neighbours too, leaving x=11 the only
+    // open column.
     for (let y = 0; y < H; y++) { setTerrain(state, 9, y, TerrainType.Mountain, 1); setTerrain(state, 13, y, TerrainType.Mountain, 1); }
     const deco: PlacedObject = { id: 'blocker', catalogId: 'flower-daisy', position: { x: 11, y: 15 }, rotation: 0, elevation: 0 };
     state.objects.set('blocker', deco);
@@ -269,7 +261,7 @@ describe('planRoute', () => {
     const plan = planRoute(world, { x: 11, y: 2 }, { x: 11, y: 27 }, 'short');
     expect(plan).toBeTruthy();
     for (const c of occupied) expect(plan!.cells.some((p) => p.y * W + p.x === c)).toBe(false);
-    // the corridor is one cell wide — there is no way round, so the plant is named.
+    // the corridor is one cell wide: there is no way round, so the plant is named.
     expect(plan!.blocked.some((c) => c.x === 11 && c.y === 15)).toBe(true);
   });
 

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
  * The rotate shortcut (the E default, `rotateArmedOrSelected` in `editor/commands/commands.ts`) writes
- * `placementRotation` straight into the store — no pointer event runs alongside it — so
+ * `placementRotation` straight into the store; no pointer event runs alongside it, so
  * `ObjectPlacerTool.onPointerMove`, which only runs from a real pointermove, never redraws the
  * ghost at the new orientation until the cursor next moves for real. `usePointerInteraction`
- * resamples the last known screen position on a `placementRotation` change the same way it already
- * does for a camera pan (see `camera-pan-resample.test.tsx`); this drives that resampler directly
+ * resamples the last known screen position on a `placementRotation` change the same way it does
+ * for a camera pan (see `camera-pan-resample.test.tsx`); this drives that resampler directly
  * through the real handlers, a real ToolManager + executor, and a fake view, with no further
  * pointer event between arming the placer and rotating it.
  */

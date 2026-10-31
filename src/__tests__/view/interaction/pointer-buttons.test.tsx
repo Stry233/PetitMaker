@@ -57,8 +57,7 @@ function pointer(type: string, init: MouseEventInit): MouseEvent {
   return new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
 }
 
-/** The pan-drag key (Space) has no per-event field the machine reads: it announces itself through
- *  the same global keydown/keyup tracker a real held key would fire. */
+/** The pan-drag key (Space) has no per-event field; the machine reads it from global key events. */
 function setPanKeyHeld(held: boolean): void {
   window.dispatchEvent(new KeyboardEvent(held ? 'keydown' : 'keyup', { code: 'Space' }));
 }
@@ -144,10 +143,8 @@ describe('pointer machine: middle button navigates like right', () => {
   });
 
   it('opens no context menu while the tour is running', () => {
-    // The tour is not modal: the app under its dim is fully operable, which is how pressing the
-    // real phone advances a step. What is held back is the floating surfaces at z.contextMenu, far
-    // above z.tour, which would paint over the walkthrough they interrupted (the store refuses to
-    // open either one; see the delete popover's half of this in tour-state).
+    // The tour is not modal, but surfaces at z.contextMenu, far above z.tour, would paint over it,
+    // so the store refuses to open them.
     useEditorStore.setState({ tourRunning: true });
     try {
       const { view } = makeView(true);
@@ -186,9 +183,7 @@ describe('pointer machine: middle button navigates like right', () => {
     setPanKeyHeld(true);
     try {
       el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 100, clientY: 100 }));
-      // buttons: 0 here is load-bearing: the pan-drag key pans on any move, with no button guard,
-      // while a left-drag pan only applies while (e.buttons & 1) !== 0 — a move reporting no
-      // buttons held distinguishes the two, and only passes under the pan-key mapping.
+      // `buttons: 0` separates the two mappings: only the pan key pans a move with no button held.
       window.dispatchEvent(pointer('pointermove', { button: 0, buttons: 0, clientX: 130, clientY: 112 }));
       window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 130, clientY: 112 }));
     } finally {

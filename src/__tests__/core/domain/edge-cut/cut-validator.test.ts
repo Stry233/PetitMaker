@@ -147,18 +147,18 @@ describe('isInnerCorner', () => {
     const state = makeState(10, 10);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     setTerrain(state, 5, 6, TerrainType.Mountain, 1);
-    // Missing diagonal (5,5) — an open gap between two diagonal mountains, not an enclosed Γ notch.
+    // Missing diagonal (5,5), an open gap between two diagonal mountains, not an enclosed Γ notch.
     expect(isInnerCorner(state, 6, 6, 0, { type: TerrainType.Mountain, elevation: 1 })).toBe(false);
   });
 
   it('a WATER diagonal still encloses the notch — two mountains gamma the corner across the pond', () => {
-    // The user's water/mountain junction: (6,6).TL has mountains on both edges (N, W) and water on the
-    // diagonal (NW). A Γ cut only adds a fillet, so it can never break the pond's bank — the corner is an
+    // A water/mountain junction: (6,6).TL has mountains on both edges (N, W) and water on the
+    // diagonal (NW). A Γ cut only adds a fillet, so it can never break the pond's bank; the corner is an
     // enclosed notch and the two mountains gamma it like any other inner corner.
     const state = makeState(10, 10);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1); // N edge
     setTerrain(state, 5, 6, TerrainType.Mountain, 1); // W edge
-    setTerrain(state, 5, 5, TerrainType.Water, 0);    // NW diagonal — water encloses the corner
+    setTerrain(state, 5, 5, TerrainType.Water, 0);    // NW diagonal, water encloses the corner
     expect(isInnerCorner(state, 6, 6, 0, { type: TerrainType.Mountain, elevation: 1 })).toBe(true);
   });
 

@@ -1,8 +1,7 @@
 /**
- * A Γ patch is a cosmetic fillet: it renders at a high tier but holds no mass
- * of its own (its real support is patchBase). The floating rule and the
- * waterfall cap test must read that structural height — a mass-less fillet
- * must neither support a paint one tier up nor cap a waterfall.
+ * A Γ patch is a cosmetic fillet: it renders at a high tier but holds no mass of its own (its
+ * real support is patchBase). The floating rule and the waterfall cap test must read that
+ * structural height: a mass-less fillet neither supports a paint one tier up nor caps a waterfall.
  */
 import { describe, it, expect } from 'vitest';
 import { mountainFloatingRule } from '../../rules/floating-block';
@@ -43,13 +42,13 @@ describe('waterfall caps must be real mass at the water tier', () => {
     // Water at (5,5) elev 2 over a supporting column, dropping north; the west
     // cap is real. The east cap is the variable under test.
     setTerrain(state, 5, 5, TerrainType.Water, 2);
-    setTerrain(state, 4, 5, TerrainType.Mountain, 2); // real west cap
+    setTerrain(state, 4, 5, TerrainType.Mountain, 2);
   }
 
   it('a real mountain at the water tier caps the face', () => {
     const state = makeState(10, 10);
     elevatedStrip(state);
-    setTerrain(state, 6, 5, TerrainType.Mountain, 2); // real east cap
+    setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     const faces = waterfallFacesAt(state, 5, 5);
     expect(faces.some((f) => f.flowDirection === 'north')).toBe(true);
   });

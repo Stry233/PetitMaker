@@ -31,7 +31,7 @@ describe('reconcileCuts — terrain', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setCorners(state, 5, 5, ['fan', 'square', 'square', 'square']); // TL cut
-    setTerrain(state, 4, 4, TerrainType.Mountain, 1); // diagonal point — touches at a point, does not pin
+    setTerrain(state, 4, 4, TerrainType.Mountain, 1); // diagonal: touches at a single point, so it does not pin
     reconcileCuts([{ x: 4, y: 4 }], ...exec(state));
     expect(state.cells[5]![5]!.terrain!.corners).toEqual(['fan', 'square', 'square', 'square']); // preserved
   });
@@ -49,7 +49,7 @@ describe('reconcileCuts — terrain', () => {
     setCorners(state, 5, 5, ['square', 'square', 'fan', 'fan']); // rounded the pool's south corners (legal while a pool)
     const ex = makeExecutor(state);
     const whole = ex.beginStroke();
-    // Peel the south bank one tier (mountain@2 → @1) → the water now drops south → it becomes a waterfall lip.
+    // Peel the south bank one tier (mountain@2 to @1): the water drops south and the cell becomes a waterfall lip.
     ex.execute({ type: CommandType.PaintTerrain, cells: [{ x: 5, y: 6 }], terrainType: TerrainType.Mountain, elevation: 1 } as Command);
     whole.commit();
     const t = getCell(state.cells, 5, 5)!.terrain!;
@@ -61,10 +61,10 @@ describe('reconcileCuts — terrain', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setCorners(state, 5, 5, ['square', 'square', 'square', 'fan']); // BR fan, on the right edge
-    setTerrain(state, 6, 5, TerrainType.Water, 1); // water arrives on the right → the mountain now banks it
+    setTerrain(state, 6, 5, TerrainType.Water, 1); // water on the right edge: the mountain banks it
     reconcileCuts([{ x: 6, y: 5 }], ...exec(state));
-    // the BR corner is now the water's bank — cutting it would leave the pond unbanked — so reconcile
-    // squares it back off.
+    // The BR corner is the water's bank and cutting it would leave the pond unbanked, so reconcile
+    // squares it.
     expect(state.cells[5]![5]!.terrain!.corners?.[3] ?? 'square').toBe('square');
   });
 });

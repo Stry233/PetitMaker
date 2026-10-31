@@ -59,7 +59,7 @@ function zoomChain(el: Element): { zoom: number; transformed: boolean } {
 }
 
 /** The product of the element's own and every ancestor's computed `zoom`. */
-function effectiveZoom(el: Element): number {
+export function effectiveZoom(el: Element): number {
   return zoomChain(el).zoom;
 }
 

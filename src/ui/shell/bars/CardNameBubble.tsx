@@ -1,10 +1,15 @@
 /*
- * The hovered tile's name, drawn outside the clipping row at a scroll-corrected `centre` (the object
- * shelf and the road strip share it). The bubble stops at `MAX_EM`: a longer name travels inside it,
- * faded at both ends, or wraps under reduced motion.
+ * The reached tile's name, drawn outside the clipping row at a scroll-corrected `centre` (the object
+ * shelf and the road strip share it); a tile is reached for as `primitives/use-reveal.ts` says. The
+ * bubble stops at `MAX_EM`: a longer name travels inside it, faded at both ends, or wraps under
+ * reduced motion. Inside an upright panel, which clips everything past its edges, a row that keeps no
+ * room above itself hangs the name from its tile on the floating layer instead.
  */
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { FloatingControlBubble } from '../../primitives/ControlBubble';
+import { usePanelTone } from './bar-panel';
+import { useReveal, type RevealBind } from '../../primitives/use-reveal';
 import { fadeMask } from '../../primitives/scroll-fade';
 import { MAP_LABEL } from '../../design/tokens';
 import { TEXT } from '../units';
@@ -33,6 +38,14 @@ export interface CardNameReach {
   /** The tile's middle, in the caller's own left-offset coordinate space (scroll already taken
    *  back out), which is what `left` is set to. */
   centre: number;
+  /** The reached tile, which an upright panel's name hangs from. */
+  tile?: HTMLElement | null;
+}
+
+/** Tells the row which tile is reached for, `null` once it is not; spread `bind` on the tile. */
+export function useTileReach(ref: RefObject<HTMLElement | null>, onReach: (tile: HTMLElement | null) => void): { touch: boolean; bind: RevealBind } {
+  const { touch, bind } = useReveal({ onChange: (shown) => onReach(shown ? ref.current : null) });
+  return { touch, bind };
 }
 
 /** The name inside the bubble, its own component so leaving and arriving bubbles keep their own refs. */
@@ -88,6 +101,8 @@ function NameText({ name }: { name: string }) {
 export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach | null; lift?: number }) {
   const reduced = useReducedMotionConfig();
   const weightAt = useFrameReadableWeight();
+  const inPanel = usePanelTone() !== null && lift > 0;
+  if (inPanel) return <HungName reached={reached} />;
   return (
     <AnimatePresence>
       {reached ? (
@@ -109,4 +124,14 @@ export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach |
       ) : null}
     </AnimatePresence>
   );
+}
+
+/** The name hung from its tile on the floating layer, where the window's edges and no panel bound it;
+ *  the last name stays on the bubble while it leaves. */
+function HungName({ reached }: { reached: CardNameReach | null }) {
+  const [last, setLast] = useState(reached);
+  if (reached && reached !== last) setLast(reached);
+  const tile = reached?.tile ?? null;
+  const anchor = useMemo<RefObject<HTMLElement | null>>(() => ({ current: tile }), [tile]);
+  return <FloatingControlBubble show={tile !== null} side="above" anchor={anchor}>{last?.name}</FloatingControlBubble>;
 }

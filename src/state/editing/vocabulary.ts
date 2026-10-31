@@ -14,6 +14,12 @@ export type BuildShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
 /** Eraser footprints share the drawing tools' geometry. */
 export type EraserShape = BuildShape;
 
+/** How an armed card places: one item per press, or a spread along the brush shape (EDIT-65). */
+export type ObjectBrush = 'place' | 'paint';
+
+/** The empty cells a Paint stroke keeps between neighbouring items (EDIT-66). */
+export const OBJECT_SPACING = { min: 0, max: 4 } as const;
+
 export enum ToolType {
   TerrainBrush = 'TerrainBrush',
   ObjectPlacer = 'ObjectPlacer',
@@ -37,8 +43,8 @@ export type RegionTool = BuildShape | 'erase';
 
 export const REGION_TOOLS: readonly RegionTool[] = ['free', 'erase', 'line', 'curve', 'rect', 'circle'];
 
-/** What the screen arming region selection asks of the brush: the store's `regionRequest`, set by
- *  that screen and read by the shortcuts and the brush, which never meet it. */
+/** What the surface that opened region selection asks of the brush: the store's `regionRequest`, set
+ *  by that surface and read by the scope screen, the shortcuts and the brush, which never meet it. */
 export interface RegionRequest {
   /** The region tools offered, in row order. */
   tools: readonly RegionTool[];

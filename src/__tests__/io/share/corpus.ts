@@ -1,8 +1,4 @@
-// Real-map-shaped corpus and adversarial high-entropy builder shared by codec and degradation tests.
-//
-// `genOn`: a silent CommandExecutor stroke group drives generateTerrain, then one
-// commitStroke collapses it to a single undo entry — exactly the live Generate path.
-// It does not set `state.generation`; callers that need an informational recipe add it explicitly.
+// The real-map-shaped corpus and the adversarial high-entropy map shared by the codec and degradation tests.
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState, makeTemplate } from '../../_support/map-state';
 import { openSave } from '../../../io/import/open-save';
@@ -24,11 +20,8 @@ import { createExecutor } from '../../../state/executor';
 import { generateWith } from '../../_support/generation';
 import { ItemCategory } from '../../../config/catalog/categories';
 
-// ── Shared generation helpers (the genOn stroke-group pattern) ─────────────────────────────────
-
-/** Drive the real Generate path inside one silent stroke group (the same order as
- *  `tools/generation/run/generation-run.ts:runGeneration`, so these are maps the app itself can produce). Does
- *  Not set `state.generation` — callers do that explicitly so hand-built states never carry it. */
+/** Generates in one silent stroke group, in `runGeneration`'s order, so the map is one the app can
+ *  produce. Leaves `state.generation` unset; callers set it so hand-built states never carry one. */
 function genOn(state: GridState, cfg: GenerateConfig): GridState {
   const exec = createExecutor(state, createDefaultRegistry());
   exec.transaction({ silent: true }, () => {
@@ -42,33 +35,27 @@ function islandCfg(seed: number): GenerateConfig {
   return defaultConfig('designed', { maxElevation: 8, seed });
 }
 
-/** The hexia map template with a blank grid (no cells painted) — the real-map baseline case, and
- *  the base every hexia-derived corpus case starts from. */
+/** The hexia template opened from a near-empty save: the base of every hexia case. */
 function hexiaBlank(): GridState {
   const raw = readFileSync('src/__tests__/fixtures/saves/petit-planet-hexia-1782022830197.json', 'utf8');
   return openSave(raw, getMapTemplate((JSON.parse(raw) as { templateId?: string }).templateId));
 }
 
-/** `makeState` always builds template id 'test' (see src/__tests__/_support/map-state.ts), so two
- *  synthetic corpus cases of different sizes would collide in the shared MAP_TEMPLATES registry if
- *  they both used the default id. Give each synthetic case its own id and register it up front —
- *  the same approach payload.test.ts uses for a single synthetic map, generalized to many. */
+/** A synthetic state under its own registered template id: `makeState` always uses 'test', and
+ *  cases of different sizes would collide in `MAP_TEMPLATES`. */
 function namedState(id: string, width: number, height: number): GridState {
   const template: MapTemplate = { ...makeTemplate(width, height), id };
   MAP_TEMPLATES[id] = template;
   return { ...makeState(width, height), template, cells: createGrid(template) };
 }
 
-/** `state` as a load opens it once its automatic repair has landed: a map the rules accept, which
- *  every later load leaves as it is. */
+/** `state` after a load's automatic repair, so every later load leaves it as it is. */
 function repaired(state: GridState): GridState {
   const rules = createDefaultRegistry();
   const { report } = clearUnderLandmarks(state, rules);
   if (report) applyRelocation(createExecutor(state, rules), state, report.plan);
   return state;
 }
-
-// ── Corpus cases ─────────────────────────────────────────────────────────────────────────────
 
 function handEditSmall(): GridState {
   const state = namedState('hand-edit-small', 24, 24);
@@ -91,7 +78,6 @@ function generatedThenEdited(): GridState {
   const state = genOn(namedState('generated-then-edited', 64, 64), cfg);
   state.generation = cfg;
 
-  // 30 direct cell edits on top of the generated terrain.
   const editRng = makeRng(4242);
   const { width, height } = state.template;
   let edits = 0;
@@ -103,7 +89,6 @@ function generatedThenEdited(): GridState {
     edits++;
   }
 
-  // 2 object removals + 3 object additions = 5 object edits.
   const removable = [...state.objects.values()].filter((o) => !o.locked);
   for (let i = 0; i < 2 && i < removable.length; i++) state.objects.delete(removable[i]!.id);
 
@@ -130,31 +115,22 @@ function mazeCase(): GridState {
   return state;
 }
 
-/** Deterministic "entropy bomb": a real hexia-sized map filled with the worst-case terrain/corner/
- *  object noise the codec's context models are least able to predict, all still within the ranges
- *  the save loader admits (type/elevation) — built by direct cell/object writes (no
- *  commands, no rule registry) since we're measuring the compression ceiling, not exercising rules.
- *  `n` caps how many objects are placed (the corpus asks for a few thousand — the game's load
- *  budget order of magnitude); `seed` makes the noise reproducible. */
+/** A deterministic hexia map of terrain, corner and object noise the codec's context models predict
+ *  worst, within the ranges the loader admits. Written directly, bypassing rules, since it probes the
+ *  compression ceiling. `n` caps the object count. */
 export function adversarialState(n: number, seed: number): GridState {
   const state = hexiaBlank();
   const rng = makeRng(seed);
   const { width, height } = state.template;
 
-  // `cell.zone` reads Grass under the plaza, but every load path strips terrain under a landmark
-  // (state/landmark-clearance.ts:clearUnderLandmarks), since the plaza object
-  // always occupies that footprint in real gameplay. Terrain this rule-bypassing builder wrote
-  // there would vanish on the next save/load round trip and break the E2E content-equality
-  // assertion for a reason that has nothing to do with the codec, so no write here lands on a cell
-  // the plaza covers whole.
+  // Every load strips terrain under a landmark (`clearUnderLandmarks`), so terrain written under the
+  // plaza would vanish on a round trip and break content equality for a reason unrelated to the codec.
   const anchor = templateAnchor(state.template)!;
   const plaza = wholeCellsOf({ x: anchor.x, y: anchor.y, w: anchor.width, h: anchor.height });
   const underPlaza = (x: number, y: number): boolean => rectContains(plaza, x, y);
 
-  // 1) Checkerboard-noise mountains at elevations 1-3 over Grass cells only — layers 1-3 auto-pass
-  //    the 3x3 base rule, so single isolated cells at any of these elevations are legal.
-  //    Adjacent cells never match in type/elevation (checkerboard), defeating the W/N same-as-
-  //    neighbour fast paths in terrain-coder.ts on (close to) every cell.
+  // Checkerboard mountains at random tiers 1 to 3, so no cell matches its west or north neighbour
+  // and the codec's neighbour predictions miss.
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if ((x + y) % 2 !== 0) continue;
@@ -164,8 +140,7 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
-  // 2) Scattered ground-level ponds on off-phase Grass cells whose 4 neighbours are still flat
-  //    (never adjacent to a drop, so no waterfall condition is implied).
+  // Scattered ponds on off-phase cells whose four neighbours are flat, so no waterfall is implied.
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       if ((x + y) % 2 === 0) continue;
@@ -180,9 +155,8 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
-  // 3) Legal corner deviations: a cell whose W or N neighbour differs in elevation has a free
-  //    convex corner there (the edge-cut policy) — sprinkle a fan/tri trim on it. Heuristic,
-  //    not exhaustive (the loader only checks type/elevation ranges, not cut geometry).
+  // Random trims where the west or north neighbour differs in elevation; the loader checks only
+  // type and elevation ranges, not cut geometry.
   const TRIMS: readonly CornerTrim[] = ['fan', 'tri-NW', 'tri-NE', 'tri-SW', 'tri-SE'];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -200,7 +174,6 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
-  // 4) Objects up to the load budget (`n`) on flat null-terrain Grass cells.
   const floraItems = getPlaceableByCategory(ItemCategory.Flora);
   let placed = 0;
   for (let y = 0; y < height && placed < n; y++) {
@@ -214,7 +187,6 @@ export function adversarialState(n: number, seed: number): GridState {
     }
   }
 
-  // A load holds a map to the rules, so the corpus holds the map a load opens.
   return repaired(state);
 }
 

@@ -3,11 +3,11 @@
  * gesture the page teaches, played back with the shipped cursor performing each gesture on the same
  * frame index, under the gesture's hint chip and a phase caption.
  */
+import { useReducedMotionConfig } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { captureCard3dAngles } from '../../../../editor/export/preview';
 import type { CameraAngle } from '../../../../state/view-camera';
 import type { GridState } from '../../../../core/model/types';
-import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { useKeybinds } from '../../../../state/keymap/store';
 import { useT } from '../../../../i18n/context';
 import { resolveTokenSpecs, type TokenSpec } from '../../hints/catalogue';
@@ -125,7 +125,7 @@ export function Camera3dPreview() {
   const overrides = useKeybinds((s) => s.overrides);
   const state = useShownMap();
   const [frames, setFrames] = useState<HTMLImageElement[]>([]);
-  const still = useRef(isMotionReduced());
+  const still = useReducedMotionConfig() === true;
   const [at, setAt] = useState(0);
   const cursorEl = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -137,12 +137,12 @@ export function Camera3dPreview() {
     void recordFor(state).then((imgs) => {
       if (!live) return;
       setFrames(imgs);
-      if (still.current) setAt(Math.floor(PHASES[0]!.frames / 2));
+      if (still) setAt(Math.floor(PHASES[0]!.frames / 2));
     });
     return () => { live = false; };
-  }, [state, inView]);
+  }, [state, inView, still]);
   useEffect(() => {
-    if (still.current || frames.length < 2) return undefined;
+    if (still || frames.length < 2) return undefined;
     let i = 0;
     const span = frames.length * 2 - 2;
     const timer = setInterval(() => {
@@ -150,7 +150,7 @@ export function Camera3dPreview() {
       setAt(i < frames.length ? i : span - i);
     }, FRAME_MS);
     return () => clearInterval(timer);
-  }, [frames]);
+  }, [frames, still]);
   useEffect(() => {
     if (cursorEl.current) drawCursorImg(cursorEl.current, 'move');
   }, [frames]);

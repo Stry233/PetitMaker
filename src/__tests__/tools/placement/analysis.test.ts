@@ -18,11 +18,11 @@ describe('placement/analysis', () => {
     for (let y = 6; y < 12; y++) for (let x = 6; x < 12; x++) state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
     const a = analyzeTerrain(state);
     const plateauInterior = 8 * 20 + 8; // well inside the plateau
-    expect(a.open[plateauInterior]).toBe(1);          // elevated flats are buildable now
+    expect(a.open[plateauInterior]).toBe(1);          // elevated flats are buildable
     expect(a.elev[plateauInterior]).toBe(2);
     const groundCell = 1 * 20 + 1;                    // tier-0 ground corner
     expect(a.open[groundCell]).toBe(1);
-    expect(a.region[plateauInterior]).not.toBe(a.region[groundCell]); // different regions
+    expect(a.region[plateauInterior]).not.toBe(a.region[groundCell]);
     expect(a.regionElev[a.region[plateauInterior]!]).toBe(2);
     expect(a.regionElev[a.region[groundCell]!]).toBe(0);
   });

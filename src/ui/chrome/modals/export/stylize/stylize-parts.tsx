@@ -9,7 +9,7 @@
 import { ActionButton } from '../../../../primitives/ActionButton';
 import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion, useAnimationControls, useReducedMotionConfig } from 'framer-motion';
-import { font, pressable, radii } from '../../../../design/styles';
+import { font, radii } from '../../../../design/styles';
 import { DANGER_INK, DANGER_SURFACE } from '../../../../design/tokens';
 import { skin, windowIconButton } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
@@ -19,6 +19,8 @@ import type { StylizeStatus } from '../../../../../pipelines/stylize';
 import { MAP_ASPECT, paintSampleArt, type SampleArt } from './sample-art';
 import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion';
 import type { I18nKey } from '../../../../../i18n/keys';
+import { useInteractionProfiles } from '../../../../design/input-mode';
+import { useNameReveal } from '../../../../primitives/use-name-reveal';
 
 /** What the status slot can say: a dialect's classified refusal, or the one house-made outcome
  *  (the map changed under an out-of-window edit while the job was painting, so the take was
@@ -82,10 +84,11 @@ export function Field({ label, children }: { label: string; children: ReactNode 
  * The window's footer row: one status slot that is always standing, and the verbs after it.
  *
  * The slot keeps its height whether or not it has anything to say, which is what lets a refusal
- * arrive without moving the button the hand is already travelling to.
+ * arrive without moving the button the hand is already travelling to. A card too narrow for the verbs
+ * wraps them onto a second line at the end rather than cutting the last one off at its edge.
  */
 export function WindowFoot({ children }: { children: ReactNode }) {
-  return <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flex: 'none' }}>{children}</div>;
+  return <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, marginTop: 12, alignItems: 'center', flex: 'none' }}>{children}</div>;
 }
 
 /**
@@ -154,7 +157,7 @@ export function PrimaryVerb({ disabled, onClick, children }: {
 
 /** The page's way out, in the house ghost. */
 export function GhostVerb({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return <ActionButton appearance="secondary" onClick={onClick}>{children}</ActionButton>;
+  return <ActionButton appearance="secondary" onClick={onClick} style={{ flex: 'none' }}>{children}</ActionButton>;
 }
 
 /** The round icon control the studio's footer opens the connection form with: an icon tile, so it
@@ -162,23 +165,26 @@ export function GhostVerb({ onClick, children }: { onClick: () => void; children
 export function IconVerb({ label, onClick, children }: {
   label: string; onClick: () => void; children: ReactNode;
 }) {
+  const tile = useInteractionProfiles().tile;
+  const name = useNameReveal(label);
   // The pressable growth as variants rather than spread props, so a glyph inside can answer the
   // same hover (the gear's wink) instead of only the button's outline growing around it.
   return (
     <motion.button
       type="button"
+      {...name.bind}
       onClick={onClick}
       aria-label={label}
-      title={label}
       initial="rest"
       animate="rest"
       whileHover="hover"
       whileTap="tap"
-      variants={{ rest: { scale: 1 }, hover: pressable.whileHover, tap: pressable.whileTap }}
-      transition={pressable.transition}
+      variants={{ rest: { scale: 1 }, ...(tile.whileHover ? { hover: tile.whileHover } : {}), tap: tile.whileTap }}
+      transition={tile.transition}
       style={{ ...windowIconButton, color: skin.plateInk }}
    >
       {children}
+      {name.bubble}
     </motion.button>
   );
 }

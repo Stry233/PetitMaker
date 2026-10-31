@@ -6,12 +6,12 @@ import { coalesceToFrame } from '../../platform/async/after-paint';
 import type { EditorEvents } from '../../state/editing/events';
 
 /**
- * Undoes down to `undoIndex`, later manual edits included; one executor undo may consume several
- * entries while it restores post-stroke validity. Returns how many undos ran.
+ * Undoes down to `undoIndex`, later manual edits and selections included; one map undo may consume
+ * several entries while it restores post-stroke validity. Returns how many map undos ran.
  */
 export function rewindTo(executor: CommandExecutor, undoIndex: number): number {
   let steps = 0;
-  while (executor.historyDepth() > undoIndex && executor.undo()) steps++;
+  while (executor.historyDepth() > undoIndex && executor.undoEdit()) steps++;
   return steps;
 }
 

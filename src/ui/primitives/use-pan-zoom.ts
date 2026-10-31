@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { useReducedMotionConfig } from 'framer-motion';
 import { clamp } from '../../core/base/math';
 import { useCursorCss } from '../design/cursors/cursor-vars';
+import { timingFor, travelledPast } from '../../platform/input/gesture-timing';
 
 /** How long a quiet spell (no pan/zoom) must last before the reset hint fades back out. */
 const HINT_QUIET_MS = 2500;
@@ -21,11 +22,6 @@ const ZOOM_STEP = 1.12;
 const PINCH_WHEEL_RATE = 0.01;
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 6;
-/** Travel under which a press counts as a tap rather than a pan, in client px. */
-const TAP_SLOP = 4;
-/** Two touch taps this close in time and place are a double-tap, in ms and client px. */
-const DOUBLE_TAP_MS = 320;
-const DOUBLE_TAP_SLOP = 24;
 
 export interface PanZoomView { tx: number; ty: number; scale: number }
 
@@ -53,11 +49,12 @@ export interface PanZoom {
 }
 
 export interface PanZoomOptions {
-  /** A press released within the tap slop of where it began; a press that pans is not a tap. */
+  /** A press released within its drag threshold of where it began; a press that pans is not a tap. */
   onTap?: () => void;
 }
 
 interface Point { x: number; y: number }
+
 /** One finger or the mouse: where it went down, and the view then. */
 interface Drag { start: Point; at: Point; view: PanZoomView; travelled: boolean }
 /** Two fingers: their spread and midpoint when the second went down, and the view then. */
@@ -116,7 +113,8 @@ export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
     if (e.pointerType === 'mouse') return;
     const now = performance.now();
     const prev = lastTap.current;
-    if (prev && now - prev.time <= DOUBLE_TAP_MS && spreadOf(prev.at, d.start) <= DOUBLE_TAP_SLOP) {
+    const timing = timingFor(e);
+    if (prev && now - prev.time <= timing.doubleTapMs && !travelledPast(prev.at.x - d.start.x, prev.at.y - d.start.y, timing.doubleTapSlop)) {
       lastTap.current = null;
       reset();
       return;
@@ -147,7 +145,7 @@ export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
         const d = pointers.current.get(e.pointerId);
         if (!d) return;
         d.at = clientPoint(e);
-        if (Math.hypot(d.at.x - d.start.x, d.at.y - d.start.y) > TAP_SLOP) d.travelled = true;
+        if (travelledPast(d.at.x - d.start.x, d.at.y - d.start.y, timingFor(e).dragThreshold)) d.travelled = true;
         const p = pinch.current;
         const two = pair();
         if (p && two) {

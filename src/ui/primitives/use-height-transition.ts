@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { easingCss, seconds } from '../design/motion';
 import type { MotionId } from '../design/motion/registry';
+import { pageMorphCarrying } from './morph';
 
 /** Animates committed height changes without transforming descendants or overriding the next layout's bounds. */
 export function useHeightTransition(ref: RefObject<HTMLElement | null>, { motionId, resetKey, disabled = false }: {
@@ -17,7 +18,8 @@ export function useHeightTransition(ref: RefObject<HTMLElement | null>, { motion
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const reset = room.current !== resetKey;
+    // A change the chrome's morph carries lands at once: the morph draws the card from its old box.
+    const reset = room.current !== resetKey || pageMorphCarrying();
     room.current = resetKey;
     const live = running.current;
     const held = live?.playState === 'running';

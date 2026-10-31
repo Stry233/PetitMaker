@@ -18,21 +18,25 @@ import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ModalShell } from '../../../primitives/ModalShell';
-import { WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
+import { WindowBody, WindowFooter, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
 import { useWindow } from '../use-window';
 import { PictureOption, pictureStage } from '../planet/PictureOption';
 import { PlanetPreview } from '../planet/PlanetPreview';
 import { ExportFirstButton } from '../ExportFirstButton';
 import { useExportNotice } from '../export/review/ExportNotice';
+import { useWindowColumns } from '../use-window-columns';
 
 type Choice = 'auto' | 'hand';
 const ORDER: readonly Choice[] = ['auto', 'hand'];
 
-const cardStyle: CSSProperties = { ...windowFrame, overflowY: 'auto', overflowX: 'hidden' };
-const bodyStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18 };
-const optionsStyle: CSSProperties = { display: 'flex', gap: 16 };
+const cardStyle: CSSProperties = windowFrame;
+const bodyStyle: CSSProperties = { ...windowColumn, gap: 18 };
+const choiceStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18 };
+const optionsStyle = (columns: 1 | 2): CSSProperties => ({ display: 'flex', gap: 16, ...(columns === 1 ? { flexDirection: 'column' } : null) });
 const leadStyle: CSSProperties = { ...roleFont('body'), color: skin.ink, margin: 0 };
 const primaryStyle: CSSProperties = { flex: '0 0 auto', minWidth: 160 };
+/** In one column the confirming action takes the footer's remaining width instead. */
+const stackedPrimaryStyle: CSSProperties = { flex: '1 1 auto', minWidth: 0 };
 
 export function LandmarkRepairWindow() {
   const t = useT();
@@ -43,6 +47,7 @@ export function LandmarkRepairWindow() {
   const report = session?.phase === 'choose' ? session.report : null;
   const [choice, setChoice] = useState<Choice>('auto');
   const titleId = useId();
+  const [columns, bodyRef] = useWindowColumns();
   const refs = useRef<Record<Choice, HTMLDivElement | null>>({ auto: null, hand: null });
   const previews = useMemo(() => (report && state ? repairPreviews(state, report) : null), [report, state]);
   const moved = report ? report.plan.moves.filter((m) => m.proposal.kind !== 'no-place').length : 0;
@@ -76,33 +81,35 @@ export function LandmarkRepairWindow() {
     <ModalShell helpTarget={{ page: 'save' }} open={open && !!report && !!previews} onClose={cancelRepair} size="panel" width={900}
       cardStyle={cardStyle} ariaLabel={t('repair.title')}>
       {report && previews && state && (
-        <div style={bodyStyle} data-testid="landmark-repair">
+        <div ref={bodyRef} style={bodyStyle} data-testid="landmark-repair">
           <WindowHeader reserve titleId={titleId} title={t('repair.title')} close={{ label: t('hint.close'), onPress: cancelRepair }} />
-          <p style={leadStyle}>{t('repair.lead')}{objects && <><br />{t('repair.choose')}</>}</p>
-          {objects ? (
-            <div role="radiogroup" aria-labelledby={titleId} style={optionsStyle}>
-              <PictureOption {...option('auto')} testId="repair-auto-option" label={t('repair.auto')} badge={autoBadge}>
-                {(onTap) => (
-                  <PlanetPreview template={state.template} state={previews.auto} flagged={previews.autoFlagged} dropped={previews.ground}
-                    fit={previews.fit} onTap={onTap} />
-                )}
-              </PictureOption>
-              <PictureOption {...option('hand')} testId="repair-hand-option" label={t('repair.hand')}
-                badge={{ text: t('repair.hand_badge', quantityParams(locale, { n: report.objects.length })), swatch: LOSS_COLOR }}>
-                {(onTap) => <PlanetPreview template={state.template} state={previews.hand} flagged={previews.handFlagged} fit={previews.fit} onTap={onTap} />}
-              </PictureOption>
-            </div>
-          ) : (
-            <div data-testid="repair-ground" style={pictureStage}>
-              <PlanetPreview template={state.template} state={previews.auto} dropped={previews.ground} fit={previews.fit} />
-            </div>
-          )}
+          <WindowBody contentStyle={choiceStyle}>
+            <p style={leadStyle}>{t('repair.lead')}{objects && <><br />{t('repair.choose')}</>}</p>
+            {objects ? (
+              <div role="radiogroup" aria-labelledby={titleId} data-columns={columns} style={optionsStyle(columns)}>
+                <PictureOption {...option('auto')} testId="repair-auto-option" label={t('repair.auto')} badge={autoBadge}>
+                  {(onTap) => (
+                    <PlanetPreview template={state.template} state={previews.auto} flagged={previews.autoFlagged} dropped={previews.ground}
+                      fit={previews.fit} onTap={onTap} />
+                  )}
+                </PictureOption>
+                <PictureOption {...option('hand')} testId="repair-hand-option" label={t('repair.hand')}
+                  badge={{ text: t('repair.hand_badge', quantityParams(locale, { n: report.objects.length })), swatch: LOSS_COLOR }}>
+                  {(onTap) => <PlanetPreview template={state.template} state={previews.hand} flagged={previews.handFlagged} fit={previews.fit} onTap={onTap} />}
+                </PictureOption>
+              </div>
+            ) : (
+              <div data-testid="repair-ground" style={pictureStage}>
+                <PlanetPreview template={state.template} state={previews.auto} dropped={previews.ground} fit={previews.fit} />
+              </div>
+            )}
+          </WindowBody>
           {notice.notice}
           <WindowFooter
             tertiary={canExport ? <ExportFirstButton testId="repair-export-first" onPress={() => { void exportFirst(); }} /> : undefined}
             cancel={<ActionButton appearance="tertiary" hoverFill={skin.inset} onClick={cancelRepair}>{t('delete.cancel')}</ActionButton>}
             primary={(
-              <ActionButton appearance="primary" data-testid="repair-go" style={primaryStyle} onClick={go}>
+              <ActionButton appearance="primary" data-testid="repair-go" style={columns === 2 ? primaryStyle : stackedPrimaryStyle} onClick={go}>
                 {choice === 'auto' || !objects ? t('repair.auto') : t('repair.hand')}
               </ActionButton>
             )}

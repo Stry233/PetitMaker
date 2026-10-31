@@ -126,7 +126,6 @@ describe('cloneCell', () => {
     const copy = cloneCell(cell);
     expect(copy.terrain!.corners).toEqual(['square', 'fan', 'tri-NE', 'empty']);
     expect(copy.terrain!.patchOnly).toBe(true);
-    // Mutating the clone's corners must not affect the original (no shared reference).
     copy.terrain!.corners![1] = 'square';
     expect(cell.terrain!.corners![1]).toBe('fan');
   });

@@ -11,15 +11,20 @@ import {
   type AnimationPlaybackControls, type MotionValue, type Transition,
 } from 'framer-motion';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { seconds, cssMotion } from '../../design/motion';
+import { seconds } from '../../design/motion';
 import { z } from '../../design/styles';
 import { INK } from '../../design/tokens';
-import { useFrameLayout } from '../frame-layout';
+import { useFrameLayout, usePlanGlide, type BarPanel } from '../frame-layout';
 import { useTransition } from '../../design/motion/use-motion';
-import { EDGE_RIGHT, QUAD } from '../units';
-import { CELL_BOX } from './terrain-cells';
-import { ToolHighlight, TOOL_PILL_GAP } from './ToolPill';
-import { SWATCH_ROW_GAP, ToolRow } from './ToolRow';
+import { EDGE_RIGHT, QUAD, UPRIGHT_SPACE } from '../units';
+import { PanelTone, UPRIGHT_FOOT, useBarSurface } from './bar-panel';
+import { CELL_BOX, PLATE_PAD, SWATCH_ROW_GAP } from './terrain-cells';
+import { CAPTION_HANG, CAPTION_SWAY, PILL_RISE, ToolHighlight, TOOL_PILL_GAP } from './ToolPill';
+import { ToolRow } from './ToolRow';
+import { BrushSizeFills, useBrushSizeWidths } from './BrushSizeControl';
+import { useScrollRow } from '../../primitives/use-scroll-row';
+import { useFrameZoom } from '../use-frame-zoom';
+import { scaleMovingNow, usePx } from '../../design/scale';
 
 export interface ToolbarSlot {
   /** What the control means. Two tools offering the same control give it the same id. */
@@ -29,6 +34,15 @@ export interface ToolbarSlot {
   end?: boolean;
   /** The node plays its own entrance and exit. */
   ownMotion?: boolean;
+  /** Upright, a row whose controls hang a caption under them (`CAPTION_TOP`), which it keeps room for. */
+  captioned?: boolean;
+  /** How the slot grows and shrinks in its row, and the least it shrinks to; by default it keeps its
+   *  own width. */
+  flex?: string;
+  minWidth?: number;
+  /** The brush size slider: upright it stands at the tool row's far end rather than among the
+   *  settings, filling what the pills leave and giving up its width before they do. */
+  sizeSlider?: boolean;
 }
 
 export interface ToolbarSpec {
@@ -52,6 +66,8 @@ interface SlotHandle {
   running: AnimationPlaybackControls[];
   present: boolean;
   popped: boolean;
+  /** Stands at the far end of its row, so it travels by its right edge. */
+  end: boolean;
 }
 
 /** A slot's box in its row, in the row's own px; `y` is measured from the row's bottom edge, which
@@ -86,7 +102,12 @@ function unpop(el: HTMLElement): void {
  * Snapshots every slot before React writes the DOM and plays the glides once all of them have
  * committed. A class because only `getSnapshotBeforeUpdate` sees the layout a switch replaces.
  */
-class SlotFlip extends Component<{ registry: Map<string, SlotHandle>; reduced: boolean; transition: Transition; children: ReactNode }> {
+class SlotFlip extends Component<{
+  registry: Map<string, SlotHandle>; reduced: boolean; transition: Transition;
+  /** The settled UI scale the row is drawn at. */
+  scale: number;
+  children: ReactNode;
+}> {
   getSnapshotBeforeUpdate(): Map<string, Place> {
     const before = new Map<string, Place>();
     for (const [id, handle] of this.props.registry) {
@@ -97,21 +118,26 @@ class SlotFlip extends Component<{ registry: Map<string, SlotHandle>; reduced: b
     return before;
   }
 
-  componentDidUpdate(_props: unknown, _state: unknown, before: Map<string, Place>): void {
-    const { registry, reduced, transition } = this.props;
+  componentDidUpdate(previous: Readonly<{ scale: number }>, _state: unknown, before: Map<string, Place>): void {
+    const { registry, reduced, transition, scale } = this.props;
     for (const [id, handle] of registry) {
       if (handle.present || handle.popped || !handle.outer) continue;
       const place = before.get(id);
       if (place) pop(handle.outer, place);
       handle.popped = true;
     }
-    if (reduced) return;
+    // A new scale redraws the row in other px, and while the scale glides the row's own width follows
+    // the live zoom between renders, so neither change of a slot's offsets is a travel of its own:
+    // the scale's glide carries the row.
+    if (reduced || previous.scale !== scale || scaleMovingNow()) return;
     for (const [id, handle] of registry) {
       const from = before.get(id);
       if (!handle.present || !handle.outer || !from) continue;
       const to = placeOf(handle.outer);
       if (!to) continue;
-      const dx = from.x - to.x, dy = from.y - to.y;
+      // A control at the row's far end holds its right edge, so one whose width changed does not
+      // travel by the difference.
+      const dx = handle.end ? from.x + from.width - to.x - to.width : from.x - to.x, dy = from.y - to.y;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
       handle.running.forEach(run => run.stop());
       // Rebase without turning the coordinate change into velocity.
@@ -130,7 +156,7 @@ function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
   const outer = useRef<HTMLDivElement>(null);
   const x = useMotionValue(0), y = useMotionValue(0);
   const handle = useRef<SlotHandle | null>(null);
-  handle.current ??= { outer: null, x, y, running: [], present: true, popped: false };
+  handle.current ??= { outer: null, x, y, running: [], present: true, popped: false, end: !!slot.end };
   const enter = useTransition('tool.control.enter');
   const leave = useTransition('tool.control.leave');
 
@@ -146,6 +172,7 @@ function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
   useLayoutEffect(() => {
     const own = handle.current!;
     own.present = present;
+    own.end = !!slot.end;
     // A control that returns before its departure finished rejoins the flow.
     if (present && own.popped && own.outer) { unpop(own.outer); own.popped = false; }
   });
@@ -156,7 +183,7 @@ function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
     exit: { opacity: 0, transition: leave },
   };
   return <div ref={outer} data-toolbar-slot={slot.id} aria-hidden={!present || undefined} {...(!present ? { inert: '' } : {})}
-    style={{ flex: 'none', marginLeft: slot.end ? 'auto' : undefined }}>
+    style={{ flex: slot.flex ?? 'none', minWidth: slot.minWidth, marginLeft: slot.end ? 'auto' : undefined }}>
     <motion.div {...fade} style={{ position: 'relative', left: x, top: y }}>{slot.node}</motion.div>
   </div>;
 }
@@ -173,6 +200,7 @@ export function MorphRow({ slots, column = false, gap = 0, underlay, style, attr
   attrs?: Record<string, unknown>;
 }) {
   const reduced = !!useReducedMotionConfig();
+  const { scale } = usePx();
   const registry = useRef(new Map<string, SlotHandle>()).current;
   const transition = useTransition('tool.control.morph') as Transition;
   const previous = useRef<readonly string[]>(slots.map(slot => slot.id));
@@ -182,13 +210,14 @@ export function MorphRow({ slots, column = false, gap = 0, underlay, style, attr
   const delay = leaving && !reduced ? seconds('tool.control.leave') : 0;
   const body = slots.map(slot => <Slot key={slot.id} slot={slot} delay={delay}/>);
   return <SlotRegistry.Provider value={registry}>
-    <SlotFlip registry={registry} reduced={reduced} transition={transition}>
+    <SlotFlip registry={registry} reduced={reduced} transition={transition} scale={scale}>
       <div {...attrs} style={{
         position: 'relative', display: 'flex', flexDirection: column ? 'column' : 'row',
         alignItems: column ? 'stretch' : 'flex-start', gap, ...style,
       }}>
         {underlay}
-        {reduced ? body : <AnimatePresence initial={false}>{body}</AnimatePresence>}
+        {/* No slot moves by layout projection, so a slot's presence re-renders nothing around it. */}
+        {reduced ? body : <AnimatePresence initial={false} presenceAffectsLayout={false}>{body}</AnimatePresence>}
       </div>
     </SlotFlip>
   </SlotRegistry.Provider>;
@@ -212,14 +241,75 @@ export function ToolbarRow({ pills, activePill, pillAttrs, options, trailing }: 
   return <ToolRow><MorphRow slots={slots} gap={QUAD.gap} style={{ flex: '1 0 auto' }}/></ToolRow>;
 }
 
+/** Where the pills that stay end, in the run's own px: a departing pill stands out of its row's flow
+ *  (`pop`) and a gliding one is offset from its place in it, so the row's box ends at the settled set. */
+function settledPillsEnd(run: HTMLElement): number {
+  const pills = run.firstElementChild;
+  if (!(pills instanceof HTMLElement)) return run.scrollWidth;
+  return pills.offsetLeft + pills.offsetWidth + parseFloat(getComputedStyle(run).paddingRight);
+}
+
+/** The upright tool row's pills, in a box of their own that scrolls sideways once the row is too
+ *  narrow for them beside the size slider at its narrowest. A caption swaying past the last pill
+ *  while the armed pill changes stands in its bleed, and pills leaving the row count for nothing, so
+ *  neither reads as more to scroll to. Positioned, so the pills' offsets are measured from it. */
+function PillRun({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const fade = useScrollRow(ref, {
+    zoom: useFrameZoom(), bleed: { top: PILL_RISE, right: CAPTION_SWAY, bottom: CAPTION_HANG, left: 0 }, pointerEvents: 'auto',
+    fade: { extent: settledPillsEnd },
+  });
+  return <div ref={ref} className="pw-noscroll" style={{ display: 'flex', position: 'relative', ...fade }}>{children}</div>;
+}
+
+/** The upright panel's rows, top down: the rows a wide bar stands above its tool row, the armed
+ *  tool's settings and trailing controls in one row that scrolls sideways, then the tool row last, at
+ *  the panel's foot, so a switch of tool never moves it, the size slider at its far end. Short of room,
+ *  the slider narrows first, to its least, and then the pills scroll sideways; every slot keeps its id
+ *  so a switch morphs. */
+function uprightSlots({ rows, pills, activePill, pillAttrs, options, trailing }: ToolbarSpec, slider: { full: number; least: number }): ToolbarSlot[] {
+  const active = pills.findIndex(pill => pill.id === activePill);
+  // A shrink far above the pills' own, so the slider gives up its width before they give up any.
+  const toolEnd = trailing.filter(slot => slot.sizeSlider).map(slot => ({
+    ...slot, end: true, flex: `0 1000 ${slider.full}px`, minWidth: slider.least,
+    node: <BrushSizeFills.Provider value>{slot.node}</BrushSizeFills.Provider>,
+  }));
+  // Each setting stands at its own width, so its caption centres under it.
+  const settings = [...options, ...trailing.filter(slot => !slot.sizeSlider)].map(slot => ({ ...slot, end: false }));
+  // The tool row's caption room is the panel's own padding under it, so arming a tool never moves it.
+  const above = [
+    ...rows,
+    ...(settings.length ? [{ id: 'settings', captioned: options.length > 0, node: <ToolRow><MorphRow slots={settings} gap={QUAD.gap} style={{ flex: '1 0 auto' }}/></ToolRow> }] : []),
+  ];
+  return [
+    ...above.map(row => ({ ...row, node: <div style={{ paddingBottom: row.captioned ? CAPTION_HANG : 0 }}>{row.node}</div> })),
+    // A tool pill's plate reaches `PLATE_PAD.y` above its row's box, which the spacing counts from.
+    { id: 'tools', node: <div style={{ paddingTop: PLATE_PAD.y }}><ToolRow><MorphRow gap={QUAD.gap} style={{ flex: '1 1 0', minWidth: 0 }} slots={[
+      { id: 'pills', flex: '0 1 auto', minWidth: 0,
+        node: <PillRun><MorphRow slots={pills} gap={TOOL_PILL_GAP} attrs={pillAttrs} underlay={<ToolHighlight index={active}/>}/></PillRun> },
+      ...toolEnd,
+    ]}/></ToolRow></div> },
+  ];
+}
+
 /** The fixed band a toolbar stands in against the bottom of the window. Rows above the tool row
- *  carry their own bottom gap, so a departing row keeps its place against the row below. */
-export function ToolbarHost({ spec, testId, mapEdge = true }: { spec: ToolbarSpec; testId?: string; mapEdge?: boolean }) {
+ *  carry their own bottom gap, so a departing row keeps its place against the row below. On an
+ *  upright window the toolbar is the panel standing on the bar in `tone`'s plate, its controls stacked. */
+export function ToolbarHost({ spec, testId, mapEdge = true, tone = 'cream' }: { spec: ToolbarSpec; testId?: string; mapEdge?: boolean; tone?: BarPanel['tone'] }) {
   const layout = useFrameLayout();
+  const { upright, root, reveal, content } = useBarSurface(tone, { foot: CAPTION_HANG + UPRIGHT_FOOT });
+  const attrs = { 'data-testid': testId, ...spec.frameAttrs, ...(mapEdge ? mapEdgeAttr('bottom') : {}) };
+  const slider = useBrushSizeWidths();
+  const glide = usePlanGlide('frame.layout.adapt');
+  if (upright && layout) {
+    return <motion.div {...attrs} {...reveal} {...root}>
+      <PanelTone tone={tone}><MorphRow column gap={UPRIGHT_SPACE.row} slots={uprightSlots(spec, slider)}/></PanelTone>
+    </motion.div>;
+  }
   const rows = spec.rows.map(row => ({ ...row, node: <div style={{ paddingBottom: SWATCH_ROW_GAP }}>{row.node}</div> }));
-  return <div data-testid={testId} {...spec.frameAttrs} {...(mapEdge ? mapEdgeAttr('bottom') : {})} style={{
-    position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: QUAD.bottom, zIndex: z.panel,
-    transition: cssMotion('frame.layout.adapt', ['right']),
+  return <div ref={root.ref} {...content.start} {...attrs} style={{
+    position: 'fixed', left: QUAD.left, right: layout?.edgeRight ?? EDGE_RIGHT, bottom: (layout?.bar.bottom ?? 0) + QUAD.bottom, zIndex: z.panel,
+    transition: glide(['right']),
     display: 'flex', flexDirection: 'column', pointerEvents: 'none',
   }}>
     <MorphRow column slots={rows}/>

@@ -13,6 +13,7 @@ import { useEditorStore } from '../../../../../state/store';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { ScopeScreen } from '../../../../../ui/shell/bars/generate/ScopeScreen';
 import { SCOPE_TOOLS_FOR } from '../../../../../ui/shell/bars/generate/scope-cells';
+import { DEFAULT_REGION_REQUEST } from '../../../../../state/editing/vocabulary';
 import { makeState } from '../../../../_support/map-state';
 import { createExecutor } from '../../../../../state/executor';
 
@@ -37,7 +38,7 @@ function installMap(size = 12) {
 }
 
 beforeEach(() => {
-  useEditorStore.setState({ locale: 'en', region: [], regionTool: 'free', regionBrushShape: 'free', regionBrushSize: 3, regionDimensions: true, selectingRegion: true });
+  useEditorStore.setState({ locale: 'en', region: [], regionTool: 'free', regionBrushShape: 'free', regionBrushSize: 3, regionDimensions: true, selectingRegion: true, regionRequest: DEFAULT_REGION_REQUEST });
   useKeybinds.getState().resetAll();
 });
 
@@ -103,15 +104,12 @@ describe('the painted highlight', () => {
     const view = mount();
     expect(shown).toContain(2);
 
-    // Done is not the end of the region. It is the scope the next run acts on, and seeing it on the
-    // map is how a person knows where a generation will land; closing this screen is only the end
-    // of editing it. What the drape cannot survive is a run, which moves the ground under it, and
-    // the shelf re-shows the same cells once its run has landed.
+    // Closing the screen keeps the region drawn: it shows where the next run will land.
     const onDone = cleared;
     view.unmount();
     expect(cleared).toBe(onDone);
 
-    // Painted away to nothing is a clear, not a call to skip, or the last region stays on the map.
+    // A region painted away to nothing clears the drape.
     const before = cleared;
     mount();
     act(() => { useEditorStore.setState({ region: [] }); });
@@ -121,12 +119,7 @@ describe('the painted highlight', () => {
 });
 
 describe('what the screen offers', () => {
-  /**
-   * Done says done. A button says what pressing it does, and the count already has a permanent home:
-   * the scope chip in the strip keeps saying it once the cards are back, which is what makes it a
-   * chip rather than a tab. Carried here as well it would be said twice, once on a control that
-   * disappears.
-   */
+  /** The cell count already stays on the strip's scope chip. */
   it('offers a Done that says only what pressing it does', () => {
     useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
     const done = vi.fn();
@@ -138,19 +131,17 @@ describe('what the screen offers', () => {
   });
 
   /**
-   * A picture may be circled. Both picture kinds are fitted to the region's bounding box, and the
-   * two figures a drag produces whole — the rectangle and the circle inscribed in its own box — are
-   * both usable: a circled picture keeps its middle and gives up its corners, which is a vignette
-   * rather than damage. What neither can use is a figure with no interior (a brushed blob, a line, a
-   * curve), where the box is mostly empty and the picture comes out full of holes.
+   * Pictures fit the region's bounding box: a circle vignettes the corners, while a brushed blob or
+   * a line leaves the box mostly empty and the picture full of holes.
    */
   it('offers the picture kinds a rectangle and a circle, and nothing that leaves holes', () => {
     expect(SCOPE_TOOLS_FOR.image).toEqual(['rect', 'circle']);
     expect(SCOPE_TOOLS_FOR.text).toEqual(['rect', 'circle']);
+    useEditorStore.getState().claimRegionRequest({ tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
     render(
       <I18nProvider>
         <ScaleProvider value={0.5}>
-          <ScopeScreen onDone={() => {}} tools={SCOPE_TOOLS_FOR.image} minSide={20} />
+          <ScopeScreen onDone={() => {}} />
         </ScaleProvider>
       </I18nProvider>,
     );
@@ -159,14 +150,13 @@ describe('what the screen offers', () => {
     expect(screen.queryByLabelText(en('eraser.line'))).toBeNull();
   });
 
-  /** The refusal has words. A `generate.scope_min` called from here and defined in no locale would have
-   *  the button read as its own key until a region was big enough to make it go away. */
   it('says the minimum in words while the region is too short', () => {
     useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
+    useEditorStore.getState().claimRegionRequest({ tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
     render(
       <I18nProvider>
         <ScaleProvider value={0.5}>
-          <ScopeScreen onDone={() => {}} tools={SCOPE_TOOLS_FOR.image} minSide={20} />
+          <ScopeScreen onDone={() => {}} />
         </ScaleProvider>
       </I18nProvider>,
     );
@@ -175,8 +165,7 @@ describe('what the screen offers', () => {
     expect(screen.getByText(said)).toBeTruthy();
   });
 
-  /** It goes through the region channel rather than the store, because the collector owns the
-   *  buffer and its own undo stack. */
+  /** Through the region channel, since the collector owns the buffer and its undo stack. */
   it('asks the region brush for clear', () => {
     const clear = vi.fn();
     const off = setRegionBrushHandler({ paint: vi.fn(), done: vi.fn(), clear });

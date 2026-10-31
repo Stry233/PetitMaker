@@ -28,7 +28,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1); // the hidden layer-1 block in the notch
     const exec = makeExecutor(state);
-    // Intersection (5,5) is the shared corner of cells (5,5),(6,5),(5,6),(6,6) — the L's concave corner.
+    // Intersection (5,5) is the shared corner of cells (5,5),(6,5),(5,6),(6,6), the L's concave corner.
     new EdgeCutTool().onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctxFor(state, exec));
 
     const notch = getCell(state.cells, 6, 6)!.terrain!;
@@ -39,11 +39,9 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
   });
 
   it('a gamma fillet and an outer cut COEXIST on one cell — each corner is independent (through reconcile)', () => {
-    // The user's exact case: a 2x2 of three tier-2 cells + one layer-1 cell (3,4) at the bottom-left, wrapped
-    // by tier-2 on its N/E (so its TR is the tier-2 concave). The user bevels the exposed BL corner, then
-    // rounds the tier-2 inner corner (TR gamma). Rounding the gamma must not wipe or lock the BL bevel — and
-    // it must survive the post-stroke reconcile pass, which faults the cell outright if it mistakes the
-    // square base for the fillet. Corners are independent; an edge-cut only touches its own corner.
+    // A 2x2 of three tier-2 cells and a layer-1 cell (3,4) at the bottom-left, so (3,4)'s TR is the
+    // tier-2 concave. Bevel its BL, then round the TR gamma: the bevel must survive, including the
+    // post-stroke reconcile pass, which would fault the cell if it mistook the square base for the fillet.
     const state = makeState(20, 20);
     setTerrain(state, 3, 3, TerrainType.Mountain, 2);
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
@@ -62,7 +60,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     expect(c.corners?.[1], 'TR is the gamma fillet').toBe('fan');
     expect(c.corners?.[2], 'BL bevel is PRESERVED, not wiped or reverted by reconcile').toBe('fan');
 
-    // and the BL outer corner is still editable (not locked by the patch flag)
+    // The patch flag does not lock the BL outer corner.
     tool.onPointerDown(cell({ x: 2, y: 4 }), point({ x: 2, y: 4 }), ctxFor(state, exec)); // BL fan -> tri
     const c2 = getCell(state.cells, 3, 4)!.terrain!;
     expect(c2.corners?.[2], 'BL cycled on (outer tri), still editable').toBe('tri-NE');
@@ -92,9 +90,8 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
   });
 
   it('cycling the inner (gamma) corner OFF keeps the BL bevel — only the gamma corner resets', () => {
-    // Same 2x2; (3,4) carries BL bevel + TR gamma. Cycling the TR gamma back to default must reset only the
-    // TR corner — the BL bevel stays, being a separate corner. A reconcile revert that repainted the whole
-    // base block would take it with it.
+    // Same 2x2; (3,4) carries a BL bevel and a TR gamma. Cycling the gamma off resets only TR; a reconcile
+    // revert that repainted the whole base block would take the bevel with it.
     const state = makeState(20, 20);
     setTerrain(state, 3, 3, TerrainType.Mountain, 2);
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
@@ -146,16 +143,13 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
   });
 
   it('rounding an EMPTY notch NEVER creates a base, and rounds a TALL wall as one grounded column (#17)', () => {
-    // Two properties at once. A fillet is cosmetic: rounding the inner corner must not raise the
-    // notch into a real block. And it is a grounded column: a notch in walls stacked N tiers high
-    // rounds with one fillet at tier N, walled down to the floor by both renderers — the concave
-    // mirror of an outer cut, which has always bevelled the whole column.
+    // A fillet is cosmetic, so the notch gains no real block; and it is a grounded column, so walls N
+    // tiers high round with one fillet at tier N, walled down to the floor by both renderers.
     for (const N of [1, 2, 3]) {
       const state = makeState(20, 20);
       setTerrain(state, 5, 5, TerrainType.Mountain, N);
       setTerrain(state, 6, 5, TerrainType.Mountain, N);
       setTerrain(state, 5, 6, TerrainType.Mountain, N);
-      // (6,6) deliberately empty
       const exec = makeExecutor(state);
       new EdgeCutTool().onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctxFor(state, exec));
       const t = getCell(state.cells, 6, 6)!.terrain;
@@ -169,10 +163,8 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
   });
 
   it('only a CONVEX corner of the silhouette at the cell layer cuts — a low cell cuts toward GROUND, not toward a TALLER neighbour', () => {
-    // A 2x2: three layer-2 cells + one layer-1 cell (3,4) at the bottom-left. (3,4) borders open ground on
-    // W/S and the taller layer-2 on N/E. Only its SW corner (both edges ground) is a real convex corner of
-    // the layer-1 silhouette; the corners toward the taller neighbours are not corners at layer 1 (that
-    // neighbour's base covers the edge), so they stay square.
+    // Three layer-2 cells and a layer-1 cell (3,4) at the bottom-left, with open ground on its W/S. Only
+    // its SW corner is convex at layer 1; toward a taller neighbour, that neighbour's base covers the edge.
     const state = makeState(12, 12);
     setTerrain(state, 3, 3, TerrainType.Mountain, 2);
     setTerrain(state, 4, 3, TerrainType.Mountain, 2);
@@ -182,15 +174,14 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
     expect(locked[2], 'BL (SW, both edges open ground) is the one convex corner → cuttable').toBe(false);
     expect(locked[0], 'TL toward the taller N neighbour is NOT a corner here → locked').toBe(true);
     expect(locked[3], 'BR toward the taller E neighbour is NOT a corner here → locked').toBe(true);
-    // the taller cell does round down toward the lower one (the lower step does not reach its layer)
+    // The taller cell rounds down toward the lower one, whose step does not reach its layer.
     expect(computeLockedCorners(state, roadLookup(state), 4, 4, 'terrain')[2], 'layer-2 (4,4) BL toward the lower (3,4) is cuttable').toBe(false);
   });
 
   it('a low cell mid-edge has NO cuttable corner toward a taller neighbour; the taller cell beside it does', () => {
-    // The user's case: a 4x4 layer-1 base, with the right half raised to layer-2. At the bottom step, the
-    // low cell 1*=(3,5) sits between same-height layer-1 (W,N) and the taller 2*=(4,5) (E). It is not a
-    // corner at layer 1 anywhere, so none of its corners cut. 2* Is a convex corner of the layer-2
-    // silhouette toward the lower 1*, so 2*'s BL cuts (bevels down).
+    // A 4x4 block, layer 2 except a layer-1 2x2 at the bottom-left. 1*=(3,5) has layer-1 neighbours W
+    // and N and the taller 2*=(4,5) E, so none of its corners is convex at layer 1; 2*'s BL is convex
+    // toward 1* and bevels down.
     const state = makeState(10, 10);
     const M = TerrainType.Mountain;
     for (const [x, y, e] of [[2,2,2],[3,2,2],[4,2,2],[5,2,2],[2,3,2],[3,3,2],[4,3,2],[5,3,2],
@@ -212,9 +203,8 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
   });
 
   it('one click cycles ALL cut sites at a junction independently — 3x3 = 9 combinations, not lockstep', () => {
-    // The user's water/mountain junction: clicking the centre offers a gamma (the (3,3) ground pocket the two
-    // mountains wrap) and an outer cut (the water w(2,2) corner). They share one base-3 odometer, so 9 clicks
-    // visit all 9 (outer, gamma) combinations rather than moving the two in lockstep through only 3.
+    // The centre click offers a gamma (the (3,3) ground pocket the mountains wrap) and an outer cut (the
+    // water w(2,2) corner). They share one base-3 odometer, so 9 clicks visit all 9 combinations.
     const state = makeState(10, 10);
     const M = TerrainType.Mountain, W = TerrainType.Water;
     setTerrain(state, 1, 1, W, 0); setTerrain(state, 2, 1, W, 0); setTerrain(state, 3, 1, M, 1); setTerrain(state, 4, 1, M, 1);
@@ -235,11 +225,10 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
 
   it('cycling a from-empty gamma OFF returns to EMPTY — no base block is left behind', () => {
     const state = makeState(20, 20);
-    // Tier 1, so the fillet rests on the ground: at any higher tier it would hang and is not offered.
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 5, TerrainType.Mountain, 1);
     setTerrain(state, 5, 6, TerrainType.Mountain, 1);
-    // (6,6) empty — no real base anywhere
+    // (6,6) empty: no real base.
     const exec = makeExecutor(state);
     const tool = new EdgeCutTool();
     const click = () => tool.onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctxFor(state, exec));
@@ -270,19 +259,18 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
 
   it('rounds a clicked ground islet\'s own corner, not the diagonal water', () => {
     const state = makeState(12, 12);
-    // ground islet at (5,5) (null terrain) ringed by water@0 on all 8 neighbours
+    // A ground islet at (5,5) ringed by water@0 on all 8 neighbours.
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
       setTerrain(state, 5 + dx, 5 + dy, TerrainType.Water, 0);
     }
     const exec = makeExecutor(state);
-    // clicking macro (5,5) takes the islet cell (5,5) at its BR corner (the corner poking SE into water)
+    // Intersection (5,5) is the islet's BR corner.
     new EdgeCutTool().onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctxFor(state, exec));
 
     const isle = getCell(state.cells, 5, 5)!.terrain!;
     expect(isle.type, 'a GROUND islet-cut cell (reads as ground; renders grass rounded + water behind)').toBe(TerrainType.None);
     expect(isle.elevation, 'still ground level').toBe(0);
     expect(isle.corners?.[3], 'the islet rounds its OWN BR corner').toBe('fan');
-    // the surrounding water is untouched — the cut is on the islet, not offset onto a diagonal water cell
     expect(getCell(state.cells, 6, 6)!.terrain!.corners ?? null, 'diagonal water stays square').toBeNull();
   });
 
@@ -301,25 +289,24 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
 
   it('Issue 1: a diagonal pinch traverses all 3x3 corner combos, not lockstep', () => {
     const state = makeState(12, 12);
-    // two mountain blocks meeting only at a diagonal point (a pinch); both pinch corners are cuttable
+    // Two blocks meeting only at a diagonal point: both pinch corners are cuttable.
     setTerrain(state, 5, 5, TerrainType.Mountain, 1);
     setTerrain(state, 6, 6, TerrainType.Mountain, 1);
     const exec = makeExecutor(state);
     const tool = new EdgeCutTool();
-    // clicking macro cell (5,5) processes (5,5).BR [1*] and (6,6).TL [2*] together
+    // Intersection (5,5) governs (5,5).BR [1*] and (6,6).TL [2*] together.
     tool.onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctxFor(state, exec));
-    // one combined step: 1* advances, 2* stays — a mixed state a lockstep cycle cannot reach
+    // One step advances 1* and leaves 2*: a state a lockstep cycle cannot reach.
     expect(getCell(state.cells, 5, 5)!.terrain!.corners?.[3], '1* (BR) rounded').toBe('fan');
     expect(getCell(state.cells, 6, 6)!.terrain?.corners?.[0] ?? 'square', '2* (TL) independent — still square').toBe('square');
   });
 
   it('Issue A: all 3 pinch cases behave identically — both corners traverse 3x3, no special case', () => {
-    // each pinch: clicking (5,5) processes (5,5).BR [1*] + (6,6).TL [2*]; after one combined step 1* advances,
-    // 2* stays — a mixed state, proving both are independent cuttable slots regardless of the type combo.
+    // As above: one step advances 1* and leaves 2*, whatever the terrain pair.
     for (const [t1, t2] of [
       [TerrainType.Mountain, TerrainType.Mountain],
       [TerrainType.Water, TerrainType.Water],
-      [TerrainType.Mountain, TerrainType.Water], // mountain+water is not special — same as the others
+      [TerrainType.Mountain, TerrainType.Water], // mountain+water is not special, same as the others
     ] as const) {
       const s = makeState(12, 12);
       setTerrain(s, 5, 5, t1, t1 === TerrainType.Water ? 0 : 1); // ground-level lake / a low hill
@@ -364,8 +351,7 @@ describe('EdgeCutTool — gamma over a hidden lower block', () => {
 
 describe('EdgeCutTool — leaving the tool', () => {
   it('takes its hover ghost with it, the way the brushes and the placer do', () => {
-    // The tool paints a green/red cell under the pointer on every move. Leaving trim for another
-    // mode is a mode switch, not a pointer event, so nothing else comes along to overdraw it.
+    // Leaving trim is a mode switch, not a pointer event, so nothing else would overdraw the ghost.
     const state = makeState(20, 20);
     const exec = makeExecutor(state);
     const ctx = ctxFor(state, exec);

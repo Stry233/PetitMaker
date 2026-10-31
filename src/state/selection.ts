@@ -15,6 +15,16 @@ export function sameRef(a: BlockRef, b: BlockRef): boolean {
     : a.kind === 'terrain' && b.kind === 'terrain' && a.x === b.x && a.y === b.y;
 }
 
+/** Whether two selections name the same blocks in the same order. */
+export function sameSelection(a: readonly BlockRef[], b: readonly BlockRef[]): boolean {
+  return a === b || (a.length === b.length && a.every((r, i) => sameRef(r, b[i]!)));
+}
+
+/** The refs of `sel` whose object still stands on `state`; terrain refs pass. */
+export function standingRefs(state: GridState, sel: readonly BlockRef[]): BlockRef[] {
+  return sel.filter((r) => r.kind !== 'object' || state.objects.has(r.id));
+}
+
 /** The one member, or null. A plural selection returns null, never an arbitrary member. */
 export function singleSelection(sel: readonly BlockRef[]): BlockRef | null {
   return sel.length === 1 ? sel[0]! : null;

@@ -11,7 +11,7 @@ vi.mock('../../../editor/review/map-capture', () => ({ captureReviewViews: mocks
 
 import { TextReviewer } from '../../../editor/review/text-review';
 import { reviewedTextParts } from '../../../editor/review/text-parts';
-import { MAP_REVIEW_UNAVAILABLE, reviewLiveMap } from '../../../editor/review/map-review';
+import { MAP_REVIEW_UNAVAILABLE, forgetMapReview, knownMapReview, reviewLiveMap } from '../../../editor/review/map-review';
 import { ReviewTooLong } from '../../../pipelines/moderation';
 
 const listener = () => ({ progress: vi.fn(), settled: vi.fn(), failed: vi.fn() });
@@ -76,5 +76,26 @@ describe('the live map check', () => {
     mocks.reviewMap.mockResolvedValue({ status: 'clear' });
     expect(await reviewLiveMap({ illustration: true, annotations: false }, new AbortController().signal)).toEqual({ status: 'clear' });
     expect(mocks.capture).toHaveBeenCalledWith(true, false);
+  });
+
+  it('keeps the verdict for the map and pictures it was reached on, and only those', async () => {
+    forgetMapReview();
+    mocks.capture.mockResolvedValue([]);
+    mocks.reviewMap.mockResolvedValue({ status: 'clear' });
+    const map = {};
+    await reviewLiveMap({ illustration: true, annotations: true }, new AbortController().signal, { map, key: '3:4:1:' });
+    expect(knownMapReview({ map, key: '3:4:1:' })).toEqual({ status: 'clear' });
+    expect(knownMapReview({ map, key: '3:5:1:' }), 'an edit since').toBeNull();
+    expect(knownMapReview({ map: {}, key: '3:4:1:' }), 'another map').toBeNull();
+    forgetMapReview();
+    expect(knownMapReview({ map, key: '3:4:1:' })).toBeNull();
+  });
+
+  it('keeps no verdict from a check that could not run', async () => {
+    forgetMapReview();
+    mocks.capture.mockRejectedValue(new Error('no view'));
+    const map = {};
+    await reviewLiveMap({ illustration: false, annotations: true }, new AbortController().signal, { map, key: '1:1:0:' });
+    expect(knownMapReview({ map, key: '1:1:0:' })).toBeNull();
   });
 });

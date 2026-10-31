@@ -6,11 +6,8 @@ import type { ExecutedResult, LoopDeps, ToolExecutor } from '../../../agent/core
 import { runJob } from '../../../agent/core/loop';
 import type { Adapter, AdapterRequest } from '../../../agent/core/adapter';
 
-/** The failure-mode suite for `runJob`: the retry ladder, exhaustion, unretryable errors, a
- *  mid-run abort, overflow-driven compaction, a bad-args batch, the verbatim-retry and revert
- *  dampers, the silent-turn governor path (empty and reasoning-only alike), and the iteration cap.
- *  Companion to loop.test.ts, which
- *  covers the happy-path plumbing (gates, checkpoints, pause/resume, steers). */
+/** Failure modes of `runJob`: retries, exhaustion, unretryable errors, abort, overflow compaction,
+ *  bad arguments, the repeat and revert dampers, silent turns and the iteration cap. */
 
 interface RecordedCall { callId: string; name: string; args: Record<string, unknown> }
 
@@ -59,22 +56,19 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
   };
 }
 
-/** A turn that produced only reasoning before the provider cut it off at its output limit: no
- *  text, no tool call, so it reads as empty to anything that only looks at those two. */
+/** A reasoning-only turn cut off at the provider's output limit. */
 function reasoningTurn(text: string): ScriptedTurn {
   return { events: [{ t: 'reasoning', delta: text }, { t: 'done', stop: 'length' }] };
 }
 
-/** A turn that produced only reasoning and then ended of its own accord: the model thought, and
- *  nothing it thought reached the user. Silent, but not idle, and not cut off either. */
+/** A reasoning-only turn that ended on its own. */
 function thinkingTurn(text: string): ScriptedTurn {
   return { events: [{ t: 'reasoning', delta: text }, { t: 'done', stop: 'stop' }] };
 }
 
-/** No parts at all: the model produced nothing whatsoever and ended the turn. */
 const EMPTY_TURN: ScriptedTurn = { events: [{ t: 'done', stop: 'stop' }] };
 
-/** The trailing system note of the i-th request, which is the only channel the nudges ride. */
+/** The trailing user message of the i-th request, where every nudge rides. */
 function noteAt(snapshots: AdapterRequest[], i: number): string {
   const messages = snapshots[i]?.messages ?? [];
   const last = messages[messages.length - 1];
@@ -103,17 +97,14 @@ it('ends an unshortenable provider overflow without repeating the same request',
   expect(eventsOf(log).find((e) => e.kind === 'incident')).toMatchObject({ error: { cls: 'overflow' } });
 });
 
-/** A no-op sleep: records every delay the loop asks it to wait, but resolves immediately so the
- *  retry-ladder tests run at real-clock speed with no fake timers. */
+/** Records each requested delay and resolves at once. */
 function fakeSleep(): { sleep: (ms: number, signal: AbortSignal) => Promise<void>; calls: number[] } {
   const calls: number[] = [];
   return { calls, sleep: async (ms) => { calls.push(ms); } };
 }
 
-/** Wraps a `ScriptedAdapter` to snapshot each request with `structuredClone` at the moment it is
- *  sent: the adapter's own `requests` array aliases the live objects the loop built, so comparing
- *  entries read back at the end of a test would trivially "pass" even if a later mutation (or a
- *  rebuilt request that happens to share structure) made two turns look identical after the fact. */
+/** Clones each request as it is sent: the adapter's `requests` alias the loop's live objects, which
+ *  a later mutation could make compare equal. */
 function withRequestSnapshots(adapter: Adapter & { requests: AdapterRequest[] }): {
   adapter: Adapter & { requests: AdapterRequest[] };
   snapshots: AdapterRequest[];
@@ -152,16 +143,12 @@ describe('runJob failure modes', () => {
     expect(sleepCalls).toEqual([7000]);
     expect(scripted.requests).toHaveLength(2);
     expect(snapshots).toHaveLength(2);
-    expect(snapshots[1]).toEqual(snapshots[0]); // the identical request replayed verbatim
+    expect(snapshots[1]).toEqual(snapshots[0]);
   });
 
   /**
-   * One 429 teaches the session its pace, and nothing before one costs a millisecond.
-   *
-   * A forty-turn autopilot job spends a request per turn, which on a shared per-minute budget is the
-   * same limit discovered over and over — the ladder answers each refusal, and only a gap between
-   * turns stops earning them. The clock moves with the sleeps here, so the second turn's wait is
-   * measured against a log whose last turn really did close six seconds earlier.
+   * After a rate-limit the turns keep the learned gap, so a per-minute budget is not hit again each
+   * turn. The clock advances with each sleep.
    */
   it('1b. paces the turns after a rate-limit, and paces nothing in a session that never hit one', async () => {
     let clock = 0;
@@ -180,7 +167,7 @@ describe('runJob failure modes', () => {
       sleep: paceSleep(limitedCalls),
     });
     expect(await runJob(limited, limitedDeps)).toBe('done');
-    // The ladder's own wait, then the pace the refusal taught it before the next turn's request.
+    // The retry wait, then the learned gap before the next turn.
     expect(limitedCalls).toEqual([6000, 6000]);
 
     clock = 0;
@@ -211,7 +198,7 @@ describe('runJob failure modes', () => {
     const outcome = await runJob(log, deps);
 
     expect(outcome).toBe('incident');
-    expect(adapter.requests).toHaveLength(5); // 1 initial + 4 retries: MAX_TURN_ATTEMPTS total attempts
+    expect(adapter.requests).toHaveLength(5); // one attempt and four retries
     const retryEvents = eventsOf(log).filter((e) => e.kind === 'retry');
     expect(retryEvents.map((e) => (e.kind === 'retry' ? e.attempt : -1))).toEqual([1, 2, 3, 4]);
     expect(eventsOf(log).some((e) => e.kind === 'incident')).toBe(true);
@@ -269,9 +256,8 @@ describe('runJob failure modes', () => {
 
   it('5. an overflow error runs compaction (visible between the failed and replayed requests) and replays on the compacted window, with no retry event', async () => {
     const log = createLog(() => 0);
-    // A compactable two-exchange fixture: a completed prior exchange, then the job's own order.
-    // `compact` reads the whole log (not job-scoped), so this gives it two groups to fold between
-    // while `runJob`'s own turn/empty counters (scoped to the last order) see only the second.
+    // A finished exchange, then the job's order: `compact` reads the whole log, while `runJob`'s
+    // counters see only the last order.
     append(log, { kind: 'order', text: 'an earlier job', mapContext: '' });
     append(log, {
       kind: 'assistant', stop: 'tool-calls',
@@ -282,14 +268,12 @@ describe('runJob failure modes', () => {
 
     const adapter = createScriptedAdapter([
       { error: { cls: 'overflow', detail: 'context length exceeded' } },
-      { events: [{ t: 'text', delta: 'a short summary' }, { t: 'done', stop: 'stop' }] }, // compact's own summary turn
+      { events: [{ t: 'text', delta: 'a short summary' }, { t: 'done', stop: 'stop' }] }, // the compaction summary
       textTurn('replayed and done'),
     ]);
     const executor = makeExecutor();
-    // A constant per-message cost large enough that the job's own single-event group alone
-    // crosses KEEP_RECENT, guaranteeing compact finds a genuine fold (something precedes the cut)
-    // without the loop's own pre-turn needsCompaction check tripping first (the whole log's
-    // handful of messages stays well under contextWindow - COMPACTION_RESERVE at 9000 each).
+    // At 9000 per message the job's own group exceeds KEEP_RECENT, so there is something to fold,
+    // while the whole log stays under the pre-turn compaction threshold.
     const bigEstimate = (): number => 9000;
     const deps = makeDeps({ adapter, executor, estimate: bigEstimate });
 
@@ -300,7 +284,7 @@ describe('runJob failure modes', () => {
     expect(eventsOf(log).some((e) => e.kind === 'compaction')).toBe(true);
     expect(adapter.requests).toHaveLength(3);
     expect(adapter.requests[0]?.tools).toEqual(deps.tools);
-    expect(adapter.requests[1]?.tools).toEqual([]); // the summary request, between the failed and replayed turns
+    expect(adapter.requests[1]?.tools).toEqual([]); // the summary request
     expect(adapter.requests[2]?.tools).toEqual(deps.tools);
   });
 
@@ -339,8 +323,7 @@ describe('runJob failure modes', () => {
     const call = { callId0: 'c1', callId1: 'c2', name: 'paint_terrain', args: { x: 1 } };
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: call.callId0, name: call.name, args: call.args }]),
-      // The write between the two failures is what lets the second one execute at all: an
-      // unchanged map answers an identical retry with the repeat refusal instead.
+      // On an unchanged map an identical retry gets the repeat refusal without running.
       toolTurn([{ callId: 'w1', name: 'place_object', args: { x: 5 } }]),
       toolTurn([{ callId: call.callId1, name: call.name, args: call.args }]),
       textTurn('done'),
@@ -399,10 +382,8 @@ describe('runJob failure modes', () => {
 
     const outcome = await runJob(log, deps);
 
-    // The governor path just ends politely past the third empty turn: no incident, no
-    // "(system) Iteration limit" wording (that belongs to the cap, not the empty-turn damper).
     expect(outcome).toBe('done');
-    expect(adapter.requests).toHaveLength(3); // the loop gives up rather than sending a 4th request
+    expect(adapter.requests).toHaveLength(3);
     const jobEnd = eventsOf(log).find((e) => e.kind === 'jobEnd');
     expect(jobEnd).toMatchObject({ outcome: 'done' });
 
@@ -410,7 +391,7 @@ describe('runJob failure modes', () => {
       const messages = adapter.requests[i]?.messages ?? [];
       return messages[messages.length - 1];
     };
-    // The first request carries only the order itself: no nudge yet on an empty streak of 0.
+    // The first request carries only the order.
     expect(lastMessageOf(0)).toMatchObject({ role: 'user', text: '<map_context>""</map_context>\ngo\n(language) Think and reply in the language of this message.' });
     expect(lastMessageOf(1)).toMatchObject({ role: 'user' });
     expect((lastMessageOf(1) as { text: string }).text).toMatch(/\(system\).*no text and no tool calls/);
@@ -438,17 +419,14 @@ describe('runJob failure modes', () => {
     expect((trailing as { text: string }).text).toMatch(/\(system\).*iteration limit is reached/);
     const jobEnd = eventsOf(log).find((e) => e.kind === 'jobEnd');
     expect(jobEnd).toMatchObject({ outcome: 'capped' });
-    expect(executor.calls).toEqual([{ callId: 'c1', name: 'place_object', args: {} }]); // c2 never ran
+    expect(executor.calls).toEqual([{ callId: 'c1', name: 'place_object', args: {} }]);
   });
 
   it('10. the retry attempt count reseeds from the log: a job already holding 4 retry events for the turn in progress exhausts on the very next attempt, never restarting the ladder at 0', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // Simulate a process reload mid-retry-sleep: 4 retry attempts for this still-unfinished turn
-    // are already in the log (no assistant event yet, since the turn has never once succeeded),
-    // as if an earlier process died and a fresh runJob call is now resuming it. The in-memory
-    // `attempt` counter must reseed from this count rather than starting over at 0, or the ladder
-    // would grant 4 more attempts than MAX_TURN_ATTEMPTS allows across the reload.
+    // A reload mid-sleep: four retries of the unfinished turn are already in the log, and the
+    // attempt count resumes from them so a reload never grants more than MAX_TURN_ATTEMPTS.
     for (let attempt = 1; attempt <= 4; attempt++) {
       append(log, { kind: 'retry', attempt, cls: 'rate-limit', delayMs: 1000 });
     }
@@ -460,9 +438,9 @@ describe('runJob failure modes', () => {
     const outcome = await runJob(log, deps);
 
     expect(outcome).toBe('incident');
-    expect(adapter.requests).toHaveLength(1); // exactly one more adapter attempt: the 5th overall
+    expect(adapter.requests).toHaveLength(1); // the fifth attempt overall
     const retryEvents = eventsOf(log).filter((e) => e.kind === 'retry');
-    expect(retryEvents).toHaveLength(4); // no 5th retry event logged: it exhausts straight to incident
+    expect(retryEvents).toHaveLength(4);
     expect(eventsOf(log).some((e) => e.kind === 'incident')).toBe(true);
     const jobEnd = eventsOf(log).find((e) => e.kind === 'jobEnd');
     expect(jobEnd).toMatchObject({ outcome: 'incident' });
@@ -470,11 +448,9 @@ describe('runJob failure modes', () => {
   it('11. a length-stopped turn tells the next request what happened, so the two requests are not identical', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // The live repeat cycle: the turn stops on `length` with a tool call, whose reissue result is
-    // appended, but `DROPPED_STOPS` drops the turn and that result from the replay window, so with
-    // no note the second request is byte-identical to the first, the model re-emits the same
-    // oversized call, and the job grinds on to MAX_TURNS. The nudge rides the `appendSystemNote`
-    // channel, which is outside the drop window by construction.
+    // `DROPPED_STOPS` drops a `length` turn and its reissue result from the replay window, so
+    // without a note the next request would repeat the first byte for byte. The note rides
+    // `appendSystemNote`, which that window never drops.
     const scripted = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { x: 1 } }], 'length'),
       textTurn('smaller this time, done'),
@@ -512,23 +488,20 @@ describe('runJob failure modes', () => {
     const outcome = await runJob(log, deps);
 
     expect(outcome).toBe('incident');
-    expect(adapter.requests).toHaveLength(3); // no 4th request: the job ends instead of retrying again
+    expect(adapter.requests).toHaveLength(3);
     const incident = eventsOf(log).find((e) => e.kind === 'incident');
     expect(incident).toMatchObject({ error: { cls: 'overflow' } });
     expect(incident?.kind === 'incident' ? incident.error.detail : '').toMatch(/output limit/);
     const jobEnd = eventsOf(log).find((e) => e.kind === 'jobEnd');
     expect(jobEnd).toMatchObject({ outcome: 'incident' });
-    expect(executor.calls).toHaveLength(0); // every batch was truncation-poisoned
+    expect(executor.calls).toHaveLength(0); // a truncated batch never runs
   });
 
   it('13. three REASONING-ONLY length-stopped turns settle the overflow incident too, never a false `done`', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // An extended-thinking provider can hit its output cap while still reasoning, before any text
-    // or tool call lands. Such a turn has neither, so it also reads as empty: with the empty gate
-    // standing first in runJob's order, three of them would settle `jobEnd {outcome:'done'}` with
-    // no summary at all, reporting success for a job that never answered. A truncated turn is the
-    // model being cut off, not choosing silence, so it is not an empty turn.
+    // A provider can hit its output cap mid-reasoning, before any text or tool call. Such a turn
+    // is cut off, not empty, so three of them never settle `done` with no answer.
     const adapter = createScriptedAdapter([reasoningTurn('thinking'), reasoningTurn('still thinking'), reasoningTurn('thinking yet')]);
     const executor = makeExecutor();
 
@@ -545,8 +518,6 @@ describe('runJob failure modes', () => {
   it('13b. three genuinely EMPTY turns the model chose still end the job done', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // The other half of the definition: excluding a truncated turn from "empty" must not stop a
-    // real empty streak from reaching its own gate.
     const emptyTurn: ScriptedTurn = { events: [{ t: 'done', stop: 'stop' }] };
     const adapter = createScriptedAdapter([emptyTurn, emptyTurn, emptyTurn]);
 
@@ -567,7 +538,6 @@ describe('runJob failure modes', () => {
 
     const outcome = await runJob(log, makeDeps({ adapter, executor: makeExecutor() }));
 
-    // Three turns produced nothing, but no THREE of one kind: neither gate may end the job on them.
     expect(outcome).toBe('done');
     expect(snapshots).toHaveLength(4);
     expect(eventsOf(log).some((e) => e.kind === 'incident')).toBe(false);
@@ -576,18 +546,16 @@ describe('runJob failure modes', () => {
       const last = messages[messages.length - 1];
       return last && last.role === 'user' ? last.text : '';
     };
-    expect(noteOf(1)).toMatch(/no text and no tool calls/); // the empty turn counted as empty
-    expect(noteOf(2)).toMatch(/cut off/); // the truncated turn counted as truncated, not as empty
-    expect(noteOf(3)).toMatch(/no text and no tool calls/); // and the empty counter recovers honestly
+    expect(noteOf(1)).toMatch(/no text and no tool calls/);
+    expect(noteOf(2)).toMatch(/cut off/);
+    expect(noteOf(3)).toMatch(/no text and no tool calls/);
   });
 
   it('13d. the length exclusion BREAKS the run rather than skipping past it: [empty, empty, cut off, empty] is a streak of one', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // Transparent skipping (`continue` where the counter says `break`) would read this tail as
-    // three empties in a row and settle `done` on the fourth turn, with the job never answered.
-    // A truncated turn is not a hole in the empty run, it ends it: whatever silence preceded the
-    // cut belongs to a stretch the model has since been nudged out of.
+    // Skipping the truncated turn instead of breaking on it would count three empties and settle
+    // `done` on the fourth turn, unanswered.
     const scripted = createScriptedAdapter([
       EMPTY_TURN, EMPTY_TURN, reasoningTurn('thinking'), EMPTY_TURN, textTurn('finally'),
     ]);
@@ -596,17 +564,14 @@ describe('runJob failure modes', () => {
     const outcome = await runJob(log, makeDeps({ adapter, executor: makeExecutor() }));
 
     expect(outcome).toBe('done');
-    expect(snapshots).toHaveLength(5); // skip-counting would stop at 4, having given up early
+    expect(snapshots).toHaveLength(5);
     expect(eventsOf(log).find((e) => e.kind === 'jobEnd')).toMatchObject({ outcome: 'done', summary: 'finally' });
-    expect(noteAt(snapshots, 4)).toMatch(/no text and no tool calls/); // a streak of one, freshly counted
+    expect(noteAt(snapshots, 4)).toMatch(/no text and no tool calls/);
   });
 
   it('14. a turn that only REASONED is told so, not told it produced nothing', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // A model that thought at length and emitted no text must not be told it "produced no text
-    // and no tool calls": that is false about the thinking, and leaves the model no way to tell
-    // which half of the sentence to act on.
     const scripted = createScriptedAdapter([thinkingTurn('weighing where the ridge goes'), textTurn('Ridge raised.')]);
     const { adapter, snapshots } = withRequestSnapshots(scripted);
 
@@ -657,8 +622,6 @@ describe('runJob failure modes', () => {
   it('14e. the note speaks about the LATEST silent turn, not the oldest one in the run', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // A turn that thought followed by one that did not: "that turn" is the one just seen, so the
-    // model is asked about the silence it is actually in rather than about a turn two requests ago.
     const scripted = createScriptedAdapter([thinkingTurn('weighing it'), EMPTY_TURN, textTurn('Ridge raised.')]);
     const { adapter, snapshots } = withRequestSnapshots(scripted);
 
@@ -672,10 +635,8 @@ describe('runJob failure modes', () => {
   it('14f. a whitespace-only thought is no thought: the turn is told it produced nothing', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'go');
-    // An adapter that emits a blank reasoning delta (a provider sending an empty
-    // `reasoning_content` field, a newline between chunks) still makes the assembler open a
-    // reasoning part. A part is not a thought: telling the model "that turn was all reasoning"
-    // over whitespace would name work it never did and leave the actual silence unnamed.
+    // A blank reasoning delta (an empty `reasoning_content`, a newline between chunks) still opens
+    // a reasoning part in the assembler.
     const scripted = createScriptedAdapter([thinkingTurn('   \n  '), textTurn('Ridge raised.')]);
     const { adapter, snapshots } = withRequestSnapshots(scripted);
 

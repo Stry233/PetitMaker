@@ -29,7 +29,6 @@ describe('tracking', () => {
     expect(tracker.frames).toBe(n);
     expect(tracker.lost).toBe(0);
     expect(tracker.edges.count).toBe(n - 1);
-    // The running position is the chain path's last frame.
     const chain = tracker.chainPath();
     expect(tracker.position.x).toBeCloseTo(chain.x[n - 1]!, 9);
     expect(tracker.position.y).toBeCloseTo(chain.y[n - 1]!, 9);

@@ -4,7 +4,8 @@
  */
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../../state/store';
-import { clampUiZoom } from '../../platform/storage/prefs';
+import { UI_ZOOM_DEFAULTS, scaleProfileOf } from '../../platform/storage/prefs';
+import { scaleLattice, UI_SCALE_STEP, useScaleReach } from '../design/scale';
 import { effectiveCombo, matchesUiZoomCombo, type Overrides } from '../../state/keymap/resolve';
 import { useKeybinds } from '../../state/keymap/store';
 import { isTextEntry } from '../../platform/input/text-entry';
@@ -27,10 +28,19 @@ export function useUiZoomShortcut() {
   const overrides = useKeybinds((s) => s.overrides);
   const combos = useRef(uiZoomCombos(overrides));
   useEffect(() => { combos.current = uiZoomCombos(overrides); }, [overrides]);
+  // The Settings slider's reach (`design/scale-model.ts:reachOf`): a step past it would change nothing.
+  const reachNow = useScaleReach();
+  const reach = useRef(reachNow);
+  useEffect(() => { reach.current = reachNow; }, [reachNow]);
   useEffect(() => {
-    const bumpUiZoom = (delta: number) => {
+    // Accumulates against the persisted target, on the stops of the scale in force (each through its
+    // own default) up to the slider's reach, as the Settings slider steps. A preference saved past the
+    // reach steps down from the reach and never up toward it.
+    const bumpUiZoom = (steps: number) => {
       const store = useEditorStore.getState();
-      store.setUiZoom(clampUiZoom(store.uiZoom + delta)); // accumulate against the persisted target
+      const { snap } = scaleLattice(UI_ZOOM_DEFAULTS[scaleProfileOf(store.inputMode, store.layoutShape)], reach.current);
+      const next = snap(snap(store.uiZoom) + steps * UI_SCALE_STEP);
+      if (steps > 0 ? next > store.uiZoom : next < store.uiZoom) store.setUiZoom(next);
     };
     const onKeyZoom = (e: KeyboardEvent) => {
       // Not suppressed while a modal is open: UI scaling is the one binding that
@@ -42,11 +52,18 @@ export function useUiZoomShortcut() {
       if (isTextEntry(e.target)) return;
       // Zoom-in is tested first, so a pair deliberately bound onto each other's twin scales one way
       // rather than firing both and cancelling out.
-      if (matchesUiZoomCombo(combos.current.in, e)) { e.preventDefault(); bumpUiZoom(0.1); }
-      else if (matchesUiZoomCombo(combos.current.out, e)) { e.preventDefault(); bumpUiZoom(-0.1); }
+      if (matchesUiZoomCombo(combos.current.in, e)) { e.preventDefault(); bumpUiZoom(1); }
+      else if (matchesUiZoomCombo(combos.current.out, e)) { e.preventDefault(); bumpUiZoom(-1); }
     };
 
     window.addEventListener('keydown', onKeyZoom);
     return () => { window.removeEventListener('keydown', onKeyZoom); };
   }, []);
+}
+
+/** The shortcut as a component, mounted inside the scale's providers so its reach reads the view the
+ *  slider reads. */
+export function UiZoomShortcut(): null {
+  useUiZoomShortcut();
+  return null;
 }

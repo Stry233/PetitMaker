@@ -1,12 +1,9 @@
 /**
- * Shared code asks what a zone or an item is through the game's predicates, category roles and traits,
- * never by its id. Outside `core/game`, no production code compares a `CellZone` member (an equality
- * operand or a `case` label); outside the catalog data in `config/`, the engine and editor layers name
- * no `ItemCategory` member, neither as `ItemCategory.X` nor as its id string compared with a category,
- * and write no catalog item, landmark or map template id as a string (the ids are read from `config/`
- * and the profile), as a string or as an identifier such as a property name. A frozen wire table (`FROZEN_WIRE`) must spell them, because what it writes
- * is already in saves and codes; it is exempt as a file, with its reason, and fails here once it no
- * longer spells any.
+ * Shared code asks what a zone or item is through predicates, category roles and traits, never by id.
+ * Outside `core/game`, no code compares a `CellZone` member; in the layers `CATEGORY_LAYERS` names, no
+ * code names an `ItemCategory` (as a member or a compared id string), and outside `core/game` none
+ * spells a catalog item, landmark or template id as a string or identifier. A frozen wire table spells
+ * them because saves and codes already hold them; it is exempt with its reason until it spells none.
  */
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
@@ -33,7 +30,7 @@ const GAME_IDS: ReadonlySet<string> = new Set([
   ...CATEGORIES.flatMap((c) => c.items.map((item) => item.id)), ...LANDMARKS.map((l) => l.id), ...Object.keys(MAP_TEMPLATES),
 ]);
 
-/** The layers the portability rule speaks for: everything but the UI, its copy and the data. */
+/** The layers the category and id checks cover: everything but the UI, its copy and the data. */
 const CATEGORY_LAYERS = /^(?:core|state|rules|tools|view|pipelines|editor|agent|io)\//;
 const EQUALITY = new Set(
   [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken],

@@ -30,7 +30,7 @@ import { createExecutor } from '../../../state/executor';
 import { editorToolWiring } from '../../../editor/session/tool-wiring';
 
 const ROTATABLE = 'building-stall';  // rotatable, flat, 1x1
-const RAMP = 'ramp-teak-stair';      // rotatable: false — the trait owns its orientation
+const RAMP = 'ramp-teak-stair';      // rotatable: false; the trait owns its orientation
 
 function makeView() {
   const overlay = {

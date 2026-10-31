@@ -1,7 +1,8 @@
 /*
  * The card a full-window notice is drawn on: centred on the window, standing off its top or bottom
  * edge on the toast rung, the panel plate with its hairline, and an optional accent stripe that says
- * "this is a warning" without colouring the words. Its actions are `NoticeAction` pills.
+ * "this is a warning" without colouring the words. Its actions are `NoticeAction` pills. It draws at
+ * the chrome's touch lift for `TOUCH_TARGET` controls (`useChromeLayer`), as the toasts do.
  */
 import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { motion, type HTMLMotionProps } from 'framer-motion';
@@ -9,7 +10,8 @@ import { cursors, font, radii, z } from '../design/styles';
 import { roleFont, LINE_HEIGHT } from '../design/text-weight';
 import { PANEL_EDGE, PLATE, FRAME_INK, ACCENT, SURFACE_SECONDARY } from '../design/tokens';
 import { presence } from '../design/motion';
-import { useChromeLayer } from './chrome-layer';
+import { useChromeLayer, useChromeLayerZoom } from './chrome-layer';
+import { TOUCH_TARGET } from '../design/scale';
 
 const card: CSSProperties = {
   left: '50%',
@@ -34,7 +36,7 @@ const stripe: CSSProperties = { flex: '0 0 auto', width: 4, alignSelf: 'stretch'
 export const NOTICE_WIDTH = { maxWidth: 'min(92vw, 560px)' } as const satisfies CSSProperties;
 
 interface NoticeBarProps extends Omit<HTMLMotionProps<'div'>, 'style' | 'children'> {
-  /** Which window edge the card stands off, and how far (css px inside the chrome zoom, or any CSS length). */
+  /** Which window edge the card stands off, and how far (the card's own css px, or any CSS length). */
   edge: 'top' | 'bottom';
   offset: number | string;
   /** Draws the accent stripe at the card's start. */
@@ -51,11 +53,22 @@ interface NoticeBarProps extends Omit<HTMLMotionProps<'div'>, 'style' | 'childre
   children: ReactNode;
 }
 
+/** The control height a notice's actions are lifted for in touch mode, in its own css px. The toast
+ *  band's tenants lift to it too, so a notice stacked under the band reads the band's rows at its own
+ *  zoom. */
+export const NOTICE_CONTROL = TOUCH_TARGET;
+
+/** The zoom a notice card and the toast band's tenants draw at: the chrome's, raised in touch mode
+ *  until their actions reach a fingertip. A caller placing a card in chrome px converts by it. */
+export function useNoticeZoom(): number {
+  return useChromeLayerZoom(NOTICE_CONTROL);
+}
+
 /** A notice card. Mount it under `AnimatePresence` when it has `travel`. */
 export const NoticeBar = forwardRef<HTMLDivElement, NoticeBarProps>(function NoticeBar({
   edge, offset, stripe: striped = false, align = 'center', width = NOTICE_WIDTH, travel, weights = true, style, children, ...rest
 }, ref) {
-  const layer = useChromeLayer({ weights });
+  const layer = useChromeLayer({ weights, control: NOTICE_CONTROL });
   const placed: CSSProperties = { ...layer, ...card, ...width, alignItems: align, [edge]: offset, ...style };
   const body = <>{striped ? <span style={stripe} aria-hidden /> : null}{children}</>;
   if (travel === undefined) return <motion.div ref={ref} {...rest} style={{ ...placed, transform: 'translateX(-50%)' }}>{body}</motion.div>;

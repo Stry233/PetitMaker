@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { usePanZoom, type PanZoomOptions } from '../../../ui/primitives/use-pan-zoom';
+import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 
 function Stage(props: PanZoomOptions) {
   const pz = usePanZoom(props);
@@ -58,6 +59,22 @@ describe('usePanZoom', () => {
     up(12, 11);
     expect(onTap).toHaveBeenCalledTimes(1);
     expect(view()).toEqual([0, 0, 1]);
+  });
+
+  it('measures a press\'s travel per axis against its pointer\'s drag threshold, as the map does', () => {
+    const onTap = vi.fn();
+    render(<Stage onTap={onTap} />);
+    const finger = { type: 'touch' };
+    const slop = GESTURE_TIMING.touch.dragThreshold;
+    down(10, 10, finger);
+    move(10 + slop - 2, 10 + slop - 2, finger);
+    up(10 + slop - 2, 10 + slop - 2, finger);
+    expect(onTap).toHaveBeenCalledTimes(1);
+    const mouse = GESTURE_TIMING.pc.dragThreshold;
+    down(10, 10);
+    move(10 + mouse + 1, 10);
+    up(10 + mouse + 1, 10);
+    expect(onTap).toHaveBeenCalledTimes(1);
   });
 
   it('zooms in notches on a mouse wheel and smoothly on a trackpad pinch', () => {

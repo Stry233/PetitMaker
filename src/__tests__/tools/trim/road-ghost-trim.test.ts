@@ -1,14 +1,7 @@
 /**
- * The road ghost wears the cuts the lay will make.
- *
- * A road's cut is connection-aware: which canonical state a tile takes depends on which sides it
- * connects on, and on what its neighbours took first. So the only pin worth having is equality with
- * the real thing — drive the actual DrawingTool, keep the ghost payload it emitted, then let the
- * stroke commit and compare the map's own road corners (and connection sides) against what the
- * ghost promised for those same cells.
- *
- * The preview does not re-derive any of that geometry: it runs `applyAutoEdgeCut` itself, over a
- * coating lookup shadowing the tiles the stroke has not laid yet.
+ * The road ghost wears the cuts the lay will make. A road's cut depends on its connected sides and on
+ * what its neighbours took first, so each case drives the real DrawingTool, keeps the ghost it
+ * emitted, commits, and compares the map's road corners and connections with the ghost's promise.
  */
 import { describe, it, expect } from 'vitest';
 import { DrawingTool } from '../../../tools/pointer/paint/drawing-tool';
@@ -62,7 +55,7 @@ function pave(w: ReturnType<typeof world>, cells: MacroCoord[]): void {
   }
 }
 
-/** Every cut road on the map, as "x,y conn corners" — the committed truth. */
+/** Every cut road on the map, as "x,y conn corners": the committed truth. */
 function laid(state: GridState, only?: Set<string>): string[] {
   const roads = roadLookup(state);
   const out: string[] = [];
@@ -140,9 +133,8 @@ describe('the road ghost predicts exactly what the lay commits', () => {
 
   it('a cell the rules refuse is previewed as the end it actually leaves', () => {
     const w = world('round');
-    // A road cannot be laid on water, and the flat trait also refuses the tile whose extended
-    // footprint reaches it — so a run crossing one breaks two cells short, and both sides of the
-    // break are end-caps the ghost has to show rather than a through-road.
+    // The flat trait also refuses the tile whose extended footprint reaches the water, so the run
+    // breaks at x=7 and x=8 and both sides of the break are end-caps.
     setTerrain(w.state, 8, 5, TerrainType.Water, 0);
     const ghost = drawAndCommit(w, { x: 4, y: 5 }, { x: 11, y: 5 });
     expect(promised(ghost.trim)).toEqual(laid(w.state, cellsOf(ghost)));
@@ -151,8 +143,8 @@ describe('the road ghost predicts exactly what the lay commits', () => {
 
   it('a cut it makes to a road already on the map is not drawn as part of the ghost', () => {
     const w = world('round');
-    // A lone built tile, square. Paving beside it makes it a bend the trim can cut — a change to
-    // the map, not to the shape being placed, so the ghost must not draw over it.
+    // Paving beside a lone built tile lets the trim cut it, a change to the map rather than to the
+    // shape being placed.
     pave(w, [{ x: 20, y: 20 }]);
     const ghost = drawAndCommit(w, { x: 20, y: 21 }, { x: 20, y: 24 });
     expect(ghost.trim.some((t) => t.x === 20 && t.y === 20)).toBe(false);
@@ -177,14 +169,11 @@ describe('the road ghost predicts exactly what the lay commits', () => {
 });
 
 /**
- * The brush is every road item's placementMode, and it is the one mode that previews a dab against
- * a map the same stroke has already been editing: it lays as it moves and trims what it has laid,
- * so the cut standing on the tile beside this dab is provisional — the click takes it back and
- * derives the pair together. A preview reading that cut as settled finds no state its neighbour
- * will accept and promises nothing where the click cuts a wedge.
+ * The brush, every road item's placement mode, lays and trims as it moves, so the cut on the tile
+ * beside a dab is provisional: the click re-derives the pair together, and the preview must too.
  */
 describe('the road ghost sees its own stroke', () => {
-  /** The stroke that produced the divergence: three dabs in a row, each reconnecting to the last. */
+  /** Three dabs in a row, each reconnecting to the last. */
   const RUN: MacroCoord[] = [{ x: 20, y: 22 }, { x: 21, y: 22 }, { x: 22, y: 22 }];
 
   it('a dab reconnecting to a tile an earlier dab of the same stroke cut', () => {
@@ -195,15 +184,13 @@ describe('the road ghost sees its own stroke', () => {
     const second = dab(w, RUN[1]!);
     expect(promised(second.trim)).toEqual(laid(w.state, cellsOf(second)));
 
-    // The third dab is the one a stale cache answers empty for: (21,22) still carries the end-cap it was
-    // given while it was the end.
+    // (21,22) still carries the end-cap it got while it was the end; a stale read promises nothing here.
     const third = dab(w, RUN[2]!);
     expect(third.trim.length, 'the dab is the new end, so it is capped').toBeGreaterThan(0);
     expect(promised(third.trim)).toEqual(laid(w.state, cellsOf(third)));
 
     w.tool.onPointerUp(cell(RUN[2]!), point({ x: 0, y: 0 }), w.ctx);
     getObjectIndex(w.state);
-    // And the finished stroke agrees with the last thing the ghost said about that cell.
     expect(promised(third.trim)).toEqual(laid(w.state, cellsOf(third)));
   });
 
@@ -225,9 +212,8 @@ describe('the road ghost sees its own stroke', () => {
 
   it('leaves a cut that is NOT this stroke\'s alone, exactly as the click does', () => {
     const w = world('round', 'free');
-    // A built road with a real cut on it. The click squares only the tiles this stroke laid, and
-    // skips a road that is already trimmed — so the dab beside it is derived against that cut, and
-    // the preview has to read it rather than assume it away.
+    // The click squares only the tiles this stroke laid and skips an already trimmed road, so the
+    // dab beside it derives against that cut.
     pave(w, [{ x: 15, y: 15 }, { x: 16, y: 15 }]);
     applyAutoEdgeCut({ state: w.state, execute: (cmd) => w.executor.execute(cmd) },
       'round', [], [{ x: 15, y: 15 }, { x: 16, y: 15 }]);
@@ -239,7 +225,6 @@ describe('the road ghost sees its own stroke', () => {
     getObjectIndex(w.state);
     const g = dab(w, { x: 18, y: 15 });
     expect(promised(g.trim)).toEqual(laid(w.state, cellsOf(g)));
-    // The built road's own cut is untouched by a stroke that never laid it.
     expect(laid(w.state, new Set(['15,15']))).toEqual(before.filter((s) => s.startsWith('15,15')));
     w.tool.onPointerUp(cell({ x: 18, y: 15 }), point({ x: 0, y: 0 }), w.ctx);
   });
@@ -272,7 +257,7 @@ describe('the views draw the promised road shape', () => {
     // through the middle of a continuous road.
     const seam = edges.filter((e) => e.ax === 6 && e.bx === 6 && Math.min(e.ay, e.by) >= 5 && Math.max(e.ay, e.by) <= 6);
     expect(seam).toEqual([]);
-    // And the cut itself is drawn: the wedge's two diagonals are neither axis-aligned nor absent.
+    // The wedge's diagonal cut is drawn.
     expect(edges.some((e) => e.ax !== e.bx && e.ay !== e.by)).toBe(true);
   });
 
@@ -303,10 +288,8 @@ describe('the views draw the promised road shape', () => {
     expect(area(wedge)).toBeCloseTo(0.25, 6);
   });
 
-  // Wiring, not geometry: this compares the decal against the shared builder, so it pins that the
-  // 3D ghost goes through it and places it on the right cell — it cannot notice a bug inside the
-  // builder itself. The builder's own coordinates are pinned against hand-worked literals in
-  // `__tests__/view/shared/road/shape.test.ts`.
+  // Wiring only: the 3D ghost uses the shared builder on the right cell. The builder's geometry is
+  // pinned in `__tests__/view/shared/road/shape.test.ts`.
   it('3D decal: the polygon is the shared road shape, vertex for vertex', () => {
     const s = makeState(20, 20) as GridState;
     const fan = [...CANONICAL_ROAD_STATES[1]!] as Corners;

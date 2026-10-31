@@ -48,9 +48,8 @@ describe('V-MTN-03: 3x3 Base Support', () => {
   });
 
   it('a water cell in the 3x3 window supports like the block it replaced', () => {
-    // The game forms waterfalls by converting a mountain block to water among its standing
-    // neighbours, so the conversion must be support-neutral: water at N
-    // fills its cell to N in a neighbour's window, even though nothing may be built on it.
+    // The game forms waterfalls by converting a mountain block to water, so water at N supports a
+    // neighbour's window to N, though nothing may be built on it.
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
@@ -62,22 +61,19 @@ describe('V-MTN-03: 3x3 Base Support', () => {
 
   it('layer 7 passes with 3x3 base at layer 4 (which has 5x5 at layer 1)', () => {
     const state = makeState();
-    // 5x5 at elevation 1 to support the 3x3 at elevation 4
+    // The 5x5 at elevation 1 supports the 3x3 at elevation 4.
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 1);
-    // 3x3 at elevation 4 on top
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 4);
-    // Single tower at elevation 7
     setTerrain(state, 5, 5, TerrainType.Mountain, 7);
     expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
   it('rejects 3x3 block at layer 4 with no lower base', () => {
     const state = makeState();
-    // 3x3 at elevation 4 only — no support below
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 4);
@@ -106,37 +102,31 @@ describe('V-MTN-03: 3x3 Base Support', () => {
     expect(baseSupportRule.validate(state).length).toBeGreaterThan(0);
   });
 
-  // A Γ patch or fillet provides structural support through patchBase. The rule reads the structural
-  // surface and includes patch-only cells when checking the 3×3 base.
+  // A Γ patch or fillet supports through its `patchBase`, the structural surface the rule reads.
   it('counts a Γ-patch base cell as structural support (no false 3x3 violation)', () => {
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 3);
-    // one base neighbour is a Γ fillet (cosmetic elev 4) sitting on a real elevation-3 block
+    // One base neighbour is a Γ fillet (cosmetic 4) on a real elevation-3 block.
     state.cells[4]![4]!.terrain = { type: TerrainType.Mountain, elevation: 4, patchOnly: true, patchBase: 3 };
     setTerrain(state, 5, 5, TerrainType.Mountain, 4);
     expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
-  // A river is one layer deep and does not float (RULES.md §7), so a water cell at N is a water
-  // block at N on riverbed mass at N-1: it supports a base up to N-1, never at N. Treating it as
-  // supporting nothing at any depth made water at elevation >= 4 impossible anywhere on the map —
-  // its containing rim (mountains at the water's own level) always has the water in its 3x3.
   it('counts the riverbed under a water cell as support below the water surface', () => {
     const state = makeState();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
         setTerrain(state, 5 + dx, 5 + dy, TerrainType.Mountain, 1);
-    // the tower at 4 needs a 3x3 at E >= 1; one base cell is a river at 3 (riverbed mass at 2)
+    // The tower at 4 needs a 3x3 at E >= 1; one base cell is a river at 3.
     setTerrain(state, 4, 4, TerrainType.Water, 3);
     setTerrain(state, 5, 5, TerrainType.Mountain, 4);
     expect(baseSupportRule.validate(state)).toHaveLength(0);
   });
 
   it('counts a water cell to its surface, and no further', () => {
-    // mountain at 6 needs a 3x3 at E >= 3. Water at 2 fills its cell to 2 → refused;
-    // water at 3 fills to 3 → allowed. The surface is where the credit stops.
+    // A mountain at 6 needs a 3x3 at E >= 3: water at 2 is refused, water at 3 allowed.
     const build = (waterElev: number) => {
       const state = makeState();
       for (let dy = -1; dy <= 1; dy++)
@@ -151,9 +141,8 @@ describe('V-MTN-03: 3x3 Base Support', () => {
   });
 
   it('still refuses a mountain more than 3 layers above a neighbouring river', () => {
-    // Water at N credits the window at N, so a neighbouring mountain may stand at most N+3
-    // before its 3x3 window (E >= M-3) clears the water's surface. A full wedding cake, so
-    // the water cell is the only thing the window can be short of.
+    // Water at N lets a neighbouring mountain stand at most N+3. The rest of the window is a full
+    // wedding cake, so the water cell is the only thing it can be short of.
     const rim = (mountainElev: number) => {
       const state = makeState();
       for (let e = 1; e <= 4; e++) {
@@ -171,9 +160,8 @@ describe('V-MTN-03: 3x3 Base Support', () => {
   });
 
   it('allows a plunge pool at the foot of a tall waterfall', () => {
-    // A steep wall to 4 on a tier-1 skirt, a water channel at 4 between caps at 4: converting the
-    // skirt cell at the fall's foot to water must not collapse the caps — the conversion is
-    // support-neutral, and the pool is the shape the game expects at a fall's foot.
+    // A steep wall to 4 on a tier-1 skirt, a water channel at 4 between caps at 4. Converting the
+    // skirt cell at the fall's foot to water is support-neutral, so the caps stay supported.
     const state = makeState();
     for (let y = 2; y <= 8; y++) for (let x = 2; x <= 8; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     for (let y = 3; y <= 6; y++) for (let x = 3; x <= 6; x++) setTerrain(state, x, y, TerrainType.Mountain, 4);
@@ -184,8 +172,7 @@ describe('V-MTN-03: 3x3 Base Support', () => {
   });
 
   it('does not require a 3x3 base for a cosmetic fillet whose structural top is below 4', () => {
-    // A lone Γ fillet at cosmetic elevation 4 but structural base 3 is structurally a layer-3 block
-    // (exempt). It must not be treated as a layer-4 mountain that needs a 3x3 base.
+    // A Γ fillet at cosmetic 4 on structural base 3 is a layer-3 block, which needs no 3x3 base.
     const state = makeState();
     state.cells[5]![5]!.terrain = { type: TerrainType.Mountain, elevation: 4, patchOnly: true, patchBase: 3 };
     expect(baseSupportRule.validate(state)).toHaveLength(0);
@@ -193,10 +180,8 @@ describe('V-MTN-03: 3x3 Base Support', () => {
 });
 
 /**
- * A river painted above layer 3: the water itself is never the cell the rule flags — the basin rim
- * is. A pond's rim stands at the water's own level, so the water sits inside every rim cell's 3x3,
- * and a rim at >= 4 would lose its base to a cell that in fact holds riverbed mass one layer down.
- * Driven through the real command path, since the refusal only shows up as a post-stroke revert.
+ * A pond above layer 3: its rim stands at the water's level, so the water sits in every rim cell's 3x3
+ * and has to support it. Driven through real commands, since a refusal shows only as a post-stroke revert.
  */
 describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () => {
   /** A legal pyramid: a square per layer, each inset 1 from the one below, so every cell's 3x3
@@ -239,13 +224,7 @@ describe('V-MTN-03: an elevated pond survives its own rim (real commands)', () =
 });
 
 describe('V-MTN-03: a 3x3 block is not its own base', () => {
-  // Side view:
-  // M M M   (layer 4)
-  // M M M   (layer 3)
-  // M M M   (layer 2)
-  // M M M   (layer 1)
-  // .........
-  // The edge blocks at layer 4 have no 3x3 base of mountain at elev >= 1
+  // The edge cells at layer 4 have no 3x3 base of mountain at elevation >= 1.
   it('rejects 3x3 layer-4 block without proper lower base', () => {
     const state = makeState(10, 10);
     for (let dy = -1; dy <= 1; dy++)

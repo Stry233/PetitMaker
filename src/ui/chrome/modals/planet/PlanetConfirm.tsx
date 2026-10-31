@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { touchFloorZoom, useChromeScale, useTouchPrimary, useWeightVars } from '../../../design/scale';
+import { useChromeLift } from '../../../primitives/chrome-layer';
+import { useSurfaceZoom, useWeightVars } from '../../../design/scale';
 import { AnchoredConfirm } from '../../../primitives/AnchoredConfirm';
 import { CONFIRM_ACTION_HEIGHT, type ConfirmationContentProps } from '../../../primitives/ConfirmationContent';
 import type { HelpTarget } from '../../../primitives/help-target';
@@ -23,10 +24,10 @@ export function PlanetConfirm({ anchor, trigger, floor = true, helpTarget = { pa
   /** A card whose field feedback lengthens it keeps the side it opened on. */
   lockSide?: boolean;
 }) {
-  const touch = useTouchPrimary();
-  const scale = useChromeScale();
-  const zoom = touchFloorZoom(scale, touch && floor, CONFIRM_ACTION_HEIGHT);
-  const weights = useWeightVars();
+  const lift = useChromeLift(CONFIRM_ACTION_HEIGHT);
+  const surface = useSurfaceZoom();
+  const within = useWeightVars();
+  const { zoom, weights } = floor ? lift : { zoom: surface, weights: within };
   // Portalled out of the frame, whose zoom and layout containment would otherwise scale and place
   // the card a second time and scope its rung below the rail.
   return createPortal(

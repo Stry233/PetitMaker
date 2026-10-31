@@ -1,10 +1,8 @@
 /**
- * Hold to grow: the smart-planting press's spray turns a hold into time.
- *
- * Each burst at the spot the hand rests on advances the stand one succession step, so age falls off
- * from the press centre — climax at the heart, the middle tier a ring out, pioneers at the rim. What
- * is pinned here is that geometry, the card promises that must survive it (a flora-led hold plants
- * no tree, whatever it grows into), the fold to one undo entry, and determinism.
+ * Hold to grow: each spray burst at the resting spot advances the stand one succession step, so age
+ * falls off from the press centre (climax at the heart, pioneers at the rim). Pinned here: that
+ * geometry, the card promises it keeps (a flora-led hold plants no tree), the fold to one undo entry,
+ * and determinism.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { makeToolCtx } from '../../../_support/tool-ctx';
@@ -38,9 +36,8 @@ function setup(): EditContext {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** One hold at the aim point: `bursts` presses of the same gesture, each one step older. Threads
- *  `heldIds` exactly as `MacroTool`'s spray does (`macro-tool.ts:burst`), since a burst now ages
- *  only what earlier bursts of its own hold planted. */
+/** One hold at the aim point: `bursts` presses, each one step older. Threads `heldIds` as the
+ *  planting spray does (`planting-spray.ts:burst`), since a burst ages only what its own hold planted. */
 function hold(kit: EditContext, id: MacroId, bursts: number, seed = 1): void {
   const baseIds = new Set(kit.state.objects.keys());
   for (let k = 1; k <= bursts; k++) {
@@ -89,13 +86,12 @@ describe('the succession table', () => {
       const pool = getPlaceableByCategory(category).filter((i) => tierOf(i.id, palette) === tier);
       expect(pool.length, `${category} tier ${tier} is empty`).toBeGreaterThan(0);
     }
-    // The grand specimen is one of the category's own climax species — the flora card's showpiece
+    // The grand specimen is one of the category's own climax species: the flora card's showpiece
     // is a bloom, never a tree.
     const grandCategory = categoryOf({ catalogId: palette.grand });
     expect(grandCategory).toBe(category);
     expect(tierOf(palette.grand, palette)).toBe(CLIMAX_STAGE);
-    // And it is reserved: the climax tier still has ordinary species left once its whole species is
-    // held back, or the specimen would be indistinguishable from the stand around it.
+    // It is reserved, and the climax tier keeps ordinary species without it, so the specimen stands out.
     const ordinaryClimax = getPlaceableByCategory(category)
       .filter((i) => tierOf(i.id, palette) === CLIMAX_STAGE && !i.id.startsWith(palette.grand));
     expect(ordinaryClimax.length).toBeGreaterThan(1);
@@ -136,9 +132,7 @@ describe('the succession table', () => {
 });
 
 describe('a hold', () => {
-  // Pooled over four holds rather than measured on one: the innermost ring is a couple of dozen
-  // cells and a single press puts only a handful of plants in it, so one map's climax mean is two
-  // or three samples wide. The claim is about the gradient, not about one draw.
+  // Pooled over four seeds: one press puts only a handful of plants in the innermost ring.
   it.each(['patch-tree', 'patch-flora'] as const)('%s: age falls off from the press centre', (id) => {
     const rows = SEEDS.flatMap((seed) => {
       const kit = setup();
@@ -153,11 +147,8 @@ describe('a hold', () => {
   });
 
   /**
-   * A 30-seed sweep per card, not one press: the stage-1 community hands the grand species out like
-   * any other, so a hold whose ordinary draw happened to put one inside the innermost ring stood two
-   * grands — measured at 12-23% of holds — while a single-seed probe passed. The species is reserved
-   * from the tier draw and a plant already wearing it is never skipped, which is what makes one an
-   * upper bound rather than a likely outcome.
+   * Swept over 30 seeds per card. The grand species is reserved from the tier draw and a plant already
+   * wearing it is never skipped, which makes one an upper bound.
    */
   it.each([
     ['patch-tree', 'on'], ['patch-flora', 'on'], ['patch-tree', 'off'], ['patch-flora', 'off'],
@@ -174,12 +165,11 @@ describe('a hold', () => {
       expect(specimens.length, `seed ${seed}: ${specimens.length} grand specimens`).toBeLessThanOrEqual(1);
       for (const s of specimens) {
         stood++;
-        // In the climax ring itself: a lone showpiece out among the rim pioneers (which is where the
-        // nearest plant can be when the inner rings are unplantable) reads as a stray, not a heart.
+        // A showpiece out among the rim pioneers reads as a stray.
         expect(Math.hypot(s.position.x - AT.x, s.position.y - AT.y), `seed ${seed}: the grand stands outside the climax ring`).toBeLessThan(ringWidth);
       }
     }
-    // The sweep has to have seen one: an upper bound nothing reaches proves nothing.
+    // An upper bound nothing reaches proves nothing.
     expect(stood).toBeGreaterThan(10);
   });
 
@@ -223,16 +213,11 @@ describe('a hold', () => {
   });
 });
 
-/**
- * The tool's own fold, with a plant already standing where the hold will grow: the hold's ageing
- * must reach only what it planted, so the hand-placed plant survives untouched and the hold's own
- * growth still folds to one entry.
- */
+/** The hold's ageing reaches only what it planted, and its growth folds to one entry. */
 describe('the whole hold as one undo entry', () => {
   let state: GridState;
   let exec: CommandExecutor;
-  // Pinned to its own default: the burst's radius (`ctx.arming.brushSize + 3`) reads it live, and a
-  // test that raises it must not leak that into a sibling that assumes the default.
+  // Reset per test: the burst's radius (`ctx.arming.brushSize + 3`) reads it live.
   let brushSize = 1;
 
   const ctxFor = (): HostedToolContext => makeToolCtx(state, exec, brushSize, 1, { armedMacro: 'patch-flora' });
@@ -263,24 +248,18 @@ describe('the whole hold as one undo entry', () => {
     vi.advanceTimersByTime(350 * BURSTS);
     tool.onPointerUp(cell(AT as MacroCoord), point({ x: AT.x, y: AT.y }), ctx);
 
-    // The hold grew a stand of its own — this is growth, not a hold that did nothing — and the
-    // whole of it, planting and ageing alike, still folds to the one entry a press promises.
     expect(state.objects.size, 'the hold grew nothing to fold').toBeGreaterThan(1);
     expect(exec.historyDepth(), 'the hold left more than one entry').toBe(watermark + 1);
 
-    // The hand-placed daisy stood in the same disc the whole time and never planted this hold's own
-    // stand: it must survive completely untouched, id and species alike, with no undo required.
     const hand = state.objects.get('hand-planted');
     expect(hand, 'the hold removed a hand-placed plant it never grew').toBeTruthy();
     expect(hand!.catalogId).toBe('flower-daisy');
   });
 
   /**
-   * Travel re-anchors: a burst far enough from the resting spot is a fresh press, so `stage` resets
-   * and `anchorSeed` is recaptured there. A stale anchorSeed shows only through the composition
-   * (`patch.ts`: `composition = anchorSeed ?? seed`), so `rest`/`travel` and the 11-tick hold were
-   * picked by sweeping `delightRoll`: the rest seed rolls no delight and the travel seed rolls a
-   * `fairy-ring`, which the rest seed replayed cannot produce.
+   * A burst far from the resting spot is a fresh press: `stage` resets and `anchorSeed` is recaptured.
+   * A stale anchorSeed shows only through the composition (`patch.ts`), so the spots and the 11-tick
+   * hold are chosen where the rest seed rolls no delight and the travel seed rolls a `fairy-ring`.
    */
   it("re-anchors on travel: the new spot draws its own fresh, unaged composition, not the rest point's", () => {
     const rest = { x: 10, y: 20 };
@@ -300,8 +279,7 @@ describe('the whole hold as one undo entry', () => {
       .filter((o) => Math.hypot(o.position.x - centre.x, o.position.y - centre.y) < 9)
       .map((o) => `${o.catalogId}@${o.position.x},${o.position.y}`).sort();
 
-    // A plain press at the travel spot with the seed the tool's own burst just consumed: byte for
-    // byte what a click there would have laid had the hold never rested at `rest` at all.
+    // A plain press at the travel spot with the seed the travel burst consumed.
     const fresh = setup();
     applyMacro(fresh, 'patch-flora', { seed: 13, at: travel as MacroCoord, radius: 8 });
     const freshShape = [...fresh.state.objects.values()]
@@ -316,8 +294,7 @@ describe('the whole hold as one undo entry', () => {
     expect(shapeNear(travel)).not.toEqual(staleShape);
   });
 
-  /** Release freezes (macro-tool.ts's `finishSpray`): the interval is cleared the moment the press
-   *  lifts, so a clock the test advances afterward has nothing left to fire. */
+  /** Release clears the burst interval (`planting-spray.ts:finish`). */
   it('freezes on release: the clock sprays nothing once the pointer lifts', () => {
     const tool = new MacroTool();
     tool.onActivate();

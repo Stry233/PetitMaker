@@ -10,7 +10,9 @@ import { isDraggableObject, pointerTarget, type PointerTarget } from '../selecti
 import type { GridState } from '../../../core/model/types';
 import type { GridCell, GridId, MapPoint } from '../../../core/grid/grids';
 import type { PressFacts } from '../press/press-plan';
+import { modalityOf } from '../../../platform/input/gesture-timing';
 import { activeToolOf, armedItemOf } from '../../../state/editing/edit-mode';
+import { pasteOffered } from '../../../state/clipboard';
 
 /** What is under the pointer at one screen position, resolved once: the hover probe reads it for
  *  its box and its change key, and builds the press facts from it without picking again. */
@@ -58,29 +60,33 @@ export function probePointer(x: number, y: number): PointerProbe | null {
  * Null without a live view or a loaded map: there is no cell under the pointer to resolve a press
  * against, and nothing on screen for one to act on.
  */
-export function buildPressFacts(button: number, x: number, y: number): PressFacts | null {
+export function buildPressFacts(button: number, pointerType: string, x: number, y: number): PressFacts | null {
   const probe = probePointer(x, y);
-  return probe ? pressFactsAt(button, probe) : null;
+  return probe ? pressFactsAt(button, pointerType, probe) : null;
 }
 
-/** The press facts for a resolved pointer. */
-export function pressFactsAt(button: number, probe: PointerProbe): PressFacts {
+/** The press facts for a resolved pointer; `pointerType` is the pressing pointer's. */
+export function pressFactsAt(button: number, pointerType: string, probe: PointerProbe): PressFacts {
   const { store, macro, tool, ctx, toolCoord } = probe;
-  const { hit, terrain } = probe.target;
+  const { hit, terrain, pick } = probe.target;
   // Keyed by the store's tool type, as the selection rules are: they hold with no live tool too.
   const declared = toolDeclares(activeToolOf(store));
   const toolGrabs = !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false));
   return {
     button,
+    inputMode: modalityOf({ pointerType }),
     selectMode: declared.selectMode(armingOf(store)),
     brush: declared.brush,
     armedItemId: armedItemOf(store),
+    copyHeld: pasteOffered(store),
     selection: store.selection,
     selectingRegion: store.selectingRegion,
     panDragHeld: isCommandHeld('camera.pan_drag'),
     multiSelectHeld: isCommandHeld('selection.multi'),
+    moveLatched: store.moveLatched,
     macro,
     terrain,
+    pick,
     hit: hit ? { id: hit.id, draggable: isDraggableObject(hit), locked: !!hit.locked } : null,
     placementAllowed: !tool?.canActAt || !ctx || tool.canActAt(toolCoord, ctx),
     toolGrabs,
@@ -88,5 +94,6 @@ export function pressFactsAt(button: number, probe: PointerProbe): PressFacts {
     toolSelectHit: (ctx && tool?.selectHit) ? tool.selectHit(macro, ctx) : null,
     pendingGesture: (ctx ? tool?.hasPending?.(ctx) : false) ?? false,
     clickOnlyStroke: !!(ctx && tool?.clickOnly?.(macro, ctx)),
+    armedStrokes: !!(ctx && tool?.strokes?.(ctx)),
   };
 }

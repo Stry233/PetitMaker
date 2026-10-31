@@ -1,17 +1,6 @@
-// The methodology generator's set piece: a phrase or a figure written into the terrain.
-//
-// Three kinds of claim are pinned here, and they are separable on purpose.
-//
-// The drawing is pure arithmetic over authored cell masks, so the alphabet's integrity and the way a
-// phrase is laid out are read straight off `rasterizePhrase` with no map in sight.
-//
-// The gate is the spec's "occasionally": a landmark is not every map's, it is nobody's below the
-// theme's own richness floor, and the same inputs always answer the same way.
-//
-// The legibility is only meaningful on a committed map, because the question is whether the letters
-// survive the rules and the repair fixpoint that runs before them: a banner that ships with half its
-// strokes lowered would pass every rule check and fail the design. So the ink is counted after the
-// stroke group closes, and the decoration pass is held off the panel.
+// The designed generator's set piece, a phrase or figure written into the terrain. The drawing is read
+// off `rasterizePhrase` with no map; the gate off the pure sculpt; legibility only on a committed map,
+// since letters lowered by the rules or the repair pass would pass every rule check and fail the design.
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch; tens of seconds on an idle machine and over a minute instrumented.
@@ -35,14 +24,9 @@ const TAFA = MAP_TEMPLATES['tafa']!;
 const SEEDS = Array.from({ length: 24 }, (_, i) => 1 + i * 7919);
 
 /**
- * The landmark one seed's plan carries, read off the pure sculpt: no map is touched.
- *
- * The stages are threaded exactly as `pipeline.ts` threads them — `planDesign`, then the sculptor with
- * the map's own ceiling and the mixed planet's water scale. A plan built
- * any other way is a plan the app never makes: the walk changes which blocks exist, and the block a
- * landmark theme draws is the biggest one left, so a helper that omits one stage moves the set piece
- * from one seed to another and leaves this file selecting seeds by one plan and asserting against
- * another.
+ * The landmark one seed's plan carries, read off the pure sculpt. The stages are threaded as
+ * `pipeline.ts` threads them: omitting one changes which blocks exist and so moves the set piece to
+ * another seed.
  */
 function sculptLandmark(seed: number, template: MapTemplate, richness: number): LandmarkPlan | null {
   const { composition, line, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
@@ -73,7 +57,6 @@ describe('landmark: the glyph bank', () => {
         expect(row.length, `${key}: "${row}"`).toBe(width);
         expect(/^[#.]+$/.test(row), `${key}: "${row}"`).toBe(true);
       }
-      // A drawing with no ink at all would rasterize to an empty panel that still takes ground.
       expect(rows.some((r) => r.includes('#')), key).toBe(true);
     }
   });
@@ -120,7 +103,6 @@ describe('landmark: rasterizing a phrase', () => {
     const down = rasterizePhrase(['H', 'O', 'M', 'E'], 1, 'v')!;
     expect(down.width).toBe(5);
     expect(down.height).toBe(4 * 6 + 3);
-    // The gap is empty: the column just past the first letter carries no ink.
     for (let y = 0; y < across.height; y++) expect(covered(across, 5, y)).toBe(false);
   });
 
@@ -138,9 +120,7 @@ describe('landmark: rasterizing a phrase', () => {
 
 describe('landmark: the gate', () => {
   it('a quiet map carries one only occasionally, and the floor holds', () => {
-    // Below the set-piece richness a figure is an occasional ornament: the theme library keeps the
-    // landmark region off a quiet map, and the pass's own roll takes some of what is left. The claim is
-    // the direction of the axis rather than a count, since the roll is seeded per map.
+    // Below the set-piece richness the pass rolls per map, so the claim is "not every map", not a count.
     for (const richness of [0, 0.3]) {
       const carried = SEEDS.filter((seed) => landmarkOf(seed, HEXIA, richness) !== null).length;
       expect(carried, `r${richness}: ${carried} of ${SEEDS.length}`).toBeLessThan(SEEDS.length);
@@ -148,16 +128,10 @@ describe('landmark: the gate', () => {
   });
 
   it('EVERY map from the set-piece richness up carries its one figure', () => {
-    // The principle: a composition has a primary set piece and ordinary ground for the rest. From the
-    // set-piece richness up a figure is required rather than rolled for, and the pass answers with
-    // whichever of its three forms the ground carries.
-    // One map in forty may come back without one. The figure pass needs a clear panel of
-    // `SET_PIECE_FLOOR` cells at one tier, and the anti-grid's staggered crossings cut a terrace into
-    // more pieces than a straight street does: on `tafa/15839` at full richness no tier offers a panel
-    // that size. The planet's top terrace is left unstaggered for exactly this reason
-    // (`streets/lines.ts:crownMask`, which is what keeps the other thirty-nine), and this seed's panel was on
-    // a lower one. The debt is the pass's reach, not the claim: a figure should be composable on a
-    // terrace a street runs across.
+    // One map in ninety-six may come back without one: the pass needs a clear one-tier panel of
+    // `SET_PIECE_MIN` cells, and staggered crossings cut terraces small. The top terrace is left
+    // unstaggered for this (`streets/lines.ts:crownMask`), but on `tafa/15839` at full richness the
+    // panel would sit on a lower tier.
     const missing: string[] = [];
     for (const richness of [0.5, 1]) {
       for (const template of [HEXIA, TAFA]) {
@@ -170,11 +144,8 @@ describe('landmark: the gate', () => {
   });
 
   it('floods ONE panel and not two', () => {
-    // One per planet is a construction claim, not a map reading: a finished map cannot tell a second set
-    // piece from a large cascade, and the reference itself reads five water clusters over the figure
-    // floor. What can be pinned is the water the pass itself lays: it is asked on open ground, where
-    // every form of the bank would land, and the flood it leaves must be exactly one panel less its own
-    // ink. A pass that drew a second figure would leave more water than that.
+    // A finished map cannot tell a second set piece from a large cascade, so this counts the water
+    // the pass lays on open ground: exactly one panel less its ink.
     const W = 60, H = 60;
     for (const seed of SEEDS) {
       const terrain = { width: W, height: H, tier: new Int8Array(W * H), water: new Int8Array(W * H).fill(-1) };
@@ -195,8 +166,7 @@ describe('landmark: the gate', () => {
 
   it('writes a placement of the reference grammar', () => {
     const kinds = new Set(carriers(HEXIA, 1).map((c) => c.landmark.kind));
-    // The three forms are all reachable; which one a batch happens to draw is the composition's, so the
-    // claim is that a batch writes forms from the bank rather than that it writes any particular one.
+    // Which forms a batch draws is the composition's choice; each must come from the bank.
     expect([...kinds].every((k) => k === 'wall-banner' || k === 'ground-field' || k === 'terrace-court')).toBe(true);
     expect(kinds.size).toBeGreaterThanOrEqual(1);
   });
@@ -221,10 +191,8 @@ describe('landmark: what reaches the map', () => {
     };
   }
 
-  // The seeds come off the committed run, not off a plan built beside it. Everything in this block
-  // reads the map the pipeline made, so the question "which seeds carry a landmark" has to be asked
-  // of the same pipeline — a helper that plans the stages itself can drift from it by one argument
-  // and hand this block a seed whose map carries nothing.
+  // Seeds are selected off the committed run, so a planning helper that drifts from the pipeline
+  // cannot hand this block a seed whose map carries nothing.
   const runs = SEEDS.flatMap((seed) => {
     const run = build(seed, HEXIA, 1);
     return run.landmark ? [{ seed, run: { ...run, landmark: run.landmark } }] : [];
@@ -247,9 +215,8 @@ describe('landmark: what reaches the map', () => {
         if (ok) standing++;
       }
       expect(standing, `seed ${seed}: ${landmark.kind} "${landmark.phraseId}"`).toBe(landmark.ink.length);
-      // Enough ink to read as a figure. A court's pattern on the smallest panel the pass will take
-      // (120 cells) draws about nine cells of mass, which is what the floor is set from; a phrase draws
-      // far more.
+      // A court pattern on the smallest panel (`SET_PIECE_MIN`, 120 cells) draws about nine cells of
+      // ink; a phrase draws far more.
       expect(landmark.ink.length, `seed ${seed}: ${landmark.phraseId} ink`).toBeGreaterThan(8);
     }
   });
@@ -277,9 +244,8 @@ describe('landmark: what reaches the map', () => {
     }
   });
 
-  // Pavement is not among the things kept off: a road laid along the panel's edge is the frame the
-  // style target draws around its own banner. What may not stand there is a plant,
-  // which is what `landmarkCells` is handed to the decoration pass for.
+  // Roads may frame the panel, as the style target frames its banner; plants may not, which is what
+  // `landmarkCells` tells the decoration pass.
   it('nothing is planted on the panel or its margin, so the letters stay readable', () => {
     for (const { seed, run } of runs) {
       const { landmark, state } = run;
@@ -308,19 +274,14 @@ describe('landmark: what reaches the map', () => {
 });
 
 describe('the one big thing (I5.3)', () => {
-  // Hierarchy is what one big figure buys, and it is the dimension a map loses without it: the
-  // reference carries a one-off centrepiece clearly larger and more elaborate than anything else,
-  // where a scatter of ponds at similar sizes reads as no centrepiece at all. So the panel is asked of
-  // the terrace floor — the largest rectangle a tier's own clear ground can hold — rather than taken
-  // off a fixed list of sizes.
+  // A scatter of similar ponds reads as no centrepiece, so the panel is the largest rectangle a tier's
+  // clear ground holds rather than a size off a list.
   it('draws the panel at the scale of the ground, not off a size list', () => {
     for (const template of [HEXIA, TAFA]) {
       const rows = SEEDS.slice(0, 8).map((seed) => landmarkOf(seed, template, 1))
         .filter((l): l is LandmarkPlan => l !== null);
       expect(rows.length, `${template.id}: seeds carrying a figure`).toBeGreaterThanOrEqual(6);
       const areas = rows.map((l) => l.panel.w * l.panel.h).sort((a, b) => b - a);
-      // At least one planet in this batch answers at the reference's own class, and none of them is
-      // handed a panel under the size ladder's own floor.
       expect(areas[0]!, `${template.id}: largest panel ${areas.join(', ')}`)
         .toBeGreaterThanOrEqual(SET_PIECE_BIG);
       expect(areas[areas.length - 1]!, `${template.id}: smallest panel ${areas.join(', ')}`)
@@ -329,9 +290,8 @@ describe('the one big thing (I5.3)', () => {
   });
 
   it('stands the pattern inside the water rather than out to the panel edge', () => {
-    // The reference's banner is 130 cells of ink inside 772 of water. A pattern drawn
-    // to the edge of a reference-scale panel is a paved terrace with a moat round it, so the inset
-    // scales with the panel and the ink keeps a margin of water on every side.
+    // The reference's banner is 130 cells of ink inside 772 of water; ink drawn to the edge would read
+    // as a paved terrace with a moat, so the inset scales with the panel.
     for (const template of [HEXIA, TAFA]) {
       for (const seed of SEEDS.slice(0, 8)) {
         const plan = landmarkOf(seed, template, 1);
@@ -344,7 +304,6 @@ describe('the one big thing (I5.3)', () => {
           expect(inX && inY, `${template.id}/${seed}: ink at ${c.x},${c.y} of panel`
             + ` ${plan.panel.x},${plan.panel.y} ${plan.panel.w}x${plan.panel.h}`).toBe(true);
         }
-        // And the ink is a figure standing in water, not the panel filled: most of the panel is wet.
         expect(plan.ink.length / (plan.panel.w * plan.panel.h), `${template.id}/${seed}: ink share`)
           .toBeLessThan(0.5);
       }
@@ -353,9 +312,8 @@ describe('the one big thing (I5.3)', () => {
 });
 
 describe('the court pattern bank', () => {
-  // `bars` and `rings` both resolve to parallel stripes on a long panel, which makes a bank of five
-  // patterns read as a bank of two — and the long panels a real planet most often offers (46x8, 52x7,
-  // 60x6) are exactly where they collapse onto each other.
+  // Long panels (the first three) are the common ones, and where `bars` and `rings` risk collapsing
+  // into the same parallel stripes.
   const ASPECTS = [[46, 8], [52, 7], [60, 6], [21, 15], [18, 18]] as const;
 
   it('draws five distinct figures at every aspect a panel comes in', () => {
@@ -372,8 +330,6 @@ describe('the court pattern bank', () => {
   });
 
   it('never answers a long panel with lines running its whole width', () => {
-    // A stripe is a row of ink spanning the panel, and a figure made of nothing else is what collapses
-    // one pattern onto another. Every pattern keeps at least one row that stops short.
     for (const [w, h] of ASPECTS) {
       for (const pattern of COURT_PATTERNS) {
         const ink = courtInk(w, h, pattern);

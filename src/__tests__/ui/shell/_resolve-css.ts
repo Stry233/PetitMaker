@@ -1,13 +1,8 @@
 /**
- * The frame's room expressions, resolved — not the strings that express them.
- *
- * `panelTop`/`panelMaxHeight`/`deskSeatInset` answer in css, against a viewport unit and custom
- * properties, so jsdom can hold the strings but never lays them out. The grammar is closed — `calc`,
- * `min`, `max`, `clamp`, `var()`, `100vh` and px constants — which is what makes evaluating it honest
- * rather than a second implementation.
- *
- * Shared, because two suites read the same expressions (the column's room, the character's seat) and
- * a resolver copied into each is a place for them to disagree about what the app computes.
+ * Resolves the frame's css room expressions (`panelTop`, `panelMaxHeight`, `deskSeatInset`) to
+ * numbers, since jsdom holds the strings but lays nothing out. The grammar is closed: `calc`, `min`,
+ * `max`, `clamp`, `var()`, `100vh` and px constants. Shared by the column-room and character-seat
+ * suites so both read one resolver.
  */
 import { fittedUiScale } from '../../../ui/design/scale';
 import { ZOOM } from '../../../ui/shell/units';
@@ -34,8 +29,7 @@ function topComma(s: string): number {
   return -1;
 }
 
-/** Every `var(--name[, fallback])` replaced by the property's value where one is held and by its own
- *  fallback where none is — which is what the browser does with a property nobody declared. */
+/** Every `var(--name[, fallback])` replaced by the held value, else by its fallback, as a browser does. */
 function substituteVars(css: string, vars: Record<string, string>): string {
   for (;;) {
     const at = css.indexOf('var(');
@@ -63,9 +57,8 @@ export function resolveCss(
   return (new Function('CLAMP', `return ${js};`) as (c: typeof clamp) => number)(clamp);
 }
 
-/** The frame's own zoom at a window: the authored page zoom times the window's fit times the user's
- *  Ctrl +/- preference. Every length in the frame is drawn at it, and it is what a viewport unit
- *  inside the frame divides back out. */
+/** The frame's zoom at a window: the authored page zoom times the window fit and the user's Ctrl +/-
+ *  preference. A viewport unit inside the frame divides it back out. */
 export function frameZoom(vw: number, vh: number, uiZoom: number): number {
   return ZOOM * fittedUiScale(vw, vh, uiZoom);
 }

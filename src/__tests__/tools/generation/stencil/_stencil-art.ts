@@ -1,11 +1,7 @@
 /**
- * The pictures that are ours — fixed art the stencil measures are taken over, written here as
- * characters and a colour key so there is nothing to fetch and nothing borrowed.
- *
- * Three pieces of pixel art and one synthetic photograph, which is the pair the image path has to
- * serve at once: a drawing wants its few exact colours kept and a photograph wants its tones
- * averaged and diffused. Shared by `stencil-fidelity.test.ts`, `stencil-image.test.ts` and the
- * evaluation harness, so a fixture cannot drift between what a test asserts and what a log reports.
+ * Fixed art for the stencil measures, written as characters and a colour key so nothing is fetched or
+ * borrowed: three pieces of pixel art, whose few exact colours must be kept, and one synthetic
+ * photograph, whose tones must be averaged and diffused. The tests and the evaluation harness share it.
  */
 import type { SourcePixels } from '../../../../tools/generation/stencil/stencil-sample';
 
@@ -99,12 +95,8 @@ export function pixels(art: Art, scale: number): SourcePixels {
 }
 
 /**
- * A synthetic photograph: continuous tone across the whole range, no colour repeated in any quantity
- * — three sinusoids at incommensurate periods, which is a gradient a palette genuinely cannot say
- * and the case error diffusion exists for.
- *
- * Deterministic by construction (no RNG), and it is what pins the classifier's other end: a picture
- * like this must not be read as a drawing.
+ * A synthetic photograph: three sinusoids at incommensurate periods, so continuous tone with no colour
+ * repeated in any quantity. Deterministic; the classifier must not read it as a drawing.
  */
 export function photograph(side = 128): SourcePixels {
   const data = new Uint8Array(side * side * 4);

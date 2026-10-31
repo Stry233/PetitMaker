@@ -5,10 +5,10 @@
 import type { Adapter, AdapterRequest } from './adapter';
 import { compact, needsCompaction, COMPACTION_RESERVE } from './compaction';
 import type { Oversight } from './gates';
-import { consecutiveLengthStops, hasLandedWrite, hasRecentVerification, landedWriteCount, planProgress, MAX_TURNS_DEFAULT, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from './governor';
+import { consecutiveLengthStops, hasLandedWrite, hasRecentVerification, landedWriteCount, planProgress, sketchedWithoutPlan, MAX_TURNS_DEFAULT, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from './governor';
 import {
   budgetWarning, capMessage, contextOverflow, deliveryNudge, emptyTurnNudge, lengthStopNudge, lengthStreakOverflow,
-  reasoningOnlyNudge, reviewNudge, unfinishedPlanNudge, NUDGE_RETRIES,
+  reasoningOnlyNudge, reviewNudge, unfinishedPlanNudge, unfiledSketchNudge, NUDGE_RETRIES,
 } from './nudges';
 import { append, eventsOf, type SessionLog } from './log';
 import { deriveMessages } from './project-messages';
@@ -196,11 +196,18 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
       append(log, { kind: 'systemNote', note: 'plan-close', text });
       return true;
     };
-    // A closing question settles directly unless a substantial landed build still needs review.
+    // Drawn planning annotations with no plan filed receive one close nudge to check and file them.
+    const nudgeSketch = (): boolean => {
+      if (!sketchedWithoutPlan(log, deps.executor.facts)) return false;
+      if (jobEvents(log).some((e) => e.kind === 'systemNote' && e.note === 'plan-sketch')) return false;
+      append(log, { kind: 'systemNote', note: 'plan-sketch', text: unfiledSketchNudge(deps.executor.facts.guides) });
+      return true;
+    };
+    // A closing question settles directly unless a drawn plan is unfiled or a substantial landed build still needs review.
     const answerClose = (): boolean => {
       if (!canWrite) return false;
-      if (question) return landedWriteCount(log) >= REVIEW_MIN_WRITES && nudgeReview();
-      return nudgeDelivery() || nudgePlanClose() || nudgeReview();
+      if (question) return nudgeSketch() || (landedWriteCount(log) >= REVIEW_MIN_WRITES && nudgeReview());
+      return nudgeDelivery() || nudgeSketch() || nudgePlanClose() || nudgeReview();
     };
 
     if (turnOutcome.stop === 'aborted') { settle('aborted'); return 'aborted'; }

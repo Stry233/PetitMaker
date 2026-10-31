@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 /**
- * OverlayLayer.showGroupPlacementGhost — the real 2D implementation behind the group drag ghost
- * (see group-drag-ghost.test.tsx for the pointer-machine wiring, which exercises this through a
- * mocked ToolOverlay instead). Pinned here: a sprite per member, all sharing one validity tint, and
- * the sprite pool is reused across calls (a shrink/grow trims or grows it) rather than
- * destroyed/recreated wholesale — the cost a 40-member drag would otherwise pay every pointer move.
+ * OverlayLayer.showGroupPlacementGhost, the 2D group drag ghost (group-drag-ghost.test.tsx covers the
+ * pointer wiring): a sprite per member sharing one validity tint, from a pool resized across calls
+ * rather than rebuilt on every pointer move.
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect } from 'vitest';
@@ -23,16 +21,8 @@ function ghosts(overlay: OverlayLayer): Sprite[] {
 }
 
 /**
- * Mark every ghost's icon decoded and repaint.
- *
- * The sprite fit waits on texture decode before sizing or revealing anything, which is what keeps
- * a 0x0 sprite off the screen. jsdom never decodes an image, so without this the assertions below
- * would all read the pre-decode state; a browser reaches a ghost with these icons long since
- * decoded by the object layer.
- *
- * The size is deliberately not square. Catalog icons are not, and a stretch to the footprint box
- * is invisible when texture and footprint share an aspect — a square icon in a 1x1 footprint
- * scales the same on both axes however it is fitted, so it could not tell the two apart.
+ * Mark every ghost's icon decoded and repaint: the sprite fit waits on decode, which jsdom never does.
+ * The size is not square, since a square icon in a 1x1 footprint would hide a stretch to the box.
  */
 function decodeIcons(overlay: OverlayLayer, repaint: () => void): void {
   for (const s of ghosts(overlay)) s.texture.baseTexture.setRealSize(64, 32);
@@ -60,8 +50,7 @@ describe('OverlayLayer group placement ghost', () => {
     expect(sprites).toHaveLength(3);
     expect(sprites.every((s) => s.visible)).toBe(true);
     expect(new Set(sprites.map((s) => s.tint)).size).toBe(1); // one shared tint, not per-member
-    // One scale on both axes: the ghost has to show the shape the drop will produce, and sizing
-    // width and height separately would stretch the icon into its footprint box.
+    // One scale on both axes, so the icon is not stretched into its footprint box.
     expect(sprites.every((s) => s.scale.x === s.scale.y)).toBe(true);
   });
 

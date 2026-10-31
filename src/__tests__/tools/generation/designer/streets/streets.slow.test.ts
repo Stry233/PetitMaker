@@ -1,11 +1,7 @@
 import { GENERATION_STYLE } from '../../../../../config/generation-style';
-// Stage B of the methodology generator: streets as the partition.
-//
-// Everything here is read back with the real scorers — the plan's pavement, ramps and plate tiers
-// are rasterized onto a GridState and handed to `_support/design-eval`, the same functions gen-eval grades
-// a finished map with — so what passes here is what the ledger passes, not a restatement of the
-// planner's own arithmetic. Two of the stage's load-bearing claims live here: ramps never stand on
-// pavement, and the blocks the streets cut front onto them.
+// Stage B of the designer: streets as the partition. The plan is rasterized onto a GridState and
+// read with `_support/design-eval`, the scorers gen-eval grades a finished map with, not with the
+// planner's own arithmetic. Bounds marked "measured" are over both templates, ten seeds.
 import { describe, it, expect, vi } from 'vitest';
 
 // Synchronous generation batch; several seconds per case on an idle machine.
@@ -28,48 +24,31 @@ import {
 
 const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
-// --- the partition -------------------------------------------------------------------------------
-
 describe('the partition the streets cut', () => {
   it('cuts the planet into blocks of the references own scale, on both templates', () => {
     for (const { template, richness, runs } of batches()) {
       for (const run of runs) {
         const legibility = districtLegibility(run.state);
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
-        // A district is a region the smallest house fits in whole. The references segment into 18
-        // districts of median 260 (the garden town, cut by its streets) and 36 of median 134 (the
-        // terraced planet, cut by its terraces and by the places composed on them). This stage cuts
-        // the coarse scale, and on a terraced planet the terraces cut it again into bands mostly too
-        // narrow for a house, so a rich seed reads fewer, larger districts. The floor is therefore the
-        // scale a planet stops reading as blocks at, one under the batch's least reading at each end:
-        // over both templates, ten seeds, 11 at richness 0.2 and 7 at richness 1.
+        // A district is a region the smallest house fits in whole. The references read 18 of median
+        // 260 (garden town) and 36 of median 134 (terraced). Terraces cut a rich seed into bands too
+        // narrow for a house, so it reads fewer, larger districts. The floor sits one under the
+        // measured least: 11 at richness 0.2, 7 at richness 1.
         expect(legibility.count, `${where}: ${legibility.count} districts`).toBeGreaterThanOrEqual(richness <= 0.2 ? 10 : 6);
-        // The ceiling is the quiet end's, not the terraced end's. Every block the grid leaves unserved
-        // takes a line along its own foot (`unservedBlockLines`), and a flat planet has more of those
-        // than a terraced one — a coast eating a line, a plaza ring, a piece the settling pruned — so
-        // this reading goes down as the terraces come in. Measured over both templates at both ends of
-        // the axis, ten seeds: 11 to 31 at richness 0.2 and 7 to 22 at richness 1.
+        // The ceiling is the quiet end's: every unserved block takes a line along its foot, and a flat
+        // planet has more of those. Measured: 11 to 31 at richness 0.2, 7 to 22 at richness 1.
         expect(legibility.count, `${where}: ${legibility.count} districts`).toBeLessThanOrEqual(42);
         expect(legibility.median, `${where}: median ${legibility.median}`).toBeGreaterThanOrEqual(48);
-        // The ceiling carries the anti-grid: it stands the branch lines further apart at the rich
-        // end (`SPACING`), which is what brings the four-way share and the planet-spanning street
-        // inside the references' own readings, and the blocks between them are wider for it.
-        // Measured over both templates at both ends, ten seeds: the largest median, at richness 1,
-        // reads 1386.
+        // The rich end spaces branch lines further apart (`SPACING`) to keep four-ways and spanning
+        // streets within the references, so its blocks are wider. Measured largest median: 1386.
         expect(legibility.median, `${where}: median ${legibility.median}`).toBeLessThanOrEqual(1400);
-        // The blocks a street grid cuts are rectangles; the references read 0.44 and 0.53 with their
-        // places and coastlines eating into them, and a terraced planet reads at the lower end of that
-        // — a terrace is the shape the ground left, and the ring around a crowned summit is an annulus
-        // however straight the streets on it are. Measured over both templates at both ends of the
-        // axis, ten seeds: 0.44 to 0.85. The floor sits under the terraced reference's own reading,
-        // because staggering a crossing enriches a block outline by design: a block between two legs
-        // of one staggered street is an L rather than a rectangle, and the level apron round the plaza
-        // is a ring. Measured over both templates at full richness, twenty-five seeds: worst 0.375.
+        // The references read 0.44 and 0.53. A terrace is the shape the ground left, a staggered
+        // crossing leaves an L-shaped block and the plaza apron is a ring, so the floor sits under the
+        // terraced reference. Measured 0.44 to 0.85; worst 0.375 over twenty-five full-richness seeds.
         expect(legibility.rectangularity, `${where}: rect ${legibility.rectangularity.toFixed(2)}`)
           .toBeGreaterThan(0.35);
       }
-      // The batch claim: twenty-five seeds measure means of 0.52 (hexia) and 0.50 (tafa) at full
-      // richness and 0.66 at the quiet end.
+      // Over twenty-five seeds the means are 0.52 (hexia) and 0.50 (tafa) at full richness, 0.66 quiet.
       const rect = mean(runs.map((run) => districtLegibility(run.state).rectangularity));
       expect(rect, `${template.id} r${richness}: mean rect ${rect.toFixed(2)}`)
         .toBeGreaterThan(richness <= 0.2 ? 0.6 : 0.47);
@@ -83,46 +62,30 @@ describe('the partition the streets cut', () => {
         const open = run.plan.districts.reduce((n, d) => n + d.cells.length, 0);
         const closed = run.plan.districts.filter((d) => !d.served);
         const shut = closed.reduce((n, d) => n + d.cells.length, 0);
-        // `unserved` is the plan's own report of them, and stage C reads it rather than re-deriving.
+        // Stage C reads `unserved` rather than re-deriving it.
         expect(run.plan.unserved.slice().sort(), `${where}: reported unserved ids`)
           .toEqual(closed.map((d) => d.id).sort());
-        // A flat map has a street against every block. A terraced one can compose a plate the
-        // streets cannot reach at all — a steep massif quarter with no ground a street may be laid
-        // on and none at its foot either — and this stage says so rather than paving into it: the
-        // block comes back `served: false` and stage C leaves it unbuilt.
+        // A terraced map can compose a plate no street can reach (a steep massif quarter); it comes
+        // back `served: false` and stage C leaves it unbuilt.
         if (richness <= 0.2) {
-          // A quiet map is nearly flat, so what a street cannot reach there is a coastal sliver the
-          // plate rim's slope cut off, not a composition: worst measured 1.0% of the open map.
-          // Measured across both templates at richness 0.2, ten seeds: 0.1% to 2.1% of the open
-          // map. It is not a hard zero because the primary walk is the widest street on the map
-          // and takes ground a branch would otherwise have run through, so the bound is the measured
-          // ceiling with a little room, and it still catches a flat map going shut.
+          // On a nearly flat map the shut ground is a coastal sliver cut off by a plate rim. Not zero,
+          // because the wide primary walk takes ground a branch would have run through. Measured 0.1%
+          // to 2.1%.
           expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open map shut off`)
             .toBeLessThan(0.03);
         } else {
-          // At the rich end that shut-off plate is the style target's own arrangement, whose wall
-          // band is a third of the map at under 1% object cover, so the bound is here to catch a
-          // map going mostly shut rather than to pin the terrain a seed happens to draw (worst
-          // measured 37% at richness 1).
+          // At the rich end the shut plate is the style target's own wall band (a third of the map),
+          // so the bound only catches a map going mostly shut. Measured worst 37%.
           expect(shut / open, `${where}: ${((shut / open) * 100).toFixed(1)}% of the open map shut off`)
             .toBeLessThan(0.45);
         }
-        // The references pave 12.0% of the terraced planet and 15.9% of the garden town. This stage
-        // lays the whole network, so the band is theirs with room either side for a coastline that
-        // eats a street.
-        // The lower bound is what catches a map that failed to lay a network at all. A terraced seed
-        // legitimately paves less than a flat one: a terrace narrower than a stamp carries no street,
-        // and a piece the flights cannot reach is pruned rather than left unreachable. Measured over
-        // both templates at both ends of the axis, ten seeds: 6.4% to 22.8%.
+        // The references pave 12.0% (terraced) and 15.9% (garden town). The floor catches a map that
+        // laid no network; a terraced seed paves less, since a terrace narrower than a stamp carries no
+        // street. Measured 6.4% to 22.8%.
         const share = run.evaluation.metrics.roads.pavedShare;
         expect(share, `${where}: ${(share * 100).toFixed(1)}% paved`).toBeGreaterThan(0.05);
-        // The upper bound carries the movement line and the unserved-block lines, neither of which the
-        // references' own share accounts for: the primary walk is the
-        // widest street on the map and costs a couple of points by itself, and a block no grid line
-        // reached takes a street along its foot. It is the quiet end's number — a flat planet has more
-        // unserved blocks than a terraced one, and its grid runs coast to coast where a terraced one
-        // fragments. Measured over both templates, ten seeds: 11.3% to 22.8% at richness 0.2 and 6.4%
-        // to 14.5% at richness 1.
+        // The ceiling also carries the movement line (a couple of points alone) and the unserved-block
+        // lines, which the references lack. Measured 11.3% to 22.8% at richness 0.2, 6.4% to 14.5% at 1.
         expect(share, `${where}: ${(share * 100).toFixed(1)}% paved`).toBeLessThan(0.24);
       }
     }
@@ -140,8 +103,7 @@ describe('the partition the streets cut', () => {
       }
       const branchShare = runs.map((r) => r.evaluation.metrics.roads.widthMix.w2);
       const batch = branchShare.reduce((a, b) => a + b, 0) / branchShare.length;
-      // The batch is where the hierarchy claim lives (see the per-seed reading below). Measured over
-      // both templates at both ends of the axis, ten seeds: 29% to 47%.
+      // The hierarchy claim is the batch's. Measured 29% to 47%.
       expect(batch, `${template.id} r${richness}: batch branch share ${(batch * 100).toFixed(1)}%`)
         .toBeGreaterThan(0.25);
       const accents = new Set(runs.flatMap((r) => r.plan.materials.accents));
@@ -149,8 +111,6 @@ describe('the partition the streets cut', () => {
     }
   });
 });
-
-// --- the invariants the stamp construction carries ------------------------------------------------
 
 describe('width, dead ends and connectivity', () => {
   it('never lays a 1-wide road and never leaves a tip cell', () => {
@@ -169,8 +129,7 @@ describe('width, dead ends and connectivity', () => {
       for (const run of runs) {
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
         expect(run.evaluation.hard.roadsConnected.reachableShare, `${where}: reachable share`).toBe(1);
-        // Read again off the plan rather than off the raster, since the plan is what stage C will
-        // consume: pavement plus the ramps that carry it up a step, from the plaza outward.
+        // Read again off the plan, which is what stage C consumes.
         expect(strandedCells(run), `${where}: paved cells the plaza cannot walk to`).toBe(0);
       }
     }
@@ -180,23 +139,15 @@ describe('width, dead ends and connectivity', () => {
     for (const { template, richness, runs } of batches()) {
       for (const run of runs) {
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
-        // Three widths and no others: the movement line's own leg at 4 (the style target's approaches
-        // decode at 4 to 6), a trunk at 3, a branch at 2. Which of them a given seed carries depends
-        // on the ground its walk and its plaza ring found.
+        // The movement line's leg at 4 (the style target's approaches decode at 4 to 6), a trunk at
+        // 3, a branch at 2; which a seed carries depends on its ground.
         const widths = [...new Set(run.plan.streets.map((s) => s.width))].sort();
         expect(widths.every((w) => w === BRANCH_W || w === TRUNK_W || w === LINE_W),
           `${where}: street widths ${widths.join(',')}`).toBe(true);
         expect(widths, `${where}: street widths`).toContain(BRANCH_W);
-        // The style target's own width mix: branch (w=2) 38.4% of its pavement, trunk (w>=3) 56.5%.
-        // Both ranks have to carry real length or the hierarchy is decoration.
-        //
-        // The hierarchy claim is the batch's; the per-seed reading only catches a rank disappearing
-        // altogether. Two things pull a single seed's branch share under the references' mix, both by
-        // construction: the movement line is a third rank and a wide one, so it shifts share out of
-        // w=2 into w>=3, and on a terraced planet a terrace carries the primary walk at whatever width
-        // fits while the grid's branches fragment on the steps, so a seed whose mass takes most of its
-        // planet runs mostly trunk. Measured over both templates at both ends of the axis, ten seeds:
-        // 7.1% to 48%, the low end on a rim composition whose plaza cross fragments into short pieces.
+        // The style target's mix is 38.4% branch, 56.5% trunk. Per seed this only catches a rank
+        // disappearing: the wide movement line shifts share into w>=3, and terraces fragment the
+        // branches. Measured 7.1% to 48%.
         const mix = run.evaluation.metrics.roads.widthMix;
         expect(mix.w2, `${where}: w2 ${(mix.w2 * 100).toFixed(1)}%`).toBeGreaterThan(0.06);
         expect(mix.w3plus, `${where}: w3+ ${(mix.w3plus * 100).toFixed(1)}%`).toBeGreaterThan(0.3);
@@ -205,9 +156,8 @@ describe('width, dead ends and connectivity', () => {
   });
 });
 
-/** Does the pavement of the run a flight names stand against the flight's corridor? The run's cells
- *  are recomputed from its own geometry (a w x w stamp at each point of its skeleton), so the claim
- *  does not rest on the planner's bookkeeping. */
+/** Whether the street a flight names stands against the flight's corridor, its cells recomputed
+ *  from its own geometry (a w x w stamp along its skeleton) rather than the planner's bookkeeping. */
 function touchesCorridor(run: Measured, flight: StreetPlan['flights'][number]): boolean {
   const street = run.plan.streets[flight.street];
   if (!street) return false;
@@ -230,9 +180,8 @@ function touchesCorridor(run: Measured, flight: StreetPlan['flights'][number]): 
   return false;
 }
 
-/** Paved cells the plaza cannot reach, walking over pavement and over a flight's ramps. The
- *  evaluation's own conduction rule, recomputed here from the plan so the claim does not rest on the
- *  planner's internal bookkeeping. */
+/** Paved cells the plaza cannot reach over pavement and ramps: the evaluation's conduction rule,
+ *  recomputed from the plan. */
 function strandedCells(run: Measured): number {
   const W = run.state.template.width, H = run.state.template.height;
   const paved = new Uint8Array(W * H);
@@ -250,8 +199,7 @@ function strandedCells(run: Measured): number {
   const stack: number[] = [];
   const seen = new Uint8Array(W * H);
   if (plaza) {
-    // The plaza itself conducts, the way the ledger reads it: a street tangent to one face and a
-    // street tangent to another are one network through the square between them.
+    // The plaza conducts: streets tangent to two of its faces are one network through it.
     const r = objectRect(plaza);
     for (let y = Math.floor(r.y); y < Math.ceil(r.y + r.h); y++) {
       for (let x = Math.floor(r.x); x < Math.ceil(r.x + r.w); x++) {
@@ -278,8 +226,6 @@ function strandedCells(run: Measured): number {
   return stranded;
 }
 
-// --- ramps as road furniture ----------------------------------------------------------------------
-
 describe('ramps stand at steps, never on pavement', () => {
   it('puts no ramp footprint on a paved cell, at any seed', () => {
     for (const { template, richness, runs } of batches()) {
@@ -298,9 +244,7 @@ describe('ramps stand at steps, never on pavement', () => {
       for (const run of runs) {
         const where = `${template.id} r${richness} seed ${run.plan.seedInfo.seed}`;
         for (const flight of run.plan.flights) {
-          // A flight names the street it belongs to, and that street has to exist and stand against
-          // it: a flight retired after the settling would give its corridor back with nothing left
-          // to re-prune, and the pavement it carried would stand there unreachable.
+          // A flight whose street is gone would leave the pavement it carried unreachable.
           expect(flight.street, `${where}: flight street index`).toBeGreaterThanOrEqual(0);
           expect(flight.street, `${where}: flight street index`).toBeLessThan(run.plan.streets.length);
           expect(touchesCorridor(run, flight), `${where}: the flight's own street stands against it`)
@@ -317,10 +261,8 @@ describe('ramps stand at steps, never on pavement', () => {
         }
       }
     }
-    // The plaza bowl at richness 1 is the case that makes the flights load-bearing: the hub stands
-    // on its own plate and every street out of it meets a step within a few cells, so without the
-    // flights the network would be the plaza's plate and nothing else. It has to actually occur in
-    // this batch, or the claims above are vacuous.
+    // At richness 1 the plaza stands on its own plate and every street meets a step within a few
+    // cells; without enough such seeds the claims above are vacuous.
     const climbing = TEMPLATES.flatMap((template) => SEEDS
       .map((seed) => measure(seed, template, 1))
       .filter((run) => run.plan.flights.length > 0));
@@ -333,11 +275,9 @@ describe('ramps stand at steps, never on pavement', () => {
   });
 
   it('climbs a step that splits a street even where the network already reaches both pieces', () => {
-    // Hexia at richness 0, seed 2026: the plaza's north and south trunks run west and east off the
-    // plaza's layer-1 plateau into the steps down to layer 0, and other flights already reach the
-    // lower ground. Settling the network before the step's flight is offered cuts the pieces back to
-    // stubs past their crossing, which end at nothing on both sides; a flight on each trunk is what
-    // carries them on. Without the hold this seed carries one.
+    // Hexia at richness 0, seed 2026: the plaza's north and south trunks run off its layer-1 plateau
+    // into steps down to layer 0 that other flights already reach. Settling before the step's flight
+    // is offered would cut both trunks back to stubs ending at nothing.
     const run = measure(2026, HEXIA, 0);
     const carried = run.plan.flights.filter((f) => !f.entry
       && run.plan.streets.some((s) => s.axis === f.axis && s.rank === 'trunk' && !s.primary
@@ -362,40 +302,25 @@ describe('ramps stand at steps, never on pavement', () => {
   });
 });
 
-// --- frontage: does a block read as a block -------------------------------------------------------
-
 describe('district frontage separates a block from a leftover', () => {
   it('reads this stage as high as the references', () => {
     for (const { template, richness, runs } of batches()) {
       const shares = runs.map((r) => districtFrontage(r.state).frontedShare);
       const where = `${template.id} r${richness}: fronted ${(Math.min(...shares) * 100).toFixed(1)}`
         + `..${(Math.max(...shares) * 100).toFixed(1)}%, mean ${(mean(shares) * 100).toFixed(1)}%`;
-      // The references read 50% and 67%, the routed baseline 8% to 26%. The batch mean is the claim
-      // rather than every seed: a seed whose plates leave one huge terrace has a block this stage
-      // cannot subdivide on its own, and stage C's places are what cut those.
-      //
-      // The reading splits by richness, because at the rich end the terraces do the cutting: a block
-      // bounded by a step on two sides can be fronted from one side only, and the street that serves
-      // it runs along its foot rather than round it. The anti-grid costs the rich end again — a block
-      // cornered between two legs of a staggered street has its front on the shorter of them, and
-      // where a bend turns a line the block inside the turn is fronted on one side only. Measured over
-      // both templates, ten seeds: batch mean 50.9% and 50.0% at richness 0.2 against 11.5% worst at
-      // richness 1 (16.5% and 14.2% over twenty-five seeds). The quiet end therefore keeps the
-      // references' own bar and the terraced end keeps the one that says a block still has a front.
+      // The references read 50% and 67%. The claim is the batch mean: one huge terrace is a block
+      // only stage C's places subdivide. At the rich end a block stepped on two sides, or cornered by
+      // a staggered street, is fronted from one side only. Measured batch means 50.9% and 50.0% at
+      // richness 0.2, 11.5% worst at richness 1 (16.5% and 14.2% over twenty-five seeds).
       expect(mean(shares), where).toBeGreaterThan(richness <= 0.2 ? FRONTED_SHARE_MIN : 0.10);
-      // And the per-seed floor survives at the quiet end, where nothing explains a block with no front
-      // at all: worst measured 6.5%, one block of forty cornered between two legs of a staggered
-      // street with its front on the shorter of them. At the rich end one seed reads 4.3% — a map whose
-      // mass takes most of its land, where the blocks are terraces the street serves from one side —
-      // so the claim there is the batch's alone.
+      // Per seed only at the quiet end (worst measured 6.5%); at the rich end one seed whose mass
+      // takes most of its land reads 4.3%.
       if (richness <= 0.2) {
         expect(Math.min(...shares), where).toBeGreaterThan(0.06);
       }
     }
   });
 });
-
-// --- determinism -----------------------------------------------------------------------------------
 
 /** A plan reduced to plain values, for equality between two runs of the same arguments. */
 function digest(plan: StreetPlan): string {
@@ -425,10 +350,8 @@ describe('determinism', () => {
 });
 
 describe('the offset crossing fires', () => {
-  // `longRun` is a share of the map's extent and so comes out fractional: added to a coordinate
-  // unrounded, it offers every bend between two cells and `staggered()` refuses all of them — a
-  // silent no-op no other assertion would catch. This pin therefore reads the operator's output off
-  // maps whose plan the real planner built.
+  // A fractional bend position makes `staggered()` refuse every bend silently, and no other
+  // assertion would notice, so this reads offset pairs off plans the real planner built.
   it('lays offset crossings on a full-richness planet, on more than one seed', () => {
     const laid = [12345, 777, 42, 2026, 7].map((seed) => {
       const plan = planDesign({ seed, template: HEXIA, richness: 1, maxElevation: ELEVATION_MAX }).streets;

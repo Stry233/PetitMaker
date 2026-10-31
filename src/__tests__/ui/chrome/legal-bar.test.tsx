@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// LegalBar — persistent bottom filing bar. Renders nothing until
+// LegalBar: persistent bottom filing bar. Renders nothing until
 // `LEGAL` has at least one complete pair (number+URL both set); a partial pair
 // (number without url, or vice versa) is a build-time error (validate-config)
 // but the component independently must not render a broken row, so a
@@ -144,7 +144,7 @@ describe('LegalBar', () => {
 
   it('omits a partial pair (number without url) even if the other pair is complete', () => {
     LEGAL.icpNumber = '京ICP备2026xxxxxx号-1';
-    LEGAL.icpUrl = null; // partial — build-time error elsewhere, must not render here
+    LEGAL.icpUrl = null; // a partial pair, which validate-config rejects at build time
     LEGAL.psbNumber = '京公网安备 1101xxxxxxxxx号';
     LEGAL.psbUrl = 'https://www.beian.gov.cn/portal/registerSystemInfo';
     renderBar();

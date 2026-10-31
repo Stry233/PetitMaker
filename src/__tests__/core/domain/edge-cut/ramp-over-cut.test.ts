@@ -1,20 +1,9 @@
 /**
- * A ramp landing on a cliff lip that already carries an edge cut: the cut stays, and the map stays
- * legal. Reported as a defect ("placing a ramp over a cut does not update the cut"), it is the
- * policy — pinned here through the whole commit path, which `ramp-robustness.test.ts` does not
- * reach: that file asks the rule whether the placement is legal, this one asks what the finished
- * stroke left behind.
- *
- * A cut is silhouette-only. It adds and removes no block, so a cell's real support
- * (`realSurface`/`structuralTop`) is invariant across any cut, which is exactly why the edge-cut
- * tool commits with `{ reconcile: false }` and why the ramp's own support sweep cannot see a trim
- * at all. Squaring corners under a deck would be a second, contrary rule — and the shipped
- * generator would break under it, since it auto-trims the whole map (`edgeCutGeneratedTerrain`)
- * and then places every ramp onto the trimmed lips it just made.
- *
- * The one asymmetry worth keeping straight: a Γ fillet (`patchOnly`) is not a trim of a real
- * block, it is cosmetic mass with no support under it, and a ramp on one is refused. That case is
- * `ramp-robustness.test.ts`'s own.
+ * A ramp landing on a cliff lip that already carries a legal edge cut leaves the cut in place and the
+ * map legal, through the whole commit path (`ramp-robustness.test.ts` asks only the rule). A cut adds
+ * or removes no block, so a cell's support is the same either way; the generator relies on this, as it
+ * trims the whole map and then places ramps onto the trimmed lips. A fillet (`patchOnly`) has no
+ * support under it and is refused; that case lives in `ramp-robustness.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandType, TerrainType, type Corners, type GridState, type PlaceObjectCommand } from '../../../../core/model/types';
@@ -23,14 +12,12 @@ import { roadLookup } from '../../../../state/object-index';
 import { computeLockedCorners } from '../../../../core/domain/edge-cut/trim-lock';
 import { makeState, setTerrain, makeExecutor } from '../../../_support/map-state';
 
-/** The anchor cell itself, so the cut sits inside the reconcile's own reach: `getAffectedCells`
- *  for a placement returns the anchor, and the repair pass walks the ring around it. A cut placed
- *  further along the deck would survive for the uninteresting reason that nothing looked at it. */
+/** The ramp's anchor cell, so the cut sits inside the reconcile's reach (the anchor and the ring
+ *  around it); a cut further along the deck would survive only because nothing looked at it. */
 const CUT_AT = { x: 8, y: 14 };
 
-/** A mountain plateau at elev 1 (x 5..10, y 5..14) with the lip cell west of the anchor knocked
- *  out, which is what leaves the anchor a free convex corner to carry a real cut. The notch is
- *  outside the deck's own perpendicular span (x 8..10), so the ramp is unaffected by it. */
+/** A tier-1 plateau (x 5 to 10, y 5 to 14) with the lip cell west of the anchor removed, which gives
+ *  the anchor a free convex corner to cut. The notch is outside the deck's span (x 8 to 10). */
 function trimmedPlateau(): { state: GridState; corners: Corners } {
   const state = makeState(20, 20);
   for (let y = 5; y <= 14; y++) for (let x = 5; x <= 10; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
@@ -55,8 +42,7 @@ describe('a ramp placed onto an already-trimmed cliff lip', () => {
     const { state, corners } = trimmedPlateau();
     const executor = makeExecutor(state);
 
-    // The drop path's own shape: execute, then commit the stroke — which is where the
-    // neighbourhood cut reconcile runs, if anything is going to touch a corner.
+    // As a drop does: execute, then commit the stroke, where the neighbourhood cut reconcile runs.
     const start = executor.beginStroke();
     const cmd = placeRamp(8, 14);
     expect(executor.execute(cmd).success, 'the ramp is accepted on a trimmed lip').toBe(true);
@@ -68,10 +54,8 @@ describe('a ramp placed onto an already-trimmed cliff lip', () => {
   });
 
   it('does square an ILLEGAL cut under the deck — the repair the placement really owes', () => {
-    // A solid plateau: every corner of the lip cell is covered by a same-type edge neighbour, so
-    // none of them is cuttable. A cut written there anyway is not a trim the tool could have made,
-    // and the placement's own stroke repairs it — which is the whole of "placing a ramp updates
-    // the cut". What it does not do is undo a legal one.
+    // On a solid plateau no corner of the lip cell is cuttable, so a cut written there is illegal and
+    // the placement's stroke repairs it.
     const state = makeState(20, 20);
     for (let y = 5; y <= 14; y++) for (let x = 5; x <= 14; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     state.cells[14]![8]!.terrain!.corners = ['fan', 'fan', 'fan', 'fan'];

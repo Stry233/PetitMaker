@@ -14,10 +14,10 @@ describe('MissedRenderCheck', () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const frame = { value: 1 };
-    const draw = vi.fn();
+    // The scene changed unannounced: only the check's own redraw shows it.
+    const draw = vi.fn(() => { frame.value = 2; });
     const check = new MissedRenderCheck(fakeFrame(frame), draw);
     check.rested();
-    frame.value = 2;
     vi.advanceTimersByTime(1000);
     expect(draw).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledOnce();

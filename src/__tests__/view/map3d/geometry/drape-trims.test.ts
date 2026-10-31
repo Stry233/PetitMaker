@@ -1,11 +1,7 @@
 /**
- * A surface drape follows the surface the terrain mesher actually built — trims included.
- *
- * The invariant every case here checks is the same one: take each decal triangle's centroid, ask the
- * terrain mesh what its topmost horizontal face at that point is, and require the decal to sit
- * exactly DECAL_LIFT above it. A cut corner is rounded away and the surface there is whatever the
- * cut opened onto, so a decal that reads the cell's top and covers the whole square hangs in the air
- * over every trim — which is what the region highlight did.
+ * A surface drape follows the surface the terrain mesher built, trims included: every decal
+ * triangle's centroid sits exactly `DECAL_LIFT` above the mesh's topmost horizontal face there, so
+ * over a cut corner it drops to whatever the cut opened onto.
  */
 import { describe, it, expect } from 'vitest';
 import { cellDecals, rectDecals, DECAL_LIFT } from '../../../../view/map3d/geometry/overlay-decals';
@@ -18,7 +14,7 @@ import { makeState, setTerrain } from '../../../_support/map-state';
 /** The mesher's own output shape, as this file reads it. */
 interface Mesh { positions: number[]; index: number[] }
 
-/** The topmost horizontal mesh face over (px, pz) — what a viewer looking down sees there. Walls
+/** The topmost horizontal mesh face over (px, pz): what a viewer looking down sees there. Walls
  *  have two heights per triangle and are skipped; ground/water/solid tops are all flat. */
 function meshSurfaceAt(meshes: readonly Mesh[], px: number, pz: number): number | null {
   let best: number | null = null;
@@ -42,7 +38,7 @@ function inTriangle(px: number, pz: number, a: readonly number[], b: readonly nu
   return !(neg && pos);
 }
 
-/** Every decal triangle's centroid + the height it was drawn at. */
+/** Every decal triangle's centroid and the height it was drawn at. */
 function centroids(m: Mesh): Array<{ x: number; z: number; y: number }> {
   const out: Array<{ x: number; z: number; y: number }> = [];
   for (let t = 0; t < m.index.length; t += 3) {
@@ -56,7 +52,7 @@ function centroids(m: Mesh): Array<{ x: number; z: number; y: number }> {
   return out;
 }
 
-/** Assert every triangle of `decal` lies exactly one DECAL_LIFT over the mesh under it. */
+/** Asserts every triangle of `decal` lies exactly `DECAL_LIFT` over the mesh under it. */
 function expectDraped(state: GridState, decal: Mesh): void {
   const t = buildTerrainMeshes(state);
   const meshes = [t.solid, t.ground, t.water, t.fall];
@@ -76,7 +72,7 @@ function cut(state: GridState, x: number, y: number, corners: Corners, extra: Re
   cell.terrain = { ...cell.terrain!, corners, ...extra } as typeof cell.terrain;
 }
 
-/** The world origin of terrain cell (x, y) — the same one `cellDecals(…, 'terrain')` places it at. */
+/** The world origin of terrain cell (x, y): the same one `cellDecals(…, 'terrain')` places it at. */
 function origin(state: GridState, x: number, y: number): [number, number] {
   const off = mapCenterOffset(state.template.width, state.template.height);
   return [x - off.x - 0.5, y - off.z - 0.5];
@@ -95,7 +91,7 @@ describe('a drape over trimmed terrain', () => {
     setTerrain(s, 5, 5, TerrainType.Mountain, 2);
     cut(s, 5, 5, ['fan', 'fan', 'fan', 'fan']);
     const decal = cellDecals(s, [{ x: 5, y: 5 }], 'terrain');
-    // The four rounded-away corners show the grass the pillar stands on; the kept fans its own top.
+    // The rounded-away corners show the grass below; the fanned interior shows the pillar's top.
     expect(heights(decal)).toEqual([
       Math.round((GROUND_SLAB_Y + DECAL_LIFT) * 1000) / 1000,
       Math.round((layerToY(2) + DECAL_LIFT) * 1000) / 1000,
@@ -184,7 +180,7 @@ describe('a drape over trimmed terrain', () => {
   it('reports no pieces off the map, where there is no cell to read', () => {
     const s = makeState(20, 20) as GridState;
     expect(cellSurfacePieces(s, -1, -1, 0, 0)).toBeNull();
-    // …and the decal still draws the border ring a brush may hang over.
+    // The decal still draws the border ring a brush may hang over.
     expect(cellDecals(s, [{ x: -1, y: -1 }], 'terrain').positions.length).toBe(4 * 3);
   });
 });

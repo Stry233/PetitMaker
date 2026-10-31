@@ -13,7 +13,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
+import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { MODE_PLATE, MODE_PLATE_ID } from '../../../ui/shell/frame';
 import { Shell } from '../../../ui/shell/Shell';
 import { UiPreviewProvider } from '../../../ui/design/preview';
@@ -38,12 +38,10 @@ function mountShell() {
   );
 }
 
-/** The panel is a lazy chunk: here `import()` compiles the assistant graph instead of fetching a
- *  built one (0.6s or more, against the 1s an async query allows), and React's `lazy` suspends on
- *  its first render regardless. Both are paid by opening it once, before anything below is timed —
- *  `narrow-viewport.test.tsx` states the argument at greater length. */
+/** The panel is a lazy chunk that compiles here in 0.6s or more, against the 1s an async query
+ *  allows, so it is opened once before anything below is timed. */
 beforeAll(async () => {
-  backing.set(TOUR_SEEN_KEY, '1');
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
   useEditorStore.setState({ locale: 'en', assistantOpen: true });
   mountShell();
   await screen.findByTestId('shell-assistant-panel', undefined, { timeout: 30_000 });
@@ -52,7 +50,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   backing.clear();
-  backing.set(TOUR_SEEN_KEY, '1'); // a returning visitor: the tour is not the subject
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED); // a returning visitor, so no tour
   useEditorStore.setState({ locale: 'en', assistantOpen: false });
   useEditorStore.getState().setEditMode({ mode: null });
 });
@@ -65,15 +63,11 @@ describe("the character's entrance", () => {
     expect(anchor.querySelector('img')).toBeNull();
   });
 
-  /**
-   * The block that opens the panel wears no armed dress: the open panel already says what this block
-   * means, and the panel is narrower than the splat, so a splat would show from under its corner as
-   * a sixth mode. With no mode armed there is no splat at all; with one armed it belongs to the row.
-   */
+  /** The panel is narrower than the splat, so a splat on this block would show from under its corner
+   *  as a sixth mode. */
   it('wears no selected splat while the panel is open', async () => {
     mountShell();
-    /** Every splat drawing on screen, found by its art rather than by a test id: a stray copy
-     *  carrying no test id would escape any id-based query. */
+    /** Found by its art, since a stray copy with no test id would escape an id query. */
     const splats = () => [...document.querySelectorAll('img')]
       .filter((img) => img.getAttribute('src') === MODE_PLATE.src);
     /** The assistant block's own box: the anchor's nearest positioned container. */
@@ -83,7 +77,6 @@ describe("the character's entrance", () => {
     await screen.findByTestId('shell-assistant-panel');
     expect(splats().filter((img) => block().contains(img))).toHaveLength(0);
 
-    // The mode row's splat is untouched, and still belongs to the row rather than to this block.
     act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
     expect(document.querySelectorAll(`[data-testid="${MODE_PLATE_ID}"]`)).toHaveLength(1);
     expect(splats().filter((img) => block().contains(img))).toHaveLength(0);
@@ -103,13 +96,11 @@ describe("the character's entrance", () => {
     for (let el = layer.parentElement; el; el = el.parentElement) {
       expect(el.getAttribute('style') ?? '').not.toContain('zoom');
     }
-    // And deaf as a layer: the two things in it that take a press (the character herself, and the
-    // chip at her shoulder) turn it on for their own boxes, so nothing covers the window.
+    // The character and the chip at her shoulder take presses on their own boxes only.
     expect(layer.style.pointerEvents).toBe('none');
   });
 
-  /** One character, app-wide, and the whole design rests on it: with the panel open the
-   *  desk reserves her box rather than drawing a second copy of her further down the screen. */
+  /** With the panel open the desk reserves her box rather than drawing a second copy. */
   it('is the only character on screen, panel open or shut', async () => {
     mountShell();
     expect(document.querySelectorAll('[data-testid="pw-character"]')).toHaveLength(1);
@@ -138,7 +129,7 @@ describe('a pictured shell', () => {
         </UiPreviewProvider>
       </I18nProvider>,
     );
-    // The lazy chunk is warm, so a panel the picture mounted would stand within a few frames.
+    // The chunk is warm, so a panel the picture mounted would stand within a few frames.
     await act(async () => { await new Promise((r) => setTimeout(r, 150)); });
     expect(screen.queryByTestId('shell-assistant-panel')).toBeNull();
     expect(deskSeat()).toBeNull();

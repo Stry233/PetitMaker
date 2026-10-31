@@ -2,11 +2,10 @@
  * A text run's outcome has to reach the caller, or a word that arrived shorter than it was typed
  * arrives with no reason attached.
  *
- * The engine counts three of them — cells crossing a step or a pond, cells at the edge of the ground
- * the word stands on, cells already at the grid's tallest layer — and the editor seam is where that
- * count is either carried or dropped: `generateMap` lands a candidate built on a copy, so it returns
- * the copy's own outcome, and a field the operation forgets to spread is a field no interface can
- * ever show.
+ * The engine counts three kinds of dropped cell (crossing a step or a pond, at the edge of the
+ * ground the word stands on, already at the grid's tallest layer). `generateMap` lands a candidate
+ * built on a copy and returns the copy's outcome, so a field the operation forgets to spread is one
+ * no interface can show.
  */
 import { placeObjectCommand } from '../../../core/model/command-build';
 import { describe, it, expect, beforeEach } from 'vitest';

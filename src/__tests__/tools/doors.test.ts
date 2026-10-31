@@ -2,8 +2,8 @@
  * Callers outside `tools/` reach every tools module through its door: the module's `index.ts`, or
  * its `facts.ts`, what a surface reads without the module's workings. Generation has more: the
  * recipe vocabulary, the kinds, `terrain-plan/`, the run and the `index.ts` of each generator and of
- * the carry. Peers inside `tools/` import implementation
- * files directly, never a module's `index.ts`, so no barrel closes a cycle.
+ * the carry. Peers inside `tools/` import implementation files directly, never a module's
+ * `index.ts`, so no barrel closes a cycle.
  *
  * The pointer tools are the modules under `pointer/`; every other module is a library, which
  * never imports anything under `pointer/`.

@@ -12,8 +12,8 @@ function obj(id: string, x: number, y: number, catalogId = 'flower-protea'): Pla
 describe('chunkLoadViolations (footprint-aware enforcement logic)', () => {
   it('allows a candidate exactly at the limit, rejects one over it', () => {
     const state = makeState(20, 20);
-    expect(chunkLoadViolations(state, obj('c', 0, 0), 10_000)).toHaveLength(0); // == limit, allowed
-    expect(chunkLoadViolations(state, obj('c', 0, 0), 10_001)).toHaveLength(1); // over limit
+    expect(chunkLoadViolations(state, obj('c', 0, 0), 10_000)).toHaveLength(0);
+    expect(chunkLoadViolations(state, obj('c', 0, 0), 10_001)).toHaveLength(1);
   });
 
   it('reports the limit as a message param', () => {
@@ -23,16 +23,16 @@ describe('chunkLoadViolations (footprint-aware enforcement logic)', () => {
 
   it('sums load from objects already in the same chunk', () => {
     const state = makeState(20, 20);
-    state.objects.set('e', obj('e', 0, 0)); // Measured flower load.
+    state.objects.set('e', obj('e', 0, 0));
     expect(getCatalogItem('flower-protea')!.loadValue).toBeGreaterThan(0);
-    // existing load + a candidate at the limit (same chunk 0,0) exceeds the limit
+    // existing load plus a candidate at the limit in the same chunk exceeds it
     expect(chunkLoadViolations(state, obj('c', 1, 1), 10_000)).toHaveLength(1);
   });
 
   it('does not count objects in a different chunk', () => {
     const state = makeState(40, 40);
     state.objects.set('e', obj('e', 0, 0)); // chunk (0,0)
-    // candidate in chunk (1,1) — separate accounting, so a full-limit candidate is allowed
+    // chunk (1,1) has separate accounting, so a full-limit candidate fits
     expect(chunkLoadViolations(state, obj('c', 20, 20), 10_000)).toHaveLength(0);
   });
 

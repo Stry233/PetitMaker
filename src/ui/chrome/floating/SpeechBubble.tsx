@@ -1,18 +1,21 @@
 /**
  * A speech bubble hung from a shell control, its tail on the control. The line is the action; the
- * round button closes it and carries the five-second clock; a press anywhere else closes it too.
+ * round button closes it and carries the five-second clock; a press anywhere else closes it too,
+ * and with `anchorPresses` a press on the control itself acts rather than only closing it.
  */
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { timedHint } from '../timed-hint';
 import { cursors, font, z, radii } from '../../design/styles';
 import { presence } from '../../design/motion';
 import { roleFont } from '../../design/text-weight';
-import { INSET, PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
-import { useChromeScale } from '../../design/scale';
+import { INSET, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK } from '../../design/tokens';
+import { TOUCH_TARGET } from '../../design/scale';
 import { TimedButton } from '../../primitives/TimedButton';
-import { useChromeLayer } from '../../primitives/chrome-layer';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useReveal } from '../../primitives/use-reveal';
+import { useChromeLayer, useChromeLayerZoom } from '../../primitives/chrome-layer';
 import { useFloatingPosition } from '../../primitives/use-floating-position';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { tourTargetSelector, type TourTargetId } from '../tour/steps';
@@ -26,7 +29,7 @@ const CLOSE = 28;
 
 const card: CSSProperties = {
   position: 'fixed',
-  zIndex: z.toast,
+  zIndex: z.notice,
   display: 'flex',
   alignItems: 'center',
   gap: 12,
@@ -43,15 +46,15 @@ const card: CSSProperties = {
 
 const tail: CSSProperties = {
   position: 'absolute',
-  top: -TAIL / 2,
   width: TAIL,
   height: TAIL,
   background: PLATE,
-  borderLeft: PANEL_EDGE,
-  borderTop: PANEL_EDGE,
-  borderRadius: `${radii.sm}px 0 0 0`,
   transform: 'rotate(45deg)',
 };
+/** The tail on the bubble's top edge, for a bubble under its control. */
+const tailUp: CSSProperties = { top: -TAIL / 2, borderLeft: PANEL_EDGE, borderTop: PANEL_EDGE, borderRadius: `${radii.sm}px 0 0 0` };
+/** The tail on the bubble's bottom edge, for a bubble over its control. */
+const tailDown: CSSProperties = { bottom: -TAIL / 2, borderRight: PANEL_EDGE, borderBottom: PANEL_EDGE, borderRadius: `0 0 ${radii.sm}px 0` };
 
 const close: CSSProperties = {
   flex: '0 0 auto',
@@ -68,6 +71,7 @@ const close: CSSProperties = {
 };
 
 const line: CSSProperties = {
+  position: 'relative',
   border: 'none',
   background: 'transparent',
   padding: 0,
@@ -88,42 +92,58 @@ interface SpeechBubbleProps {
   text: string;
   onAct: () => void;
   onClose: () => void;
+  /** The side it opens on while that side holds it; a control at the window's foot asks for above. */
+  prefer?: 'above' | 'below';
+  /** A press on the anchor goes on to the anchor, as the bubble's own line would. */
+  anchorPresses?: boolean;
 }
 
-export function SpeechBubble({ anchor, text, onAct, onClose }: SpeechBubbleProps) {
+export function SpeechBubble({ anchor, text, onAct, onClose, prefer = 'below', anchorPresses = false }: SpeechBubbleProps) {
   const t = useT();
-  const chrome = useChromeScale();
-  const layer = useChromeLayer();
-  const [reading, setReading] = useState(false);
+  // Touch mode draws the bubble at least at its own size: its words at their role's size, and its
+  // close a fingertip's reach through `TouchReach`.
+  const layer = useChromeLayer({ control: TOUCH_TARGET });
+  const zoom = useChromeLayerZoom(TOUCH_TARGET);
+  // A hold pauses the countdown; the press still lands.
+  const { shown: reading, bind: readingBind } = useReveal({ keepsClick: true });
   // The anchor is the tour target, looked up afresh at every read: the corner may redraw it.
   const target = useMemo(() => ({ get current() { return document.querySelector<HTMLElement>(tourTargetSelector(anchor)); } }), [anchor]);
   // Right-aligned under the anchor with the tail on its centre, followed every frame while up: the
   // frame moves its corner as fonts, notices and layout settle, and the bubble lives five seconds.
-  const floating = useFloatingPosition({ open: true, anchor: target, zoom: chrome, align: 'end', gap: (r) => r.height * BUBBLE_GAP_SHARE / chrome });
-  const tailRight = floating.placement ? floating.placement.anchorWidth / 2 - TAIL / 2 : 0;
+  const floating = useFloatingPosition({ open: true, anchor: target, zoom, align: 'end', prefer, gap: (r) => r.height * BUBBLE_GAP_SHARE / zoom });
+  // The tail stands on the anchor's centre even where the window's edge held the bubble off its
+  // aligned place; left is measured inside the bubble's edge.
+  const tailLeft = floating.placement
+    ? floating.placement.anchorX - floating.placement.anchorWidth / 2 - TAIL / 2 - PANEL_EDGE_WIDTH : 0;
 
-  // A press anywhere else means the visitor is working, and only puts the bubble away.
-  useSurfaceScope({ open: !!floating.placement, root: floating.ref, onClose, outside: true });
+  // A press anywhere else means the visitor is working: it puts the bubble away, and in touch mode
+  // still lands where it was aimed.
+  useSurfaceScope({ open: !!floating.placement, root: floating.ref, onClose, outside: 'notice', ...(anchorPresses ? { trigger: target } : {}) });
 
   // The root stands from the first render, hidden until placed: a motion child that first appears
   // under a presence already departed never animates out.
   return (
     <motion.div
       ref={floating.ref}
+      {...floating.piece}
       role="status"
       data-testid="speech-bubble"
       style={{ ...layer, ...floating.style, ...card, boxSizing: 'content-box', maxHeight: 'none', overflowY: 'visible', visibility: floating.placement ? 'visible' : 'hidden' }}
       {...presence('surface.arrive', { opacity: 0, y: -8 }, { exit: { opacity: 0, y: -6 } })}
-      onPointerEnter={() => setReading(true)}
-      onPointerLeave={() => setReading(false)}
+      {...readingBind}
     >
-      <span data-testid="speech-bubble-tail" aria-hidden style={{ ...tail, right: tailRight }} />
+      <span data-testid="speech-bubble-tail" aria-hidden style={{ ...tail, ...(floating.placement?.above ? tailDown : tailUp), left: tailLeft }} />
       <TimedButton after={BUBBLE_SECONDS} hint={timedHint(t, BUBBLE_SECONDS)} paused={reading} style={close} onPress={onClose} aria-label={t('hint.close')} pressMotion={false}>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
           <path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
+        {/* The close and the line stand side by side, so each grows away from the other. */}
+        <TouchReach w={CLOSE} h={CLOSE} zoom={zoom} sides={{ right: false }} />
       </TimedButton>
-      <button type="button" style={line} onClick={() => { onAct(); onClose(); }}>{emphasize(text)}</button>
+      <button type="button" style={line} onClick={() => { onAct(); onClose(); }}>
+        {emphasize(text)}
+        <TouchReach zoom={zoom} sides={{ left: false }} />
+      </button>
     </motion.div>
   );
 }

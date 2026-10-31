@@ -65,7 +65,7 @@ describe('placement/object', () => {
       const { state, ctx } = ctxFor();
       expect(tryPlace(ctx, roadId, 4, 5)).toBeTruthy();
       expect(tryPlace(ctx, roadId, 6, 5)).toBeTruthy();
-      // (5,5) is bare ground with pavement on both its left and right edges — a median.
+      // (5,5) is a median: bare ground with pavement on both its left and right edges.
       expect(tryDecorate(ctx, floraId, 5, 5)).toBeNull();
       expect(state.objects.size).toBe(2);
     });
@@ -82,7 +82,7 @@ describe('placement/object', () => {
     it('still plants a curb-adjacent cell with exactly one paved side', () => {
       const { state, ctx } = ctxFor();
       expect(tryPlace(ctx, roadId, 5, 5)).toBeTruthy();
-      // (5,4) touches pavement on one side only — beside the road, not inside it.
+      // (5,4) touches pavement on one side only: beside the road, not inside it.
       expect(tryDecorate(ctx, floraId, 5, 4)).toBeTruthy();
       expect(state.objects.size).toBe(2);
     });

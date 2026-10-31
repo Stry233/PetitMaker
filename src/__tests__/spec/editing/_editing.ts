@@ -12,7 +12,9 @@ import type { ToolArming } from '../../../state/editing/arming';
 import type { BlockRef } from '../../../state/selection';
 import { GRIDS } from '../../../core/game/profile';
 import { gridCellCentre, mapPoint, type MapPoint } from '../../../core/grid/grids';
-import type { MacroCoord, PlacedObject, Refusal, TerrainCell } from '../../../core/model/types';
+import type { MacroCoord, PlacedObject, Refusal, Rotation, TerrainCell } from '../../../core/model/types';
+import { getCatalogItem } from '../../../state/catalog';
+import { hasHalfStep, snapsOwnPlacement } from '../../../state/object-geometry';
 import { translateFor } from '../../../i18n/context';
 import type { TextKey } from '../../../i18n/keys';
 import { testArming } from '../../_support/tool-ctx';
@@ -157,6 +159,8 @@ export function dragObject(world: SpecWorld, selection: readonly string[], id: s
     selection: () => selected,
     setSelection: (blocks) => { selected = blocks; },
     report: (refusal) => { reported = refusal ?? null; },
+    notify: noop,
+    t: (key) => key,
   });
   const view = { overlay, plopObject: noop };
   session.begin(id, from, from);
@@ -178,11 +182,25 @@ export function plateau(world: SpecWorld, at: MacroCoord, w: number, h: number, 
   brush(world, { shape: 'rect', floor: elevation }).drag(at, { x: at.x + w - 1, y: at.y + h - 1 });
 }
 
-/** Click `item` onto cell `c` with the object placer, as a person does with its card armed; the
- *  object that landed, or null when the placement was refused. */
+/** The cell a person points at to lay `item`, turned by `rotation`, with its footprint's top-left
+ *  cell at `c`: the footprint's centre cell, left of or above the middle on an even side (EDIT-51).
+ *  A bridge or ramp is aimed by the gap or cliff, so it is pointed at `c` itself. A halfStep item
+ *  that does not snap (the station, a landmark) centres on a half point, which a cell centre cannot
+ *  name, so it is refused here. */
+export function heldCell(item: string, c: MacroCoord, rotation: Rotation = 0): MacroCoord {
+  const it = getCatalogItem(item);
+  if (!it || snapsOwnPlacement(it)) return c;
+  if (hasHalfStep(it)) throw new Error(`heldCell covers items laid on whole cells; ${item} centres on a half point`);
+  const turned = it.rotatable && (rotation === 90 || rotation === 270);
+  const w = turned ? it.height : it.width, h = turned ? it.width : it.height;
+  return { x: c.x + Math.floor((w - 1) / 2), y: c.y + Math.floor((h - 1) / 2) };
+}
+
+/** Click `item` onto the map with the object placer so its footprint's top-left lands on cell `c`, as
+ *  a person does with its card armed; the object that landed, or null when the placement was refused. */
 export function placeItem(world: SpecWorld, item: string, c: MacroCoord, arming: Partial<ToolArming> = {}): PlacedObject | null {
   const before = new Set(world.state.objects.keys());
-  new Pointer(world, { tool: ToolType.ObjectPlacer, armedItem: item, ...arming }).click(c);
+  new Pointer(world, { tool: ToolType.ObjectPlacer, armedItem: item, ...arming }).click(heldCell(item, c, arming.placementRotation));
   return [...world.state.objects.values()].find((o) => !before.has(o.id)) ?? null;
 }
 

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
-import { radii, cursors, pressable, shadows } from '../../../../design/styles';
+import { radii, cursors, shadows } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
@@ -11,6 +11,7 @@ import { useStylizeVersions } from './use-stylize-versions';
 import { amplitude, framerMotion } from '../../../../design/motion';
 import { MAP_ASPECT } from './sample-art';
 import type { I18nKey } from '../../../../../i18n/keys';
+import { useHover, useInteractionProfiles } from '../../../../design/input-mode';
 
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 
@@ -62,6 +63,8 @@ function FannedCards() {
  *  sub-line naming whichever take the export currently carries. */
 export function StylizeEntry() {
   const t = useT();
+  const profiles = useInteractionProfiles();
+  const spread = useHover('spread');
   const setModal = useEditorStore((s) => s.setModal);
   const { selected } = useStylizeVersions();
 
@@ -73,10 +76,10 @@ export function StylizeEntry() {
         onClick={() => setModal('stylize', true)}
         initial="rest"
         animate="rest"
-        whileHover="spread"
+        whileHover={spread}
         // A full-width row uses a restrained hover scale instead of the compact-button growth.
         variants={{ rest: { scale: 1 }, spread: { scale: 1.02 } }}
-        whileTap={pressable.whileTap}
+        whileTap={profiles.tile.whileTap}
         transition={framerMotion('stylize.entry.fan')}
         style={{ ...entryBtn, ...(selected ? appliedRing : null) }}
       >

@@ -12,25 +12,17 @@
  * layout depends on produce the same value, and a hook comparing it can tell "the room moved" from
  * "the content changed" without a second reading of its own.
  */
-import { viewportSize } from '../../platform/device/viewport-space';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
+import { subscribeViewportSize, viewportSizeSnapshot } from '../../platform/device/viewport-space';
 import { useChromeScale } from '../design/scale';
 
-/** The window's own box, or '' where there is no window (a test, a server render). */
-function windowBox(): string {
-  return typeof window === 'undefined' ? '' : `${viewportSize().width}x${viewportSize().height}`;
-}
+const noWindow = () => null;
 
 export function useViewportEpoch(): string {
-  // The animated reading, so a surface re-measuring off this rides the zoom's glide rather than
-  // jumping to the far end of it — the same reading the parked character is placed from.
+  // The settled reading: a surface re-measuring off this measures once the scale lands.
   const scale = useChromeScale();
-  const [box, setBox] = useState(windowBox);
-  useEffect(() => {
-    const onResize = () => setBox(windowBox());
-    window.addEventListener('resize', onResize);
-    onResize();
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+  // The window's own box, or '' where there is no window (a server render).
+  const size = useSyncExternalStore(subscribeViewportSize, viewportSizeSnapshot, noWindow);
+  const box = size ? `${size.width}x${size.height}` : '';
   return `${box}@${scale}`;
 }

@@ -7,8 +7,8 @@
  * built for `custom` with no address rather than building a client aimed anywhere.
  *
  * The refusal is a classified fault, not a raw crash: it carries its own `ErrorClass` (`config`),
- * which is unretryable — another attempt with the same absent address does the same nothing — and
- * the panel's repair for it is the endpoint field.
+ * which is unretryable (another attempt with the same absent address does the same nothing); the
+ * panel's repair for it is the endpoint field.
  *
  * The floor is asserted through the runner too, which is the caller that would otherwise reach a
  * client on a stale settings record: the job settles as a config incident and no request is made.

@@ -1,7 +1,6 @@
 /**
- * Drives one scripted job through the real loop, tool surface, map, and rule registry. Its realistic
- * model-authored strings exercise the same six UI copy contracts as the opt-in gateway test, while
- * remaining deterministic in CI. The lower-level loop suite covers control flow separately.
+ * Drives one scripted job through the real loop, tool surface, map and rule registry, checking its
+ * model-shaped strings against the UI copy contracts the opt-in gateway test checks, deterministically.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -21,12 +20,10 @@ import { makeState } from '../_support/map-state';
 import { checkContracts, reportContracts, CONTRACTS } from './_llm-contracts';
 import { createExecutor as createCommandExecutor } from '../../state/executor';
 
-/** The order the job is given. Small on purpose: what is under test is the shape of what comes back,
- *  and a large build only buys more of the same strings. */
+/** Small on purpose: the shape of the returned strings is under test, not the size of the build. */
 export const ORDER =
   'Terrace the little rise at the north end of the plaza and put a lookout on top of it.';
 
-/** A live map with the plaza's own ground under it, as the panel always stands over one. */
 function liveMap() {
   const state = makeState(24, 24);
   const bus = new EventBus<EditorEvents>();
@@ -54,14 +51,8 @@ function toolTurn(
   };
 }
 
-/**
- * The actor's script, written as a model that has read its own instructions would answer.
- *
- * Six turns: read the ground, file a plan, raise the terrace, measure, place the lookout, and close
- * with a summary plus the one obvious reply. Every string is at the length its contract states — the
- * says lines put their point in the first sentence, the stage labels fit a rail row, the suggestion
- * fits the composer's field, and the summary is the two sentences a receipt is drawn for.
- */
+/** Six turns as a compliant model would write them: every string within its contract (point in the
+ *  first sentence, short stage labels and suggestion, a two-sentence summary). */
 function script(): ScriptedTurn[] {
   return [
     toolTurn(
@@ -131,8 +122,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
 
     expect(outcome).toBe('done');
 
-    // The work reached the map, through the real rules: without this the contract check would be
-    // reading a log of refusals and passing.
+    // The work reached the map, so the contract check is not reading a log of refusals.
     expect(map.state.cells[5]![10]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 2 });
     const view = deriveView(log);
     expect(view.vitals.cells).toBeGreaterThan(0);
@@ -143,12 +133,8 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
     expect(findings, reportContracts(findings)).toEqual([]);
   });
 
-  /**
-   * And the checker has teeth. A test that only ever sees compliant output cannot tell a working
-   * assertion from an empty one, so the same job is run again with the model writing each string the
-   * way the contracts say it must not: a says line whose point arrives on line three, a stage label
-   * too long for its row, a suggestion past the composer's clip, and a summary of six sentences.
-   */
+  /** The same job with each string breaking its contract: a says line whose point arrives late, an
+   *  overlong stage label and suggestion, and a six-sentence summary. */
   it('names every contract a model-shaped string can break', async () => {
     const map = liveMap();
     const log = createLog();
@@ -170,9 +156,8 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
         'Done. It is finished. All of it. Every part. Nothing remains. The rise is terraced.',
         [{ callId: 'b2', name: 'suggest_reply', args: { reply: 'Yes please, and run a path up to the lookout as well' } }],
       ),
-      // The zero-write close above earns the loop's delivery nudge, and this second close is the
-      // one that settles: it rambles past the summary contract the same way, so the finding the
-      // test is about still stands on the summary the receipt actually shows.
+      // The zero-write close above earns the loop's delivery nudge; this second close settles and
+      // breaks the summary contract the same way.
       toolTurn(
         'Done. It is finished. All of it. Every part. Nothing remains. The rise is terraced.',
         [],
@@ -187,14 +172,13 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
     const findings = checkContracts(log);
     const named = new Set(findings.map((f) => f.contract));
     expect([...named].sort()).toEqual(['1 says line', '2 summary', '3 stage label', '5 suggest_reply']);
-    // And the measurement is the contract's own number rather than a restatement of the string.
+    // The measurement cites the contract's number, not the string.
     expect(findings.find((f) => f.contract === '5 suggest_reply')!.measured)
       .toContain(String(CONTRACTS.suggestLatin));
   });
 
-  /** A CJK suggestion spends about twice the room a Latin one does at the same box, which is why
-   *  the contract carries a CJK budget of its own: the same tool description asks for the user's
-   *  own language. */
+  /** A CJK character takes about twice the width of a Latin one, so CJK suggestions have their own
+   *  budget. */
   it('measures a CJK suggestion against the CJK budget', async () => {
     const map = liveMap();
     const log = createLog();
@@ -212,7 +196,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
     const suggestion = findings.find((f) => f.contract === '5 suggest_reply');
     expect(suggestion, reportContracts(findings)).toBeUndefined();
 
-    // One character over the CJK budget is a finding, where the same count in Latin is not.
+    // 19 characters: over the CJK budget though within the Latin one.
     const long = createLog();
     append(long, { kind: 'order', text: '再来一次', mapContext: '24x24' });
     append(long, {
@@ -228,7 +212,7 @@ describe('one small job, driven by a model-shaped actor through the real loop', 
   });
 });
 
-/** The log's own event count, for a caller that wants to see the actor did something. */
+/** The number of assistant turns in the log. */
 export function turnsIn(log: ReturnType<typeof createLog>): number {
   return eventsOf(log).filter((e) => e.kind === 'assistant').length;
 }

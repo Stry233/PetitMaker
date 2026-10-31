@@ -39,13 +39,22 @@ export type WarmTier = 'full' | 'core' | 'minimal' | 'none';
 
 const SLOW_CONNECTION = /^(?:slow-2g|2g|3g)$/;
 
-export function warmTier(): WarmTier {
-  if (IS_LITE) return 'none';
-  const connection = typeof navigator !== 'undefined'
+function connection(): { saveData?: boolean; effectiveType?: string } | undefined {
+  return typeof navigator !== 'undefined'
     ? (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection
     : undefined;
-  if (connection?.saveData) return 'none';
-  if (SLOW_CONNECTION.test(connection?.effectiveType ?? '')) return 'minimal';
+}
+
+/** Whether the visitor asked the browser to save data: nothing is fetched ahead of use, and nothing
+ *  large plays before it is asked for. */
+export function asksToSaveData(): boolean {
+  return connection()?.saveData === true;
+}
+
+export function warmTier(): WarmTier {
+  if (IS_LITE) return 'none';
+  if (asksToSaveData()) return 'none';
+  if (SLOW_CONNECTION.test(connection()?.effectiveType ?? '')) return 'minimal';
   return isLowEndDevice() ? 'core' : 'full';
 }
 

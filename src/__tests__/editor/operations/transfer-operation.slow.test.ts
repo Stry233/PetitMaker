@@ -1,10 +1,7 @@
 /**
- * Changing planet with the build aboard.
- *
- * The transfer claims to work for any planet with no per-planet code, so the two real templates are
- * tested both ways and a pair of synthetic ones (a different size with a moved plaza) stands in for
- * the planet that does not exist yet. Everything the outcome reports is re-derived here from the two
- * maps, because a report that counted its own refusals would agree with itself and not with the map.
+ * Changing planet with the build aboard. The transfer has no per-planet code, so both real templates
+ * are tested both ways and synthetic ones (another size, a moved plaza) stand in for future planets.
+ * The outcome's counts are re-derived from the two maps, not from the transfer's own refusals.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { newMap, generateMap, transferMap } from '../../../editor/operations';
@@ -34,8 +31,8 @@ function underLandmarks(state: GridState): Set<string> {
   return new Set(landmarkObjects(state).flatMap((o) => terrainCellsUnder({ x: o.position.x, y: o.position.y, w: o.width ?? 0, h: o.height ?? 0 })).map((c) => `${c.x},${c.y}`));
 }
 
-/** The same counting the operation does, written again from the outside: every source cell that
- *  holds terrain outside its landmarks' ground, against the cell it would land on. */
+/** The operation's counting, written again from outside: each source terrain cell outside its
+ *  landmarks' ground, against the cell it would land on. */
 function diffOf(source: GridState, dest: GridState, offset: MacroCoord): {
   moved: { cells: number; objects: number };
   dropped: { cells: number; objects: number };
@@ -66,9 +63,8 @@ const keepRate = (moved: number, dropped: number): number =>
 
 const rules = createDefaultRegistry();
 
-/** Whether the destination would take terrain at this cell at all — asked of the rules here, the
- *  same way the operation asks them, so "buildable ground" is the map's answer and not this test's
- *  idea of a coastline. */
+/** Whether the destination would take terrain at this cell, asked of the rules as the operation
+ *  asks them. */
 function takesTerrain(dest: GridState, x: number, y: number): boolean {
   const cell = getCell(dest.cells, x, y);
   if (!cell) return false;
@@ -128,9 +124,8 @@ describe('transfer between the built-in planets', () => {
       expect(outcome.moved.cells + outcome.dropped.cells).toBe(sourceCells);
       expect(outcome.moved.objects + outcome.dropped.objects).toBe(sourceObjects);
 
-      // The floor that is the transfer's own: of everything landing on ground the destination will
-      // take at all, essentially all of it arrives (measured 99.96% hexia→tafa, 99.8% tafa→hexia;
-      // the remainder is Γ fillets whose wrapping context did not survive the move).
+      // Of what lands on ground the destination takes, nearly all arrives; the remainder is Γ
+      // fillets whose wrapping context does not survive the move.
       let onGround = 0, lostOnGround = 0;
       for (let y = 0; y < source.template.height; y++) {
         for (let x = 0; x < source.template.width; x++) {
@@ -142,13 +137,11 @@ describe('transfer between the built-in planets', () => {
       }
       expect(keepRate(onGround - lostOnGround, lostOnGround)).toBeGreaterThanOrEqual(0.99);
 
-      // The floor over the whole build, coast included: the rest of the loss is the destination's
-      // own shore refusing a block that would bleed onto it, which no transfer can carry
-      // (measured 98.4% hexia→tafa, 97.7% tafa→hexia; objects 98.8% and 99.4%).
+      // Over the whole build the rest of the loss is the destination's shore refusing blocks that
+      // would bleed onto it, which no transfer can carry.
       expect(keepRate(outcome.moved.cells, outcome.dropped.cells)).toBeGreaterThanOrEqual(0.97);
       expect(keepRate(outcome.moved.objects, outcome.dropped.objects)).toBeGreaterThanOrEqual(0.98);
 
-      // The arriving map is rule-valid.
       expect(outcome.violations).toEqual([]);
       expect(rules.validatePostStroke(dest)).toEqual([]);
     }, 60_000);
@@ -213,11 +206,9 @@ describe('starting fresh instead', () => {
   });
 });
 
-// ── a planet that does not exist yet ─────────────────────────────────────────────────────────────
+// A planet that does not exist yet.
 
-/** A small template: grass everywhere but a two-cell void rim, and a plaza wherever it is asked
- *  for. Two of these are as different as two planets get — another size, another coastline, another
- *  plaza — and no code in the transfer knows any of it. */
+/** A small template: grass inside a two-cell void rim, with the plaza where it is asked for. */
 function tinyPlanet(id: string, width: number, height: number, plazaX: number, plazaY: number): MapTemplate {
   const zones: CellZone[][] = [];
   for (let y = 0; y < height; y++) {
@@ -285,9 +276,8 @@ describe('a planet the code has never seen', () => {
 
   it('counts what the new coast will not take', () => {
     const a = tinyPlanet('tiny-a', 20, 16, 8.5, 6.5);
-    // A narrower planet with its plaza in the same place relative to its own middle: the build
-    // slides three cells left with the plaza, and what was near the wide planet's right edge falls
-    // off the narrow one.
+    // The plaza sits at the same place relative to the middle, so the build slides three cells left
+    // and what was near the wide planet's right edge falls off.
     const narrow = tinyPlanet('tiny-narrow', 14, 16, 5.5, 6.5);
     expect(anchorOffset(a, narrow)).toEqual({ x: -3, y: 0 });
 
@@ -307,7 +297,7 @@ describe('a planet the code has never seen', () => {
   });
 });
 
-// ── plan notes ────────────────────────────────────────────────────────────────────────────────────
+// Plan notes.
 
 /** Notes on the wide tiny planet, read against the narrow one (offset (−3, 0), 14 cells wide): one of
  *  each kind landing whole, a zone half off the map, and one of each kind left behind. */
@@ -434,7 +424,6 @@ describe('provenance moves with the work', () => {
     const source = currentEditor()!.state;
     const beforeSummary = currentEditor()!.executor.getProvenanceSummary();
     expect(beforeSummary.containsProcedural).toBe(true);
-    // A generated object to follow across: pick one and remember its author.
     const someId = [...source.objects.values()].find((o) => !o.locked)!.id;
     const beforeAuthor = currentEditor()!.executor.getAuthorship().objectAuthor(someId);
 

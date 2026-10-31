@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
+import { useTouchMode } from '../design/input-mode';
 
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]';
 
@@ -16,6 +17,8 @@ interface Surface {
   onClose(): void;
   focus: 'menu' | 'contain' | 'none';
   outside: boolean;
+  /** A press outside puts the surface away and still acts on what lies beneath. */
+  passes: boolean;
   restore: boolean;
 }
 
@@ -95,12 +98,15 @@ function onClick(event: MouseEvent): void {
 
 /**
  * A press outside the foreground floating surface only puts the surface away: the press and the
- * click it completes stop here, so nothing under them (the map, another control) acts on it.
+ * click it completes stop here, so nothing under them (the map, another control) acts on it. A
+ * surface that `passes`, when no other outside-dismissed surface is open, is put away and the press goes on.
  */
 function onPointerDown(event: PointerEvent): void {
   const surface = surfaces[surfaces.length - 1];
   if (!surface?.outside || !(event.target instanceof Node)) return;
   if (surface.root.current?.contains(event.target) || surface.trigger?.current?.contains(event.target)) return;
+  // Only alone: under another open surface the press would act while that surface still stands.
+  if (surface.passes && surfaces.every((other) => other === surface || !other.outside)) { surface.onClose(); return; }
   event.preventDefault();
   event.stopImmediatePropagation();
   swallowClickUntil = performance.now() + CLICK_WINDOW_MS;
@@ -119,20 +125,28 @@ export function routeSurfaceKeyDown(event: ReactKeyboardEvent<HTMLElement>): voi
   if (event.nativeEvent.defaultPrevented) event.stopPropagation();
 }
 
-/** React ownership follows portals; the foreground surface alone handles keyboard dismissal. */
+/**
+ * React ownership follows portals; the foreground surface alone handles keyboard dismissal.
+ * `outside` puts the surface away on a press outside it; `'notice'` marks a surface nobody asked
+ * for (a hint bubble), which in touch mode lets that press act beneath too, since a finger's tap
+ * on the map is the work the notice must not cost.
+ */
 export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', outside = false }: {
   open: boolean;
   onClose(): void;
   root: RefObject<HTMLElement | null>;
   trigger?: RefObject<HTMLElement | null>;
   focus?: Surface['focus'];
-  outside?: boolean;
+  outside?: boolean | 'notice';
 }): symbol {
   const parent = useContext(SurfaceOwner);
   const openerRef = useRef<HTMLElement | null>(null);
   const id = useRef(Symbol('surface')).current;
-  const entry = useRef<Surface>({ id, parent, root, trigger, onClose, focus, outside, restore: true }).current;
-  Object.assign(entry, { parent, root, trigger, onClose, focus, outside });
+  const touch = useTouchMode();
+  const passes = outside === 'notice' && touch;
+  const dismisses = outside !== false;
+  const entry = useRef<Surface>({ id, parent, root, trigger, onClose, focus, outside: dismisses, passes, restore: true }).current;
+  Object.assign(entry, { parent, root, trigger, onClose, focus, outside: dismisses, passes });
   useLayoutEffect(() => {
     if (!open) return;
     openerRef.current = trigger?.current ?? document.activeElement as HTMLElement | null;

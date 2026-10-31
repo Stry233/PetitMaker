@@ -1,5 +1,5 @@
 /*
- * Build identity. Vite injects it exclusively from the committed `build-info.json` stamp;
+ * Build identity. Vite injects it exclusively from the committed `scripts/build-info.json` stamp;
  * `resolveVersion` derives the release line and adds `-dev` to unpublished builds. Packaged Lite
  * builds strip `-dev` before injection; local development keeps it. The `typeof` guards keep every
  * read working where Vite's `define` never ran, such as a bare unit-test import.

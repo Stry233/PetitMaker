@@ -38,7 +38,7 @@ describe('agent tool surface parity', () => {
    *
    * `suggest_reply`'s answer is the only model-authored string in the panel with a hard clip: it
    * stands inside the composer's field under `nowrap` + ellipsis, so characters past the field's
-   * width are lost — where the says line expands on a tap and a stage label wraps. The field holds
+   * width are lost (the says line expands on a tap and a stage label wraps). The field holds
    * about 30 characters in a Latin script and about 15 in CJK, on the same line that also asks for
    * the user's own language. The number is what the model obeys, so it is pinned: 60 must not appear
    * anywhere in the licence, and the licence must name both scripts.

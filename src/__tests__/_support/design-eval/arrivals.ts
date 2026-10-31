@@ -1,16 +1,10 @@
 /**
- * Do the streets end at places? `streetArrivals` already requires every end to arrive at
- * something; this asks whether the map's set pieces are what the network stops at.
+ * Whether the map's set pieces are what the street network stops at. It counts places, not ends
+ * (counting ends only separates junction density). A walk finishes at a set piece in two ways:
  *
- * It counts places rather than ends, since counting ends as spurs near a junction only separates
- * junction density. A walk finishes at a set piece in two ways:
- *
- *  - a street end faces it: `eachTerminus`' own face, within `PLACE_REACH` of the piece's box; or
+ *  - a street end (`eachTerminus`' face) stands within `PLACE_REACH` of the piece's box; or
  *  - the pavement that reaches it is a leaf of the network, as a fountain court's paved border is:
- *    it presents no terminus, but taking it away costs the network nothing else, so nothing is
- *    reached through it.
- *
- * Pure and deterministic: a finished map in, counts out.
+ *    removing it costs the network nothing else.
  */
 import type { GridState } from '../../../core/model/types';
 import type { Rect } from '../../../core/grid/rect';
@@ -19,17 +13,14 @@ import { courtBoxes } from './water';
 import { eachTerminus, readMap, type MapMasks } from '../../../tools/reading';
 import { anchorReach } from './reach';
 
-/** How far from a set piece's own box a street end, or the pavement that serves it, may stand. One
- *  composed place's own depth: past that the street stopped somewhere else. */
+/** How far from a set piece's box a street end, or the pavement serving it, may stand: one composed
+ *  place's depth. */
 export const PLACE_REACH = 5;
 
 /**
- * How much pavement removing a piece's own band may cost the network beyond that band before the band
- * reads as a through route rather than as a leaf.
- *
- * Not zero, because a border can carry a stub of its own — a doorstep spur off the court, a cell the
- * course laid on its way in — and a walk that ends at a place with a bench beside it has still ended
- * there. It is short enough that a district reached through the piece cannot hide inside it.
+ * Pavement that removing a piece's band may cost beyond the band before the band reads as a through
+ * route rather than a leaf. Not zero, since a border can carry its own stub (a doorstep spur off the
+ * court); small enough that a district reached through the piece cannot hide inside it.
  */
 const LEAF_SLACK = 12;
 
@@ -50,11 +41,8 @@ export function placeArrivals(
   state: GridState, g = readMap(state), figure?: FigureReading,
 ): PlaceArrivals {
   const box = (figure ?? figureReading(state, g)).box;
-  // The set piece and a court are the same thing where the map's largest water is its court, and one
-  // place asked about twice would answer the batch reading twice. Merged in order rather than by a
-  // first-match filter, so the answer does not depend on which pair happens to be compared first: an
-  // overlap relation is not transitive, and `A` overlapping `B` while `B` overlaps `C` leaves `A` and `C` in the
-  // list under a filter and folds all three together here.
+  // The figure and a court coincide where the largest water is the court, so overlapping boxes merge
+  // into one place, in order, so that A and C still join when each overlaps B.
   const places: Rect[] = [];
   for (const candidate of [...(box.w > 0 ? [box] : []), ...courtBoxes(state, g)]) {
     const host = places.findIndex((o) => overlaps(o, candidate));
@@ -89,8 +77,7 @@ export function placeArrivals(
   return out;
 }
 
-/** The paved cells the plaza can walk to, with `cut` treated as if it were not there. Crossings
- *  conduct through their whole 3x3, exactly as the scorecard's own connectivity reading has them. */
+/** The paved cells the plaza can walk to with `cut` removed, by the scorecard's own `anchorReach`. */
 function hubPavement(g: MapMasks, cut: ReadonlySet<number> | null): Set<number> {
   const reach = anchorReach(g.paved, g.anchor, g.crossing, g, cut);
   const out = new Set<number>();

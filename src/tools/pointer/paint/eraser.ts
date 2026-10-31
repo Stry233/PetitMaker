@@ -44,6 +44,7 @@ function groundPeel(coord: MacroCoord, cell: MacroCell | null, ctx: CurveToolCon
 /** Erases only the selected surface, with one undo entry per gesture. */
 export class EraserTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.Eraser;
+  magnifies(): boolean { return true; }
   cursor(): CursorId { return 'eraser'; }
   grid(ctx: Pick<CurveToolContext, 'arming'>): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
 
@@ -112,7 +113,7 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
     if (!this.erasing) return;
     if (ctx.arming.eraserShape === 'curve') {
       this.erasing = false;
-      if (this.chain.up(coord, ctx.eventTime) === 'finish') this.commitCurve(ctx);
+      if (this.chain.up(coord, ctx.eventTime, ctx.doubleTapMs) === 'finish') this.commitCurve(ctx);
       else this.previewCurve(coord, ctx);
       return;
     }

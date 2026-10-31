@@ -1,14 +1,11 @@
 /**
- * The shape questions the water evaluation asks of one body (does it mirror, does it band, is it long
- * and thin, is it framed by mountain, does a crossing stand at it): the vocabulary the ledger, the
- * fountain reading, the stream reading and the composition table all argue in, so they cannot
- * disagree about what they are looking at.
+ * The shape questions the water evaluation asks of one body (does it mirror, band, run long and thin,
+ * sit framed by mountain, meet a crossing), shared by every water reading so they agree on a shape.
  */
 import { NEIGHBORS4 } from '../../../core/grid/directions';
 import type { MapMasks, WaterBody } from '../../../tools/reading';
 
-/** The largest body that counts as a named accent rather than a feature: a landscape pool beside a
- *  path, not something the map has to account for. */
+/** The largest body that counts as an accent (a landscape pool beside a path) rather than a feature. */
 export const WATER_ACCENT_MAX = 6;
 
 /** Share of a side that has to be mountain for the side to read as framed. */
@@ -17,10 +14,8 @@ const FRAME_SHARE = 0.6;
 /** Band flips on one axis that make a body a comb. */
 export const COMB_FLIPS_MIN = 4;
 
-/**
- * How many times a body's bounding box flips between mostly-wet and mostly-dry bands, on its better
- * axis, where a band counts as water at 50% or more: the comb reading.
- */
+/** How many times a body's box flips between wet and dry bands on its better axis (a band is wet at
+ *  50% or more): the comb reading. */
 export function bandFlips(g: MapMasks, body: WaterBody): number {
   const { W } = g;
   const cells = new Set(body.cells);
@@ -81,14 +76,9 @@ export function bodiesTouch(g: MapMasks, a: WaterBody, b: WaterBody): boolean {
 }
 
 /**
- * How well a body mirrors about the better axis of its own box, 0 to 1: the reading that separates a
- * composed court from a blob that happens to hold an islet.
- *
- * One axis, not both. Requiring both fails a figure drawn as a single symmetric shape: a heart standing
- * in a flooded panel mirrors left to right and not top to bottom, so the banner carrying it reads as
- * unexplained water on the map's highest terrace. Only bodies that already hold an enclosed islet are
- * asked this question, so a plain rectangle — which mirrors perfectly on both axes — is not accounted
- * by it.
+ * How well a body mirrors about the better axis of its own box, 0 to 1: it separates a composed court
+ * from a blob that happens to hold an islet. One axis suffices because a single symmetric figure, such
+ * as a heart, mirrors left to right but not top to bottom.
  */
 export function mirrors(g: MapMasks, body: WaterBody): number {
   const { W } = g;
@@ -122,10 +112,10 @@ export function mountainFrame(g: MapMasks, body: WaterBody): number {
   return [top, bottom, west, east].filter(side).length;
 }
 
-/** The longest side of a body's bounding box: how far it reaches, which is what a course is. */
+/** The longest side of a body's bounding box. */
 export const extentOf = (b: WaterBody): number => Math.max(b.x1 - b.x0, b.y1 - b.y0) + 1;
 
-/** Whether the body reaches ground that is not the buildable planet: the sea. */
+/** Whether the body reaches the sea: a 4-neighbour off the grid or off the land mask. */
 export function touchesOffLand(g: MapMasks, body: WaterBody): boolean {
   const { W, H } = g;
   for (const i of body.cells) {

@@ -1,8 +1,7 @@
 // @vitest-environment node
 /**
- * The live harness: one small job through the real loop against a real model, the unscripted twin
- * of `llm-actor.test.ts`, through the `custom` adapter. Without the env triple it prints what it
- * needs and skips:
+ * One small job through the real loop against a real model via the `custom` adapter: the unscripted
+ * twin of `llm-actor.test.ts`. Without the three variables it prints what it needs and skips:
  *
  *   AGENT_LIVE_BASE_URL=https://gateway.example/v1 AGENT_LIVE_KEY=sk-… AGENT_LIVE_MODEL=Qwen3-32B \
  *   npx vitest run src/__tests__/agent/contracts.live.test.ts
@@ -36,8 +35,7 @@ const MAX_TURNS = Number(process.env.AGENT_LIVE_TURNS ?? 10);
 const TIMEOUT_MS = Number(process.env.AGENT_LIVE_TIMEOUT_MS ?? 240_000);
 const STRICT = process.env.AGENT_LIVE_STRICT === '1';
 
-/** The same order the scripted twin is given, so the two runs are comparable. Small on purpose: the
- *  subject is the shape of what comes back, and a large build only buys more of the same strings. */
+/** The scripted twin's order, so the runs compare; small, since only the shape of the strings is tested. */
 const ORDER = process.env.AGENT_LIVE_ORDER
   ?? 'Terrace the little rise at the north end of the plaza and put a lookout on top of it. '
   + 'File a short plan first, and finish with one or two sentences about what you built.';
@@ -69,15 +67,13 @@ describe.skipIf(!ARMED)('one small job against a live model', () => {
     append(log, { kind: 'checkpoint', undoIndex: 0, label: 'job' });
 
     const deps: LoopDeps = {
-      // The custom provider's own adapter and quirks: whatever the gateway speaks, it speaks it the
-      // way the app's `custom` provider does.
+      // The app's `custom` provider adapter and quirks, whatever the gateway is.
       adapter: createOpenAIAdapter({ apiKey: KEY!, baseUrl: BASE_URL!, providerId: 'custom', quirks: QUIRKS.custom }),
       model: MODEL!,
       system: buildSystemPrompt(registry),
       tools: wireSchemas(),
       executor: createExecutor(toolDeps),
-      // No human is watching, so nothing may block on a gate: `yolo` is the only honest oversight
-      // for an unattended run, and the region lock is unset for the same reason.
+      // Unattended, so nothing may block on a gate: `yolo` oversight and no region lock.
       oversight: 'yolo',
       sameModel: true,
       maxTurns: MAX_TURNS,
@@ -95,11 +91,9 @@ describe.skipIf(!ARMED)('one small job against a live model', () => {
       if (ev.kind === 'incident') console.log(`[live] incident (${ev.error.cls}): ${ev.error.detail}`);
     }
 
-    // It settled. An incident is the one outcome that says nothing about the contracts: the job never
-    // got far enough to write the strings under test.
+    // An incident means the job never got far enough to write the strings under test.
     expect(outcome, 'the job ended without an incident').not.toBe('incident');
-    // And it reached the map. Not what it built — a model may lay the rise however it likes — only
-    // that the real tool path, with the real rules behind it, applied something.
+    // What it built is the model's choice; only that the real tool path applied something is checked.
     expect(view.vitals.cells + view.vitals.objects, 'the job wrote something to the map')
       .toBeGreaterThan(0);
 

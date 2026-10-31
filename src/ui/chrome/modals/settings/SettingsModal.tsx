@@ -4,7 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import { useLocale, useT } from '../../../../i18n/context';
 import { font, radii, cursors } from '../../../design/styles';
 import { skin, windowPill } from '../../../design/window-skin';
-import { WindowHeader, windowFrame } from '../../../primitives/Window';
+import { WindowBody, WindowHeader, windowFrame } from '../../../primitives/Window';
 import { roleFont } from '../../../design/text-weight';
 import { BUILD_NUMBER } from '../../../../platform/build/build-info';
 import { LOCALES } from '../../../../core/model/locale';
@@ -25,12 +25,16 @@ import { QUALITIES_3D, type GridMode } from '../../../../platform/storage/prefs'
 import type { I18nKey } from '../../../../i18n/keys';
 import { QualityShot, picStyle, tileStyle, capStyle, MapTile, GridOverlay, ChunkOverlay, stepStyle, stepName, MotionPref, MotionDemo, choiceStyle, SYSTEM_ARROW, PAINTED_ARROW_URL } from './settings-pictures';
 import { UiScaleSlider } from './UiScaleSlider';
+import { useWindowColumns } from '../use-window-columns';
+import { useTouchMode } from '../../../design/input-mode';
+import { useMorphPresence } from '../../../primitives/morph';
 
 
 const CARD_ROW_GAP = 22;
 
-// The card scrolls past its height cap, so a landscape phone still reaches every row.
-const cardStyle: CSSProperties = { ...windowFrame, gap: CARD_ROW_GAP, overflowY: 'auto', overflowX: 'hidden' };
+const cardStyle: CSSProperties = { ...windowFrame, gap: CARD_ROW_GAP };
+/** Every row under the title scrolls together past the card's height cap; the title and Close stay. */
+const rowsStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: CARD_ROW_GAP };
 
 const langBandStyle: CSSProperties = {
   display: 'flex',
@@ -45,12 +49,15 @@ const langPill = (on: boolean): CSSProperties => ({
 
 // The two groups: what the map shows (and how it renders), and how the interface feels. The
 // grouping is the panel's only structure — no headers, each control self-describes.
-const bodyStyle: CSSProperties = {
+const bodyStyle = (columns: 1 | 2): CSSProperties => ({
   display: 'grid',
-  gridTemplateColumns: '272px 1fr',
+  gridTemplateColumns: columns === 2 ? '272px 1fr' : 'minmax(0, 1fr)',
   gap: 14,
   alignItems: 'stretch',
-};
+});
+
+/** The body's width, in css px, below which the two groups stack. */
+const SETTINGS_TWO_COLUMNS_FROM = 500;
 
 const groupStyle: CSSProperties = {
   background: WASH,
@@ -99,6 +106,12 @@ const metaPillsStyle: CSSProperties = {
   display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(0, 1fr)',
   gap: 10, alignItems: 'stretch', flex: '1 0 auto', minWidth: 0, maxWidth: '100%',
 };
+
+/** In one column the actions stand two to a row, and the last one alone takes its whole row. */
+const stackedPillsStyle: CSSProperties = {
+  ...metaPillsStyle, gridAutoFlow: 'row', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+};
+const wholeRow: CSSProperties = { gridColumn: '1 / -1' };
 
 const readoutStyle: CSSProperties = {
   flex: '1 0 auto',
@@ -182,160 +195,170 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
   const onAbout = () => setModal('about', true);
   // The tour walks the map's interface, which a planet session has set aside.
   const inSession = useEditorStore((s) => s.planetSession !== null);
+  // The cursor and the keyboard are a mouse's and a keyboard's settings.
+  const touch = useTouchMode();
+  // Shown in PC mode only, so a switch fades them out or in within the window.
+  const cursorOnly = useMorphPresence('settings-cursor');
+  const keyboardOnly = useMorphPresence('settings-keyboard');
+  const [columns, bodyRef] = useWindowColumns(SETTINGS_TWO_COLUMNS_FROM);
+  const resetAlone = columns === 1 && fullscreen.available;
 
   return (
     <>
       <WindowHeader title={t('modal.settings_title')} close={{ label: t('hint.close'), onPress: onClose }} reserve />
 
-      {/* Language — all seven endonyms visible at once; each names itself in its own script. */}
-      <div {...helpTargetAttr('settings', 'settings-language')} style={langBandStyle} role="radiogroup" aria-label={t('modal.settings_language')}>
-        {LOCALES.map((code) => (
-          <ActionButton interaction="choice"
-            key={code}
-            type="button"
-            role="radio"
-            aria-checked={locale === code}
-            style={langPill(locale === code)}
-            onClick={() => switchLocale(code)}
-         >
-            {LOCALE_INFO[code].label}
-          </ActionButton>
-        ))}
-      </div>
+      <WindowBody contentStyle={rowsStyle}>
 
-      <div style={bodyStyle}>
-        {/* The map: what shows on it, and how it renders. */}
-        <div {...helpTargetAttr('settings', 'settings-map')} style={groupStyle}>
-          <div style={rowOfTiles}>
-            {/* Each press moves to the next grid mode. */}
-            <MapTile on={gridMode !== 'off'} onPress={onCycleGrid} announce
-              name={t('modal.settings_grid')} state={t(GRID_MODE_LABELS[gridMode])}>
-              <GridOverlay mode={gridMode} shown={gridMode === 'off' ? lastGridMode : gridMode} />
-            </MapTile>
-            <MapTile on={showChunks} asSwitch onPress={() => onShowChunksChange(!showChunks)}
-              name={t('modal.settings_chunks')} state={t(showChunks ? 'modal.settings_chunks_shown' : 'modal.settings_chunks_hidden')}>
-              <ChunkOverlay on={showChunks} />
-            </MapTile>
-          </div>
-          {/* Graphics quality — governs the 3D scene and the 2D canvas's render-scale cap on a
-              software rasterizer (device-quality.ts:maxRenderScale reads this pref). Auto follows
-              the GL probe; Full and Lite pin the choice, for a misread GPU or a screenshot worth
-              the wait. Shown as the same map at each quality. */}
-          <div style={rowOfTiles} role="radiogroup" aria-label={t('modal.settings_quality3d')}>
-            {QUALITIES_3D.map((q) => (
-              <ActionButton interaction="toggle"
-                key={q}
-                type="button"
-                role="radio"
-                aria-checked={quality3d === q}
-                style={{ ...tileStyle, minWidth: 0 }}
-                onClick={() => onQuality3dChange(q)}
-             >
-                <span style={{ ...picStyle(quality3d === q), position: 'relative' }} aria-hidden>
-                  <QualityShot q={q} />
-                </span>
-                <span lang={locale} style={{ ...capStyle, overflowWrap: 'anywhere', hyphens: 'auto' }}>{t(`modal.settings_quality3d_${q}`)}</span>
-              </ActionButton>
-            ))}
-          </div>
+        {/* Language — all seven endonyms visible at once; each names itself in its own script. */}
+        <div {...helpTargetAttr('settings', 'settings-language')} style={langBandStyle} role="radiogroup" aria-label={t('modal.settings_language')}>
+          {LOCALES.map((code) => (
+            <ActionButton interaction="choice"
+              key={code}
+              type="button"
+              role="radio"
+              aria-checked={locale === code}
+              style={langPill(locale === code)}
+              onClick={() => switchLocale(code)}
+           >
+              {LOCALE_INFO[code].label}
+            </ActionButton>
+          ))}
         </div>
 
-        {/* The interface: its size, its motion, its pointer. */}
-        <div {...helpTargetAttr('settings', 'settings-feel')} style={groupStyle}>
-          <UiScaleSlider label={t('modal.settings_ui_scale')} />
-          {/* Motion preference — System follows the OS reduce-motion setting; the others
-              override it. Each step's ball performs the choice. */}
-          <div style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_motion')}>
-            {motionOptions.map((p) => (
+        <div ref={bodyRef} data-columns={columns} style={bodyStyle(columns)}>
+          {/* The map: what shows on it, and how it renders. */}
+          <div {...helpTargetAttr('settings', 'settings-map')} style={groupStyle}>
+            <div style={rowOfTiles}>
+              {/* Each press moves to the next grid mode. */}
+              <MapTile on={gridMode !== 'off'} onPress={onCycleGrid} announce
+                name={t('modal.settings_grid')} state={t(GRID_MODE_LABELS[gridMode])}>
+                <GridOverlay mode={gridMode} shown={gridMode === 'off' ? lastGridMode : gridMode} />
+              </MapTile>
+              <MapTile on={showChunks} asSwitch onPress={() => onShowChunksChange(!showChunks)}
+                name={t('modal.settings_chunks')} state={t(showChunks ? 'modal.settings_chunks_shown' : 'modal.settings_chunks_hidden')}>
+                <ChunkOverlay on={showChunks} />
+              </MapTile>
+            </div>
+            {/* Graphics quality — governs the 3D scene and the 2D canvas's render-scale cap on a
+                software rasterizer (device-quality.ts:maxRenderScale reads this pref). Auto follows
+                the GL probe; Full and Lite pin the choice, for a misread GPU or a screenshot worth
+                the wait. Shown as the same map at each quality. */}
+            <div style={rowOfTiles} role="radiogroup" aria-label={t('modal.settings_quality3d')}>
+              {QUALITIES_3D.map((q) => (
+                <ActionButton interaction="toggle"
+                  key={q}
+                  type="button"
+                  role="radio"
+                  aria-checked={quality3d === q}
+                  style={{ ...tileStyle, minWidth: 0 }}
+                  onClick={() => onQuality3dChange(q)}
+               >
+                  <span style={{ ...picStyle(quality3d === q), position: 'relative' }} aria-hidden>
+                    <QualityShot q={q} />
+                  </span>
+                  <span lang={locale} style={{ ...capStyle, overflowWrap: 'anywhere', hyphens: 'auto' }}>{t(`modal.settings_quality3d_${q}`)}</span>
+                </ActionButton>
+              ))}
+            </div>
+          </div>
+
+          {/* The interface: its size, its motion, its pointer. */}
+          <div {...helpTargetAttr('settings', 'settings-feel')} style={groupStyle}>
+            <UiScaleSlider label={t('modal.settings_ui_scale')} />
+            {/* Motion preference: Auto ('system') follows the OS reduce-motion setting; the others
+                override it. Each step's falling cell performs the choice. */}
+            <div style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_motion')}>
+              {motionOptions.map((p) => (
+                <ActionButton interaction="pill"
+                  key={p}
+                  type="button"
+                  role="radio"
+                  aria-checked={motionPref === p}
+                  style={stepStyle(motionPref === p)}
+                  onClick={() => onMotionPrefChange(p)}
+               >
+                  <MotionDemo pref={p} />
+                  <span style={stepName}>{t(`modal.settings_motion_${p}`)}</span>
+                </ActionButton>
+              ))}
+            </div>
+            {/* Cursor — the accessibility opt-out. A custom CSS cursor is an image, so it cannot
+                honour the pointer size or theme the OS is configured with; a user who relies on
+                those needs a way back. The choice shows the two arrows themselves. */}
+            {!touch && <div {...cursorOnly} style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_cursor')}>
               <ActionButton interaction="pill"
-                key={p}
                 type="button"
                 role="radio"
-                aria-checked={motionPref === p}
-                style={stepStyle(motionPref === p)}
-                onClick={() => onMotionPrefChange(p)}
+                aria-checked={!systemCursors}
+                style={choiceStyle(!systemCursors)}
+                onClick={() => onSystemCursorsChange(false)}
              >
-                <MotionDemo pref={p} />
-                <span style={stepName}>{t(`modal.settings_motion_${p}`)}</span>
+                {PAINTED_ARROW_URL ? <img src={PAINTED_ARROW_URL} alt="" width={24} height={24} /> : null}
+                {t('modal.settings_cursor_painted')}
               </ActionButton>
-            ))}
+              <ActionButton interaction="pill"
+                type="button"
+                role="radio"
+                aria-checked={systemCursors}
+                style={choiceStyle(systemCursors)}
+                onClick={() => onSystemCursorsChange(true)}
+             >
+                {SYSTEM_ARROW}
+                {t('modal.settings_cursor_system')}
+              </ActionButton>
+            </div>}
           </div>
-          {/* Cursor — the accessibility opt-out. A custom CSS cursor is an image, so it cannot
-              honour the pointer size or theme the OS is configured with; a user who relies on
-              those needs a way back. The choice shows the two arrows themselves. */}
-          <div style={{ display: 'flex', gap: 10 }} role="radiogroup" aria-label={t('modal.settings_cursor')}>
-            <ActionButton interaction="pill"
-              type="button"
-              role="radio"
-              aria-checked={!systemCursors}
-              style={choiceStyle(!systemCursors)}
-              onClick={() => onSystemCursorsChange(false)}
-           >
-              {PAINTED_ARROW_URL ? <img src={PAINTED_ARROW_URL} alt="" width={24} height={24} /> : null}
-              {t('modal.settings_cursor_painted')}
+        </div>
+
+        {/* The keyboard, painted: every keycap wears its command's category color from the live
+            keymap, so a rebind or a preset switch repaints this picture. Clicking opens the full
+            Keyboard Shortcuts window; Settings closes first so the board never opens behind it.
+            It takes the meta rows' `row` interaction, so it presses like its neighbours. */}
+        {!touch && <ActionButton interaction="row"
+          type="button"
+          aria-label={t('modal.keyboard_title')}
+          {...helpTargetAttr('shortcuts')}
+          {...keyboardOnly}
+          style={keyboardRowStyle}
+          onClick={() => { onClose(); setModal('keyboard', true); }}
+       >
+          <KeymapMiniature />
+          <span style={keyboardFootStyle}>
+            <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.plateInk }}>{t('modal.keyboard_title')}</span>
+            <span style={{ marginLeft: 'auto', ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('modal.settings_keyboard_hint')}</span>
+          </span>
+        </ActionButton>}
+
+        <div style={metaStyle}>
+          {/* Identity readout — the app and its build, drilling into About. */}
+          <ActionButton interaction="row" {...helpTargetAttr('settings', 'settings-about')} type="button" style={readoutStyle} onClick={onAbout}   aria-label={t('modal.settings_about')}>
+            <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
+            <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('about.build_number', { build: BUILD_NUMBER })}</span>
+            <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
+          </ActionButton>
+
+          <div style={columns === 1 ? stackedPillsStyle : metaPillsStyle}>
+            {fullscreen.available && (
+              <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle}>
+                {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
+              </ActionButton>
+            )}
+
+            {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
+                than holding a setting. Closes Settings before starting the tour so the modal does
+                not sit on top of the overlay it just launched. */}
+            <ActionButton interaction="pill" {...helpTargetAttr('tour')} type="button" style={metaPillStyle} disabled={inSession} onClick={() => { onClose(); startTour(); }}>
+              {t('modal.settings_tour')}
             </ActionButton>
-            <ActionButton interaction="pill"
-              type="button"
-              role="radio"
-              aria-checked={systemCursors}
-              style={choiceStyle(systemCursors)}
-              onClick={() => onSystemCursorsChange(true)}
-           >
-              {SYSTEM_ARROW}
-              {t('modal.settings_cursor_system')}
+
+            {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
+                answer and the card never changes shape under it. */}
+            <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-reset')} type="button" style={resetAlone ? { ...dangerPillStyle, ...wholeRow } : dangerPillStyle} onClick={onReset}>
+              {t('modal.settings_reset_btn')}
             </ActionButton>
           </div>
         </div>
-      </div>
-
-      {/* The keyboard, painted: every keycap wears its command's category color from the live
-          keymap, so a rebind or a preset switch repaints this picture. Clicking opens the full
-          Keyboard Shortcuts window; Settings closes first so the board never opens behind it.
-          The hover is the meta rows' own (scale 1.01/0.985), so the row presses like its
-          neighbours. */}
-      <ActionButton interaction="row"
-        type="button"
-        aria-label={t('modal.keyboard_title')}
-        {...helpTargetAttr('shortcuts')}
-        style={keyboardRowStyle}
-        onClick={() => { onClose(); setModal('keyboard', true); }}
-     >
-        <KeymapMiniature />
-        <span style={keyboardFootStyle}>
-          <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.plateInk }}>{t('modal.keyboard_title')}</span>
-          <span style={{ marginLeft: 'auto', ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('modal.settings_keyboard_hint')}</span>
-        </span>
-      </ActionButton>
-
-      <div style={metaStyle}>
-        {/* Identity readout — the app and its build, drilling into About. */}
-        <ActionButton interaction="row" {...helpTargetAttr('settings', 'settings-about')} type="button" style={readoutStyle} onClick={onAbout}   aria-label={t('modal.settings_about')}>
-          <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
-          <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('about.build_number', { build: BUILD_NUMBER })}</span>
-          <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
-        </ActionButton>
-
-        <div style={metaPillsStyle}>
-          {fullscreen.available && (
-            <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle}>
-              {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
-            </ActionButton>
-          )}
-
-          {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
-              than holding a setting. Closes Settings before starting the tour so the modal does
-              not sit on top of the overlay it just launched. */}
-          <ActionButton interaction="pill" {...helpTargetAttr('tour')} type="button" style={metaPillStyle} disabled={inSession} onClick={() => { onClose(); startTour(); }}>
-            {t('modal.settings_tour')}
-          </ActionButton>
-
-          {/* Reset local data — asks in its own dialog below, so the pill stands whatever the
-              answer and the card never changes shape under it. */}
-          <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-reset')} type="button" style={dangerPillStyle} onClick={onReset}>
-            {t('modal.settings_reset_btn')}
-          </ActionButton>
-        </div>
-      </div>
+      </WindowBody>
     </>
   );
 }

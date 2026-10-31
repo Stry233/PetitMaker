@@ -1,6 +1,9 @@
 /** The rail's layer stepper and the count that opens the layer panel. */
+import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
 import { veilTransition, group, inGroup } from './RailButton';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { TouchReach } from '../../primitives/TouchReach';
 import { mapEdgeAttr } from '../../primitives/map-edge';
 import {
   useLayoutEffect, useRef, useState, } from 'react';
@@ -12,8 +15,7 @@ import { btnReset, cursors, radii, UNAVAILABLE } from '../../design/styles';
 import {
   LAYER_STEP_RIGHT,
   LAYERS_STACK_SRC, RAIL_TOP, readoutPressLane, } from '../frame';
-import { useFrameLayout } from '../frame-layout';
-import { cssMotion } from '../../design/motion';
+import { useFrameLayout, usePlanGlide } from '../frame-layout';
 import { useDockStage } from '../use-dock';
 import { DARK_PLATE, MAP_LABEL } from '../../design/tokens';
 import { PANEL_RIGHT } from '../panel-frame';
@@ -22,6 +24,7 @@ import { EDGE_RIGHT, RAIL, TEXT } from '../units';
 import { visualRect } from '../../design/visual-rect';
 import { ELEVATION_MAX } from '../../../core/game/profile';
 import { useRunCommand } from '../use-shell-commands';
+import { useMorph } from '../../primitives/morph';
 
 /**
  * One step of the layer control: the top or the bottom half of the plate's single drawing.
@@ -30,30 +33,38 @@ import { useRunCommand } from '../use-shell-commands';
  * drawing through a window. Halving it is exact — the two blobs meet at the drawing's midline — and
  * it is what lets a spent step dim on its own while the pair stays one picture.
  */
-function LayerStep({ label, half, disabled, onPress }: {
+function LayerStep({ label, half, disabled, zoom, onPress, tourTarget }: {
   label: string;
+  /** The tour's Show me can ring this step. */
+  tourTarget?: TourTargetId;
   half: 'top' | 'bottom';
   disabled: boolean;
+  zoom: number;
   onPress: () => void;
 }) {
+  // Its own half of the plate's pill, so a focus ring follows the dome the eye sees rather than
+  // boxing half a capsule. The pill's cap is a semicircle of half its width.
+  const borderRadius = half === 'top'
+    ? `${RAIL.layer.w / 2}px ${RAIL.layer.w / 2}px 0 0`
+    : `0 0 ${RAIL.layer.w / 2}px ${RAIL.layer.w / 2}px`;
+  const name = useNameReveal(label, half === 'top' ? 'above' : 'below');
   return (
     <ActionButton
       interaction="tile"
+      {...name.bind}
+      {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       aria-label={label}
-      title={label}
       disabled={disabled}
       onClick={onPress}
       style={{
-        ...btnReset, ...inGroup, flex: 1, width: '100%', position: 'relative', overflow: 'hidden',
-        // Its own half of the plate's pill, so a focus ring follows the dome the eye sees rather
-        // than boxing half a capsule. The pill's cap is a semicircle of half its width.
-        borderRadius: half === 'top'
-          ? `${RAIL.layer.w / 2}px ${RAIL.layer.w / 2}px 0 0`
-          : `0 0 ${RAIL.layer.w / 2}px ${RAIL.layer.w / 2}px`,
+        ...btnReset, ...inGroup, flex: 1, width: '100%', position: 'relative', borderRadius,
         opacity: disabled ? UNAVAILABLE : 1,
         cursor: disabled ? cursors.blocked : cursors.clickable,
       }}
     >
+      {/* The drawing is clipped inside the button rather than by it, so the touch reach can stand
+          past the button's edge. */}
+      <span aria-hidden style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius }}>
       <img
         src={LAYERS_STACK_SRC}
         alt=""
@@ -66,6 +77,11 @@ function LayerStep({ label, half, disabled, onPress }: {
           transform: 'translateX(-50%)',
         }}
       />
+      </span>
+      {/* The two steps meet at the midline, so each grows only away from the other. */}
+      <TouchReach w={RAIL.layer.w} h={RAIL.layer.h / 2} zoom={zoom}
+        sides={half === 'top' ? { bottom: false } : { top: false }} />
+      {name.bubble}
     </ActionButton>
   );
 }
@@ -75,6 +91,8 @@ function LayerStep({ label, half, disabled, onPress }: {
  * control without moving the rail groups below it.
  */
 export function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean; onOpen: () => void; veiled: boolean }) {
+  const morph = useMorph('layer-control');
+  const glide = usePlanGlide('frame.layout.adapt');
   const weightAt = useFrameReadableWeight();
   const t = useT();
   const layout = useFrameLayout();
@@ -109,13 +127,14 @@ export function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean
   return (
     <div
       data-testid="shell-layer-control"
+      {...morph}
       {...helpTargetAttr('layers')}
       {...mapEdgeAttr('right')}
       style={{
         ...group, top: layout?.railTop ?? RAIL_TOP, right: (layout?.edgeRight ?? EDGE_RIGHT) + LAYER_STEP_RIGHT - EDGE_RIGHT, flexDirection: 'row', gap: RAIL.layer.gap,
         opacity: veiled ? 0 : 1,
         visibility: veiled ? 'hidden' : 'visible',
-        transition: [veilTransition(veiled), cssMotion('frame.layout.adapt', ['top'])].join(', '),
+        transition: [veilTransition(veiled), glide(['top'])].filter(Boolean).join(', '),
       }}
     >
       {panelOpen ? null : (
@@ -133,17 +152,20 @@ export function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean
               // Where a panel stands under part of the word the box itself goes deaf and the lane
               // below re-claims what is clear of it. The lane is a child, so a press on it still
               // reaches this button's own `onClick`.
-              ...(lane === null ? null : { position: 'relative', pointerEvents: 'none' }),
+              position: 'relative',
+              ...(lane === null ? null : { pointerEvents: 'none' }),
             }}
           >
+            {/* The plate stands at its right, so the word's reach grows left. */}
+            {lane === null && <TouchReach h={TEXT.readout} zoom={zoom} sides={{ right: false }} />}
             <span
               data-testid="shell-layer-readout"
               role="status"
               style={{
                 ...MAP_LABEL,
                 fontSize: TEXT.readout, fontWeight: weightAt(900, TEXT.readout), lineHeight: 1,
+                // Never clipped: at a line height of 1 its outline and descenders overhang the box.
                 whiteSpace: 'nowrap',
-                ...(layout?.compact ? { maxWidth: RAIL.button * 2.5, overflow: 'hidden', textOverflow: 'ellipsis' } : {}),
               }}
             >
               {word}
@@ -172,14 +194,17 @@ export function LayerControl({ panelOpen, onOpen, veiled }: { panelOpen: boolean
           >
             <LayerStep
               label={t('a11y.add_layer')}
+              tourTarget="add-layer"
               half="top"
               disabled={activeLayer >= ELEVATION_MAX}
+              zoom={zoom}
               onPress={() => run('layer.up')}
             />
             <LayerStep
               label={t('a11y.remove_layer')}
               half="bottom"
               disabled={activeLayer <= 0}
+              zoom={zoom}
               onPress={() => run('layer.down')}
             />
           </div>

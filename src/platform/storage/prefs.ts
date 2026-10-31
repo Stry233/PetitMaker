@@ -4,6 +4,8 @@
  */
 import { LOCALES, type Locale } from '../../core/model/locale';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
+import type { InputMode } from '../device/input-mode';
+import type { LayoutShape } from '../device/layout-shape';
 
 export const HINT_LEVELS = ['full', 'concise', 'off'] as const;
 export type HintLevel = typeof HINT_LEVELS[number];
@@ -65,6 +67,24 @@ const none = (): string => '';
 export const UI_ZOOM_MIN = 0.6;
 export const UI_ZOOM_MAX = 1.8;
 export const UI_ZOOM_DEFAULT = 1;
+/** Touch mode's default UI scale on an upright screen: a fingertip reads and reaches a larger interface. */
+export const TOUCH_UI_ZOOM_DEFAULT = 1.25;
+/** Touch mode's default UI scale on a wide screen, whose short height crowds the upright size. */
+export const TOUCH_WIDE_UI_ZOOM_DEFAULT = 1.05;
+
+/** Which UI scale is in force: PC mode's, or touch mode's on an upright or on a wide screen. */
+export type ScaleProfile = 'pc' | 'touch' | 'touchWide';
+
+/** The scale profile for an input mode and arrangement. */
+export function scaleProfileOf(mode: InputMode, shape: LayoutShape): ScaleProfile {
+  return mode === 'pc' ? 'pc' : shape === 'portrait' ? 'touch' : 'touchWide';
+}
+
+/** Each profile keeps its own UI scale; the one in force is the current mode's and arrangement's. */
+export const UI_ZOOM_PREFS = { pc: 'uiZoom', touch: 'touchUiZoom', touchWide: 'touchWideUiZoom' } as const satisfies Record<ScaleProfile, string>;
+export const UI_ZOOM_DEFAULTS: Readonly<Record<ScaleProfile, number>> = {
+  pc: UI_ZOOM_DEFAULT, touch: TOUCH_UI_ZOOM_DEFAULT, touchWide: TOUCH_WIDE_UI_ZOOM_DEFAULT,
+};
 
 /** A UI scale clamped to its range and rounded to two decimals, as the preference stores it. */
 export function clampUiZoom(z: number): number {
@@ -74,6 +94,8 @@ export function clampUiZoom(z: number): number {
 export const PREFS = {
   locale:         pref<Locale>({    key: 'petit-planet-locale',          parse: oneOf(LOCALES), fallback: browserLocale }),
   uiZoom:         pref<number>({    key: 'petit-planet-ui-zoom',         parse: inRange(UI_ZOOM_MIN, UI_ZOOM_MAX), fallback: () => UI_ZOOM_DEFAULT }),
+  touchUiZoom:    pref<number>({    key: 'petit-planet-touch-ui-zoom',   parse: inRange(UI_ZOOM_MIN, UI_ZOOM_MAX), fallback: () => TOUCH_UI_ZOOM_DEFAULT }),
+  touchWideUiZoom: pref<number>({   key: 'petit-planet-touch-wide-ui-zoom', parse: inRange(UI_ZOOM_MIN, UI_ZOOM_MAX), fallback: () => TOUCH_WIDE_UI_ZOOM_DEFAULT }),
   viewMode:       pref<ViewMode>({  key: 'petit-planet-view-mode',       parse: oneOf(VIEW_MODES), fallback: () => '2d' }),
   hintLevel:      pref<HintLevel>({ key: 'petit-planet-hint-level',      parse: oneOf(HINT_LEVELS), fallback: () => 'full' }),
   quality3d:      pref<Quality3d>({ key: 'petit-planet-3d-quality',      parse: oneOf(QUALITIES_3D), fallback: () => 'auto' }),
@@ -81,6 +103,8 @@ export const PREFS = {
   splashDone:     pref<string>({    key: 'petit-planet-splash-done',     parse: raw, fallback: none }),
   // Wayland Chromium can mis-size custom cursor bitmaps under fractional display scaling.
   systemCursors:  pref<boolean>({   key: 'petit-planet-system-cursors',  parse: asBool, fallback: () => false, write: fromBool }),
+  // Whether an installed app enters immersive mode at its first tap; the Settings button sets it.
+  installedImmersive: pref<boolean>({ key: 'petit-planet-installed-immersive', parse: asBool, fallback: () => true, write: fromBool }),
   motionPref:     pref<MotionPref>({ key: 'petit-planet-motion',         parse: oneOf(MOTION_PREFS), fallback: () => 'system' }),
   // Dock state persists; transient open/closed state does not.
   assistantPinned: pref<boolean>({  key: 'petit-planet-assistant-pinned', parse: asBool, fallback: () => false, write: fromBool }),
@@ -95,6 +119,8 @@ export const PREFS = {
   // Existing hint keys remain stable so dismissed hints stay dismissed.
   navGestureHint:  pref<boolean>({ key: 'petit.navGestureHintSeen',       parse: asBool, fallback: () => false, write: fromBool }),
   inAppBrowserSeen:pref<boolean>({ key: 'petit.inAppBrowserNoticeSeen',   parse: asBool, fallback: () => false, write: fromBool }),
+  // The object shelf's brush button has been pointed out once, or pressed before it was.
+  brushHintSeen:   pref<boolean>({ key: 'petit-planet-brush-hint-seen',  parse: asBool, fallback: () => false, write: fromBool }),
   // The app version this browser last opened; empty until a first visit records one.
   lastSeenVersion: pref<string>({  key: 'petit-planet-last-seen-version', parse: raw, fallback: none }),
 

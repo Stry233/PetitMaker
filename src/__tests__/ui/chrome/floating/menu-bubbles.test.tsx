@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { TOUR_OFFERED } from '../../../_support/tour';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -8,6 +9,10 @@ import { useKeybinds } from '../../../../state/keymap/store';
 import { PREFS } from '../../../../platform/storage/prefs';
 import { useEditorStore } from '../../../../state/store';
 import { setStoreModal, setStoreState } from '../../../_support/store';
+import { InputModeProvider } from '../../../../ui/design/input-mode';
+import type { InputMode } from '../../../../platform/device/input-mode';
+import type { LayoutShape } from '../../../../platform/device/layout-shape';
+import { __resetArrivals, setArrivalStanding } from '../../../../ui/session/arrival-bus';
 
 /** The task the bubbles wait through before they look. */
 const tick = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
@@ -16,9 +21,14 @@ function define(target: object, key: string, value: unknown): void {
   Object.defineProperty(target, key, { configurable: true, value });
 }
 
-/** A touch device whose browser has fullscreen, with the screen released to the bubbles. */
+/** The input mode the next render's app root provides. */
+let inputMode: InputMode = 'pc';
+/** The layout shape the next render's app root provides. */
+let shape: LayoutShape = 'landscape';
+
+/** Touch mode in a browser that has fullscreen, with the screen released to the bubbles. */
 function poseMobile(request = vi.fn().mockResolvedValue(undefined)) {
-  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)', media: q, addEventListener() {}, removeEventListener() {} }));
+  inputMode = 'touch';
   define(document, 'fullscreenEnabled', true);
   define(document.documentElement, 'requestFullscreen', request);
   define(document, 'fullscreenElement', null);
@@ -28,10 +38,12 @@ function poseMobile(request = vi.fn().mockResolvedValue(undefined)) {
 function renderBubbles(splashActive = false) {
   return render(
     <MotionConfig reducedMotion="always">
-      <I18nProvider>
-        <div data-tour-target="menu" ref={(el) => { if (el) el.getBoundingClientRect = () => ({ left: 700, top: 20, width: 40, height: 40, right: 740, bottom: 60, x: 700, y: 20, toJSON: () => ({}) }) as DOMRect; }} />
-        <MenuBubbles splashActive={splashActive} />
-      </I18nProvider>
+      <InputModeProvider inputMode={inputMode} shape={shape}>
+        <I18nProvider>
+          <div data-tour-target="menu" ref={(el) => { if (el) el.getBoundingClientRect = () => ({ left: 700, top: 20, width: 40, height: 40, right: 740, bottom: 60, x: 700, y: 20, toJSON: () => ({}) }) as DOMRect; }} />
+          <MenuBubbles splashActive={splashActive} />
+        </I18nProvider>
+      </InputModeProvider>
     </MotionConfig>,
   );
 }
@@ -40,10 +52,13 @@ const IMMERSIVE = /Immersive mode is recommended on mobile devices/;
 const HELP = /explanation/;
 
 beforeEach(() => {
-  setStoreState({ locale: 'en', portraitBlocked: false, tourRunning: false, modals: { ...useEditorStore.getState().modals, tourDone: false, help: false } });
+  inputMode = 'pc';
+  shape = 'landscape';
+  __resetArrivals();
+  setStoreState({ locale: 'en', tourRunning: false, modals: { ...useEditorStore.getState().modals, help: false } });
   useKeybinds.getState().resetAll();
   localStorage.clear();
-  localStorage.setItem(PREFS.tourSeen.key, '1');
+  localStorage.setItem(PREFS.tourSeen.key, TOUR_OFFERED);
 });
 afterEach(() => {
   cleanup();
@@ -53,6 +68,29 @@ afterEach(() => {
 });
 
 describe('MenuBubbles', () => {
+  it('on an upright window waits while the arrival notice stands, which spans the band it points into', async () => {
+    poseMobile();
+    shape = 'portrait';
+    act(() => setArrivalStanding(true));
+    renderBubbles();
+    await tick();
+    expect(screen.queryByTestId('speech-bubble')).toBeNull();
+    act(() => setArrivalStanding(false));
+    await tick();
+    expect(screen.getByRole('button', { name: IMMERSIVE })).toBeTruthy();
+  });
+
+  it('in touch mode waits for a standing arrival notice in the landscape shape too, both drawn a fingertip tall', async () => {
+    poseMobile();
+    act(() => setArrivalStanding(true));
+    renderBubbles();
+    await tick();
+    expect(screen.queryByTestId('speech-bubble')).toBeNull();
+    act(() => setArrivalStanding(false));
+    await tick();
+    expect(screen.getByRole('button', { name: IMMERSIVE })).toBeTruthy();
+  });
+
   it('invites a touch device into immersive mode and enters on a tap', async () => {
     const request = poseMobile();
     renderBubbles();
@@ -64,9 +102,9 @@ describe('MenuBubbles', () => {
     await waitFor(() => expect(screen.queryByTestId('speech-bubble')).toBeNull());
   });
 
-  it('stays away on a pointer device with nothing to say', async () => {
+  it('stays away in PC mode with nothing to say', async () => {
     poseMobile();
-    vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+    inputMode = 'pc';
     renderBubbles();
     await tick();
     expect(screen.queryByTestId('speech-bubble')).toBeNull();

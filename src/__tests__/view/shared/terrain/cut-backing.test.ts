@@ -35,8 +35,7 @@ describe('cutBackingByCorner', () => {
   });
 
   it('a from-empty gamma (patchBase 0) backs NOTHING — the notch stays open at every tier', () => {
-    // The gamma the EdgeCutTool makes over an empty notch is cosmetic: patchBase 0 = no real support, so
-    // no base block anywhere. Identical at N=2 and N=3 (consistency: every tier behaves like tier 1).
+    // The EdgeCutTool's gamma over an empty notch is cosmetic: patchBase 0 means no support, at any tier.
     const corners: Corners = ['fan', 'empty', 'empty', 'empty'];
     expect(cutBackingByCorner(cell(TerrainType.Mountain, 2, corners, true, 0), 2, at({}))).toEqual([null, null, null, null]);
     expect(cutBackingByCorner(cell(TerrainType.Mountain, 3, corners, true, 0), 3, at({}))).toEqual([null, null, null, null]);
@@ -98,9 +97,9 @@ describe('cutBackingByCorner', () => {
   });
 
   it('a TALLER cliff behind cut water still backs at the WATER\'s layer — the bank, not the cliff top', () => {
-    // The fill behind a rounded water corner is the wall at the waterline: a
-    // tier-5 cliff beside a tier-2 pool banks it at tier 2 (the 2D fill takes
-    // the bank layer's color; the 3D backing column stays at pool height).
+    // The fill behind a rounded water corner is the wall at the waterline: a tier-5 cliff beside a
+    // tier-2 pool banks it at tier 2 (the 2D fill takes the bank layer's color; the 3D backing column
+    // stays at pool height).
     const backs = cutBackingByCorner(cell(TerrainType.Water, 2, FAN_TL), 2, at({
       '-1,0': cell(TerrainType.Mountain, 5),
     }));
@@ -108,9 +107,9 @@ describe('cutBackingByCorner', () => {
   });
 
   it('Γ notch: cut water flanked by mountain is filled by that mountain, not the ground under it', () => {
-    // A pond at the foot of a mountain. The top-left corner of the water cell has
-    // mountain on both edges, so the mountain turns a corner over this cell — the rounded-away quadrant
-    // opens onto the mountain, and the junction reads as one straight line down the steps of the notch.
+    // A pond at the foot of a mountain. The top-left corner of the water cell has mountain on both
+    // edges, so the mountain turns a corner over this cell: the rounded-away quadrant opens onto the
+    // mountain, and the junction reads as one straight line down the steps of the notch.
     const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
       '-1,0': cell(TerrainType.Mountain, 1), '0,-1': cell(TerrainType.Mountain, 1),
       '-1,-1': cell(TerrainType.Mountain, 1),
@@ -135,10 +134,9 @@ describe('cutBackingByCorner', () => {
   });
 
   it('an OPEN diagonal welds too — the pinch rule governs adding MASS, and a backing adds none', () => {
-    // Two mountains attached diagonally with water in the 2x2 and bare ground on the diagonal. A Γ fillet is
-    // still refused there (it would bridge two blocks touching at a point, and you could walk between them);
-    // the backing only says what shows behind a corner already cut, so it welds the two shores rather than
-    // fabricating a grass wedge at the point where they meet.
+    // Two mountains touching diagonally around a water cell, bare ground on the diagonal. A Γ fillet is
+    // refused there, but the backing only says what shows behind a corner already cut, so it welds the
+    // two shores.
     const backs = cutBackingByCorner(cell(TerrainType.Water, 0, FAN_TL), 0, at({
       '-1,0': cell(TerrainType.Mountain, 1), '0,-1': cell(TerrainType.Mountain, 1),
     }));
@@ -153,8 +151,7 @@ describe('cutBackingByCorner', () => {
   });
 
   it('an elevated pool in the notch of a taller wall is filled at the tier the two walls meet', () => {
-    // A layer-1 pool tucked into a layer-2 wall: the wall turns its corner over the pool cell, so the
-    // rounded water opens onto the wall at layer 2, as it does for a ground-level river.
+    // The layer-2 wall turns its corner over the pool cell, so the rounded water opens onto it.
     const backs = cutBackingByCorner(cell(TerrainType.Water, 1, FAN_TL), 1, at({
       '-1,0': cell(TerrainType.Mountain, 2), '0,-1': cell(TerrainType.Mountain, 2),
       '-1,-1': cell(TerrainType.Mountain, 2),

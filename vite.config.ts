@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleReportPlugin } from './scripts/bundle-report-plugin.mts';
-import { WORKER_FILES_TOKEN, moderationDir, moderationFingerprint, workerFileCollector, workerFileInjector } from './scripts/warm-build.mts';
+import { WORKER_FILES_TOKEN, assetSizeManifest, moderationDir, moderationFingerprint, workerFileCollector, workerFileInjector } from './scripts/warm-build.mts';
 import {
   HEADERS_POLICY,
   parseExtraConnectSrc,
@@ -149,6 +149,7 @@ export default defineConfig(({ mode, command }) => {
       react(),
       ...(!lite ? [artworkBuildPlugin(), bundleReportPlugin(), webEditionBoundary()] : []),
       ...(webBuild ? [workerFileInjector(), moderationFingerprint(moderationFolder)] : []),
+      ...(!lite ? [assetSizeManifest()] : []),
       ...(!lite ? [devCspExtensionPlugin(
         viteEnv.VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC,
         viteEnv.VITE_EXTRA_FONT_SRC ?? process.env.VITE_EXTRA_FONT_SRC,

@@ -1,15 +1,7 @@
 /**
- * Does a macro work on a map someone actually has?
- *
- * `macro-quality.test.ts` asks whether a macro's result is designed rather than computed, and it
- * asks it of a fixture built for the purpose: a clean cone with a shore all round. That is the
- * right shape for those questions and the wrong one for this: a macro that only works on the
- * fixture is a macro that works nowhere, and nothing here was measuring that.
- *
- * So this generates a real planet and asks each macro at every grass cell on a grid across it, then
- * counts how often it built anything. The number is the feature's reach, and a low one is not a
- * tuning matter: aiming at ground the macro silently declines is indistinguishable, from the other
- * side of the screen, from a button that does not work.
+ * A macro's reach on a generated planet rather than the clean cone of `macro-quality.test.ts`: each
+ * macro is aimed at grass cells on a grid and the share that built anything is counted. Ground a
+ * macro silently declines looks to a person like a button that does not work.
  */
 import { describe, expect, it } from 'vitest';
 import { makeState, makeExecutor } from '../../_support/map-state';
@@ -29,16 +21,12 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
   const config: GenerateConfig = defaultConfig('designed', { maxElevation, seed });
   exec.transaction({ silent: true }, () => {
     generateWith(state, exec, config);
-    // Terrain only: the planet generator furnishes what it builds, and this fixture is
-    // about relief. What stands on it is the case's own subject, planted or laid below.
+    // Terrain only: the objects are this case's own, placed below.
     clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
   });
   exec.beginStroke().commit();
 
-  // A person's map has things standing on it, and for `roads` that is the whole question: it connects
-  // what is there, so on bare terrain its honest answer is that there is nothing to connect. It used
-  // to build on bare terrain anyway by spending its scenic-crossing budget — bridges and ramps at
-  // fords nobody could reach — so the reach measured litter rather than the verb.
+  // `roads` connects what stands on the map, so bare terrain gives it nothing to connect.
   const stalls: MacroCoord[] = [];
   for (let y = 8; y < SIZE - 8 && stalls.length < 8; y += 11) {
     for (let x = 8; x < SIZE - 8 && stalls.length < 8; x += 11) {
@@ -77,10 +65,7 @@ function reach(seed: number, maxElevation: number): Record<MacroId, number> {
 describe('a macro reaches the map a person has', () => {
   const rates = reach(7, 8);
 
-  /**
-   * Every one of them lands almost everywhere it is asked. The floor sits below the observed 82 to
-   * 100 per cent range and guards reachability rather than an exact generator rate.
-   */
+  /** Observed rates run 82 to 100 per cent. */
   it.each(['raise', 'roads', 'patch-tree', 'patch-flora'] as const)('%s builds nearly everywhere it is aimed', (id) => {
     expect(rates[id]).toBeGreaterThan(0.8);
   });

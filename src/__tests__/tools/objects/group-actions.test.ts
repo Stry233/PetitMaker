@@ -13,7 +13,7 @@ const tree = (id: string, x: number, y: number): PlacedObject => ({
   id, catalogId: 'tree-apple', position: { x, y }, rotation: 0, elevation: 0,
 });
 
-// Locked, like the real central plaza (`templateLandmarkObjects`) — `makeState`'s template plaza is
+// Locked, like the real central plaza (`templateLandmarkObjects`); `makeState`'s template plaza is
 // zero-sized (no object of its own), so a test that needs a locked member seeds one explicitly.
 const plaza = (): PlacedObject => ({
   id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 14, y: 14 }, width: 3, height: 3,

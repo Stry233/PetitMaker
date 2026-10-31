@@ -39,6 +39,11 @@ export const CURVES = {
    * from past-flat runs on this instead.
    */
   settle: { ease: bezierOf('settle') },
+  /** The two halves of a ballistic arc: `gravity` falls from rest at the top and lands at full
+   *  speed, `toss` leaves the ground at full speed and stops at the top. A bounce alternates them,
+   *  so its speed is continuous at every turn and every landing. */
+  gravity: { ease: bezierOf('gravity') },
+  toss: { ease: bezierOf('toss') },
   /** Slows into each extreme and out of it again. The shape of a thing that swings rather than one
    *  that arrives: a back-and-forth on any of the three above has a corner at the turn, which reads
    *  as a machine reversing. A tween, and for a repeating motion its length is one whole cycle. */
@@ -66,12 +71,12 @@ export function isTween(id: CurveId): boolean {
   return !('type' in CURVES[id]);
 }
 
-/** The same three as CSS timing functions, for a motion driven by a transition rather than by
- *  Framer. Kept beside their spring twins so a curve's two spellings cannot drift apart. */
+/** Every curve as a CSS timing function, for a motion driven by a transition rather than by Framer
+ *  (a spring as its nearest bezier). Kept beside the Framer spellings so the two cannot drift apart. */
 export const CSS_CURVES = {
   bouncy: easing.springBouncy,
   stiff: easing.springStiff,
-  gentle: easing.punchy,
+  gentle: easing.springGentle,
   punchy: easing.punchy,
   expand: easing.expand,
   breathing: easing.breathing,
@@ -81,6 +86,8 @@ export const CSS_CURVES = {
   easeOut: 'ease-out',
   accel: easing.accel,
   settle: easing.settle,
+  gravity: easing.gravity,
+  toss: easing.toss,
   swing: 'ease-in-out',
   linear: 'linear',
 } as const satisfies Record<CurveId, string>;

@@ -173,7 +173,7 @@ export function createRegionBrush(port: RegionBrushPort): RegionBrush {
     }
   };
 
-  const done = (time?: number) => {
+  const done = (time?: number, windowMs?: number) => {
     if (!stroking) return;
     const tool = port.tool();
     if (moving) {
@@ -184,7 +184,7 @@ export function createRegionBrush(port: RegionBrushPort): RegionBrush {
     if (tool === 'free' || tool === 'erase') { commit(); return; }
     if (tool === 'curve') {
       pressing = false;
-      if (!last || chain.up(last, time) !== 'finish') return;
+      if (!last || chain.up(last, time, windowMs) !== 'finish') return;
       shape = footprint(last, chain.points);
       chain.clear();
     }

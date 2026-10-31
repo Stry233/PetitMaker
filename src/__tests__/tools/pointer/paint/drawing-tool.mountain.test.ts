@@ -35,7 +35,7 @@ describe('DrawingTool: mountain builds to the selected layer', () => {
   it('[EDIT-07] caps an unsupported N>=4 pillar at the highest valid layer (warns)', () => {
     const state = makeState(10, 10);
     brushAt(state, exec(state), { x: 5, y: 5 }, 4); // select layer 4, no 3x3 base
-    // V-MTN-03 reverts only the illegal top — a lone pillar settles at layer 3.
+    // V-MTN-03 reverts only the illegal top: a lone pillar settles at layer 3.
     expect(elevAt(state, 5, 5)).toBe(3);
   });
 
@@ -142,7 +142,7 @@ describe('DrawingTool: mountain auto-stacking', () => {
 });
 
 // A fast freehand drag fires few pointer samples; the brush must fill the whole path between them so the
-// stroke is a continuous edge-connected band — not isolated blocks joined by a diagonal.
+// stroke is a continuous edge-connected band, not isolated blocks joined by a diagonal.
 describe('DrawingTool: fast-drag continuity', () => {
   it('[EDIT-04] a single far move paints every cell on the 4-connected path (no gaps)', () => {
     const state = makeState(12, 12);
@@ -151,7 +151,7 @@ describe('DrawingTool: fast-drag continuity', () => {
     const ctx = makeToolCtx(state, ex, 1, 1);
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     tool.onPointerDown(cell(m(2, 2)), point(m(2, 2)), ctx);  // start
-    tool.onPointerMove(cell(m(7, 5)), point(m(7, 5)), ctx);  // One fast jump (+5, +3) — no intermediate samples
+    tool.onPointerMove(cell(m(7, 5)), point(m(7, 5)), ctx);  // One fast jump (+5, +3): no intermediate samples
     tool.onPointerUp(cell(m(7, 5)), point(m(7, 5)), ctx);
     // every cell along the interpolated 4-connected path is painted, not only the endpoints
     for (const p of line4(2, 2, 7, 5)) expect(elevAt(state, p.x, p.y), `(${p.x},${p.y}) painted`).toBe(1);
@@ -159,7 +159,7 @@ describe('DrawingTool: fast-drag continuity', () => {
 });
 
 // Atomic undo: with auto-trim on, the trim/fill commands fold into the
-// last block entry of the stroke — undo steps are block creations only.
+// last block entry of the stroke: undo steps are block creations only.
 describe('DrawingTool: auto-trim undo folding (ATOMIC UNDO)', () => {
   it('[EDIT-19] a click with auto-trim on undoes in ONE step (block + its trims together)', () => {
     const state = makeState(10, 10);

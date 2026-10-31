@@ -3,7 +3,7 @@
  * Accessibility acceptance criteria for the legal surfaces:
  *  - keyboard only: open a doc, reach the language toggle, Escape closes, focus returns to the
  *    element focused when the modal mounted (ModalShell's trap is unit-tested in `modal-shell.test`);
- *  - accessible names for the back button, the language selector and the "open page" link;
+ *  - accessible names for the back button and the language selector;
  *  - WCAG contrast of `PROSE` text, and of the About view's small print on the surface it renders on;
  *  - the React table wrapper's `overflow-x: auto`, matching the static pages' `.tbl`;
  *  - reduced motion: with `MotionGlobalConfig.skipAnimations` the About view swap is synchronous;
@@ -18,17 +18,14 @@ import { LegalMarkdown } from '../../ui/primitives/LegalMarkdown';
 import { parseLegalMarkdown } from '../../legal/markdown';
 import { DOCS, docNodes, type DocId } from '../../legal/registry';
 import { LEGAL } from '../../legal/config';
-import { I18nProvider } from '../../i18n/context';
-import { TourOverlay } from '../../ui/chrome/tour/TourOverlay';
-import { SHELL_TOUR_STEPS } from '../../ui/shell/tour/tour-steps';
+import { I18nProvider, translateFor } from '../../i18n/context';
+import { Tour } from '../../ui/chrome/tour/Tour';
 import { startTour } from '../../ui/chrome/tour/use-tour';
 import { useEditorStore } from '../../state/store';
-import { MUTED, ON_DARK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY } from '../../ui/design/tokens';
+import { MUTED, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY } from '../../ui/design/tokens';
 import { setStoreState } from '../_support/store';
 
-// ── WCAG 2.x relative-luminance contrast ratio, computed from the hex tokens
-//    themselves (no external library) — the same formula as
-//    https://www.w3.org/TR/WCAG21/#dfn-relative-luminance. ─────────────────
+// WCAG 2.x contrast ratio from hex tokens: https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
   const r = parseInt(h.slice(0, 2), 16);
@@ -57,8 +54,7 @@ function contrastRatio(hexA: string, hexB: string): number {
 
 const AA_BODY_TEXT = 4.5;
 
-/** A rendered inline color as hex. jsdom normalises `color`/`background` to `rgb(r, g, b)`, so a
- *  contrast check on what an element actually renders has to come back through this. */
+/** A rendered inline color as hex; jsdom normalises `color` and `background` to `rgb(r, g, b)`. */
 function renderedHex(value: string): string {
   const rgb = /rgb\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(value);
   if (rgb) return `#${rgb.slice(1, 4).map((c) => Number(c).toString(16).padStart(2, '0')).join('')}`;
@@ -67,8 +63,8 @@ function renderedHex(value: string): string {
   return hex[0];
 }
 
-/** The nearest value `read` gives on `el` or an ancestor, which is how an inherited colour and the
- *  surface showing through transparent boxes resolve. */
+/** The nearest value `read` gives on `el` or an ancestor: how inherited colour and a surface showing
+ *  through transparent boxes resolve. */
 function nearest(el: HTMLElement, read: (at: HTMLElement) => string | null): string {
   for (let at: HTMLElement | null = el; at; at = at.parentElement) {
     const value = read(at);
@@ -127,31 +123,26 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
   });
 
   it('MUTED (used for the zh-only note / doc footer bar) passes against surfaceSecondary too', () => {
-    // The zh-only note sits on `surfaceSecondary`, not `panelCream` — a
-    // slightly darker background, so it needs its own check.
+    // The zh-only note sits on the slightly darker `SURFACE_SECONDARY`.
     expect(contrastRatio(MUTED, SURFACE_SECONDARY)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  it("the brand lockup's tagline passes AA on both surfaces it appears on", () => {
-    // BrandLockup's tagline is `MUTED`. It renders on the About modal's card
-    // (surfacePrimary) and, once the tour's welcome step lands, on a white bubble.
+  it("the brand lockup's tagline passes AA on the About card, the one surface it appears on", () => {
     expect(contrastRatio(MUTED, PLATE)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
-    expect(contrastRatio(MUTED, ON_DARK)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
   });
 
-  it("the tour bubble's body, skip link and progress counter pass AA against the bubble's own background", () => {
-    // Rendered, not tokens: a pair of assertions over `MUTED` stays green with
-    // TourOverlay reverted to the failing textSecondary, which is what it is meant to catch. The
-    // background comes off the card too, so the check cannot drift from the surface it is about.
+  it("the welcome tips' words, Skip and Next pass AA against the window's own background", () => {
+    // Read off the rendered window and text, so a failing colour in the deck cannot hide behind tokens.
     startTour();
     try {
-      render(<I18nProvider><TourOverlay steps={SHELL_TOUR_STEPS} /></I18nProvider>);
-      const card = screen.getByRole('dialog');
+      render(<I18nProvider><Tour /></I18nProvider>);
+      const card = screen.getByTestId('tour-deck');
       const surface = renderedHex(card.style.background);
       const texts = [
-        screen.getByText(/^Plan a map here/),          // the step's body
-        screen.getByRole('button', { name: 'Skip tour' }),
-        screen.getByText(/^Step 1 of/),
+        // The live card's words; every card's words also stand unseen to hold their room.
+        within(card.querySelector<HTMLElement>('[data-tour-words]')!).getByText(translateFor('en', 'tour.welcome_body')),
+        screen.getByRole('button', { name: 'Skip' }),
+        screen.getByRole('heading'),
       ];
       for (const el of texts) {
         expect(contrastRatio(renderedHex(el.style.color), surface)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
@@ -192,8 +183,7 @@ describe('contrast — WCAG AA (>=4.5:1) for body text against panelCream', () =
   });
 });
 
-// The disclaimer's i18n key resolves through `useT`; match loosely by role/
-// text-content instead of hardcoding the English string twice.
+// A loose text match, so the disclaimer's English copy is not restated here.
 function LEGAL_DISCLAIMER_MATCH() {
   return /fan project|同人项目/i;
 }
@@ -211,9 +201,8 @@ describe('table overflow — the React emitter wraps tables in a scrollable box'
 describe('heading hierarchy — every rendered doc has exactly one h1, no skipped levels', () => {
   const ids = Object.keys(DOCS) as DocId[];
 
-  // `docNodes` (not the raw parser) — same node tree LegalDocView renders,
-  // incl. the synthetic-h1 fallback for a raw doc with no markdown heading
-  // (license, pinned byte-exact by license-files.test.ts).
+  // `docNodes` is the tree LegalDocView renders, including the synthetic h1 for a doc with no
+  // markdown heading (the licence, pinned byte-exact by license-files.test.ts).
   for (const id of ids) {
     it(`${id} (en): exactly one h1, no skipped heading levels`, () => {
       const nodes = docNodes(id, 'en', LEGAL, DOCS[id].titleKey);
@@ -243,15 +232,9 @@ describe('heading hierarchy — every rendered doc has exactly one h1, no skippe
 });
 
 describe('reduced motion — the About-modal A<->B view transition is instant', () => {
-  // `LegalDocView` is a `React.lazy` chunk (the legal bundle stays
-  // out of the main chunk until a doc is opened). The lazy() wrapper memoizes
-  // its resolved payload on the module-level object itself, independent of
-  // any one render tree — so warming it here with one real `await` means
-  // every later mount in this file (including the assertions below that
-  // must not use `waitFor`) sees it already resolved and renders
-  // synchronously. Without this warm-up the first doc-view mount in the
-  // process always suspends for a microtask regardless of motion settings,
-  // which would make the "no waitFor" assertion flaky on suite ordering.
+  // `LegalDocView` is a `React.lazy` chunk, and lazy() memoizes its payload module-wide: resolving it
+  // once here keeps the first doc-view mount below from suspending, so the no-`waitFor` assertions do
+  // not depend on suite order.
   beforeAll(async () => {
     const { unmount } = renderModal();
     fireEvent.click(screen.getByTestId('legal-row-privacy'));
@@ -263,11 +246,8 @@ describe('reduced motion — the About-modal A<->B view transition is instant', 
     MotionGlobalConfig.skipAnimations = true;
     try {
       renderModal();
-      // No `waitFor` (no polling/retry) — with animations globally skipped,
-      // the transition is done after one microtask flush. `act()` here is
-      // not a retry loop, just the standard React-batching boundary around
-      // that single flush so framer-motion's post-transition effects settle
-      // before we assert (and don't leak an act warning into a later test).
+      // With animations skipped the swap completes after one microtask flush; `act()` lets
+      // framer-motion's effects settle so no act warning leaks into a later test.
       await act(async () => {
         fireEvent.click(screen.getByTestId('legal-row-privacy'));
         await Promise.resolve();
@@ -307,18 +287,14 @@ describe('accessible names — back button, language selector', () => {
 
     expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Document language' })).toBeTruthy();
-    // There is no in-modal "open as page" link (static pages exist, but
-    // the doc view carries no external link).
+    // Static pages exist, but the doc view links to none.
     expect(screen.queryByRole('link', { name: /open as page/i })).toBeNull();
   });
 });
 
 describe('keyboard-only walkthrough', () => {
-  // Harness: a real "opener" button (focus lands here before the modal opens,
-  // matching App.tsx's `onClick={() => setShowAbout(true)}` immediately
-  // followed by conditional-mount) that mounts/unmounts AboutModal itself, so
-  // ModalShell's mount-time opener capture + unmount-time restore both fire
-  // for real, exactly as they would in the app.
+  // A real opener that mounts and unmounts AboutModal, as the app does, so ModalShell's opener
+  // capture on mount and focus restore on unmount both run.
   function KeyboardHarness() {
     const [open, setOpen] = useState(false);
     return (
@@ -338,11 +314,8 @@ describe('keyboard-only walkthrough', () => {
     const row = screen.getByTestId('legal-row-privacy');
     row.focus();
     expect(document.activeElement).toBe(row);
-    // A real Tab+Enter activates a focused <button> natively in every
-    // browser; jsdom has no PointerEvent (framer-motion's press gesture
-    // dispatches one on a synthesized keydown-Enter), so — matching every
-    // other row-activation test in this suite (see about-modal.test.tsx) —
-    // the click is fired directly as Enter's behavioral equivalent.
+    // Enter on a focused <button> is a native click; jsdom lacks the PointerEvent framer-motion's
+    // press gesture dispatches on keydown, so the click is fired directly.
     fireEvent.click(row);
 
     await screen.findByRole('heading', { level: 1, name: 'Privacy Policy' });
@@ -361,8 +334,7 @@ describe('keyboard-only walkthrough', () => {
   });
 });
 
-// In-modal cross-doc links must switch the doc view in place, not
-// full-page navigate out of the SPA.
+// Cross-doc links switch the doc view in place rather than navigating out of the app.
 describe('in-modal cross-doc links', () => {
   it('LegalMarkdown intercepts an internal slug link: preventDefault + onInternalLink(slugPath)', () => {
     const calls: string[] = [];
@@ -406,7 +378,7 @@ describe('in-modal cross-doc links', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Terms of Use' }));
     await screen.findByRole('heading', { level: 1, name: 'Terms of Use' });
 
-    // The previous doc's h1 is gone — the view switched in place.
+    // The previous doc's h1 is gone: the view switched in place.
     expect(screen.queryByRole('heading', { level: 1, name: 'Contact Us' })).toBeNull();
   });
 });

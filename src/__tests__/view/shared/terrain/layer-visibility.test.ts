@@ -1,7 +1,7 @@
 /**
  * Which cells a layer-visibility toggle may re-tier: exactly those whose
- * elevation reaches the lowest toggled layer — the contract that keeps a
- * panel click from rebuilding the whole terrain layer.
+ * elevation reaches the lowest toggled layer, so a panel click never rebuilds
+ * the whole terrain layer.
  */
 import { describe, it, expect } from 'vitest';
 import { cellsAffectedByLayerToggle } from '../../../../view/shared/terrain/layer-visibility';

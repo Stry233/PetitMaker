@@ -41,7 +41,7 @@ describe.runIf(PERF)('perf: map3d', () => {
 
   it('terrain: one dense chunk remesh (the cells-changed path)', async () => {
     const { state } = denseIsland();
-    // Chunk (3,4) sits under the plaza — the map's densest mesh, mixing mountain strata, water
+    // Chunk (3,4) sits under the plaza: the map's densest mesh, mixing mountain strata, water
     // and cut corners, so it is the chunk an edit there actually pays to remesh.
     const one = buildChunkTerrain(state, 3, 4);
     const verts = one.solid.positions.length + one.ground.positions.length + one.water.positions.length + one.fall.positions.length;
@@ -71,7 +71,7 @@ describe.runIf(PERF)('perf: map3d', () => {
   it('models: build-model over every catalog item with a model3d spec', async () => {
     const ids = modeledIds();
     await s.bench('models/build-all', () => {
-      // buildModel direct, bypassing registry.ts's own cache (modelGeometry) — this measures
+      // buildModel direct, bypassing registry.ts's own cache (modelGeometry); this measures
       // the build, not a hit against it.
       for (const id of ids) buildModel(getSpec(id)!);
     }, {

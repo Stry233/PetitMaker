@@ -54,8 +54,7 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('culls the shared wall between two equal-height neighbors (per-layer strata)', () => {
-    // two adjacent mtn(2): each emits top (1) + 3 exposed walls × 2 strata = 7
-    // quads (the shared wall is culled both ways) → 14 quads total = 56 verts.
+    // Each mtn(2) emits a top and 3 exposed walls × 2 strata: 14 quads, 56 verts.
     const m = buildTerrainMeshes(gridFrom([[mtn(2), mtn(2)]]));
     expect(m.solid.positions.length / 3).toBe(56);
   });
@@ -72,15 +71,14 @@ describe('preview3d/terrain-geometry', () => {
     const cut = (): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 1, corners: ['empty', 'square', 'square', 'square'] } });
     const f = buildTerrainMeshes(gridFrom([[full()]]));
     const c = buildTerrainMeshes(gridFrom([[cut()]]));
-    // both take the bevel path and emit geometry; the empty corner yields strictly less.
+    // Both take the bevel path; the empty corner yields strictly less.
     expect(c.solid.positions.length).toBeGreaterThan(0);
     expect(c.solid.positions.length).toBeLessThan(f.solid.positions.length);
   });
 
   it('a cut mountain corner over a lower step is BACKED by that step (no hole) — mirrors 2D cut-backing', () => {
-    // Cut cell mtn(2) at (1,1) with its TL corner rounded (an OUT-corner cut); the cells left + above it
-    // are mtn(1), so the TL corner reveals tier 1. The fix backs the cut quadrant with a tier-1 top (a step
-    // down) instead of leaving an open hole. A full-square mtn(2) in the same spot has no tier-1 top.
+    // mtn(2) at (1,1) with its TL corner rounded, among mtn(1) cells left and above: the cut quadrant
+    // shows a tier-1 top, which a full-square mtn(2) does not have.
     const cut = (): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 2, corners: ['fan', 'square', 'square', 'square'] } });
     const cutMeshes = buildTerrainMeshes(gridFrom([[mtn(1), mtn(1)], [mtn(1), cut()]]));
     const ctrlMeshes = buildTerrainMeshes(gridFrom([[mtn(1), mtn(1)], [mtn(1), mtn(2)]]));
@@ -90,14 +88,12 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('a from-empty Γ (gamma) patch (patchBase 0) has no base — only the fillet renders, notch stays empty', () => {
-    // A from-empty gamma is cosmetic (patchBase 0): the fillet renders at its tier, but there is no base
-    // block at any quadrant. Patch mtn(3) fillet in the notch (1,1) of an L-shaped tier-3 mass.
+    // A mtn(3) fillet in the notch (1,1) of an L-shaped tier-3 mass.
     const patch = (): MacroCell => ({ zone: CellZone.Grass, terrain: { type: TerrainType.Mountain, elevation: 3, patchOnly: true, patchBase: 0, corners: ['fan', 'empty', 'empty', 'empty'] } });
     const m = buildTerrainMeshes(gridFrom([[mtn(3), mtn(3)], [mtn(3), patch()]]));
     const { x: fx0, z: fz0 } = cellCornerWorld(1, 1, 2, 2, TERRAIN_GRID);
-    // Every horizontal top-face triangle that lies entirely inside the patch cell must sit in its TL (fan)
-    // quadrant — the three empty quadrants carry no geometry. (Whole-triangle scoping excludes neighbour
-    // tops that merely touch the shared footprint edge.)
+    // Every top-face triangle wholly inside the patch cell sits in its TL (fan) quadrant; whole-triangle
+    // scoping excludes neighbour tops that touch the shared edge.
     const p = m.solid.positions, idx = m.solid.index;
     const inFoot = (v: number) => p[v * 3]! >= fx0 - 1e-6 && p[v * 3]! <= fx0 + 1 + 1e-6 && p[v * 3 + 2]! >= fz0 - 1e-6 && p[v * 3 + 2]! <= fz0 + 1 + 1e-6;
     const inTL = (v: number) => p[v * 3]! <= fx0 + 0.5 + 1e-6 && p[v * 3 + 2]! <= fz0 + 0.5 + 1e-6;
@@ -116,9 +112,8 @@ describe('preview3d/terrain-geometry', () => {
     // The concave inner corner of an L pool: water on two edges, a grass cell whose TL corner is cut.
     const withCut = buildTerrainMeshes(gridFrom([[w0(), w0()], [w0(), island(['fan', 'square', 'square', 'square'])]]));
     const noCut = buildTerrainMeshes(gridFrom([[w0(), w0()], [w0(), island(['square', 'square', 'square', 'square'])]]));
-    // The cut instead opens onto the water it sits in — a reveal the uncut cell has no reason to draw.
+    // The cut opens onto the water it sits in.
     expect(withCut.water.positions.length).toBeGreaterThan(noCut.water.positions.length);
-    // It reads as ground — no mountain solid.
     expect(withCut.solid.positions.length).toBe(0);
   });
 
@@ -133,8 +128,6 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('a trimmed water cell honours the edge-cut: the water surface follows the cut, unlike the full square', () => {
-    // A water branch that ignores t.corners produces the same full-square surface for a cut cell
-    // as for an uncut one. A real cut must reshape the translucent water footprint.
     const square = buildTerrainMeshes(gridFrom([[water(0, ['square', 'square', 'square', 'square'])]]));
     const cut = buildTerrainMeshes(gridFrom([[water(0, ['fan', 'square', 'square', 'square'])]]));
     expect(cut.water.positions.length).not.toBe(square.water.positions.length);
@@ -148,21 +141,18 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('an elevated trimmed pond routes its tall cut faces to the animated fall mesh', () => {
-    // e=1 → yTop ≥ FALL_MIN, so exposed faces are cascades (fall mesh). The fan corner creates a
-    // new exposed cut face that must fall, just like a square pond rim does.
+    // At e=1 the top is at least FALL_MIN, so exposed faces, the fan's cut face included, are cascades.
     const square = buildTerrainMeshes(gridFrom([[water(1)]]));
     const cut = buildTerrainMeshes(gridFrom([[water(1, ['fan', 'square', 'square', 'square'])]]));
-    expect(square.fall.positions.length).toBeGreaterThan(0); // a lone pond's 4 rims fall
-    expect(cut.fall.positions.length).toBeGreaterThan(0);     // the cut face also falls
+    expect(square.fall.positions.length).toBeGreaterThan(0);
+    expect(cut.fall.positions.length).toBeGreaterThan(0);
   });
 
   const wallVerts = (m: ReturnType<typeof buildTerrainMeshes>) => m.water.positions.length + m.fall.positions.length;
 
   it('a fan water corner produces position-invariant walls (no float-epsilon phantom mid-line seams)', () => {
-    // fanPoly's arc endpoints must land exactly on the grid so a fan quadrant's straight edges cancel
-    // against square siblings. If they are ~1e-16 off, cells near the map centre (where the residue
-    // survives double precision) sprout phantom interior walls down their mid-lines while off-centre
-    // cells don't — so the same cell renders differently by position. Walls must be translation-invariant.
+    // fanPoly's arc endpoints land exactly on the grid; a residue of ~1e-16 survives double precision
+    // only near the map centre and would sprout phantom mid-line walls there.
     const fan: MacroCell = { zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 1, corners: ['fan', 'square', 'square', 'square'] } };
     const atCentre = buildTerrainMeshes(gridFrom([[fan]])); // straddles the map centre (|mx| < 1.5)
     const offRow: MacroCell[] = [];
@@ -172,10 +162,8 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('a patchOnly inner-fan rim is cull-tested exactly (side classification is float-exact)', () => {
-    // A Γ-patch (inner) fan's straight edges lie on cell sides and must get the rim neighbour-cull. The
-    // same fanPoly endpoint snap keeps those endpoints exact so the `=== x0` side test matches; otherwise
-    // a patch on the float-fragile centre column draws a phantom rim through its equal/taller water
-    // neighbour. Body+patch topology is identical in both grids, so any delta is purely that float bug.
+    // A Γ-patch fan's straight edges lie on cell sides, and the endpoint snap keeps the `=== x0` side
+    // test exact. Both grids hold the same body and patch, so any difference is float error.
     const body: MacroCell = { zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 2 } };
     const patch: MacroCell = { zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 2, patchOnly: true, corners: ['fan', 'square', 'square', 'square'] } };
     const fragile = buildTerrainMeshes(gridFrom([[grass(), body, patch]])); // patch at cx=2 → its left side lands on world x=0
@@ -186,8 +174,7 @@ describe('preview3d/terrain-geometry', () => {
   });
 
   it('terrain is shifted onto the terrain grid relative to the object-grid zone slab', () => {
-    // One grass and mountain cell: the zone slab is on the object grid and the mountain block on
-    // the terrain grid, as 2D draws it, so it stays inset.
+    // The zone slab is on the object grid and the mountain block on the terrain grid, as in 2D.
     const m = buildTerrainMeshes(gridFrom([[mtn(1)]]));
     expect(minX(m.solid.positions)).toBeCloseTo(minX(m.ground.positions) + gridOffset(TERRAIN_GRID).x);
   });

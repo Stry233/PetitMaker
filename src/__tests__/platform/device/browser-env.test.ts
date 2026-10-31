@@ -1,7 +1,6 @@
 /**
  * In-app browser detection. It is a user-agent guess, so the tests that matter most are the
- * Negative ones: a false positive puts a notice in front of someone who does not need it, and the
- * portrait guard leans on the same signal.
+ * negative ones: a false positive puts a notice in front of someone who does not need it.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { isInAppBrowser } from '../../../platform/device/browser-env';

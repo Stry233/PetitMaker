@@ -158,7 +158,7 @@ describe('road region fill', () => {
     fallback.add('path-garden-stone');
     const { layer } = layerWith([road('path-garden-stone', 3), road('path-garden-stone', 4)]);
     // A teardown destroys the nodes from above. Pixi nulls the geometry on the first destroy, so a
-    // second one throws — and this drop runs inside the image's onload.
+    // second one throws, and this drop runs inside the image's onload.
     for (const g of regionGraphics(layer)) g.destroy();
 
     art.canvas = loadedArt();

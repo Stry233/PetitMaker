@@ -49,9 +49,9 @@ describe('template-mask model shapes', () => {
   const inMask = (index: number) => frozen[index] === 1;
   const terrain = (): CellFields => ({ type: 1, elevation: 2, corners: null, patchOnly: false, patchBase: null });
 
-  // Revision 1 froze each planet's grass while the plaza stood at its earlier place: the cells that
-  // plaza covered are outside the mask, and the moved plaza covers masked cells. Tafa's coast has moved
-  // since: masked cells that turned to sand or rim, and new grass outside the mask.
+  // Revision 1 froze each planet's grass while the plaza stood elsewhere: the cells that plaza
+  // covered are outside the mask, and the plaza's current place covers masked cells. Tafa's coast
+  // also differs: masked cells that are sand or rim, and grass outside the mask.
   it('pins revision 1 coordinates for both built-in templates', () => {
     for (const [id, expectedCount, freed, covered, receded] of [['hexia', 15_846, 137, 183, 0], ['tafa', 15_914, 156, 166, 59]] as const) {
       const current = getMapTemplate(id);

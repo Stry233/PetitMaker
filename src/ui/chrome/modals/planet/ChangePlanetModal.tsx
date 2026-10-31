@@ -1,4 +1,3 @@
-// Content-height changes animate inside ModalShell independently of its open/close motion.
 import { SUPPORTS_JSON_FILES, SUPPORTS_VIDEO_IMPORT } from '../../../../platform/build/edition';
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
@@ -21,14 +20,14 @@ import { useMapDerived } from '../../../session/use-map-derived';
 import { useUndoDepth } from '../../../session/use-undo-depth';
 import { hasUnsavedEdits } from '../../../../state/unsaved-edits';
 import { radii } from '../../../design/styles';
-import { LoadingDots } from '../../../primitives/LoadingDots';
 import { RenderBoundary } from '../../../primitives/RenderBoundary';
 import { ChunkNotice } from '../../guards/FailureNotice';
 import { ActionButton } from '../../../primitives/ActionButton';
+import { useNameReveal } from '../../../primitives/use-name-reveal';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { DuplicateIcon, EditIcon, ExportFileIcon, RenameIcon, TrashIcon } from '../../../primitives/line-glyphs';
 import { useSizeGlide } from '../../../primitives/use-size-glide';
-import { WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
+import { WindowBody, WindowFooter, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
 import { useOpenCount } from '../../../primitives/use-open-count';
 import { skin, windowIconButton } from '../../../design/window-skin';
 import { ERROR, PANEL_EDGE } from '../../../design/tokens';
@@ -45,6 +44,7 @@ import { usePlanetLibrary, usePlanetName } from './use-planet-library';
 import { loadPlanetImportWindow } from '../../loaders';
 import { useHandedImport } from '../import/use-handed-import';
 import { ExportFirstButton } from '../ExportFirstButton';
+import { useWindowColumns } from '../use-window-columns';
 
 interface ChangePlanetModalProps extends WindowProps {
   /** The verb: open `target` (a built-in's id, or any other planet's template), carrying this map's build along or leaving it behind. */
@@ -69,13 +69,23 @@ const PlanetImportWindow = SUPPORTS_VIDEO_IMPORT ? lazy(loadPlanetImportWindow) 
 /** The backdrop under Import planet's window, which blurs the page itself: one blur is enough, and
  *  the window drops its own while it reads a video. */
 const UNBLURRED: CSSProperties = { backdropFilter: 'none', WebkitBackdropFilter: 'none' };
-const cardStyle: CSSProperties = { ...windowFrame, overflowY: 'auto', overflowX: 'hidden' };
+const cardStyle: CSSProperties = windowFrame;
 
 /** Everything inside the card, and the box whose height eases; it clips while it travels. */
-const bodyStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18 };
-const stepsStyle: CSSProperties = { position: 'relative' };
-const splitStyle: CSSProperties = { display: 'flex', gap: 20, height: 420 };
+const bodyStyle: CSSProperties = { ...windowColumn, gap: 18 };
+const stepsStyle: CSSProperties = { ...windowColumn, position: 'relative' };
+/** Two columns: the list is the one scroller, and the pair gives way to a short window. */
+const splitStyle: CSSProperties = { display: 'flex', gap: 20, height: 420, flex: '0 1 auto', minHeight: 0 };
+/** In one column the preview, this tall in css px, stands above the whole list, and the two scroll
+ *  together in the window's body. Taller than the shared `STACKED_PREVIEW_HEIGHT`: here the planet is
+ *  what the step chooses, not a preview of a form's output. */
+const PLANET_STACKED_PREVIEW = 220;
+const stackedSplitStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14 };
+const stackedPreview: CSSProperties = { width: '100%', flex: 'none', height: PLANET_STACKED_PREVIEW };
+const stackedList: CSSProperties = { width: '100%', flex: 'none', height: 'auto' };
 const primaryStyle: CSSProperties = { flex: '0 0 auto', minWidth: 200 };
+/** In one column the confirming action takes the footer's remaining width instead. */
+const stackedPrimaryStyle: CSSProperties = { flex: '1 1 auto', minWidth: 0 };
 /** The saved planet's tools: window icon buttons standing on the toolbar's own plate. */
 const iconButton: CSSProperties = { ...windowIconButton, background: 'transparent' };
 const toolsStyle: CSSProperties = {
@@ -226,6 +236,7 @@ function ChangePlanetBody(
     landing?.focus();
   }, [step, body.ref]);
   const titleId = useId();
+  const [columns, splitRef] = useWindowColumns();
 
   const choose = (key: string) => { setAsking(null); setChosenKey(key); };
 
@@ -270,8 +281,6 @@ function ChangePlanetBody(
     if (copy) choose(copy.entryId);
   };
 
-  const exportPlanet = downloadPlanetFile;
-
   const rename = (e: PlanetEntry, name: string) => {
     setAsking(null);
     renamePlanetEntry(e, name);
@@ -284,12 +293,35 @@ function ChangePlanetBody(
 
   const chunks = chunkCount(chosen.template);
   const showExportFirst = unsaved && (step === 'carry' || (startingOver && hasBuild));
-  const verb = busy
-    ? <span style={{ display: 'inline-flex', height: 15, alignItems: 'center' }}><LoadingDots color={skin.plate} /></span>
-    : step === 'carry' || !(startingOver || hasBuild) ? t('planet.switch_to', { name: chosen.name })
+  const verb = step === 'carry' || !(startingOver || hasBuild) ? t('planet.switch_to', { name: chosen.name })
       : startingOver ? t('planet.start_over_on', { name: chosen.name })
         : t('planet.next');
   const verbDisabled = step === 'pick' && startingOver && !hasBuild;
+
+  const picker = (
+    <PlanetPicker key="picker" current={current} builtin={builtin} mine={mine} chosenKey={chosen.key} currentId={currentId}
+      onChoose={choose} newDisabled={!canEdit} onNew={() => onEditPlanet?.(null)}
+      {...(columns === 1 ? { style: stackedList, scrolls: false } : {})}
+      {...(PlanetImportWindow ? { onImport: () => setModal('planetImport', true) } : SUPPORTS_JSON_FILES ? { onImport: pickFile } : {})} />
+  );
+  const preview = (
+    <PreviewSwap key="preview" choiceKey={chosen.key} {...(columns === 1 ? { style: stackedPreview } : {})}>
+      <PlanetPreview template={chosen.template} state={startingOver ? gridState ?? undefined : undefined}
+        label={chosen.name} size={t('planet.chunks', chunks)}
+        toolbar={(
+          <AnimatePresence initial={false}>
+            {entry && (
+              <PlanetTools key="tools" canEdit={canEdit} renameRef={renameRef} deleteRef={deleteRef}
+                onEdit={() => onEditPlanet?.(entry)}
+                onRename={() => setAsking(asking === 'rename' ? null : 'rename')}
+                onDuplicate={() => duplicate(entry)}
+                {...(SUPPORTS_JSON_FILES ? { onExport: () => downloadPlanetFile(entry) } : {})}
+                onDelete={() => setAsking(asking === 'delete' ? null : 'delete')} />
+            )}
+          </AnimatePresence>
+        )} />
+    </PreviewSwap>
+  );
 
   return (
     <>
@@ -303,29 +335,17 @@ function ChangePlanetBody(
                 close={{ label: t('hint.close'), onPress: close }} />
 
               {step === 'pick' ? (
-                <div style={splitStyle}>
-                  <PlanetPicker current={current} builtin={builtin} mine={mine} chosenKey={chosen.key} currentId={currentId}
-                    onChoose={choose} newDisabled={!canEdit} onNew={() => onEditPlanet?.(null)}
-                    {...(PlanetImportWindow ? { onImport: () => setModal('planetImport', true) } : SUPPORTS_JSON_FILES ? { onImport: pickFile } : {})} />
-                  <PreviewSwap choiceKey={chosen.key}>
-                    <PlanetPreview template={chosen.template} state={startingOver ? gridState ?? undefined : undefined}
-                      label={chosen.name} size={t('planet.chunks', chunks)}
-                      toolbar={(
-                        <AnimatePresence initial={false}>
-                          {entry && (
-                            <PlanetTools key="tools" canEdit={canEdit} renameRef={renameRef} deleteRef={deleteRef}
-                              onEdit={() => onEditPlanet?.(entry)}
-                              onRename={() => setAsking(asking === 'rename' ? null : 'rename')}
-                              onDuplicate={() => duplicate(entry)}
-                              {...(SUPPORTS_JSON_FILES ? { onExport: () => exportPlanet(entry) } : {})}
-                              onDelete={() => setAsking(asking === 'delete' ? null : 'delete')} />
-                          )}
-                        </AnimatePresence>
-                      )} />
-                  </PreviewSwap>
-                </div>
+                columns === 2 ? (
+                  <div ref={splitRef} data-columns={columns} style={splitStyle}>{[picker, preview]}</div>
+                ) : (
+                  <WindowBody>
+                    <div ref={splitRef} data-columns={columns} style={stackedSplitStyle}>{[preview, picker]}</div>
+                  </WindowBody>
+                )
               ) : (
-                <PlanetCarryStep target={chosen.template} preview={carryPreview} carry={carry} onCarry={setCarry} labelledBy={titleId} />
+                <WindowBody>
+                  <PlanetCarryStep target={chosen.template} preview={carryPreview} carry={carry} onCarry={setCarry} labelledBy={titleId} />
+                </WindowBody>
               )}
             </PlanetStep>
           </AnimatePresence>
@@ -335,7 +355,7 @@ function ChangePlanetBody(
           tertiary={showExportFirst ? <ExportFirstButton testId="planet-export-first" onPress={exportFirst} /> : undefined}
           cancel={<ActionButton appearance="tertiary" hoverFill={skin.inset} onClick={close}>{t('delete.cancel')}</ActionButton>}
           primary={(
-            <ActionButton appearance="primary" data-testid="planet-switch" busy={busy} disabled={verbDisabled} style={primaryStyle}
+            <ActionButton appearance="primary" data-testid="planet-switch" busy={busy} disabled={verbDisabled} style={columns === 2 ? primaryStyle : stackedPrimaryStyle}
               onClick={() => (step === 'carry' ? go(hasBuild && carry === 'carry') : primary())}>
               {verb}
             </ActionButton>
@@ -358,9 +378,9 @@ function ChangePlanetBody(
 }
 
 /** The chosen planet's preview crossfades into the next choice's. */
-function PreviewSwap({ choiceKey, children }: { choiceKey: string; children: React.ReactNode }) {
+function PreviewSwap({ choiceKey, style, children }: { choiceKey: string; style?: CSSProperties; children: React.ReactNode }) {
   return (
-    <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+    <div style={{ position: 'relative', flex: 1, minWidth: 0, ...style }}>
       <AnimatePresence initial={false}>
         <SwapLayer key={choiceKey}>{children}</SwapLayer>
       </AnimatePresence>
@@ -381,6 +401,20 @@ function SwapLayer({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** One glyph tool of a planet's row, named by `label` (`useNameReveal`). */
+function ToolTile({ label, icon, onClick, buttonRef, disabled, color }: {
+  label: string; icon: React.ReactNode; onClick: () => void; buttonRef?: RefObject<HTMLButtonElement>; disabled?: boolean; color?: string;
+}) {
+  const name = useNameReveal(label);
+  return (
+    <ActionButton ref={buttonRef} interaction="tile" {...name.bind} aria-label={label} disabled={disabled} onClick={onClick}
+      style={{ ...iconButton, ...(color ? { color } : {}) }}>
+      {icon}
+      {name.bubble}
+    </ActionButton>
+  );
+}
+
 function PlanetTools({ canEdit, renameRef, deleteRef, onEdit, onRename, onDuplicate, onExport, onDelete }: {
   canEdit: boolean;
   renameRef: RefObject<HTMLButtonElement>;
@@ -393,12 +427,7 @@ function PlanetTools({ canEdit, renameRef, deleteRef, onEdit, onRename, onDuplic
     ref?: RefObject<HTMLButtonElement>;
     disabled?: boolean;
     color?: string;
-  } = {}) => (
-    <ActionButton ref={extra.ref} interaction="tile" aria-label={label} title={label} disabled={extra.disabled} onClick={onClick}
-      style={{ ...iconButton, ...(extra.color ? { color: extra.color } : {}) }}>
-      {icon}
-    </ActionButton>
-  );
+  } = {}) => <ToolTile label={label} icon={icon} onClick={onClick} buttonRef={extra.ref} disabled={extra.disabled} color={extra.color} />;
   return (
     <motion.div role="toolbar" data-testid="planet-tools" style={{ ...toolsStyle, transformOrigin: 'top right' }}
       initial={{ opacity: 0, scale: TOOLS_FROM }} animate={{ opacity: 1, scale: 1, transition: offer }}

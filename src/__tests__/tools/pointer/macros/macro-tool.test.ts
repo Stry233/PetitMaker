@@ -2,8 +2,8 @@
  * The macro tool: what a press builds, what a settled pointer previews, and what makes each press
  * its own.
  *
- * The tool reads the armed macro and the live editor from the context — the pointer machine hands
- * it only coordinates — so the setup here builds a `ToolContext` directly: a map, a macro armed via
+ * The tool reads the armed macro and the live editor from the context (the pointer machine hands
+ * it only coordinates), so the setup here builds a `ToolContext` directly: a map, a macro armed via
  * `armedMacro`, and a minimal overlay/translator for the overlay-facing assertions.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';

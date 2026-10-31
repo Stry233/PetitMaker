@@ -52,7 +52,6 @@ describe('the preview card in the 2D overlay', () => {
     overlay.showGhost(mixedCellSet('terrain', cells(4, 6, 3)), { icon: 'mountain', valid: true });
     await frame();
     const rects = graphicsData(overlay, 'ghostGraphics').filter((d) => typeof d.shape.width === 'number');
-    // one fill + one stroke pass over the same rect
     expect(rects.length).toBe(2);
     for (const r of rects) {
       expect(r.shape.x).toBeCloseTo(4 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.x, 6);

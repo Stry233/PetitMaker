@@ -1,8 +1,6 @@
 /**
- * The ghost outline when auto-trim will change the shape: it has to be the silhouette of what the
- * click leaves, or it contradicts the fill drawn under it.
- *
- * Everything here is in cell units, and a quadrant is half a cell.
+ * With auto-trim on, the ghost outline is the silhouette of what the click leaves, matching the fill
+ * drawn under it. Units are cells; a quadrant is half a cell.
  */
 import { describe, it, expect } from 'vitest';
 import { filletOnly, trimmedOutline, type TrimmedGhostCell } from '../../../../view/shared/overlay/ghost-geometry';
@@ -14,7 +12,7 @@ const cell = [{ x: 2, y: 3 }];
 /** Is this point an endpoint of any segment? */
 const at = (edges: EdgeSegment[], x: number, y: number, r = 1e-9) =>
   edges.some((e) => Math.hypot(e.ax - x, e.ay - y) < r || Math.hypot(e.bx - x, e.by - y) < r);
-/** Total outline length — a cut shape is shorter round the corner than a square one. */
+/** Total outline length (a cut shape is shorter round the corner than a square one). */
 const length = (edges: EdgeSegment[]) =>
   edges.reduce((n, e) => n + Math.hypot(e.bx - e.ax, e.by - e.ay), 0);
 
@@ -62,8 +60,8 @@ describe('a cut corner', () => {
 
 describe('a Γ patch', () => {
   // The trim fills the notch of an L with one quadrant, anchored at the corner it fills. Drawn as a
-  // square with a bite out of it — which is what a footprint-shaped outline does — it would cover
-  // three quarters of a cell the stroke never touches.
+  // square with a bite out of it (what a footprint-shaped outline does) it would cover three
+  // quarters of a cell the stroke never touches.
   const L = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }];
   const patch: TrimmedGhostCell = { x: 1, y: 1, corners: ['fan', 'empty', 'empty', 'empty'], patch: true };
 
@@ -83,9 +81,8 @@ describe('a Γ patch', () => {
   });
 
   it('is only its fillet, even when the model calls its other quadrants square', () => {
-    // How the trim actually records a Γ patch: one cut quadrant, the rest 'square' — meaning the
-    // block underneath, which the terrain layer draws in a separate pass at the lower tier. Drawn
-    // as part of the new shape they hung a square box off every step of a curve laid a layer up.
+    // The trim records a Γ patch as one cut quadrant with the rest 'square', meaning the block
+    // underneath, which the terrain layer draws separately at the lower tier.
     const real: TrimmedGhostCell = { x: 1, y: 1, corners: ['square', 'square', 'fan', 'square'], patch: true };
     const asDrawn = { ...real, corners: filletOnly(real.corners, real.patch) };
     expect(asDrawn.corners).toEqual(['empty', 'empty', 'fan', 'empty']);
@@ -113,10 +110,8 @@ describe('a Γ patch', () => {
 
 describe('a cut inside the shape', () => {
   it('is drawn: a stroke spanning two tiers really does leave a rounded block in there', () => {
-    // The raised part of a stroke rounds against the lower part beside it, and that shape is
-    // visible from above — the same thing the terrain renderer draws. Leaving it out of the
-    // outline made the ghost promise square steps for a curve laid a layer up, which came out
-    // scalloped all the way along.
+    // The raised part of a stroke rounds against the lower part beside it, as the terrain renderer
+    // draws it from above.
     const block = [
       { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 },
       { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 },

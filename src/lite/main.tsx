@@ -1,4 +1,4 @@
-import { installLiteLandscape } from '../ui/lite/landscape';
+import { installLiteSafeArea } from '../ui/lite/safe-area';
 import { APP_FONT_FAMILY } from '../assets/fonts/family';
 import '../ui/design/animations.css';
 import '../ui/design/cursors/cursors.css';
@@ -8,7 +8,7 @@ import { useEditorStore } from '../state/store';
 import { publishCursorPreference } from '../ui/design/cursors/cursor-vars';
 import { brandName } from '../i18n/terms/brand';
 
-installLiteLandscape();
+installLiteSafeArea();
 publishCursorPreference();
 document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 document.title = brandName(useEditorStore.getState().locale);

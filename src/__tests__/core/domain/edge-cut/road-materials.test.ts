@@ -1,10 +1,7 @@
 /**
- * Different road materials never connect: in the game, two surfaces meet with a
- * hairline of ground between them, so for every connectivity question — which side a road's
- * drawing faces, whether a cell is an endpoint of its run, whether a cut is legal — a neighbour
- * of another material is no neighbour at all. A trimmed endpoint keeps its cut when a different
- * surface is laid beside it, and a cell walled in by foreign material is still cuttable, because
- * it is isolated within its own material's run.
+ * Different road materials never connect: in the game two surfaces meet with a hairline of ground
+ * between them, so for drawing sides, run endpoints and cut legality a neighbour of another material
+ * is no neighbour at all.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -79,9 +76,8 @@ describe('road connectivity is per material', () => {
   });
 
   it('the feather is the surface\'s own boundary, and lifts only where the surface continues', () => {
-    // A road surface draws connected inside and fades over ROAD_FEATHER at every edge where its
-    // run ends — against grass and against another material alike. The seam between materials is
-    // two fades meeting, not a special case.
+    // A surface fades over ROAD_FEATHER wherever its run ends, against grass and another material
+    // alike; the seam between materials is two fades meeting.
     const state = makeState(20, 20);
     const a = addRoad(state, 'path-overgrown-dirt', 5, 5);
     const b = addRoad(state, 'path-overgrown-dirt', 6, 5);
@@ -100,8 +96,7 @@ describe('road connectivity is per material', () => {
   });
 
   it('a feeder\'s surface continues into the gap it feeds, unbroken', () => {
-    // The fill in the cut tile's cell is the feeder's own material, so the shared cell line is
-    // interior to that surface — no fade there.
+    // The fill in the cut tile's cell is the feeder's own material, so the shared line is interior.
     const state = makeState(20, 20);
     addRoad(state, 'path-overgrown-dirt', 5, 5, copyCorners(CANONICAL_ROAD_STATES[1]!));
     addRoad(state, 'path-overgrown-dirt', 4, 5);
@@ -162,7 +157,7 @@ describe('road connectivity is per material', () => {
     expect(roadCutFeeds(roadLookup(b.state), b.cut)).toHaveLength(0);
     // A feeder whose own cut vacates the facing edge presents no surface to continue: the stone
     // endpoint at (6,5) connects east to its own run, so its wedge keeps only that edge and its
-    // W side — the one facing the gap — is vacated.
+    // W side, the one facing the gap, is vacated.
     const c = base();
     addRoad(c.state, 'path-cobblestone', 6, 5, copyCorners(CANONICAL_ROAD_STATES[5]!));
     addRoad(c.state, 'path-cobblestone', 7, 5);
@@ -170,9 +165,8 @@ describe('road connectivity is per material', () => {
   });
 
   it('the feed is the exact complement at its outline, retreating inward as it fades', () => {
-    // Canonical BR fan in a unit cell at (0,0), connected west, both halves fed by one material.
-    // At t = 0 the feed's arc is the cut's arc — the two surfaces abut, and the seam is the two
-    // fades glowing through. At t = ROAD_FEATHER the arc retreats inward, clamped to the cell.
+    // Canonical BR fan in a unit cell, connected west, both halves fed by one material. At t = 0 the
+    // feed's arc is the cut's arc; at t = ROAD_FEATHER it retreats inward, clamped to the cell.
     const state = makeState(20, 20);
     const cut = addRoad(state, 'path-overgrown-dirt', 5, 5, copyCorners(CANONICAL_ROAD_STATES[1]!));
     addRoad(state, 'path-overgrown-dirt', 4, 5);
@@ -183,9 +177,9 @@ describe('road connectivity is per material', () => {
     const r = (p: [number, number]) => Math.hypot(p[0], p[1]);
     const at0 = feeds[0]!.points({ x: 0, y: 0, w: 1, h: 1 }, 0);
     for (const p of at0) {
-      expect(p[0]).toBeLessThanOrEqual(1 + 1e-9); // never outside the cell
+      expect(p[0]).toBeLessThanOrEqual(1 + 1e-9);
       expect(p[1]).toBeLessThanOrEqual(1 + 1e-9);
-      expect(r(p)).toBeGreaterThanOrEqual(1 - 1e-9); // never inside the cut's own arc
+      expect(r(p)).toBeGreaterThanOrEqual(1 - 1e-9); // outside the cut's own arc
     }
     expect(at0.some((p) => p[0] === 1 && p[1] === 1), 'the far corner is fed').toBe(true);
     expect(at0.some((p) => Math.abs(r(p) - 1) < 1e-6), 'the outline touches the cut\'s arc').toBe(true);

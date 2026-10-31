@@ -41,9 +41,8 @@ describe('ObjectPlacerTool bridge and ramp placement', () => {
     }
   });
 
-  // Edge case: the ramp's bottom support is 1.5 macro blocks. A lower terrace of only 1
-  // blocks is too short — the ramp must be rejected, and the ghost must read red (not green), because the
-  // ghost now validates through the same rule. A 2-block terrace fits and places.
+  // The ramp's bottom support is 1.5 macro blocks, so a 1-block lower terrace is too short: the ramp
+  // is rejected and the ghost, which validates through the same rule, reads red. A 2-block one fits.
   it('rejects a ramp on a too-short (1-block) lower terrace — incl. the ghost; accepts a 2-block one', () => {
     const build = (lowLen: number) => {
       const S = 24; const state = makeState(S, S);
@@ -51,7 +50,7 @@ describe('ObjectPlacerTool bridge and ramp placement', () => {
         setZone(state, x, y, CellZone.Grass);
         if (x <= 9) setTerrain(state, x, y, TerrainType.Mountain, 2);           // high plateau
         else if (x <= 9 + lowLen) setTerrain(state, x, y, TerrainType.Mountain, 1); // lower terrace (lowLen wide)
-        // x > 9+lowLen: ground (level 0) — the terrace ends here
+        // past x = 9 + lowLen the terrace ends at ground level
       }
       return state;
     };

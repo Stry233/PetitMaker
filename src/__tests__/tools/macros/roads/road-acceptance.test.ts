@@ -39,8 +39,7 @@ function makeKit(size = SIZE): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** A generated planet, terrain only. Cached per seed and handed out as a clone: generation is the
- *  expensive half of the one case that needs one. */
+/** A generated planet, terrain only, cached per seed and handed out as a clone. */
 const islands = new Map<number, GridState>();
 function generatedIsland(seed: number): Kit {
   let base = islands.get(seed);
@@ -51,8 +50,6 @@ function generatedIsland(seed: number): Kit {
     const state = base;
     exec.transaction({ silent: true }, () => {
       generateWith(state, exec, config);
-      // Terrain only: the planet generator furnishes what it builds, and this fixture is
-      // about relief. What stands on it is the case's own subject, planted or laid below.
       clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
     });
     exec.beginStroke().commit();
@@ -63,8 +60,8 @@ function generatedIsland(seed: number): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** A 4-wide water strip capped top and bottom by mountain, so it has no exposed face: the banks are
- *  23 cells apart and the only way across is a bridge (`road-contract.test.ts`'s own ford). */
+/** A 4-wide water strip capped top and bottom by mountain, so the only way across is a bridge
+ *  (the ford of `road-contract.test.ts`). */
 function ford(kit: Kit): void {
   for (let y = 0; y < SIZE; y++) {
     for (let x = 20; x <= 23; x++) {
@@ -92,8 +89,7 @@ function place(kit: Kit, catalogId: string, cell: { x: number; y: number }, rota
 const at = (x: number, y: number): MacroCoord => ({ x, y });
 const key = (c: MacroCoord): string => `${c.x},${c.y}`;
 
-/** Let the airborne preview land — `previewMacroAsync` resolves on a microtask with no worker
- *  installed, so one macrotask is enough. */
+/** With no worker installed `previewMacroAsync` resolves on a microtask, so one macrotask lands it. */
 const settle = (): Promise<void> => new Promise((r) => { setTimeout(r, 0); });
 
 function roadObjects(state: GridState): PlacedObject[] {
@@ -122,10 +118,8 @@ function decorations(state: GridState): PlacedObject[] {
 }
 
 /**
- * Every cell a walk along the map's roads may use: pavement, plus each crossing deck and the ring
- * around it. The apron is not slack — the `flat` trait refuses a road tile at a deck's own
- * transition, so a bare doorstep at a crossing is the design's documented neck. Anything wider is a
- * break, which is what these cases measure.
+ * Every cell a walk along the map's roads may use: pavement, each crossing deck and the ring around it.
+ * The `flat` trait refuses a road tile at a deck's transition, so a one-cell bare apron is expected.
  */
 function roadWalk(state: GridState): Set<string> {
   const cells = new Set<string>();
@@ -166,8 +160,8 @@ function components(cells: ReadonlySet<string>): string[][] {
   return out.sort((a, b) => b.length - a.length);
 }
 
-/** Which piece the road nearest `at` belongs to, or -1 when none stands within `slack` cells: a tap
- *  is a point a hand aimed at, and the planner snaps it to the nearest cell a road can stand on. */
+/** Which piece the road nearest `target` belongs to, or -1 when none stands within `slack` cells,
+ *  since the planner snaps a tap to the nearest cell a road can stand on. */
 function pieceAt(comps: string[][], target: MacroCoord, slack = 2): number {
   for (let i = 0; i < comps.length; i++) {
     for (const k of comps[i]!) {
@@ -189,11 +183,7 @@ function expectJoined(state: GridState, from: MacroCoord, to: MacroCoord): void 
 
 interface Ghost { cells: MacroCoord[]; losses: MacroCoord[] }
 
-/**
- * A `road-link`-armed context whose overlay keeps every `showGhost` payload — what the tool
- * Promised, in the tool's own words — and whose toasts are collected, since a toast is the only
- * thing the tool says out loud and several of these cases are about what the user is told.
- */
+/** A `road-link`-armed context that records every `showGhost` payload and every toast. */
 function linkTool(kit: Kit, over: ToolCtxOver = {}): {
   tool: MacroTool; ctx: HostedToolContext; ghosts: Ghost[]; toasts: string[];
 } {
@@ -223,11 +213,8 @@ async function dragRoad(
   d.tool.onPointerUp(cell(to), point(to as never), d.ctx);
 }
 
-/** Two taps on the generated planet whose route has to take a crossing, searched for on the fixture
- *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
- *  across a tier step, and the first pair a link actually joins over a bridge or a ramp wins. It
- *  throws rather than skipping if the planet offers none — a fixture with no step in it cannot ask
- *  this question, and passing quietly would hide that. */
+/** Two taps on the generated planet whose route takes a crossing: the first east-west pair across a
+ *  tier step that a link joins over a bridge or a ramp. Throws when the planet offers none. */
 function pairOverACrossing(): { from: MacroCoord; to: MacroCoord } {
   const probe = generatedIsland(11);
   const { width: W, height: H } = probe.state.template;
@@ -265,8 +252,7 @@ function laidBy(kit: Kit, body: () => void): Set<string> {
 describe('acceptance: the ghost promises what the press lays', () => {
   it('gesture 1: the route the bar\'s own material and width would lay, coating losses included', async () => {
     const kit = makeKit();
-    // Off the direct line but inside a width-3 dilation's reach: the standing dirt tile is a loss,
-    // and the ghost has to say so before the press replaces it with the armed material.
+    // Off the direct line but inside a width-3 dilation's reach, so the dirt tile is a loss.
     const dirt = place(kit, 'path-overgrown-dirt', { x: 20, y: 11 });
     const d = linkTool(kit, { tileMaterial: 'path-cobblestone', brushSize: 3 });
 
@@ -321,13 +307,11 @@ describe('acceptance: the contract, through the tool', () => {
   it('a WIDE route through a garden leaves every plant standing, and says the road necked', async () => {
     const kit = makeKit();
     const planted: PlacedObject[] = [];
-    // Flora only, on a lattice: a tree carries an exclusionRadius, so a bed of them cannot be
-    // planted this densely in the first place.
+    // Flora only: a tree's exclusionRadius forbids a bed this dense.
     for (let x = 12; x <= 32; x += 2) for (const y of [8, 9, 11, 12]) planted.push(place(kit, 'flower-daisy', { x, y }));
     expect(planted.length).toBeGreaterThan(20);
 
-    // Width 3: at width 1 the corridor threads between the plants and the question never arises. The
-    // dilation is the only thing that ever reached a hand's planting.
+    // At width 1 the corridor threads between the plants; only the width-3 dilation reaches them.
     const d = linkTool(kit, { brushSize: 3 });
     const depth = kit.executor.historyDepth();
     await dragRoad(d, at(10, 10), at(34, 10));
@@ -346,9 +330,8 @@ describe('acceptance: the contract, through the tool', () => {
 
   it('a planting on the only way through is SHOWN as a loss, and the press refuses rather than laying half a road', async () => {
     const kit = makeKit();
-    // A one-cell-wide land bridge at x=22 across an impassable band, far wider than any catalog
-    // bridge can span: any route north-to-south must cross exactly that column
-    // (`road-contract.test.ts`'s own bottleneck).
+    // A land bridge at x = 21 to 23 across a void band wider than any catalog bridge spans, so every
+    // route north to south crosses it (the bottleneck of `road-contract.test.ts`).
     for (let y = 12; y <= 33; y++) for (let x = SHORE; x <= SIZE - 1 - SHORE; x++) {
       if (x >= 21 && x <= 23) continue;
       kit.state.cells[y]![x]!.zone = CellZone.Void;
@@ -419,8 +402,7 @@ describe('acceptance: a gate is a terminal', () => {
     const kit = makeKit();
     for (let x = 8; x <= 34; x++) place(kit, 'path-overgrown-dirt', { x, y: 10 });
     const house = place(kit, 'building-myhouse', { x: 20, y: 24 }, 0);
-    // The approach row only: the strip's first three cells are the footprint's own gate row, and a
-    // coating there overlaps the house.
+    // The strip's first three cells only, the approach row; the rest would overlap the house.
     for (const c of gateTerminalCells(objectRect(house), house.rotation).slice(0, 3)) place(kit, 'path-overgrown-dirt', { x: c.x, y: c.y });
 
     const d = linkTool(kit);
@@ -435,9 +417,7 @@ describe('acceptance: a gate is a terminal', () => {
 
   it('gesture 3: EVERY house the whole-map press connected is paved to its door', () => {
     const kit = makeKit();
-    // Three houses, three facings, all on open flat ground the press can reach: the clause is about
-    // the last cell of a spur, and a gate that rotates with its house is the case a spur misses.
-    // No terrain stands between them, so every door here is reachable and the run has no excuse.
+    // Three facings on open flat ground: a gate rotates with its house, which is where a spur misses.
     const houses = [
       place(kit, 'building-myhouse', { x: 8, y: 8 }, 0),
       place(kit, 'building-boat-cabin', { x: 26, y: 8 }, 180),
@@ -453,7 +433,6 @@ describe('acceptance: a gate is a terminal', () => {
       const strip = gateTerminalCells(objectRect(h), h.rotation);
       expect(strip.some((c) => paved.has(key(c))), `${h.catalogId}@${key(h.position)}: no pavement at its door`).toBe(true);
     }
-    // One network, not three spurs that never met.
     const comps = components(roadWalk(kit.state));
     expect(comps.length, `the streets came out in pieces of ${comps.map((c) => c.length).join(',')} cells`).toBe(1);
   });
@@ -461,8 +440,7 @@ describe('acceptance: a gate is a terminal', () => {
   it('gesture 1: a route whose second tap lands on a house paves that house\'s gate strip', async () => {
     const kit = makeKit();
     const house = place(kit, 'building-myhouse', { x: 30, y: 20 }, 0);
-    // A planting off the line, so the pair drafts more than one way to go and the commit is the
-    // multi-offer one a bare map never asks for.
+    // A planting off the line makes the pair draft more than one way to go.
     for (const y of [14, 15, 16]) place(kit, 'flower-daisy', { x: 22, y });
 
     const d = linkTool(kit);
@@ -478,10 +456,8 @@ describe('acceptance: a gate is a terminal', () => {
 describe('acceptance: the route joins the endpoints, or lays nothing', () => {
   it('however many ways round the map offers, the second tap lays the one the ghost drew', async () => {
     const kit = makeKit();
-    // A lake between the taps: round it and over it are genuinely different lines, so more than one
-    // offer survives the collapse. `road-link-gesture.test.ts` pins that the tap commits on such a
-    // map; what is asserted here is that what it commits is the line the ghost had drawn, since the
-    // ghost and the commit name their offer in two different methods.
+    // A lake between the taps: round it and over it are different lines, so more than one offer
+    // survives. The ghost and the commit name their offer in two different methods.
     for (let y = 15; y <= 25; y++) for (let x = 18; x <= 26; x++) setTerrain(kit.state, x, y, TerrainType.Water, 0);
     const from = at(10, 20), to = at(34, 20);
     expect(previewMacro(kit, 'road-link', { seed: 1, from, at: to }).offers.length,
@@ -530,13 +506,9 @@ describe('acceptance: the route joins the endpoints, or lays nothing', () => {
   });
 
   it('on a GENERATED planet, where a crossing snaps away from its plan, the road is still one piece', async () => {
-    // A hand-built ford or terrace joins whether or not the run stitches its pavement: the deck
-    // lands where the plan put it. What breaks the route is a `waterSpan`/`heightDrop` trait moving
-    // a realized deck several cells along its own axis, so the plan's approach cells fall under it
-    // or a cell short of its entrance — and that needs real terrain.
-    //
-    // The pair is found, not written down. The taps have to sit on ground the generator happened to
-    // build a step between, so a pair copied into the file goes stale the next time the terrain moves.
+    // On real terrain a `waterSpan` or `heightDrop` trait can move a deck several cells along its
+    // axis, leaving the plan's approach cells under it or short of its entrance. The pair is searched
+    // for, since a written-down pair goes stale when the terrain moves.
     const { from, to } = pairOverACrossing();
     const kit = generatedIsland(11);
     const d = linkTool(kit);
@@ -568,16 +540,9 @@ describe('acceptance: the route joins the endpoints, or lays nothing', () => {
 });
 
 describe('acceptance: the map\'s own character routes the press', () => {
-  // The turn-penalty half of `readRoadStyle` is pinned at the unit level (`road-style.test.ts`):
-  // over the fixtures a dragged route can actually be laid on, the straightener collapses the
-  // rectilinear and the organic answer onto the same line, so the style the map was measured at is
-  // not observable from the pavement here.
-  //
-  // The material half runs only where the caller names none, which is why these three drive
-  // `applyMacro`: `state/slices/edit.ts` seeds `tileMaterial` with the first road in the catalog and
-  // never clears it, so both `MacroTool.linkOpts` and `SmartBuild.tsx` always name one and the
-  // learned material is always overridden. The agent's `build_road_network` is the caller that
-  // reaches this, and it is the caller these cases stand for.
+  // The turn-penalty half of `readRoadStyle` is pinned in `road-style.test.ts`; here the straightener
+  // collapses both styles onto the same line. The material half runs only where the caller names no
+  // material, as the drag tool does until `tileMaterialPicked`, so these cases drive `applyMacro`.
   it.each(['path-simple-brick', 'path-park-stone', 'path-cobblestone'])('a new lane is paved in the standing street\'s own surface: %s', (material) => {
     const kit = makeKit();
     for (let y = 8; y <= 30; y++) place(kit, material, { x: 30, y });
@@ -601,7 +566,7 @@ describe('acceptance: the map\'s own character routes the press', () => {
 
     const fresh = [...kit.state.objects.values()].filter((o) => !before.has(o.id) && categoryOf(o) === ItemCategory.Road);
     expect(fresh.length, 'the second tap laid nothing').toBeGreaterThan(0);
-    // Orthogonally adjacent to a cell of the standing street: the new lane meets the line.
+    // A fresh tile orthogonally adjacent to the street meets it.
     const meets = fresh.some((o) => o.position.x === 27 && o.position.y >= 6 && o.position.y <= 34);
     expect(meets, 'the new lane never reached the street it was routed to').toBe(true);
   });
@@ -624,8 +589,7 @@ describe('acceptance: the same taps lay the same road', () => {
 
   it('the offers come back in the drafting order, every time', () => {
     const kit = makeKit();
-    // A lake between the taps: the way round and the way across are genuinely different lines, so
-    // more than one offer survives the collapse.
+    // A lake between the taps gives more than one offer.
     for (let y = 15; y <= 25; y++) for (let x = 18; x <= 26; x++) setTerrain(kit.state, x, y, TerrainType.Water, 0);
     const opts: MacroOpts = { seed: 1, from: at(10, 20), at: at(34, 20) };
 

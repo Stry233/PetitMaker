@@ -13,15 +13,18 @@ function fakeExecutor(size: number) {
   let redoCalls = 0;
   const exec = {
     historyDepth: () => depth,
-    undo: () => {
+    undoEdit: () => {
       if (depth === 0) return false;
       depth -= 1;
       popped += 1;
       undoCalls += 1;
       return true;
     },
-    canRedo: () => popped > 0,
-    redo: () => { popped -= 1; depth += 1; redoCalls += 1; },
+    redoEdit: () => {
+      if (popped === 0) return false;
+      popped -= 1; depth += 1; redoCalls += 1;
+      return true;
+    },
   };
   return {
     exec: exec as unknown as CommandExecutor,

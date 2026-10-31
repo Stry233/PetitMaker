@@ -11,7 +11,7 @@ import { placeObjectCommand } from '../../core/model/command-build';
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import { TerrainType, type GridState, type MacroCoord, type MapTemplate, type PlacedObject } from '../../core/model/types';
 
-/** Whether every cell within two of (x, y) is buildable ground: a block there bleeds onto none other. */
+/** Whether every cell within two of (x, y) is buildable, so a block there touches no other zone. */
 export function isInland(template: MapTemplate, x: number, y: number): boolean {
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
     const zone = template.zones[y + dy]?.[x + dx];
@@ -27,7 +27,7 @@ export function firstInland(template: MapTemplate): MacroCoord {
 }
 
 /**
- * A map of `template` with no terrain of its template's: lone mountain cells of `elevation` inland on
+ * A map of `template` with its terrain cleared: lone mountain cells of `elevation` inland on
  * a four-cell lattice, and a road on every other buildable cell whose footprint no block reaches
  * (a block stands half a cell up and left of its cell, so it reaches the cells at and before it),
  * all of it two cells clear of the landmarks and the ground they rest on.

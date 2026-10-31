@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider, translateFor } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -52,5 +52,17 @@ describe('Help section navigation', () => {
     await waitFor(() => expect(scrolled).toContain('help-welcome-help'));
     await waitFor(() => expect(container.querySelector('#help-welcome-help')?.closest('section')?.textContent).toContain(translateFor('en', 'shortcut.whats_this')));
     expect(article.parentElement?.parentElement?.scrollTop).toBe(123);
+  });
+
+  it('closes open search results when Help is sent to a page', async () => {
+    const { baseElement: container } = render(<Help open />);
+    await waitFor(() => expect(container.querySelector('article h2')).toBeTruthy());
+    const field = screen.getByRole('searchbox');
+    fireEvent.change(field, { target: { value: 'camera' } });
+    const results = translateFor('en', 'help.search_placeholder');
+    await screen.findByRole('menu', { name: results });
+    act(() => useEditorStore.getState().setHelpTarget({ page: 'settings' }));
+    await waitFor(() => expect(screen.queryByRole('menu', { name: results })).toBeNull());
+    expect((field as HTMLInputElement).value).toBe('');
   });
 });

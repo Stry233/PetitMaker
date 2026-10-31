@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
-// Window-level drag-and-drop import: decision logic only (a real OS drag can't be simulated, so
-// this drives the same window listeners with synthetic
-// `dragenter`/`dragover`/`dragleave`/`drop` Events carrying a hand-built `dataTransfer` — jsdom
-// has no DragEvent constructor, but the component only ever reads `.types`/`.files`, so a plain
-// Event with that property attached round-trips through addEventListener exactly the same way).
+// Window-level drag-and-drop import, driven by plain Events carrying a hand-built `dataTransfer`:
+// jsdom has no DragEvent, and the component reads only `.types` and `.files`.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
@@ -28,14 +25,11 @@ import { setStoreState, setStoreModal } from '../../../../_support/store';
 import { offerRestoreDismiss, __resetRestoreOffer } from '../../../../../ui/session/restore-offer';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  // reducedMotion="always" collapses every enter/exit to its end state instantly, exactly like
-  // App.tsx does for motionPref==='reduced' — needed here so an exit animation's DOM presence
-  // doesn't race the assertions right after the triggering state flip.
+  // Reduced motion, as the app sets it, so exit animations do not race the assertions.
   return <MotionConfig reducedMotion="always"><I18nProvider>{children}</I18nProvider></MotionConfig>;
 }
 
-/** A bare object carrying only what the code under test reads (`types`, `files`) — real
- *  DataTransfer isn't constructible in jsdom. */
+/** An Event with a bare `dataTransfer`; jsdom cannot construct DataTransfer. */
 function dragEvent(type: string, { types = ['Files'], files = [] as unknown[] } = {}): Event {
   const e = new Event(type, { bubbles: true, cancelable: true }) as Event & { dataTransfer?: unknown };
   e.dataTransfer = { types, files };
@@ -75,18 +69,13 @@ describe('DropImportOverlay', () => {
     fireWindow(dragEvent('dragenter'));
     expect(screen.getByText(HINT)).toBeTruthy();
 
-    // Simulate the drag crossing from the window into a nested child: dragenter fires again
-    // (depth 2) before the outer dragleave (depth 1). A naive "leave = hide" handler would flicker
-    // the hint off here; the depth counter must not.
+    // Crossing into a nested child fires dragenter (depth 2) before the outer dragleave (depth 1).
     fireWindow(dragEvent('dragenter'));
     fireWindow(dragEvent('dragleave'));
-    expect(screen.getByText(HINT)).toBeTruthy(); // still net depth 1 — must not flicker
+    expect(screen.getByText(HINT)).toBeTruthy(); // net depth 1
 
     fireWindow(dragEvent('dragleave'));
-    // net depth 0 — now it hides. AnimatePresence's exit-unmount lands a tick after the state flip,
-    // so a bare synchronous assertion would race it. This says nothing about reduced-motion timing:
-    // jsdom has no display refresh, so framer's rAF spring integrates in wall-clock ms whatever
-    // `reducedMotion` says, and a non-reduced exit resolves here just as fast.
+    // Net depth 0. AnimatePresence unmounts a tick after the state flip.
     await waitFor(() => expect(screen.queryByText(HINT)).toBeNull());
   });
 
@@ -184,9 +173,8 @@ describe('DropImportOverlay', () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
-  // Reentrancy: a second drop/click while an import is already running (or a decision
-  // already pending) must never start a concurrent second `importFile()`, which would race
-  // `loadMap` and let whichever resolves last silently win the grid state.
+  // A second drop or click while an import runs or a decision is pending must not start a second
+  // import, or whichever resolved last would win the grid.
   describe('reentrancy guard', () => {
     it('a second drop landing while the first is still decoding is ignored, not run concurrently', async () => {
       let resolveFirst!: (v: unknown) => void;
@@ -197,13 +185,12 @@ describe('DropImportOverlay', () => {
       const fileA = { name: 'a.json', type: 'application/json', text: async () => '{}' };
       const fileB = { name: 'b.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('dragenter'));
-      fireWindow(dragEvent('drop', { files: [fileA] })); // -> decoding a
+      fireWindow(dragEvent('drop', { files: [fileA] }));
       await waitFor(() => expect(inspectMock).toHaveBeenCalledTimes(1));
 
-      // A second, unrelated drag+drop arrives before the first resolves.
       fireWindow(dragEvent('dragenter'));
       fireWindow(dragEvent('drop', { files: [fileB] }));
-      expect(inspectMock).toHaveBeenCalledTimes(1); // still just the first — the race never starts
+      expect(inspectMock).toHaveBeenCalledTimes(1);
       expect(inspectMock.mock.calls[0]?.[0]).toBe(fileA);
 
       await act(async () => { resolveFirst(ready()); });
@@ -219,27 +206,25 @@ describe('DropImportOverlay', () => {
       const file = { name: 'my-map.json', type: 'application/json', text: async () => '{}' };
       fireWindow(dragEvent('drop', { files: [file] }));
       const replaceBtn = await screen.findByText('Replace');
-      // Both clicks dispatch synchronously in the same task, before React has a chance to
-      // re-render the confirm buttons away — exactly the race a fast double-click produces.
+      // Both clicks land in one task, before React can re-render the buttons away.
       act(() => { replaceBtn.click(); replaceBtn.click(); });
       expect(commitMock).toHaveBeenCalledTimes(1);
     });
   });
 
-  // A drag that leaves the viewport without a matching `dragleave` (over OS chrome,
-  // another application, or a second monitor) must not leave the blurred hint stuck forever.
+  // A drag can leave the viewport without a matching `dragleave` (over OS chrome, another
+  // application or a second monitor).
   describe('stuck-overlay reset', () => {
     it('window blur force-clears a stuck hover hint and its depth counter', async () => {
       render(<DropImportOverlay />, { wrapper: Wrapper });
       fireWindow(dragEvent('dragenter'));
-      fireWindow(dragEvent('dragenter')); // depth 2 — as if the drag wandered over nested chrome
+      fireWindow(dragEvent('dragenter')); // depth 2, as if the drag wandered over nested chrome
       expect(screen.getByText(HINT)).toBeTruthy();
 
       act(() => { window.dispatchEvent(new Event('blur')); });
       await waitFor(() => expect(screen.queryByText(HINT)).toBeNull());
 
-      // The counter came back to 0, not merely decremented once — a single new dragenter (depth
-      // 1) shows the hint again immediately rather than needing to first cancel out a leftover 2.
+      // The counter reset to 0, so one dragenter shows the hint again.
       fireWindow(dragEvent('dragenter'));
       expect(screen.getByText(HINT)).toBeTruthy();
     });
@@ -285,8 +270,6 @@ describe('DropImportOverlay', () => {
     });
   });
 
-  // A second drop landing while a decision is already pending must not swap the pending
-  // file out from under the user; the question stays about the file that was already asked about.
   it('ignores a second drop while a confirm is already pending, keeping the original file', async () => {
     inspectMock.mockResolvedValue(ready()); // no title: the card names the file
     const withContent = makeState();
@@ -336,7 +319,7 @@ describe('DropImportOverlay', () => {
       await screen.findByText('Import this map?');
 
       fireEvent.keyDown(window, { key: 'Escape' });
-      // exit-unmount lands a tick after the state flip, so a synchronous assertion would race it.
+      // AnimatePresence unmounts a tick after the state flip.
       await waitFor(() => expect(screen.queryByText('Import this map?')).toBeNull());
     });
 

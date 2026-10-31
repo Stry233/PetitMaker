@@ -7,8 +7,8 @@
  * every pixel it had.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { __resetCanvasLimits, deviceCanvasLimits } from '../../../io/export/canvas-limits';
-import { CANVAS_LIMITS } from '../../../io/export/sizing';
+import { __resetCanvasLimits, deviceCanvasLimits, layoutWithinDevice } from '../../../io/export/canvas-limits';
+import { CANVAS_LIMITS, canvasFitScale, type CanvasLimits } from '../../../io/export/sizing';
 
 /** A device whose canvases hold their far corner only where `allows` says, and the sizes it was asked for. */
 function device(allows: (w: number, h: number) => boolean): Array<[number, number]> {
@@ -63,5 +63,25 @@ describe('deviceCanvasLimits', () => {
     const asked = device(() => true);
     expect(deviceCanvasLimits()).toBe(deviceCanvasLimits());
     expect(asked).toHaveLength(2);
+  });
+});
+
+/** A w×h picture shrunk to fit `limits`, as a composition is. */
+const fitted = (w: number, h: number) => (limits: CanvasLimits) => {
+  const f = canvasFitScale(w, h, limits);
+  return { width: Math.floor(w * f), height: Math.floor(h * f) };
+};
+
+describe('layoutWithinDevice', () => {
+  it('lays out a picture every device can hold without probing, as the device would', () => {
+    const asked = device((w, h) => w * h <= 4096 * 4096);
+    expect(layoutWithinDevice(fitted(1440, 1900))).toEqual({ width: 1440, height: 1900 });
+    expect(asked).toEqual([]);
+  });
+
+  it('probes for a picture only some devices can hold, and fits it to this one', () => {
+    const asked = device((w, h) => w * h <= 4096 * 4096);
+    expect(layoutWithinDevice(fitted(8000, 8000))).toEqual(fitted(8000, 8000)({ maxDim: 16384, maxArea: 4096 * 4096 }));
+    expect(asked.length).toBeGreaterThan(0);
   });
 });

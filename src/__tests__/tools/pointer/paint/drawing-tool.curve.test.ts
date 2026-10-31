@@ -1,7 +1,7 @@
 /**
  * The curve's gesture: click to drop anchors, drag a placed one to move it, click the last anchor
- * to finish and the first to close. Decided on release, so the same press can be the start of a
- * drag. No keyboard needed to commit — Escape and Delete only take things back.
+ * again to finish. Decided on release, so a press can still become a drag; Escape and Delete only
+ * take things back.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DrawingTool } from '../../../../tools/pointer/paint/drawing-tool';
@@ -25,7 +25,6 @@ function world() {
   return { state, executor, ctx, tool };
 }
 
-/** A click: press and release at one cell. */
 function click(tool: DrawingTool, ctx: ReturnType<typeof makeToolCtx>, c: MacroCoord) {
   tool.onPointerDown(cell(c), point(MICRO), ctx);
   tool.onPointerUp(cell(c), point(MICRO), ctx);
@@ -50,7 +49,7 @@ describe('placing anchors', () => {
     const { state, ctx, tool } = world();
     const anchors = [{ x: 2, y: 2 }, { x: 8, y: 9 }, { x: 15, y: 3 }];
     for (const a of anchors) click(tool, ctx, a);
-    click(tool, ctx, anchors[anchors.length - 1]!); // second click in place = finish
+    click(tool, ctx, anchors[anchors.length - 1]!); // a second click in place finishes
     expect(painted(state)).toBeGreaterThan(0);
     for (const a of anchors) {
       expect(state.cells[a.y]?.[a.x]?.terrain?.type, `anchor ${a.x},${a.y}`).toBe(TerrainType.Mountain);
@@ -73,35 +72,31 @@ describe('placing anchors', () => {
   });
 
   it('swallows the tail of a double-click, rather than starting a new curve on that cell', () => {
-    // Finishing is a click on the last anchor, so anyone who double-clicks it would otherwise drop
-    // a fresh anchor where they were only confirming.
+    // A double-click on the last anchor finishes, and its third click must not start a new curve.
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 2, y: 2 });
     click(tool, ctx, { x: 9, y: 9 });
     click(tool, ctx, { x: 9, y: 9 });     // finishes
     const after = painted(state);
     click(tool, ctx, { x: 9, y: 9 });     // the second half of the double-click
-    // A second, deliberate curve well away from the first.
     click(tool, ctx, { x: 20, y: 20 });
     click(tool, ctx, { x: 28, y: 24 });
     click(tool, ctx, { x: 28, y: 24 });
     expect(painted(state)).toBeGreaterThan(after);
-    // Had the swallowed click started a curve at (9,9), the second one would have run from there
-    // to (20,20) and painted the ground between.
+    // A curve started by the swallowed click would have run from (9,9) through here.
     expect(state.cells[15]?.[15]?.terrain, 'between the two curves').toBeNull();
   });
 });
 
 describe('re-clicking an earlier anchor', () => {
   it('does not stack a second anchor on the same cell', () => {
-    // Clicking back over the first anchor is an ordinary click on an existing one; it neither
-    // duplicates it nor finishes (the double-click test needs the previous click on that cell).
+    // Finishing needs the previous click on the same cell, so this neither finishes nor duplicates.
     const { state, ctx, tool } = world();
     click(tool, ctx, { x: 5, y: 5 });
     click(tool, ctx, { x: 12, y: 5 });
     click(tool, ctx, { x: 5, y: 5 });
     expect(painted(state)).toBe(0);
-    click(tool, ctx, { x: 5, y: 5 }); // now it is a double-click
+    click(tool, ctx, { x: 5, y: 5 }); // a double-click on that cell
     expect(painted(state)).toBeGreaterThan(0);
   });
 });
@@ -112,7 +107,6 @@ describe('editing a placed anchor', () => {
     click(tool, ctx, { x: 2, y: 2 });
     click(tool, ctx, { x: 10, y: 2 });
     click(tool, ctx, { x: 18, y: 2 });
-    // Pick the middle anchor up and drag it down.
     tool.onPointerDown(cell({ x: 10, y: 2 }), point(MICRO), ctx);
     tool.onPointerMove(cell({ x: 10, y: 12 }), point(MICRO), ctx);
     tool.onPointerUp(cell({ x: 10, y: 12 }), point(MICRO), ctx);
@@ -129,7 +123,6 @@ describe('editing a placed anchor', () => {
     tool.onPointerDown(cell({ x: 10, y: 2 }), point(MICRO), ctx);
     tool.onPointerMove(cell({ x: 10, y: 8 }), point(MICRO), ctx);
     tool.onPointerUp(cell({ x: 10, y: 8 }), point(MICRO), ctx);
-    // The drag moved, so its release is not a click and cannot have finished anything.
     expect(painted(state)).toBe(0);
   });
 });
@@ -141,7 +134,7 @@ describe('taking it back', () => {
     click(tool, ctx, { x: 9, y: 9 });
     expect(tool.cancelPending(ctx)).toBe(true);
     expect(painted(state)).toBe(0);
-    // And the gesture is really gone: the next click starts over rather than continuing.
+    // Nothing is left pending.
     expect(tool.cancelPending(ctx)).toBe(false);
   });
 
@@ -172,28 +165,32 @@ describe('taking it back', () => {
 });
 
 /**
- * A nav tap is the other way out of a standing chain: right and middle drag the camera, so a right
- * press that never moved is the one press with no camera meaning left in it. The chain has painted
- * nothing, exactly like `road-link`'s first mark, so the same tap must put it down.
+ * A right press that never moved has no camera meaning, so it ends a standing chain, which has painted
+ * nothing yet, as it does `road-link`'s first mark.
  */
 describe('a nav tap while the chain stands', () => {
   /** What the pointer machine builds for a nav tap over bare map, the tool's own answer included. */
   function navFacts(tool: DrawingTool, ctx: HostedToolContext): PressFacts {
     return {
       button: 2, // the right button, which navigates
+      inputMode: 'pc',
       selectMode: false,
       brush: isBrushTool(tool.id),
       armedItemId: null,
+      copyHeld: false,
       selection: [],
       selectingRegion: false,
       panDragHeld: false,
       multiSelectHeld: false,
+      moveLatched: false,
       macro: { x: 20, y: 20 },
       terrain: { x: 20, y: 20 },
+      pick: null,
       hit: null,
       placementAllowed: true,
       pendingGesture: tool.hasPending?.(ctx) ?? false,
       clickOnlyStroke: false,
+      armedStrokes: false,
       toolGrabs: false,
       toolSelects: false,
       toolSelectHit: null,
@@ -206,7 +203,7 @@ describe('a nav tap while the chain stands', () => {
     click(tool, ctx, { x: 9, y: 9 });
 
     expect(resolveNavTap(navFacts(tool, ctx))).toEqual([{ kind: 'cancel-pending' }]);
-    // The machine runs that intent through `cancelPending`, which is what actually drops the chain.
+    // The pointer machine carries out that intent through `cancelPending`.
     expect(tool.cancelPending(ctx)).toBe(true);
     expect(painted(state)).toBe(0);
     expect(resolveNavTap(navFacts(tool, ctx)), 'and there is nothing left to end').toEqual([]);
@@ -220,8 +217,8 @@ describe('a nav tap while the chain stands', () => {
     click(tool, ctx, { x: 9, y: 9 });
     click(tool, ctx, { x: 9, y: 9 });   // double-click to finish
     expect(painted(state)).toBeGreaterThan(0);
-    // The adjust handles stand now, and they are not a gesture a nav tap ends: the curve is terrain
-    // by then, exactly as a committed route's marks are pavement (`MacroTool.hasPending`).
+    // The committed curve's adjust handles are not a gesture a nav tap ends, as with a committed
+    // route (`MacroTool.hasPending`).
     expect(resolveNavTap(navFacts(tool, ctx))).toEqual([]);
   });
 

@@ -14,15 +14,9 @@ const at = (x: number, y: number) => {
 };
 
 describe('the stylize deck lean', () => {
-  it('reads the box centre as rest and its edges as full lean under a scaled viewport', () => {
-    setViewportSpace({ width: 800, height: 400, left: 10, top: 20, rotated: false, scale: 2 });
+  it('reads the box centre as rest and its edges as full lean under an inset viewport', () => {
+    setViewportSpace({ width: 800, height: 400, left: 10, top: 20 });
     expect(pointerLean(at(200, 100), BOX)).toEqual({ x: 0, y: 0 });
     expect(pointerLean(at(300, 150), BOX)).toEqual({ x: 1, y: 1 });
-  });
-
-  it('follows the pointer across a rotated viewport', () => {
-    setViewportSpace({ width: 824, height: 380, left: 5, top: 20, rotated: true, scale: 1 });
-    expect(pointerLean(at(200, 100), BOX)).toEqual({ x: 0, y: 0 });
-    expect(pointerLean(at(100, 100), BOX)).toEqual({ x: -1, y: 0 });
   });
 });

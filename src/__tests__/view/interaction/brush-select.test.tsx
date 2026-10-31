@@ -1,15 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Ctrl reaches the selection path from a build brush too, exactly as it already does from an
- * armed placer (placement-select.test.tsx): a Ctrl+click toggles membership and a Ctrl+drag
- * rubber-bands instead of painting/erasing/cutting. A gesture that ends with something selected
- * leaves terrain-editing mode for the Hand tool (a brush has no "armed item" to drop, so the
- * active tool is what changes); a gesture that selects nothing leaves the brush active, so an
- * accidental Ctrl-drag over bare ground never costs the user their tool.
- *
- * Driven through the real handlers over a real container, with a real ToolManager + executor, so
- * a hypothetical "painted before the Ctrl branch was consulted" ordering bug would actually show
- * up as a mutated grid, not just an unexercised code path.
+ * Ctrl selects from a build brush as from an armed placer (placement-select.test.tsx): a click toggles
+ * membership and a drag rubber-bands instead of painting, erasing or cutting. A gesture that selects
+ * something switches to the Hand tool; one that selects nothing keeps the brush. Driven through the
+ * real handlers, `ToolManager` and executor, so painting before the Ctrl check would mutate the grid.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -80,8 +74,7 @@ let el: HTMLElement;
 let gs: GridState;
 let executor: CommandExecutor;
 
-/** The app's own wiring: a real ToolManager over the same grid, pointed at the test view, with
- *  `tool` active — mirrors placement-select.test.tsx's `arm`. */
+/** A real `ToolManager` over the grid and test view with `tool` active, as placement-select's `arm`. */
 function activate(tool: ToolType, ...objects: PlacedObject[]): void {
   gs = makeState(20, 20);
   for (const obj of objects) gs.objects.set(obj.id, obj);
@@ -140,8 +133,7 @@ describe('Ctrl while a build brush is active (TerrainBrush)', () => {
     expect(ids()).toEqual(['a']);
     expect(executor.historyDepth()).toBe(undoBefore); // nothing was painted
     expect(activeToolOf(useEditorStore.getState())).toBe(ToolType.Hand); // landed in select/drag mode
-    // The Build panel highlights from designMode, so leaving it on the brush would show a brush
-    // as current while the pointer is in select/drag mode.
+    // The Build panel highlights from designMode, so it must leave the brush too.
     expect(designModeOf(useEditorStore.getState())).toBe('none');
   });
 
@@ -158,8 +150,7 @@ describe('Ctrl while a build brush is active (TerrainBrush)', () => {
   });
 
   it('keeps the brush active, and paints NOTHING, when the band caught nothing', () => {
-    // An empty band changed nothing, so there is nothing to edit and no reason to bump the user
-    // out of their brush — an accidental Ctrl-drag over bare ground must not cost them their tool.
+    // An accidental Ctrl-drag over bare ground must not cost the user their tool.
     activate(ToolType.TerrainBrush, tree('a', 3, 3));
     const undoBefore = executor.historyDepth();
     setHeld(true);
@@ -234,7 +225,7 @@ describe('Ctrl while the edge cutter is active', () => {
 
     expect(ids()).toEqual(['a']);
     expect(executor.historyDepth()).toBe(undoBefore);
-    // No cut: a fresh cell's corners are unset until the first trim touches them.
+    // A fresh cell's corners stay unset until a trim touches them.
     expect(getCell(gs.cells, 10, 10)!.terrain!.corners).toBeUndefined();
     expect(activeToolOf(useEditorStore.getState())).toBe(ToolType.Hand);
   });

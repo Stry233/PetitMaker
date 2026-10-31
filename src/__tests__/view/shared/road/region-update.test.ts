@@ -1,7 +1,7 @@
 /**
  * `updateRoadRegions` must be `buildRoadRegions` exactly: the incremental path hands back kept
- * regions and rebuilt ones, and the two together have to match the full build region for region —
- * signatures (members, positions, corners), cells, and sampled ring geometry — through every kind
+ * regions and rebuilt ones, and together they match the full build region for region (signatures
+ * of members, positions and corners, cells, and sampled ring geometry) through every kind
  * of edit the layer reports (a tile added, removed, trimmed; a burst of each; edits that split one
  * surface or bridge two), and so must the print-diffing cache both views keep. The walk is seeded,
  * so a failure names a reproducible step.

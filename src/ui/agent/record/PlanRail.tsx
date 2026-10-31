@@ -6,6 +6,7 @@
  */
 import { Disclosure } from '../../primitives/Disclosure';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useReadingIntent } from '../parts/scroll-intent';
 import { displayAgentText, type JobView, type OpRow as OpRowData } from '../../../agent/panel';
 import { useState, type CSSProperties } from 'react';
@@ -184,13 +185,7 @@ export function PlanRail({
                 )}
                 {/* The stage the approved plan said the assistant would stop at keeps saying so. */}
                 {stage.checkpoint === true && (
-                  <span
-                    data-testid="stage-flag"
-                    title={t('agent.plan_checkpoint_here')}
-                    style={{ flex: '0 0 auto', display: 'inline-flex', color: MUTED }}
-                  >
-                    <Icon id="pw-flag" size={12} />
-                  </span>
+                  <StageFlag label={t('agent.plan_checkpoint_here')} />
                 )}
               </div>
               <AnimatePresence initial={false}>
@@ -217,5 +212,16 @@ export function PlanRail({
         );
       })}
     </div>
+  );
+}
+
+/** The flag on the stage the approved plan said the assistant would stop at, named by `label`. */
+function StageFlag({ label }: { label: string }) {
+  const name = useNameReveal(label);
+  return (
+    <span data-testid="stage-flag" {...name.bind} style={{ flex: '0 0 auto', display: 'inline-flex', color: MUTED }}>
+      <Icon id="pw-flag" size={12} />
+      {name.bubble}
+    </span>
   );
 }

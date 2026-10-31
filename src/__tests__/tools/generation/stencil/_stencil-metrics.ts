@@ -1,16 +1,10 @@
 /*
- * How a built letter is judged, and the pipeline that builds one.
+ * How a built letter is judged, and the pipeline that builds one. A stencilled letter keeps one piece
+ * of ink per piece of the glyph (a corner touch is two blocks on the map), open counters, one stroke
+ * width, and an outline free of one-cell bumps and notches.
  *
- * What a stencilled letter has to be is not a matter of taste, and none of it is visible in a cell
- * count: the ink has to be one piece per piece of the glyph (a stroke that touches its neighbour only
- * at a corner is two blocks on the map, whatever it looks like in a raster dump), its counters have to
- * stay open, its strokes have to keep one width, and its outline has to be free of the one-cell bumps
- * and notches that read as damage rather than as a curve.
- *
- * The measures live beside the tests rather than in `src/tools`, because the app never scores a
- * stencil — only the project's own evaluation harness and the tests that consume its committed font
- * rasters do. Both drive this code, so a threshold in a test and a column in the harness's log cannot
- * mean two different things.
+ * The app never scores a stencil, so the measures live beside the tests; the evaluation harness drives
+ * the same code, so a test threshold and a harness column mean the same thing.
  */
 import { createDefaultRegistry } from '../../../../rules';
 import { createGrid } from '../../../../core/model/grid-model';
@@ -48,12 +42,9 @@ function at(m: Mask, x: number, y: number): number {
   return x < 0 || y < 0 || x >= m.width || y >= m.height ? 0 : m.on[y * m.width + x]!;
 }
 
-/** Connected components of the ink, at the connectivity asked for.
- *
- *  Four and eight are different questions here. The map is built out of whole cells, and two cells
- *  meeting at a corner alone are two separate blocks with a gap of ground between them — so a letter
- *  is whole only under 4-connectivity, and the gap between the two counts is exactly the "strokes
- *  disconnect" defect. */
+/** Connected components of the ink. Two cells meeting only at a corner are separate blocks on the
+ *  map, so a letter is whole only under 4-connectivity; the gap between the 4- and 8-counts is the
+ *  "strokes disconnect" defect. */
 export function components(m: Mask, connectivity: 4 | 8 = 4): number {
   const seen = new Uint8Array(m.on.length);
   const steps = connectivity === 4 ? EDGES : [...EDGES, ...DIAGS];
@@ -77,13 +68,8 @@ export function components(m: Mask, connectivity: 4 | 8 = 4): number {
   return count;
 }
 
-/** Enclosed background regions — a letter's counters.
- *
- *  Both sides walk orthogonally here, which is not the pairing a picture would use and is the one
- *  this map has: terrain connects across edges and so does the ground between it, because a diagonal
- *  touch is a point and nothing passes through a point. Counting the background across diagonals
- *  instead would call two areas one until a repair pass sealed the pinch, and then report a counter
- *  had appeared where nothing on the map had changed. */
+/** Enclosed background regions: a letter's counters. The background walks orthogonally too, as on
+ *  the map, where nothing passes through a diagonal touch. */
 export function holes(m: Mask): number {
   const seen = new Uint8Array(m.on.length);
   const steps = EDGES;
@@ -146,13 +132,9 @@ export function insideDistance(m: Mask): Uint16Array {
   return dist;
 }
 
-/** How wide the strokes run: at each ink cell, the shorter of the row run and the column run through
- *  it, which is the stroke's own width wherever it runs with an axis and an over-estimate only where
- *  two strokes cross.
- *
- *  Measured in runs, not off the distance transform: a chessboard distance cannot tell a stroke two
- *  cells wide from one cell wide (both sit one step from the outside), so a target of two read back
- *  as one and a cap that was working looked like a cap that had carved the letter to a wire. */
+/** How wide the strokes run: at each ink cell, the shorter of its row run and column run, which
+ *  over-estimates only where two strokes cross. Runs, not the distance transform, because a chessboard
+ *  distance cannot tell a two-cell stroke from a one-cell one. */
 export function strokeWidths(m: Mask): { median: number; spread: number; max: number; samples: number } {
   const widths: number[] = [];
   const run = (x: number, y: number, dx: number, dy: number): number => {
@@ -168,9 +150,7 @@ export function strokeWidths(m: Mask): { median: number; spread: number; max: nu
     }
   }
   if (!widths.length) return { median: 0, spread: 0, max: 0, samples: 0 };
-  // Median and the quartile spread, not mean and deviation: where two strokes cross, the run through
-  // the crossing is the whole of the other stroke, so a handful of junction cells drag a mean far past
-  // any width the letter actually draws.
+  // Median and quartile spread, because a few junction cells would drag a mean far past any drawn width.
   widths.sort((a, b) => a - b);
   const quantile = (q: number): number => widths[Math.min(widths.length - 1, Math.floor(widths.length * q))]!;
   return { median: quantile(0.5), spread: quantile(0.75) - quantile(0.25), max: widths[widths.length - 1]!, samples: widths.length };
@@ -208,21 +188,13 @@ function sealsGround(s: Stencil, x: number, y: number): boolean {
 }
 
 /**
- * The outline's damage, counted as the two shapes an eye reads as damage rather than as drawing.
- *
- * A nub is an ink cell sticking out of a body on three sides — one cell of a stroke's own width is a
- * stroke, one cell hanging off a stroke that is two or more cells wide is a bump. A notch is its
- * inverse, an empty cell bitten out of a run that surrounds it on three sides. Both are what a
- * one-cell wobble along a straight edge produces, and both survive the corner trim as a bevelled
- * step in the middle of a line.
+ * The outline's damage. A nub is one ink cell hanging off a body at least two cells wide; a notch is an
+ * empty cell bitten out of ink that surrounds it on three sides. Both survive the corner trim as a
+ * bevelled step in the middle of a line.
  */
 export function raggedness(m: Mask, touched?: Mask): { nubs: number; notches: number; isolated: number } {
-  // A notch is damage only where it could have been filled, which is the same list of refusals the
-  // glyph finishing works from: a one-cell gap between two strokes is the character's own daylight,
-  // whether it closes on itself or runs out to the open air, and a cell the face put no ink in at all
-  // is ground rather than a bite out of a stroke. Counting either would score the shape for keeping
-  // the letter open — and at five cells a letter is nothing but the corners where its one-cell
-  // strokes meet, so a measure that read those as damage would refuse every small diagonal.
+  // A notch counts only where glyph finishing could have filled it: a one-cell gap between strokes is
+  // the character's daylight, and a cell the face never inked is ground.
   const asStencil = { width: m.width, height: m.height, coverage: m.on.map((v) => (v ? 255 : 0)), color: new Uint32Array(m.on.length) };
   let nubs = 0, notches = 0, isolated = 0;
   for (let y = 0; y < m.height; y++) {
@@ -232,9 +204,8 @@ export function raggedness(m: Mask, touched?: Mask): { nubs: number; notches: nu
       for (const [dx, dy] of EDGES) ink += at(m, x + dx, y + dy);
       if (m.on[i]) {
         if (ink === 0) isolated++;
-        // Only a bump on a body counts: on a wire stroke every cell has two empty sides and its tip
-        // has three, which is the drawing rather than damage. Read the same way the pass that carves
-        // them reads it (`stencil-stroke.ts:smoothOutline`), or the two disagree about what a bump is.
+        // A wire stroke's tip is drawing, not a bump; this reads bumps as
+        // `stencil-stroke.ts:smoothOutline` does.
         if (ink === 1) {
           for (const [dx, dy] of EDGES) {
             const nx = x + dx, ny = y + dy;
@@ -251,11 +222,7 @@ export function raggedness(m: Mask, touched?: Mask): { nubs: number; notches: nu
   return { nubs, notches, isolated };
 }
 
-/**
- * Where a shape's edge runs, one number per scanline: the first ink cell along the scan, or -1 for a
- * scanline the shape does not reach. Four of these describe an outline well enough to ask whether a
- * straight part of it came out straight.
- */
+/** Where a shape's edge runs: per scanline, the first ink cell along the scan, or -1 where none. */
 export type EdgeSide = 'left' | 'right' | 'top' | 'bottom';
 
 export function edgeProfile(m: Mask, side: EdgeSide): number[] {
@@ -276,16 +243,13 @@ export function edgeProfile(m: Mask, side: EdgeSide): number[] {
   return out;
 }
 
-/** How long a straight piece of edge has to be before it is worth judging: shorter than this and a
- *  letter's own curvature is indistinguishable from a wobble. */
+/** The shortest straight edge worth judging; below it a letter's curvature looks like a wobble. */
 const STRAIGHT_RUN = 5;
 
 /**
- * Whether what was straight came out straight; a wobble in a line reads as a mistake where one in a
- * curve reads as resolution. The reference names its straight runs (scanlines whose edge moves by
- * the same 0 or ±1 each step), and over each the built edge is fitted to its own least-squares line,
- * so a letter one cell over is not crooked. A break is a scanline in a straight run where the built
- * letter has no edge at all.
+ * Whether what was straight came out straight. The reference names its straight runs (edges moving by
+ * the same 0 or ±1 each step), and over each the built edge is fitted to its own least-squares line, so
+ * a letter one cell over is not crooked. A break is a scanline inside a run with no built edge.
  */
 export interface Straightness { runs: number; deviation: number; breaks: number }
 
@@ -296,8 +260,7 @@ export function straightness(built: Mask, reference: Mask): Straightness {
     let i = 0;
     while (i < ref.length) {
       if (ref[i]! < 0) { i++; continue; }
-      // The longest straight run starting here: one step decides the slope, and the run holds while
-      // every later step repeats it.
+      // The longest straight run starting here, at any of the three slopes.
       let bestEnd = i;
       for (const slope of [0, 1, -1]) {
         let end = i;
@@ -306,20 +269,12 @@ export function straightness(built: Mask, reference: Mask): Straightness {
       }
       if (bestEnd - i + 1 < STRAIGHT_RUN) { i++; continue; }
       runs++;
-      // A break is interior. A run the built letter simply does not reach the end of is a letter drawn
-      // a shade smaller, which is not a hole in a stroke; a scanline with nothing on it between two
-      // that have something is.
+      // Breaks are interior: a run the built letter falls short of is a slightly smaller letter.
       let first = -1, last = -1;
       for (let k = i; k <= bestEnd; k++) if (got[k]! >= 0) { if (first < 0) first = k; last = k; }
       for (let k = first; k >= 0 && k <= last; k++) if (got[k]! < 0) breaks++;
-      // The built edge is measured in pieces that could be one line: a step of two cells or more is a
-      // Different feature arriving under the same scanline (a bar where the reference had only the
-      // stem, one row up or down), not a wobble in this one, and fitting a line across the two would
-      // report the whole letter's width as its deviation.
-      //
-      // The middle of the run, at that: the scanline where a straight edge begins is the one beside a
-      // junction or a terminal, and a face rounds those. The cell of ink that rounding leaves is the
-      // drawing, not a wobble in the line that follows it.
+      // Fit only pieces that could be one line: a step of two cells or more is another feature (a bar
+      // beside the stem). Each end scanline is dropped, since a face rounds junctions and terminals.
       first += 1; last -= 1;
       while (first >= 0 && first <= last && got[first]! < 0) first++;
       for (let k = first; k >= 0 && k <= last;) {
@@ -371,23 +326,16 @@ export function shifted(m: Mask, dx: number, dy: number): Mask {
 }
 
 /**
- * The reference registered against the built letter: the same picture moved by up to a cell either
- * way, whichever placement overlaps best.
- *
- * A stencil's placement is chosen by which sub-cell phase the grid can hold best, and the reference is
- * drawn at four times the resolution, so the two can settle a cell apart on a letter whose stem is one
- * cell wide. That is a difference of registration and not of shape — uncorrected it halves the
- * measured overlap of a perfectly built letter, which would have every fidelity number reporting the
- * phase of the search instead of the work of the engine.
+ * The reference moved by up to a cell either way to overlap the built letter best. The stencil's
+ * sub-cell phase and the 4x reference can settle a cell apart, which would halve the overlap of a
+ * perfect one-cell stem.
  */
 export function registered(built: Mask, reference: Mask): Mask {
   const [dx, dy] = bestShift(built, reference);
   return dx || dy ? shifted(reference, dx, dy) : reference;
 }
 
-/** The move, of up to a cell either way, that lands the reference best on the built letter. Everything
- *  measured against the drawing takes it, or a letter placed a cell over reads as a letter that lost
- *  something. */
+/** The move, of up to a cell either way, that lands the reference best on the built letter. */
 export function bestShift(built: Mask, reference: Mask): [number, number] {
   let best: [number, number] = [0, 0], bestScore = -1;
   for (let dy = -1; dy <= 1; dy++) {
@@ -407,12 +355,9 @@ const asStencil = (m: Mask): Stencil => ({
 });
 
 /**
- * How much of the drawing's separate pieces the built letter still crosses, and how much of its own
- * box is ink — the two readings that say whether the path through a letter is clear.
- *
- * Both are the engine's own (`tools/generation/stencil/stencil.ts`): the shelf refuses a card on exactly
- * these numbers, so a matrix that measured them its own way could call legible what the app refuses,
- * or the reverse. What lives here is only the adaptation from a Mask.
+ * How much of the drawing's stroke separation the built letter keeps, and how much of its box is ink.
+ * Both are the engine's own readings (`tools/generation/stencil/stencil.ts`), which the shelf refuses a
+ * card on; only the adaptation from a Mask lives here.
  */
 export function separation(
   built: Mask, runsRow: readonly number[], runsCol: readonly number[], shift: [number, number] = [0, 0],
@@ -434,9 +379,8 @@ export function iou(a: Mask, b: Mask): number {
   return union ? inter / union : 1;
 }
 
-/** How much of the reference's own skeleton the built letter still carries, within a cell. The
- *  glyph's structure is its ridge, so a stroke that vanished shows up here where an IoU only sees a
- *  slightly lighter letter. */
+/** How much of the reference's skeleton the built letter carries, within a cell; a vanished stroke
+ *  shows here where an IoU sees only a lighter letter. */
 export function skeletonRecall(final: Mask, reference: Mask): number {
   const dist = insideDistance(reference);
   let want = 0, got = 0;
@@ -465,49 +409,40 @@ export function skeletonRecall(final: Mask, reference: Mask): number {
   return want ? got / want : 1;
 }
 
-// --- the pipeline a score is taken from -------------------------------------------------------
+// The pipeline a score is taken from
 
 /** A stored font raster: what the face drew, before any of the processing. */
 export interface RasterFixture {
   text: string;
-  /** The region, in cells, the glyph was fitted to: one square per code point, which is the shape a
-   *  word is actually written in. A square box for a five-letter word gives each letter a fifth of
-   *  the room and judges the engine on a region the shelf's own floor refuses. */
+  /** The region, in cells, the glyph was fitted to: one square per code point. */
   width: number;
   height: number;
   /** The CSS weight the derivation asked the face for. */
   weight: number;
   /** Cell coverage, one byte each, row-major. */
   coverage: Uint8Array;
-  /** Per-cell quadrant coverage [TL, TR, BL, BR] — the trim pass's own signal. */
+  /** Per-cell quadrant coverage [TL, TR, BL, BR]: the trim pass's own signal. */
   quad: Uint8Array;
-  /** The same glyph at the same weight, drawn with room to spare and reduced back down: the picture
-   *  the built letter is compared against. */
+  /** The same glyph at the same weight, drawn larger and reduced: what the built letter is compared
+   *  against. */
   reference: Uint8Array;
-  /** The same letter drawn without the placement search, at the region's own resolution: what the
-   *  rasterizer would have produced before the grid fit existed. */
+  /** The same letter drawn without the placement search, at the region's own resolution. */
   centred: Uint8Array;
-  /** And the same, drawn with room to spare and reduced down: a reference the search did not place.
-   *  The pair is what lets the search be judged by something outside itself. */
+  /** The same, drawn larger and reduced: a reference the search did not place. */
   fixedReference: Uint8Array;
-  /** How many separate pieces of the drawing each row and column of the region's grid crosses,
-   *  counted at the reference's full resolution. The one reading a same-weight reference cannot give:
-   *  a weight that fuses two strokes fuses them in the reference too. */
+  /** How many separate pieces of the drawing each row and column crosses, at the reference's full
+   *  resolution; a weight that fuses two strokes fuses them in the reference too. */
   runsRow: number[];
   runsCol: number[];
-  /** The glyph's own topology, counted at the reference's full resolution — how many pieces the face
-   *  draws it in, and how many counters it encloses. Read there rather than off the reduction: a
-   *  light stroke at ten cells averages below half a cell, and the reduced picture would arrive
-   *  broken into a dozen pieces and be the thing declared correct. */
+  /** The glyph's pieces and counters at the reference's full resolution, since a light stroke at ten
+   *  cells averages below half a cell and the reduction would arrive broken. */
   pieces: number;
   counters: number;
 }
 
-/** The committed rasters as they are stored: byte arrays base64'd, since a matrix of glyph rasters
- *  written out as JSON numbers is several megabytes of commas. */
+/** The committed rasters as stored, byte arrays in base64. */
 export interface RasterFixtureFile {
-  /** The font stack the rasters were drawn with, so a fixture taken against a different face is
-   *  recognisable rather than silently compared. */
+  /** The font stack the rasters were drawn with. */
   font: string;
   generated: string;
   /** How many times the region's own resolution the reference was drawn at before being reduced. */
@@ -559,9 +494,8 @@ export function stencilOf(fixture: RasterFixture): Stencil {
   };
 }
 
-/** The face's own picture at this resolution, before any of the processing — the thing the engine is
- *  judged against for topology. What the reference says is the letter's true shape; what this says is
- *  the most the region can hold, and the two differ where a counter simply has no cell to be. */
+/** The face's own picture at this resolution, before processing: the most the region can hold, which
+ *  is what topology is judged against. */
 export function rawMask(fixture: RasterFixture): Mask {
   return maskOf(fixture.width, fixture.height, (i) => fixture.coverage[i]! >= COVERAGE_ON);
 }
@@ -571,13 +505,8 @@ export function referenceMask(fixture: RasterFixture): Mask {
 }
 
 /**
- * Does the placement search earn its keep, asked in a way it cannot answer for itself. The answer is
- * the ink the face drew, which summing `coverage` gives exactly for either placement; a quantised
- * picture goes thin by carrying the wrong amount of it (a bar between two rows is two dropped rows
- * of half coverage). No placement enters the answer, unlike an IoU against a placed reference,
- * which favours the raster sharing its sub-cell phase.
- *
- * Returns each placement's fidelity as 1 minus its area error.
+ * Each placement's fidelity as 1 minus its area error against the ink the face drew (summed
+ * `coverage`), a measure no placement enters, unlike an IoU against a placed reference.
  */
 export function placementGain(fixture: RasterFixture): { fitted: number; centred: number } {
   const finish = (coverage: Uint8Array): number => {
@@ -592,15 +521,13 @@ export function placementGain(fixture: RasterFixture): { fitted: number; centred
     return cells;
   };
   const area = (c: Uint8Array): number => c.reduce((total: number, v) => total + v, 0) / 255;
-  // Averaged over the two, since a glyph shifted to the edge of its box can lose a sliver of ink to
-  // the border and the two placements are not shifted alike.
+  // Averaged, since a glyph shifted to its box's edge can lose a sliver of ink to the border.
   const drawn = Math.max(1e-6, (area(fixture.coverage) + area(fixture.centred)) / 2);
   const fidelity = (built: number): number => 1 - Math.abs(built - drawn) / drawn;
   return { fitted: fidelity(finish(fixture.coverage)), centred: fidelity(finish(fixture.centred)) };
 }
 
-/** A blank buildable map with a margin around the stencil, so nothing is judged against the edge of
- *  the world. */
+/** A blank buildable map with a margin around the stencil. */
 function freshMap(width: number, height: number): GridState {
   const zones: CellZone[][] = Array.from({ length: height }, () => Array.from({ length: width }, () => CellZone.Grass));
   const template: MapTemplate = {
@@ -618,9 +545,7 @@ export interface BuiltGlyph {
   origin: { x: number; y: number };
   /** The stencil as the generator received it: the raster, repaired and capped. */
   stencil: Stencil;
-  /** The terrain the run actually left standing, in stencil coordinates. Real blocks only — a Γ
-   *  fillet is cosmetic and carries no mass, so counting one as ink would call a broken letter
-   *  whole. */
+  /** The real blocks the run left, in stencil coordinates; a Γ fillet is cosmetic and not ink. */
   ink: Mask;
   /** Cosmetic fillets the trim pass added, same coordinates. */
   patches: Mask;
@@ -628,10 +553,7 @@ export interface BuiltGlyph {
   violations: number;
 }
 
-/**
- * A stored raster taken all the way to committed terrain, through the pipeline the shelf runs: the
- * glyph processing, the stencil plan, and the generator's own corner-trim pass.
- */
+/** A stored raster taken to committed terrain through the shelf's pipeline, corner trim included. */
 export function buildGlyph(fixture: RasterFixture): BuiltGlyph {
   const stencil = stencilOf(fixture);
   finishGlyph(stencil);
@@ -668,37 +590,32 @@ export interface GlyphScore {
   /** Pieces the built letter is in, and pieces the reference says it should be in. */
   pieces: number;
   piecesWanted: number;
-  /** Pieces that would be whole if a corner touch counted — the ink that fell apart into blocks. */
+  /** Pieces that would be whole if a corner touch counted: the ink that fell apart into blocks. */
   cornerOnly: number;
   counters: number;
-  /** The counters the face's own raster holds at this size, and the counters the letter really has.
-   *  Processing is answerable for the first; the gap between the two is the region's resolution. */
+  /** The counters the face's raster holds at this size, which processing answers for, and the
+   *  counters the letter really has. */
   countersHeld: number;
   countersWanted: number;
   width: { median: number; spread: number; max: number };
-  /** The cap the stroke cap was holding the letter to, for the width beside it to be read against. */
+  /** The stroke width the cap aimed at. */
   target: number;
   nubs: number;
   notches: number;
   isolated: number;
-  /** Cells standing alone in the face's own raster at this size — at ten cells a dot in an ideograph
-   *  is one cell and has nowhere to touch. Only what the processing adds to that is a defect. */
+  /** Cells standing alone in the face's own raster; only what processing adds is a defect. */
   isolatedHeld: number;
   iou: number;
   recall: number;
-  /** What the reference's straight edges came out as: how many there were, the worst wobble in cells,
-   *  and how many scanlines of them the built letter left empty. */
   straight: Straightness;
-  /** How much of the drawing's stroke separation survived, 1 being all of it. */
+  /** The share of the drawing's stroke separation that survived. */
   separation: number;
-  /** The runs the drawing itself crosses, for the reading that only applies to a letter of more than
-   *  one stroke. */
+  /** The runs the drawing crosses, to tell a one-stroke letter apart. */
   runsWanted: number[];
-  /** How much of the letter's own box is ink: the reading behind "the stroke is too bold". */
+  /** The share of the letter's box that is ink. */
   density: number;
-  /** Whether the region this was drawn in is under the floor the text itself asks for
-   *  (`stencil.ts:textMinBox`). Those cells are in the matrix on purpose — a floor is only worth
-   *  anything if what lies under it is measured too — and they are reported rather than failed. */
+  /** Whether the region is under the text's floor (`stencil.ts:textMinBox`); such cells are reported,
+   *  not failed. */
   underFloor: boolean;
   violations: number;
   patches: number;
@@ -710,8 +627,7 @@ export function scoreGlyph(fixture: RasterFixture, built: BuiltGlyph): GlyphScor
   const raw = rawMask(fixture);
   const four = components(built.ink, 4);
   const eight = components(built.ink, 8);
-  // The cells the face put ink in, by the same bar the glyph finishing fills a notch under: what it
-  // refuses to fill is not damage this can count (`stencil.ts:TOUCHED_INK`).
+  // The cells the face inked, by the bar glyph finishing fills a notch under (`stencil.ts:TOUCHED_INK`).
   const touched = maskOf(fixture.width, fixture.height, (i) => fixture.coverage[i]! >= TOUCHED_INK);
   const rag = raggedness(built.ink, touched);
   const w = strokeWidths(built.ink);
@@ -746,36 +662,26 @@ export function scoreGlyph(fixture: RasterFixture, built: BuiltGlyph): GlyphScor
 }
 
 /**
- * The thresholds a built letter has to clear, read off rendered contact sheets.
- *
- *  - Broken is absolute: extra pieces, a counter closed or opened, or a lone cell of ink.
- *  - Ragged is per cell of ink: a nub or notch every fifty cells reads as texture.
- *  - Recall, not IoU, carries the fidelity floor: the stroke width is not the face's, so a thinner
- *    letter loses IoU by construction; what may not happen is a piece of the glyph going missing.
+ * The thresholds a built letter clears, read off rendered contact sheets. Broken is absolute; ragged is
+ * per cell of ink (a nub or notch every fifty cells reads as texture); recall, not IoU, carries the
+ * fidelity floor, since a thinner stroke loses IoU by construction.
  */
 export const STENCIL_THRESHOLDS = {
   raggedPerCell: 0.02,
   recall: 0.9,
-  /** The two the shelf also refuses a card on, taken from the engine so the matrix and the app cannot
-   *  disagree about what is legible (`tools/generation/stencil/stencil.ts:GLYPH_LEGIBLE`). */
+  /** The shelf's own legibility bars (`tools/generation/stencil/stencil.ts:GLYPH_LEGIBLE`). */
   separation: GLYPH_LEGIBLE.separation,
   density: GLYPH_LEGIBLE.density,
-  /** How far a built edge may stray from the straight line it should be, in cells. Under half a cell
-   *  is the only answer a grid can give: a quantised edge is either on a cell or on the next one, so
-   *  a deviation at or under 0.5 is a run that never left its line and anything above it is a cell
-   *  that stepped out and came back — the wobble a reader sees as a mistake. */
+  /** How far a built edge may stray from its line, in cells; above 0.5 a cell stepped out and back. */
   straightDeviation: 0.5,
 } as const;
 
 export function glyphFailures(s: GlyphScore): string[] {
-  // Under the floor is not a failure, it is the reason the floor is where it is: an ideograph in ten
-  // cells has strokes the face's own raster could not hold, and no pass downstream can put them back.
+  // Under the floor the face's own raster cannot hold the strokes, so nothing is failed.
   if (s.underFloor) return [];
   const out: string[] = [];
   if (s.pieces > s.piecesWanted) out.push(`${s.pieces} pieces, wanted ${s.piecesWanted}`);
-  // Against what the face drew here, not against the letter's true count: a counter with no cell to
-  // be at ten cells is the region's resolution and no pass can conjure it, while a counter the raster
-  // held and the processing closed is a defect this code owns.
+  // Against the counters the raster held, since one with no cell to be in is the region's resolution.
   if (s.counters !== s.countersHeld) out.push(`${s.counters} counters, the raster held ${s.countersHeld}`);
   if (s.isolated > s.isolatedHeld) out.push(`${s.isolated} cells stand alone, the raster held ${s.isolatedHeld}`);
   const ragged = (s.nubs + s.notches) / Math.max(1, s.cells);
@@ -788,8 +694,7 @@ export function glyphFailures(s: GlyphScore): string[] {
   if (s.separation < STENCIL_THRESHOLDS.separation) {
     out.push(`strokes fused: ${(100 * s.separation).toFixed(0)}% of the drawing's own separation`);
   }
-  // A letter with one stroke fills its own box by definition, so the density bar is asked of letters
-  // the drawing gave more than one to.
+  // A one-stroke letter fills its own box, so density applies only to letters of more strokes.
   if (s.density > STENCIL_THRESHOLDS.density && Math.max(...s.runsWanted) > 1) {
     out.push(`${(100 * s.density).toFixed(0)}% of the letter's box is ink`);
   }

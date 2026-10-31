@@ -1,14 +1,6 @@
 /**
- * The habitat field, and the community one press plants over it.
- *
- * Two claims are worth a test and nothing else here is: that the ground decides (a water-loving
- * species keeps to the shore and a dry-loving one keeps off it, on the same fixture, from the same
- * pool of candidate cells), and that a press reads as one community rather than a species lottery
- * (a seed-derived dominant takes most of the stand, and a different seed takes a different one).
- *
- * The fixture puts a pond in the west and a terraced butte in the east, and aims the press between
- * them so its disc spans both gradients: a wet, sheltered shore, an ordinary dry middle, and an
- * exposed top. Aiming at any one of the three would let a picker that ignored habitat pass.
+ * The habitat field and the community one press plants over it: the ground decides where each
+ * species goes, and a press reads as one community led by a seed-derived dominant species.
  */
 import { describe, it, expect } from 'vitest';
 import { TerrainType, type GridState } from '../../../../core/model/types';
@@ -24,13 +16,12 @@ import { makeState, setTerrain, makeExecutor } from '../../../_support/map-state
 import { ItemCategory } from '../../../../config/catalog/categories';
 
 const SIZE = 40;
-/** A pond in the west: every cell of it water, so the moisture gradient runs east from x = 15. */
+/** A pond in the west, so the moisture gradient runs east from x = 15. */
 const POND = { x0: 8, x1: 14, y0: 14, y1: 26 };
-/** A butte in the east, flat on top and terraced down its sides one tier at a time (so V-MTN-03
- *  holds by construction and the top has open interior to plant). */
+/** A butte in the east, flat on top and terraced one tier at a time, so V-MTN-03 holds. */
 const BUTTE = { at: { x: 28, y: 20 }, flat: 3, peak: 4 };
-/** Between the two, on the ordinary ground: a press aimed at the shore or at the summit would
- *  choose its community from one niche and never meet the other. */
+/** Between pond and butte, so the press disc spans the wet shore, the dry middle and the exposed
+ *  top; aimed at one niche, a picker that ignored habitat would pass. */
 const AT = { x: 21, y: 20 };
 const RADIUS = 8;
 
@@ -49,9 +40,7 @@ function pondState(): GridState {
   return state;
 }
 
-/** Open grass, nothing else: one habitat everywhere, which is the site a stand's purity means
- *  something on. On the mixed fixture above a community is supposed to thin out as it crosses into
- *  ground it does not want, so measuring purity there would be measuring the habitat field. */
+/** One habitat everywhere, so a stand's purity measures the community, not the habitat field. */
 const plainState = (): GridState => makeState(SIZE, SIZE);
 
 function kitFor(state: GridState): EditContext {
@@ -86,7 +75,7 @@ describe('the habitat field', () => {
 
     expect(at(28, 20).exposure, 'the summit is exposed').toBeGreaterThan(0.6);
     expect(at(21, 8).exposure, 'open flat ground away from any step is sheltered').toBe(0);
-    // The cell at the foot of the butte sits against a cliff, so it is more exposed than open flat.
+    // A cell at the butte's foot sits against a cliff.
     expect(at(24, 20).exposure).toBeGreaterThan(at(21, 8).exposure);
 
     expect(at(15, 20).edge, 'the shoreline IS the edge of the plantable ground').toBeGreaterThan(0.5);
@@ -95,11 +84,8 @@ describe('the habitat field', () => {
 });
 
 describe('species sort themselves by habitat', () => {
-  /**
-   * The two species are drawn from the same candidate cells — `placeNature` decides where a plant
-   * goes before anything decides what it is — so the whole difference between the two distributions
-   * is the preference table doing its work.
-   */
+  /** Both species draw from the same candidate cells (`placeNature` picks where before what), so the
+   *  difference between their distributions is the preference table's. */
   it('plants the water-lover near water and the dry-lover away from it', () => {
     const wet: number[] = [], dry: number[] = [];
     for (let seed = 1; seed <= 80; seed++) {
@@ -111,8 +97,7 @@ describe('species sort themselves by habitat', () => {
     expect(wet.length, 'the sweep planted no water-lover at all').toBeGreaterThan(10);
     expect(dry.length, 'the sweep planted no dry-lover at all').toBeGreaterThan(10);
     expect(mean(wet), 'the water-lover is not closer to water than the dry-lover').toBeLessThan(mean(dry) - 4);
-    // And not merely closer on average: it never strays past the moisture reach at all, while the
-    // dry-lover is out on ground the shore's influence does not reach.
+    // The water-lover never strays past the moisture reach; the dry-lover does.
     expect(Math.max(...wet), 'a water-lover was planted on dry ground').toBeLessThanOrEqual(8);
     expect(Math.max(...dry), 'the dry-lover never left the shore').toBeGreaterThan(8);
   });

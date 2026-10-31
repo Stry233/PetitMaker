@@ -96,7 +96,6 @@ describe('verbatimRetryNudge', () => {
   it('returns undefined on a first failure', () => {
     const log = createLog();
     seedOrder(log);
-    // No prior failure logged at all: this call has not failed yet, so there is nothing to escalate.
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
   });
 
@@ -127,7 +126,7 @@ describe('verbatimRetryNudge', () => {
     seedCall(log, 'call-1', call.name, call.args);
     seedResult(log, 'call-1', call.name, { isError: true });
     seedCall(log, 'call-2', call.name, call.args);
-    seedResult(log, 'call-2', call.name, {}); // success
+    seedResult(log, 'call-2', call.name, {});
     seedCall(log, 'call-3', call.name, call.args);
     seedResult(log, 'call-3', call.name, { isError: true });
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeDefined();
@@ -136,27 +135,20 @@ describe('verbatimRetryNudge', () => {
   it('a reused callId across turns never corrupts the lookup: the new occurrence\'s first attempt reads clean while the earlier occurrence\'s real failure still counts', () => {
     const log = createLog();
     seedOrder(log);
-    // Turn 1: call id "c" fails with {x:1}.
     seedCall(log, 'c', call.name, { x: 1 });
     seedResult(log, 'c', call.name, { isError: true });
-    // Turn 2 reuses id "c" with different args {x:2}: a raw-callId-keyed map (last write wins)
-    // would overwrite {x:1}'s signature with {x:2}'s and misattribute turn 1's failure to it,
-    // false-firing on this occurrence's very first attempt.
+    // Turn 2 reuses id "c" with {x:2}; a map keyed by raw callId (last write wins) would pin turn 1's
+    // failure on {x:2}.
     seedCall(log, 'c', call.name, { x: 2 });
 
-    // {x:2} has never failed: no false fire from the stale {x:1} mapping.
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, { name: call.name, args: { x: 2 } }))).toBeUndefined();
-    // {x:1} genuinely failed once already: a second attempt at it still correctly escalates.
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, { name: call.name, args: { x: 1 } }))).toBeDefined();
   });
 
   it('a different signature never contributes to the count', () => {
     const log = createLog();
     seedOrder(log);
-    // Only a MISMATCHED-args failure is logged: if it wrongly counted toward `call`'s own
-    // signature, one prior would be enough to fire under the new threshold, so this fails loudly
-    // on a broken signature match rather than needing a second, correctly-matching failure to
-    // tell contamination apart from a legitimate count.
+    // One mismatched-args failure is enough to fire if it wrongly counted toward `call`'s signature.
     seedCall(log, 'call-1', call.name, { x: 9, y: 9 });
     seedResult(log, 'call-1', call.name, { isError: true });
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
@@ -196,7 +188,6 @@ describe('revertNudge', () => {
   it('returns undefined before the second revert of one tool', () => {
     const log = createLog();
     seedOrder(log);
-    // No revert logged yet for this tool: nothing has reverted once, so there is nothing to escalate.
     expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
 
@@ -388,9 +379,7 @@ describe('job scoping', () => {
     seedOrder(log);
     seedCall(log, 'call-1', call.name, call.args);
     seedResult(log, 'call-1', call.name, { isError: true });
-    // A new job starts with none of its own matching failures: at the new threshold (fires on 1
-    // logged prior), the prior job's failure alone would be enough to wrongly escalate here if it
-    // leaked across the order boundary, so this needs no second failure of its own to prove it.
+    // The nudge fires on one prior failure, so a leak across the order boundary would show at once.
     seedOrder(log);
     expect(verbatimRetryNudge(GUIDES, verbatimFailures(log, call))).toBeUndefined();
   });
@@ -400,7 +389,6 @@ describe('job scoping', () => {
     seedOrder(log);
     seedCall(log, 'call-1', 'paint_terrain', { x: 1 });
     seedResult(log, 'call-1', 'paint_terrain', { reverted: true });
-    // A new job starts with no revert of its own: same reasoning as the verbatim-retry case above.
     seedOrder(log);
     expect(revertNudge(GUIDES, 'paint_terrain', revertCount(log, 'paint_terrain'))).toBeUndefined();
   });
@@ -456,7 +444,7 @@ describe('reasoningOnlyNudge', () => {
 
   it('never tells a turn that thought it produced nothing: that is the empty nudge\'s sentence, and it would be false here', () => {
     expect(reasoningOnlyNudge(1)).not.toMatch(/produced no text and no tool calls/);
-    expect(emptyTurnNudge(1)).toMatch(/produced no text and no tool calls/); // the two shapes stay distinct
+    expect(emptyTurnNudge(1)).toMatch(/produced no text and no tool calls/);
   });
 
   it('returns nothing past 2, exactly as the empty nudge does: the loop ends the job rather than nudging again', () => {
@@ -509,7 +497,7 @@ describe('consecutiveLengthStops', () => {
     const log = createLog();
     seedOrder(log);
     seedTurn(log, 'length');
-    seedResult(log, 'call-1', 'paint_terrain', { isError: true }); // the reissue result of the cut-off batch
+    seedResult(log, 'call-1', 'paint_terrain', { isError: true }); // reissue result of the cut-off batch
     seedTurn(log, 'length');
     expect(consecutiveLengthStops(log)).toBe(2);
   });

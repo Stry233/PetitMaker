@@ -134,7 +134,7 @@ describe('placing the game window in the scan\'s frame', () => {
 describe('finding the game window over a recording\'s pictures', () => {
   it('finds a 16:10 window between pillarbox bars to a fraction of a pixel', () => {
     close(survey({ width: 1920, height: 1080 }, { x0: 96, y0: 0, x1: 1824, y1: 1080 }), { x0: 96, y0: 0, x1: 1824, y1: 1080 }, 0.6);
-    // Edges between survey pixels against the game's darkened edge: within a survey pixel.
+    // Window edges that fall between survey pixels are found to within one survey pixel.
     close(survey({ width: 1920, height: 1080 }, { x0: 95, y0: 0, x1: 1823, y1: 1080 }), { x0: 95, y0: 0, x1: 1823, y1: 1080 }, 2);
   });
 
@@ -203,7 +203,7 @@ describe('finding the game window over a recording\'s pictures', () => {
     expect(framing!.placement.scale).toBeCloseTo(FH / 600, 2);
     expect(framing!.world).toBeCloseTo(1, 9);
     for (const k of ['x0', 'y0', 'x1', 'y1'] as const) expect(Math.abs(framing!.window[k] - CALIBRATED_WINDOW[k])).toBeLessThanOrEqual(1);
-    // The second pass draws the calibrated HUD, whose window lies within a pixel of the one found.
+    // The second pass draws the calibrated HUD, so the inset read is the calibrated one.
     expect(Math.abs(framing!.hudInset - SCAN_PROFILE.hud.inset.calibrated)).toBeLessThan(1);
     expect(hudLayout(framing!).scale).toBeCloseTo(1, 2);
   });

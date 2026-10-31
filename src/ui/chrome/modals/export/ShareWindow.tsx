@@ -5,8 +5,9 @@
  * when first reached and stays mounted, its `open` being the window's, so nothing typed is lost and no
  * section's capture runs before it is asked for.
  */
+import { tourTargetAttr } from '../../tour/steps';
 import { useWindow } from '../use-window';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore, type ShareSection } from '../../../../state/store';
@@ -15,8 +16,8 @@ import { ExportJsonPanel } from './ExportJsonModal';
 import { ExportPanel } from './ExportModal';
 import { ModalShell, useModalEntered } from '../../../primitives/ModalShell';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
-import { useScrollFade } from '../../../primitives/scroll-fade';
-import { WindowHeader, windowFrame } from '../../../primitives/Window';
+import { useTouchMode } from '../../../design/input-mode';
+import { WindowBody, WindowHeader, useShortWindow, windowFrame } from '../../../primitives/Window';
 import type { I18nKey } from '../../../../i18n/keys';
 
 export type { ShareSection };
@@ -34,12 +35,17 @@ const LABEL: Record<Section, I18nKey> = {
  *  it, and a Help figure poses the same head over the same panels. */
 export function ShareWindowHead({ section, onPick, onClose }: { section: ShareSection; onPick: (s: ShareSection) => void; onClose: () => void }) {
   const t = useT();
+  const touch = useTouchMode();
+  // A short card, a phone held sideways, draws the head's rows tighter.
+  const short = useShortWindow();
   return (
     <>
-      <WindowHeader title={t('share.title')} reserve close={{ label: t('hint.close'), onPress: onClose }} style={{ marginBottom: 12, flex: '0 0 auto' }} />
-      <div style={{ marginBottom: 14, flex: '0 0 auto' }}>
+      <WindowHeader title={t('share.title')} reserve close={{ label: t('hint.close'), onPress: onClose }} style={{ marginBottom: short ? 6 : 12, flex: '0 0 auto' }} />
+      <div {...tourTargetAttr('share-tabs')} style={{ marginBottom: short ? 8 : 14, flex: '0 0 auto' }}>
         <SegmentedControl<ShareSection>
           idPrefix="share-section"
+          // A finger's window draws above the chrome zoom, which leaves a phone's tabs too narrow for a whole label.
+          wrapLabels={touch}
           value={section}
           options={SECTIONS}
           render={(s) => t(LABEL[s])}
@@ -91,10 +97,6 @@ export function ShareWindow({ open: posedOpen, section: posedSection }: { open?:
     setVisited((seen) => (seen.includes(next) ? seen : [...seen, next]));
   }, []);
 
-
-  const gameRef = useRef<HTMLDivElement>(null);
-  const gameFade = useScrollFade(gameRef, 'y');
-
   const { onEntered, hasSettled } = useModalEntered(open, section);
 
   return (
@@ -120,8 +122,8 @@ export function ShareWindow({ open: posedOpen, section: posedSection }: { open?:
         </div>
       )}
       {visited.includes('game') && (
-        <div ref={gameRef} style={{ ...slot(section === 'game'), overflowY: 'auto', overflowX: 'hidden', scrollbarGutter: 'stable', paddingRight: 4, ...gameFade }}>
-          <BuildChecklist />
+        <div style={slot(section === 'game')}>
+          <WindowBody><BuildChecklist /></WindowBody>
         </div>
       )}
     </ModalShell>

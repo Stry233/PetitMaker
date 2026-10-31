@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { translations } from '../_support/locale-tables';
 import { LOCALES, type Locale } from '../../core/model/locale';
 
-// i18n chrome keys for legal surfaces — every key below must exist,
+// i18n chrome keys for legal surfaces: every key below must exist,
 // non-empty, in all 7 locales. `about.disclaimer` must use `{app}` (no
 // hardcoded brand name literal in place of the token).
 
@@ -53,8 +53,7 @@ describe('i18n chrome keys — legal surfaces', () => {
     }
   });
 
-  // The embed_note caveat sentence is folded directly into
-  // export.importable_sub (one flowing sub-caption string, no new UI element).
+  // The embed caveat sentence lives inside export.importable_sub, one flowing sub-caption string.
   it('export.importable_sub carries the embed caveat in every locale (en: "will not reliably remove")', () => {
     expect(translations.en['export.importable_sub']).toContain('will not reliably remove');
     const CAVEAT_SUBSTRING: Record<Locale, string> = {

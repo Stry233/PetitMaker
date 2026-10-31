@@ -1,9 +1,7 @@
 /**
- * The evidence contract on ValidationError: `cells` = the cells that cause the
- * violation (complete, never a bare click anchor), `rects` = the exact drawn body where the cause
- * is an object rather than a cell, and `grid` names the grid either lies on ('terrain' or
- * 'object'), which every error states.
- * Pinned per rule here; the renderer half lives in __tests__/view/shared/overlay/overlay-flash.test.ts.
+ * The evidence on each rule's ValidationError: `cells` are every cell causing the violation (never a
+ * bare click anchor), `rects` the exact drawn body when the cause is an object, and `grid` the grid
+ * either lies on. The renderer half is in __tests__/view/shared/overlay/overlay-flash.test.ts.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -70,7 +68,7 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     expect(errors).toHaveLength(1);
     expect(has(errors[0]!.cells, 7, 6)).toBe(true);
     expect(has(errors[0]!.cells, 6, 5)).toBe(true);
-    expect(has(errors[0]!.cells, 5, 5)).toBe(false); // the anchor itself is level — not evidence
+    expect(has(errors[0]!.cells, 5, 5)).toBe(false); // the anchor itself is level, not evidence
     expect(errors[0]!.grid).toBe('terrain');
   });
 
@@ -131,7 +129,7 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
 
   it('a half-grid blocker reports the true overlap, which no whole cell can name', () => {
     // A halfStep body anchored at (5.5, 5.5) covers [5.5, 7.5); the new 2x2 at (5,5) covers
-    // [5, 7). Their overlap is [5.5, 7) — one and a half cells, on the half grid.
+    // [5, 7). Their overlap is [5.5, 7), one and a half cells, on the half grid.
     const state = makeState();
     const halfBody: PlacedObject = {
       id: 'h', catalogId: 'ev-house', position: { x: 5.5, y: 5.5 }, rotation: 0, elevation: 0,
@@ -140,7 +138,7 @@ describe('evidence cells: V-PLACE-OVERLAP', () => {
     const errors = placementOverlapRule.validate(place('ev-house', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.rects).toEqual([{ x: 5.5, y: 5.5, w: 1.5, h: 1.5 }]);
-    // The whole-cell evidence rounds out of that body — which is why the flash draws the rect.
+    // The whole-cell evidence rounds out of that body, which is why the flash draws the rect.
     expect(errors[0]!.cells).toEqual([
       { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 },
     ]);
@@ -164,8 +162,7 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
   });
 
   it('flashes the blocking object\'s footprint on the object grid, not the paint cell', () => {
-    // A 2x1 pier at (5,5): painting the terrain cell under it must point at the
-    // Object that is in the way — its whole footprint, aligned to its sprite.
+    // Painting under a 2x1 pier at (5,5) points at the pier's whole footprint.
     const state = makeState();
     state.objects.set('p', existing('ev-pier', 'p', 5, 5));
     const errors = objectBlocksTerrainRule.validate(paintAt([{ x: 5, y: 5 }]), state);
@@ -175,8 +172,8 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
   });
 
   it('flashes the blocker\'s exact fractional rect', () => {
-    // A plaza on the half grid touches a whole-cell footprint one cell wider and taller. Rect evidence must
-    // preserve its fractional body instead of adding half a cell on every side.
+    // A plaza on the half grid touches whole cells one wider and taller than its body; the rect
+    // keeps the fractional body.
     const state = makeState(120, 120);
     const plaza: PlacedObject = {
       id: '__plaza__', catalogId: '__plaza__', position: { x: PLAZA_RECT.x, y: PLAZA_RECT.y },
@@ -187,8 +184,8 @@ describe('evidence cells: V-PLACE-BLOCK', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]!.rects).toEqual([{ ...PLAZA_RECT }]);
     expect(errors[0]!.grid).toBe('object');
-    // and the whole-cell evidence still names every cell the plaza touches, for the readers
-    // that cannot draw a fractional body (the agent's echo).
+    // The cells still name every cell the plaza touches, for readers that cannot draw a fractional
+    // body (the agent's echo).
     const cells = errors[0]!.cells;
     expect(Math.min(...cells.map((c) => c.x))).toBe(Math.floor(PLAZA_RECT.x));
     expect(Math.max(...cells.map((c) => c.x))).toBe(Math.floor(PLAZA_RECT.x) + PLAZA_RECT.w);

@@ -70,7 +70,7 @@ describe('dragging a snapping object re-snaps its orientation at the drop', () =
     // The drop anchor goes through snapAnchor too, so a halfStep item can land on the
     // half grid at the destination, not only where it started. Same lane as
     // half-step-detection.test.ts's case (a): a mountain shoulder at x = 7 and a water bank at
-    // x = 4 leave a lane exactly the ramp's width — only the half anchor at x = 4.5 clears it.
+    // x = 4 leave a lane exactly the ramp's width; only the half anchor at x = 4.5 clears it.
     const S = 24; const state = makeState(S, S);
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       setZone(state, x, y, CellZone.Grass);

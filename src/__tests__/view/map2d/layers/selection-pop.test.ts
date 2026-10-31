@@ -2,9 +2,9 @@
 /**
  * The selection ring's pop must weigh the same whatever it surrounds.
  *
- * It animates a scale, so a fixed fraction moves a big box's edges proportionally further: at
- * the original 0.2, a 1x1 tree's ring travelled ~13px while the 9x9 plaza's travelled ~115px
- * with an overshoot to match, which read as a lurch on one and a tick on the other.
+ * It animates a scale, so a fixed fraction moves a big box's edges proportionally further: at 0.2 a
+ * 1x1 tree's ring would travel ~13px and the 9x9 plaza's ~115px with an overshoot to match, a lurch
+ * on one and a tick on the other.
  */
 import '../../../_support/pixi-env'; // object-animations reaches PIXI, which needs jsdom's missing 2D context
 import { describe, it, expect } from 'vitest';

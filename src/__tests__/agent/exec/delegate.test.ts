@@ -16,9 +16,8 @@ import { retainedWrite } from '../../../agent/core/tool-result';
 import type { SessionEvent } from '../../../agent/core/types';
 import { createExecutor as createCommandExecutor } from '../../../state/executor';
 
-/** Drains the microtask queue: every scripted turn here resolves through promise chains alone
- *  (no real timers), so a fixed, generous number of `await`s is enough to run a child job up to
- *  its next genuinely blocking wait (an open gate). Mirrors runner.test.ts's own helper. */
+/** Drains the microtask queue: scripted turns resolve through promise chains alone (no timers), so
+ *  fifty `await`s run a child job up to its next blocking wait (an open gate). */
 async function flush(): Promise<void> {
   for (let i = 0; i < 50; i++) await Promise.resolve();
 }
@@ -60,8 +59,8 @@ function makeDelegate(
   };
 }
 
-/** A parent job's `LoopDeps`, wired to the real executor (so `delegate_task` reaches the scripted
- *  child adapter through `opts.delegate`, exactly as the runner wires it live). */
+/** A parent job's `LoopDeps` on the real executor, so `delegate_task` reaches the scripted child
+ *  adapter through `opts.delegate` as the runner wires it live. */
 function parentDeps(
   deps: AgentToolDeps, parentTurns: ScriptedTurn[], delegate: DelegateOpts,
 ): LoopDeps & { adapter: ReturnType<typeof createScriptedAdapter> } {
@@ -163,8 +162,8 @@ describe('exec/executor: delegate_task', () => {
     const resultPromise = executor.execute({ callId: 'd4', name: 'delegate_task', args: { task: 'raise a small hill' } });
     await flush();
 
-    // The child's own gate asks land on a log the caller never sees directly; only the mirrored
-    // copy on the parent log is what a human (or this test) can answer.
+    // The child's gate asks land on a log nobody sees; only the mirrored copy on the parent log can
+    // be answered.
     const mirrored = eventsOf(parentLog).find(
       (e): e is Extract<SessionEvent, { kind: 'gateAsked' }> => e.kind === 'gateAsked',
     );
@@ -185,9 +184,8 @@ describe('exec/executor: delegate_task', () => {
     const { deps } = setup();
     const controller = new AbortController();
     const turns: ScriptedTurn[] = [
-      // Aborts the same signal the child adapter streams under, synchronously before it ever
-      // yields an event: the scripted adapter's own abort check then turns this into a
-      // `stop: 'aborted'` turn, exactly what a real cancellation mid-stream looks like.
+      // Aborting before the first event makes the scripted adapter end the turn `stop: 'aborted'`,
+      // as a real cancellation mid-stream does.
       () => { controller.abort(); return [{ t: 'text', delta: 'never seen' }, { t: 'done', stop: 'stop' }]; },
     ];
     const delegate = makeDelegate(turns, { signal: controller.signal });
@@ -294,9 +292,8 @@ describe('exec/executor: delegate_task', () => {
     expect(calls[calls.length - 1]).toBeNull();
   });
 
-  /** `label` is the schema's short name for the panel; when the model supplies one it rides beside
-   *  `task` on every progress report unchanged (the lane picks between them, not the executor —
-   *  `task` still carries the full self-contained instructions a resumed/replayed job would want). */
+  /** `label` is the panel's short name; the lane, not the executor, picks between it and the full
+   *  `task`, so both ride on every progress report. */
   it('carries an optional label through onChildProgress unchanged, task included in full', async () => {
     const { deps } = setup();
     const calls: ({ task: string; opName?: string; ops: number; label?: string } | null)[] = [];
@@ -315,7 +312,6 @@ describe('exec/executor: delegate_task', () => {
     expect(withCounts.every((c) => c.task === 'plant an oak grove north of the lake at (10,10)-(40,40)')).toBe(true);
   });
 
-  /** No label at all: the field is simply absent, not an empty string forced onto every report. */
   it('omits label from onChildProgress when the model gave none', async () => {
     const { deps } = setup();
     const calls: ({ task: string; opName?: string; ops: number; label?: string } | null)[] = [];

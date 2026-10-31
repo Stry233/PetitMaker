@@ -1,17 +1,7 @@
 /**
- * The live auto-trim sweep costs the dab, not the stroke.
- *
- * A road's cut is derived from which sides it connects on, so trimming while the drag is still
- * going has an obligation: the tiles the dab could have reshaped go back to square and are derived
- * again. Only cells adjacent to what the dab just laid can change, so that window is the dab plus
- * its ring — and a sweep over the whole accumulated stroke instead would be quadratic in the
- * stroke's length, which is the shape a long road stroke would feel as the brush getting heavier
- * the longer it is held.
- *
- * Commands issued per dab is the observable that separates the two: the windowed pass squares and
- * re-derives a fixed handful of tiles whatever the stroke has laid so far, while a whole-stroke
- * pass squares and re-derives every trimmed tile in it. The trim result is not this test's subject
- * (live-trim.test.ts and the edge-cut policy tests own that) — only the work it takes.
+ * The live auto-trim sweep costs the dab, not the stroke. Only the dab and its ring can change shape,
+ * so re-deriving the whole stroke each dab would be quadratic and the brush would grow heavier the
+ * longer it is held. Commands per dab is the observable; the trim result itself is tested elsewhere.
  */
 import { describe, it, expect } from 'vitest';
 import { DrawingTool } from '../../../../tools/pointer/paint/drawing-tool';
@@ -68,8 +58,7 @@ describe('the live auto-trim sweep is bounded by the dab', () => {
       const late = mean(per.slice(400, 500));
 
       expect(early).toBeGreaterThan(0);
-      // A whole-stroke sweep would put hundreds of commands in a late dab against a handful in an
-      // early one. The bound is generous on purpose: what it must catch is growth, not a constant.
+      // A whole-stroke sweep would issue hundreds of commands in a late dab; the bound catches growth.
       expect(late).toBeLessThanOrEqual(early * 1.5 + 1);
     });
   }

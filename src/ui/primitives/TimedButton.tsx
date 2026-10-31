@@ -9,9 +9,10 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useUiPreview } from '../design/preview';
-import { buttonMotion, visuallyHidden } from '../design/styles';
+import { visuallyHidden } from '../design/styles';
 import { ACTIVE, ACCENT } from '../design/tokens';
 import { useObservedSize } from './use-observed-size';
+import { useInteractionProfiles } from '../design/input-mode';
 
 /** Ring thickness and inset gap, in CSS pixels. */
 const RING = 2;
@@ -20,6 +21,8 @@ const RING_GAP = 2;
 /** Stadium-indicator thickness and gap, in CSS pixels. */
 const STADIUM = 8;
 const STADIUM_GAP = 7;
+/** How far a stadium countdown stands below its button, in CSS pixels. */
+export const STADIUM_ROOM = STADIUM_GAP + STADIUM;
 
 /** How the countdown is drawn under reduced motion: one step per second, so the ring still falls
  *  but nothing glides. */
@@ -84,6 +87,7 @@ export function TimedButton({
   const paused = pausedProp || pictured;
   const reduced = useReducedMotionConfig();
   const btn = useRef<HTMLButtonElement>(null);
+  const profiles = useInteractionProfiles();
   const arc = useRef<SVGRectElement | SVGLineElement>(null);
   const hintId = useId();
   const [hovered, setHovered] = useState(false);
@@ -198,7 +202,7 @@ export function TimedButton({
         ref={btn}
         type="button"
         disabled={disabled}
-        {...(pressMotion && !disabled ? buttonMotion : {})}
+        {...(pressMotion && !disabled ? profiles.action : {})}
         aria-label={ariaLabel}
         aria-describedby={after > 0 ? hintId : undefined}
         data-testid={testId}

@@ -94,6 +94,7 @@ export function deleteSelection(t: Translate, ids: readonly string[]): DeleteGro
   const result = deleteGroup(ed.executor, state, ids, poofRemoved);
   useEditorStore.getState().setSelection(
     ids.filter((id) => state.objects.has(id)).map((id) => ({ kind: 'object', id }) as const),
+    { record: false },
   );
   reportDeleteGroup(editorEventBus(), t, result);
   return result;
@@ -134,6 +135,9 @@ export interface SelectionTarget {
   rotatable: boolean;
   deletable: boolean;
   pickable: boolean;
+  /** Copy is offered for it (EDIT-53): two or more objects outside the planet editor; one object
+   *  alone is armed for placing again by Pick instead. */
+  copyable: boolean;
   /** The planet session's plaza: it turns about its centre with its footprint swapped, so it has no facing. */
   sessionLandmark: boolean;
 }
@@ -144,7 +148,7 @@ export function selectionTarget(selection: readonly BlockRef[], gs: GridState | 
   if (plural) {
     return {
       key: `g:${selectedObjectIds(selection).join(',')}`, plural, block: null, object: null, rotatable: true, deletable: true, pickable: false,
-      sessionLandmark: false,
+      copyable: !inSession, sessionLandmark: false,
     };
   }
   const block = singleSelection(selection);
@@ -157,7 +161,7 @@ export function selectionTarget(selection: readonly BlockRef[], gs: GridState | 
   const deletable = (!!object && !object.locked) || !!terrain;
   const pickable = pickedMaterial(gs, selection) !== null;
   if (!deletable && !pickable) return null;
-  return { key: block.kind === 'object' ? block.id : `t:${block.x},${block.y}`, plural, block, object, rotatable, deletable, pickable, sessionLandmark };
+  return { key: block.kind === 'object' ? block.id : `t:${block.x},${block.y}`, plural, block, object, rotatable, deletable, pickable, copyable: false, sessionLandmark };
 }
 
 /**
@@ -212,7 +216,7 @@ export function rotateObjectTo(obj: PlacedObject, angle: Rotation): boolean {
  *  refusal a group of locked members gets; the selection empties. */
 export function deleteObjectConfirmed(t: Translate, id: string): void {
   deleteSelection(t, [id]);
-  useEditorStore.getState().clearSelection();
+  useEditorStore.getState().clearSelection({ record: false });
 }
 
 /** Peel the top terrain layer at (x, y) as one undo step; the selection empties. Nothing on bare ground. */
@@ -221,5 +225,5 @@ export function peelTerrainAt(x: number, y: number): void {
   const cell = ed ? getCell(ed.state.cells, x, y) : null;
   if (!ed || !cell?.terrain) return;
   peelTerrain(ed.executor, x, y, cell);
-  useEditorStore.getState().clearSelection();
+  useEditorStore.getState().clearSelection({ record: false });
 }

@@ -11,8 +11,6 @@ import { getMapStats } from '../../state/map-stats';
 import { makeState } from '../_support/map-state';
 import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../core/game/profile';
 
-// This exercises chunkLoadViolations directly, the same way the gated-off rule would once
-// CHUNK_LOAD_ENABLED flips true — see chunk-load.test.ts for the flag itself staying off.
 const CATALOG_ID = 'flower-daisy'; // 1x1, non-zero loadValue
 const ITEM_LOAD = getCatalogItem(CATALOG_ID)!.loadValue;
 
@@ -37,14 +35,9 @@ function* counted<T>(iter: Iterator<T>, counter: { n: number }): Generator<T> {
   }
 }
 
-/** Wraps `objects` so every entry a read actually pulls out of the map increments `counter.n`.
- *  That is the cost the rule's O(footprint)-not-O(objects) claim is about: it counts objects the
- *  rule *looked at*, not calls made.
- *
- *  A Map can be walked five ways, and all five are charged here. Watching only `values()` reads
- *  zero for the same O(objects) scan written as `for (const [id, o] of objects)`,
- *  `objects.forEach(...)` or `objects.entries()` — idioms this codebase already uses — so a
- *  one-idiom counter would pass a rule that walks the whole map. */
+/** Wraps `objects` so every entry a read pulls out of the map increments `counter.n`: objects looked
+ *  at, not calls made. All five ways of walking a Map are charged, so no spelling of a full scan
+ *  escapes the count. */
 function countingObjects(objects: Map<string, PlacedObject>, counter: { n: number }): Map<string, PlacedObject> {
   return new Proxy(objects, {
     get(target, prop) {
@@ -69,16 +62,12 @@ describe('chunkLoadViolations cost shape', () => {
     const small = scatterObjects(100, 1000, makeRng(1));
     const large = scatterObjects(4000, 1000, makeRng(2));
 
-    // Warm the cache once, as the live app has always done by the time a placement is checked.
+    // Warm the cache once, as the live app does before a placement is checked.
     getMapStats(small);
     getMapStats(large);
 
-    // The mutation between warm-up and measurement is what makes this measure anything: the
-    // same two calls command-apply.ts's own PlaceObject case makes, `state.objects.set` then
-    // `bumpObjectsVersion` with a foldable delta. Without one, getMapStats returns through its
-    // objectsUnchanged fast path and the reading only shows that a memo hits when nothing
-    // changed. This forces it past that and into the canPatch fold, which is the cost that
-    // applies while the map is being edited.
+    // A placement as PlaceObject applies it (set, then a bump with a delta), so getMapStats takes its
+    // patch path rather than the unchanged fast path.
     const addedSmall = obj('added-small', 1, 1);
     const addedLarge = obj('added-large', 1, 1);
     small.objects.set(addedSmall.id, addedSmall);
@@ -94,9 +83,7 @@ describe('chunkLoadViolations cost shape', () => {
     chunkLoadViolations(small, candidate, ITEM_LOAD);
     chunkLoadViolations(large, candidate, ITEM_LOAD);
 
-    // map-stats' canPatch fold reads only the delta's own added/removed arrays, never
-    // state.objects — so a correctly-delta'd single-object edit keeps this independent of
-    // map size. (The sibling test below shows what happens when the delta is missing.)
+    // The patch reads only the delta, never state.objects.
     expect(smallCounter.n).toBe(largeCounter.n);
   });
 
@@ -109,18 +96,13 @@ describe('chunkLoadViolations cost shape', () => {
     getMapStats(small);
     getMapStats(large);
 
-    // grid-model.ts documents this as safe ("omitting [the delta] is safe... only slower"),
-    // and real call sites take it: drag/rotate ghost updates on every pointer-move frame,
-    // road-reconcile.ts, generator clearance sweeps and agent strip-placements all desync
-    // the cache this way. It is not this rule's mistake to fix: chunkLoadViolations only
-    // calls getMapStats(state), and map-stats itself is the thing deciding whether it can
-    // trust a patch or must rebuild.
+    // Omitting the delta is allowed but slower.
     const addedSmall = obj('added-small', 1, 1);
     const addedLarge = obj('added-large', 1, 1);
     small.objects.set(addedSmall.id, addedSmall);
-    bumpObjectsVersion(small); // no delta
+    bumpObjectsVersion(small);
     large.objects.set(addedLarge.id, addedLarge);
-    bumpObjectsVersion(large); // no delta
+    bumpObjectsVersion(large);
 
     const smallCounter = { n: 0 };
     const largeCounter = { n: 0 };
@@ -130,21 +112,15 @@ describe('chunkLoadViolations cost shape', () => {
     chunkLoadViolations(small, candidate, ITEM_LOAD);
     chunkLoadViolations(large, candidate, ITEM_LOAD);
 
-    // A version bump map-stats can't trust forces its rebuild() path, which walks every
-    // object in state.objects once — so the visit count tracks each map's own object count
-    // (not the candidate's footprint), and the two maps disagree. This is map-stats' own
-    // staleness-never/speed-sometimes contract showing through the rule, not a property of
-    // the rule's own logic.
+    // A bump with no delta forces map-stats to rebuild, walking every object once.
     expect(smallCounter.n).toBe(small.objects.size);
     expect(largeCounter.n).toBe(large.objects.size);
     expect(smallCounter.n).not.toBe(largeCounter.n);
   });
 });
 
-/** A deliberately naive per-chunk load tally, independent of anything under test: it sums
- *  every non-candidate object's catalog loadValue into the chunks its footprint touches and
- *  compares against CHUNK_LOAD_LIMIT directly. This is the ground truth chunkLoadViolations
- *  must agree with; it must outlive whatever production implementation it is checked against. */
+/** A naive per-chunk load tally, independent of the code under test: every other object's loadValue
+ *  summed into each chunk its footprint touches, compared against CHUNK_LOAD_LIMIT. */
 function naiveVerdict(state: GridState, candidate: PlacedObject, loadValue: number): boolean {
   const { w, h } = getPlacedObjectSize(candidate);
   const touched = new Set<string>();
@@ -176,8 +152,7 @@ describe('chunkLoadViolations equivalence with the naive tally', () => {
     const mapSize = 128;
     const rng = makeRng(42);
     const state = scatterObjects(600, mapSize, rng);
-    // A dense cluster inside one chunk (0,0) so some candidates there are refused purely by
-    // existing load, not just by their own — exercising the "already over" branch too.
+    // A dense cluster in chunk (0,0), so some candidates there are refused by existing load alone.
     for (let i = 0; i < 1200; i++) {
       state.objects.set(`cluster-${i}`, obj(`cluster-${i}`, rng.int(CHUNK_SIZE), rng.int(CHUNK_SIZE)));
     }
@@ -192,15 +167,14 @@ describe('chunkLoadViolations equivalence with the naive tally', () => {
       expect(ruleAllows).toBe(expectedAllows);
       if (ruleAllows) sawAllowed = true; else sawRejected = true;
     }
-    // A guard on the guard: if every draw landed on one side, the loop above proved nothing.
+    // Both verdicts occur, or the loop proved nothing.
     expect(sawAllowed).toBe(true);
     expect(sawRejected).toBe(true);
   });
 });
 
-// A 2x2 fixture, for the case a 1x1 cannot reach: a footprint straddling a chunk boundary is
-// charged in full to every chunk it touches, not divided among them. __setCatalogItem is
-// test-support (state/catalog.ts), not used in production code.
+// A 2x2 fixture for the case a 1x1 cannot reach: a footprint straddling a chunk boundary is
+// charged in full to every chunk it touches, not divided among them.
 const WIDE_ID = 'chunk-load-test-2x2';
 __setCatalogItem({
   id: WIDE_ID, category: ItemCategory.Building, name: { en: 'Chunk Test 2x2' },
@@ -211,20 +185,17 @@ __setCatalogItem({
 describe('chunkLoadViolations multi-chunk footprint', () => {
   it('charges a footprint spanning four chunks the full load in every one of them', () => {
     const state = makeState(48, 48);
-    // (15,15) size 2x2 covers (15,15) (16,15) (15,16) (16,16) — one cell in each of the four
-    // chunks (0,0) (1,0) (0,1) (1,1), CHUNK_SIZE=16.
+    // A 2x2 at (15,15) puts one cell in each of chunks (0,0), (1,0), (0,1) and (1,1).
     const existing: PlacedObject = { id: 'wide', catalogId: WIDE_ID, position: { x: 15, y: 15 }, rotation: 0, elevation: 0 };
     state.objects.set(existing.id, existing);
 
     const spanning = (id: string): PlacedObject => (
       { id, catalogId: WIDE_ID, position: { x: 15, y: 15 }, rotation: 0, elevation: 0 }
     );
-    // 1000 (existing, credited in full to every one of the four touched chunks) + 9001 > 10000.
+    // The existing 1000 is charged in full to each chunk: 1000 + 9001 > 10000.
     expect(chunkLoadViolations(state, spanning('over'), 9001)).toHaveLength(1);
-    // 1000 + 8999 == 9999 <= 10000 in every touched chunk.
     expect(chunkLoadViolations(state, spanning('under'), 8999)).toHaveLength(0);
 
-    // A candidate whose footprint shares none of those four chunks is unaffected by them.
     const far: PlacedObject = { id: 'far', catalogId: WIDE_ID, position: { x: 32, y: 32 }, rotation: 0, elevation: 0 };
     expect(chunkLoadViolations(state, far, 9999)).toHaveLength(0);
   });

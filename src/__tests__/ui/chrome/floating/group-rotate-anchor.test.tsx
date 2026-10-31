@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 /**
- * The selection card must hold still across repeated group rotations: a quarter turn returns
- * every member to the same footprint bounds, but the half-cell lattice snap `rotationPivot` applies
- * flips direction with the box's aspect (see group-rotate.test.ts's "off the lattice" case), so
- * recomputing the placement from the live bounds on every `objects-changed` makes the card creep. It must
- * still follow a genuine group move, and still recompute when the membership itself changes.
+ * The selection card holds still across repeated group rotations: the half-cell snap `rotationPivot`
+ * applies flips direction with the box's aspect, so placing from the live bounds would make the card
+ * creep. It still follows a group move and recomputes when the membership changes.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { SelectionCard } from '../../../../ui/chrome/floating/SelectionCard';
 import { useEditorStore } from '../../../../state/store';
+import { __resetUiZoomAnim } from '../../../../ui/design/ui-zoom-anim';
 import { I18nProvider } from '../../../../i18n/context';
 import { EventBus } from '../../../../core/commands/event-bus';
 import { createDefaultRegistry } from '../../../../rules';
@@ -26,11 +25,17 @@ import { ItemCategory } from '../../../../config/catalog/categories';
 import { headlessViewVerbs } from '../../../_support/tool-manager';
 import { HEADLESS_OVERLAY } from '../../../../tools/pointer/runtime/host';
 
-// A fixed chrome scale (like `selection-card.test.tsx`) so the pixel arithmetic below is exact
-// instead of whatever the window fit derives from jsdom's default viewport.
-vi.mock('../../../../ui/design/scale', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../ui/design/scale')>();
-  return { ...actual, useChromeScale: () => 1 };
+// The reference window at 100%, where the chrome draws at 1, so the pixel arithmetic below is exact.
+const WINDOW = { w: window.innerWidth, h: window.innerHeight };
+beforeAll(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  useEditorStore.getState().setUiZoom(1);
+  __resetUiZoomAnim();
+});
+afterAll(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: WINDOW.w });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: WINDOW.h });
 });
 
 __setCatalogItem({
@@ -56,10 +61,8 @@ function makeView(dx: number, dy: number, scale = 10): ActiveView {
 
 interface Spec { id: string; x: number; y: number }
 
-/** Builds the executor with the store's own eventBus (as `state/store.ts` really does whenever it
- *  creates a CommandExecutor) so a command's `objects-changed` reaches the same listener
- *  SelectionCard subscribes through — a second, disconnected bus would make every op invisible
- *  to the tracker, which is not how the app wires it. */
+/** Builds the executor on the store's own eventBus, as `state/store.ts` does, so `objects-changed`
+ *  reaches the listener SelectionCard subscribes through. */
 function renderWithGroup(specs: Spec[]) {
   const gs = makeState(24, 24);
   const eventBus = new EventBus<EditorEvents>();
@@ -91,9 +94,8 @@ afterEach(() => {
 
 describe('the selection card across a group rotation burst', () => {
   it('does not move across four rotate-button clicks, even though the raw bounds centre alternates', () => {
-    // A 2x1 bounding box (two 1x1 members side by side): its true centre sits on a cell-edge
-    // midpoint, so `rotationPivot`'s half-cell nudge direction flips every turn (the exact case
-    // group-rotate.test.ts's "off the lattice" identity test exercises) — the case that creeps.
+    // A 2x1 box: `rotationPivot`'s half-cell nudge flips direction every turn (the "off the lattice"
+    // case of group-rotate.test.ts).
     setActiveView(makeView(0, 0, 10));
     renderWithGroup([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }]);
     const before = { left: box().style.left, bottom: box().style.bottom };
@@ -102,7 +104,7 @@ describe('the selection card across a group rotation burst', () => {
       expect(box().style.left, `after rotation ${i + 1}`).toBe(before.left);
       expect(box().style.bottom, `after rotation ${i + 1}`).toBe(before.bottom);
     }
-    // The rigid-body identity: four turns really did happen and returned the members home.
+    // Four turns did happen and returned the members home.
     const gs = useEditorStore.getState().gridState!;
     expect(gs.objects.get('a')!.position).toEqual({ x: 4, y: 4 });
     expect(gs.objects.get('b')!.position).toEqual({ x: 5, y: 4 });
@@ -120,8 +122,7 @@ describe('the selection card across a group rotation burst', () => {
   });
 
   it('still follows a genuine group MOVE', () => {
-    // Offset well clear of the viewport edge (jsdom's default is 1024x768) so `placeSelectionCard`'s
-    // clamp never engages — this test is about the card tracking the move, not the clamp.
+    // Offset clear of jsdom's 1024x768 viewport edge so `placeSelectionCard`'s clamp never engages.
     setActiveView(makeView(300, 300, 10));
     const { gs, exec } = renderWithGroup([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }]);
     const before = { left: parseFloat(box().style.left), bottom: parseFloat(box().style.bottom) };
@@ -129,7 +130,6 @@ describe('the selection card across a group rotation burst', () => {
     act(() => { res = moveGroup(exec, gs, ['a', 'b'], { dx: 3, dy: 0 }); });
     expect(res.blockedBy).toBeNull();
     const after = { left: parseFloat(box().style.left), bottom: parseFloat(box().style.bottom) };
-    // A pure x-shift of 3 cells at scale 10 moves the anchor by exactly 30 css px; y is untouched.
     expect(after.left - before.left).toBeCloseTo(30, 5);
     expect(after.bottom - before.bottom).toBeCloseTo(0, 5);
   });
@@ -139,8 +139,6 @@ describe('the selection card across a group rotation burst', () => {
     const { gs, exec } = renderWithGroup([{ id: 'a', x: 4, y: 4 }, { id: 'b', x: 5, y: 4 }]);
     fireEvent.click(screen.getByTestId('handle-rotate'));
     const rotatedLeft = box().style.left;
-    // Swap in a far-away third member and select [a, far] instead of [a, b]: membership changed, so
-    // the anchor must jump to the new centre rather than stay pinned to the old frozen point.
     act(() => {
       const object: PlacedObject = {
         id: 'far', catalogId: 'gra-hut', position: { x: 18, y: 18 }, rotation: 0,

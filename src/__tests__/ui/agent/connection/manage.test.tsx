@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The gear's one door: five controls and two confirms. Each destructive verb becomes its own
- * question in place, so the landmark structure is identical before and after a press, the second
- * press on the same button reaches the vault, and a press elsewhere puts the words back.
- *
- * A held job's verbs: a gated job offers stop and never set-aside, since the loop honours a pause
- * only at a call boundary and a pause over a gate would deadlock.
- *
- * The endpoint address appears for `custom` alone. A changed address files itself after the quiet
- * (or on Enter) and its check may file a failed verdict; the fetch a gear press makes only notes a
- * failure and clears nothing.
+ * The manage card behind the gear: provider, endpoint address (for `custom` only), model, oversight,
+ * the two destructive verbs (each asks in a question that unrolls from its pill without moving the
+ * card) and a held job's stop and set-aside.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -39,9 +32,7 @@ const backing = new Map<string, string>();
 const emptyModels = () =>
   Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>;
 
-/** A list request that never settles: the card is a settings surface, not a loader, and every
- *  assertion below is about what it does with what it already has. Pending rather than resolved-empty
- *  so no state update lands outside the test's own `act`. */
+/** A list request that never settles, so no state update lands outside the test's own `act`. */
 const noModels = () => new Promise<string[]>(() => {});
 
 function mount(props: Partial<React.ComponentProps<typeof ManageScreen>> = {}) {
@@ -54,8 +45,7 @@ function mount(props: Partial<React.ComponentProps<typeof ManageScreen>> = {}) {
   );
 }
 
-/** Every toast the card raises during one test. The note it owes a running job is the house toast,
- *  so this is where that half of the card's behaviour is read. */
+/** Every toast the card raises during one test. */
 let toasts: string[] = [];
 let unsubscribeToasts: (() => void) | undefined;
 
@@ -63,8 +53,7 @@ beforeEach(async () => {
   toasts = [];
   unsubscribeToasts = setToastPresenter((text) => { toasts.push(text); });
   backing.clear();
-  // The remembered rosters are a session fact and this module is one session for the whole file, so
-  // one test's answered list would otherwise stand in for the next test's request.
+  // Rosters are remembered per session, and this file is one session.
   forgetRosters();
   useEditorStore.setState({ locale: 'en' });
   const model = emptyModels();
@@ -90,16 +79,14 @@ describe('what stands behind the gear', () => {
     expect(screen.getByTestId('manage-done')).toBeTruthy();
   });
 
-  /** The model row says what it is. The dropdown's face is a bare id, so the row carries the same
-   *  small label the endpoint and oversight rows are titled by, whatever provider is armed. */
+  /** The dropdown's face is a bare id, so the row carries a label like the other rows. */
   it('titles the model row, in the card\'s own label idiom', () => {
     mount();
     expect(screen.getByTestId('manage-model-label').textContent)
       .toBe(translations.en['agent.setup_manage_model']);
   });
 
-  /** Oversight lives here and nowhere else, and this is the half of that rule this file can hold
-   *  (setup's own suite holds the other). */
+  /** Oversight is set here and nowhere else; setup's suite holds the other half of that rule. */
   it('is where oversight is asked, and writes the settings slice', () => {
     mount();
     fireEvent.click(screen.getByText(translations.en['agent.oversight_strict']!));
@@ -134,11 +121,9 @@ describe('what stands behind the gear', () => {
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  /**
-   * One row, one rung: the provider row, the model row and every list row are choices, drawn at one
-   * size and weight; the yellow fill alone says which is chosen. `roleWeight` resolves through a
-   * custom property, so the declared rung is compared rather than a number jsdom computes.
-   */
+  /** The provider row, the model row and every list row share one size and weight; the fill alone
+   *  marks the choice. The declared rung is compared, since the weight resolves through a custom
+   *  property jsdom does not compute. */
   it('draws its rows and its list at one rung', () => {
     mount();
     const rung = roleFont('menu');
@@ -160,15 +145,10 @@ describe('what stands behind the gear', () => {
   });
 });
 
-/**
- * The verb becomes its own question. One press turns the button's words into the locale's question
- * form and its fill danger; a second press on the same button is the answer, and anything else
- * cancels. So the card cannot grow for a question at all, which is what these tests hold: the
- * landmark structure before and after a press is the same nodes, in the same order, in the same
- * parents.
- */
+/** A destructive verb opens a question anchored to its pill; its confirm answers and a press
+ *  elsewhere cancels. The card's landmarks stay the same nodes in the same places throughout. */
 describe('the two destructive verbs ask first', () => {
-  /** Where every landmark in the card stands: nothing inserted, removed, reordered or remounted. */
+  /** Where every test id in the card stands, to compare before and after a question. */
   function landmarks(): { id: string; parent: Element | null; index: number }[] {
     return [...screen.getByTestId('manage-screen').querySelectorAll<HTMLElement>('[data-testid]')]
       .map((el) => ({
@@ -185,7 +165,6 @@ describe('the two destructive verbs ask first', () => {
     expect(isConnected(useAgentConnection.getState())).toBe(true);
 
     fireEvent.click(screen.getByTestId('manage-forget-key'));
-    // The question unrolls from the pill, which keeps its own words.
     expect(question('manage-forget-key')).toBe(translations.en['agent.setup_manage_forget_q']);
     expect(screen.getByTestId('manage-forget-key').textContent).toContain(translations.en['agent.setup_manage_forget_key']);
     expect(useAgentConnection.getState().keyed, 'nothing has happened yet').toContain('claude');
@@ -193,11 +172,10 @@ describe('the two destructive verbs ask first', () => {
     answer('manage-forget-key');
     expect(useAgentConnection.getState().keyed).toEqual([]);
     expect(isConnected(useAgentConnection.getState())).toBe(false);
-    // The pin goes with the key: a provider named for a key that is gone must not answer for the next one.
+    // The provider pin goes with the key.
     expect(useAgentConnection.getState().providerPinned).toBe(false);
   });
 
-  /** The card does not ask for space: the question stands beside it. */
   it('adds and takes away nothing when either verb asks', async () => {
     mount({ jobCount: 4, stoppable: true, parkable: true });
     for (const verb of ['manage-forget-key', 'manage-clear-jobs']) {
@@ -269,12 +247,8 @@ describe('the held job, from the manage card', () => {
     expect(screen.getByTestId('manage-stop')).toBeTruthy();
   });
 
-  /**
-   * The one thing this card may not offer. A pause withholds the gate card and the loop honours a
-   * pause only at a call boundary, so over a job that is waiting on the user's own answer both doors
-   * are locked: the gate cannot be answered because its card is gone, and the pause cannot land
-   * because the call has not returned. Set-aside is for a job waiting on a clock.
-   */
+  /** A pause over a gated job deadlocks: the pause hides the gate card, and the loop honours a pause
+   *  only at a call boundary, which the gate never reaches. */
   it('never offers set-aside except where the job is waiting on a clock', () => {
     const gated = mount({ stoppable: true, parkable: false });
     expect(screen.getByTestId('manage-stop')).toBeTruthy();
@@ -285,13 +259,8 @@ describe('the held job, from the manage card', () => {
     expect(screen.getByTestId('manage-set-aside')).toBeTruthy();
   });
 
-  /**
-   * And the guard is the verb, not the testid. A deadlock is a class of control rather than one
-   * named button: a second pill offered under any other name, wired to the same pause, ships past an
-   * assertion that only looks for `manage-set-aside`. So every control the card renders over a gated
-   * job is pressed, and the pause verb must never be reached — and the card's own words must not
-   * offer one either, since a control this test cannot press is still a promise to the reader.
-   */
+  /** Guards the verb rather than the test id: every control over a gated job is pressed, and none
+   *  may reach the pause or offer one in its words. */
   it('reaches the pause verb from no control at all while the job waits on the user', () => {
     const park = vi.fn();
     const props = { stoppable: true, parkable: false, jobCount: 2, onSetAside: park, onStopJob: vi.fn() };
@@ -303,9 +272,7 @@ describe('the held job, from the manage card', () => {
     expect(count, 'nothing was pressed, so nothing is proven').toBeGreaterThan(3);
     first.unmount();
 
-    // One press per mount, because a press can take another control away with it (a confirm
-    // replaces its trigger), and a control detached by an earlier press is a control this would
-    // never have tried. Whatever a press reveals is pressed too, in that same mount.
+    // One press per mount, since a press can detach other controls; whatever it reveals is pressed too.
     for (let i = 0; i < count; i++) {
       const view = mount(props);
       fireEvent.click(buttons()[i]!);
@@ -326,8 +293,7 @@ describe('the held job, from the manage card', () => {
     expect(park).toHaveBeenCalledTimes(1);
   });
 
-  /** A standing question outranks them, and they stand hushed for it rather than leaving: a row that
-   *  withdraws is the card changing height under the question it has just been asked. */
+  /** The held-job row stays put while a question is up, so the card does not change height. */
   it('leaves them where they stand while a question is up', () => {
     mount({ stoppable: true, parkable: true, jobCount: 1 });
     const held = screen.getByTestId('manage-held');
@@ -342,7 +308,6 @@ describe('the list the card asks for', () => {
     const listModels = vi.fn(() => Promise.reject(new Error('offline')));
     await act(async () => { mount({ listModels }); });
     expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: 'sk-ant-api03-abcdefghijkl' });
-    // Still a usable settings card: the list is a convenience, not a gate.
     expect(screen.getByTestId('manage-oversight-caption')).toBeTruthy();
     expect(screen.getByTestId('manage-forget-key')).toBeTruthy();
   });
@@ -407,12 +372,7 @@ describe('the list the card asks for', () => {
     expect(useAgentConnection.getState().model.claude).toBe('claude-sonnet-4-5');
   });
 
-  /**
-   * One request per endpoint per session. The gear is the panel's one settings door, so a fetch per
-   * mount is a provider request every time the user glances at the oversight caption — free on most
-   * platforms and counted on a rate-limited one, for an answer that does not change between two
-   * presses of the same gear.
-   */
+  /** One list request per endpoint per session, so opening the gear does not spend rate limit. */
   it('asks the endpoint once and answers the next visit from what it already knows', async () => {
     const listModels = vi.fn(() => Promise.resolve(['claude-opus-4-1', 'claude-haiku-4-5']));
     await act(async () => { mount({ listModels }); });
@@ -425,7 +385,7 @@ describe('the list the card asks for', () => {
     expect(screen.getAllByRole('menuitemradio'), 'the list it already had').toHaveLength(2);
   });
 
-  /** What an endpoint can run is an answer about the credential that asked, so it goes with the key. */
+  /** A roster belongs to the credential that asked for it. */
   it('forgets the roster when the key it belongs to is forgotten', async () => {
     const listModels = vi.fn(() => Promise.resolve(['claude-opus-4-1']));
     await act(async () => { mount({ listModels }); });
@@ -439,18 +399,11 @@ describe('the list the card asks for', () => {
   });
 });
 
-/**
- * The endpoint address, which is only on this card while the user's own server is armed.
- *
- * The connection screen owns first entry and this card owns every change after, which is what makes a
- * filed address reachable for the rest of the panel's life: without it a gateway that had moved could
- * only be repaired by dropping the key. Editing re-verifies by itself — the same request the card
- * already makes for the model list, asked again at the new address once the hands are still (or on
- * Enter, now) — so an address that answers nothing says so here rather than on the next order, and
- * there is no button to remember to press.
- */
+/** The endpoint address, shown while `custom` is armed. The connection screen owns first entry and
+ *  this card every later change; an edit is filed and re-checked with a model-list request once
+ *  typing pauses, or at once on Enter. */
 describe('the address of the user\'s own server', () => {
-  /** Arms `custom` with a key and an address, which is the state the control is drawn in. */
+  /** Arms `custom` with a key and an address. */
   const armCustom = (url = 'https://gw.example/v1') => {
     useAgentConnection.getState().setCustomBaseUrl(url);
     useAgentConnection.getState().pinProvider('custom');
@@ -492,12 +445,8 @@ describe('the address of the user\'s own server', () => {
     });
   });
 
-  /**
-   * The check runs itself. A changed address is filed and asked once the hands are still, on the
-   * same quiet the key field advances on: verification is not a step the user takes, it is what the
-   * card does with an address it has been given. The quiet restarts per keystroke, so a URL typed a
-   * character at a time is one check and not thirty.
-   */
+  /** The quiet is the key field's `IDLE_MS` and restarts per keystroke, so typing a URL costs one
+   *  check. */
   it('files and checks a changed address by itself once the hands are still', async () => {
     armCustom('https://old.example/v1');
     const listModels = vi.fn(() => Promise.resolve(['a']));
@@ -510,7 +459,6 @@ describe('the address of the user\'s own server', () => {
     expect(useAgentConnection.getState().customBaseUrl, 'still typing: nothing filed')
       .toBe('https://old.example/v1');
 
-    // A second keystroke inside the quiet restarts it, so the half-typed address is never asked.
     fireEvent.change(input(), { target: { value: 'https://new.example/v1' } });
     await act(async () => { vi.advanceTimersByTime(500); });
     expect(listModels).toHaveBeenCalledTimes(1);
@@ -522,8 +470,6 @@ describe('the address of the user\'s own server', () => {
     vi.useRealTimers();
   });
 
-  /** An unchanged address is left alone: the quiet only ever fires for a draft that differs from
-   *  what is filed, so glancing at the card costs no request beyond the mount's own. */
   it('never re-checks an address that has not changed', async () => {
     armCustom();
     const listModels = vi.fn(() => Promise.resolve(['a']));
@@ -535,8 +481,7 @@ describe('the address of the user\'s own server', () => {
     vi.useRealTimers();
   });
 
-  /** Enter on an unchanged address is a deliberate re-check, and the remembered list must not
-   *  answer it: the address may have come back since. */
+  /** Enter is a deliberate re-check, so the remembered list does not answer it. */
   it('re-asks the same address on Enter', async () => {
     armCustom();
     const listModels = vi.fn(() => Promise.resolve(['a']));
@@ -546,8 +491,6 @@ describe('the address of the user\'s own server', () => {
     expect(listModels).toHaveBeenCalledTimes(2);
   });
 
-  /** An unusable string is refused in place once the hands are still: nothing is filed, and the
-   *  note under the field says the address cannot be used. */
   it('refuses an address the app could not reach, and files nothing', async () => {
     armCustom();
     const listModels = vi.fn(() => Promise.resolve(['a']));
@@ -563,10 +506,7 @@ describe('the address of the user\'s own server', () => {
     vi.useRealTimers();
   });
 
-  /** The wait rides the pill itself, trailing the text — the check is about this field, so its
-   *  sign stands inside it rather than opening a row — and the sub-line carries verdicts alone:
-   *  an address that answered nothing, and quiet where the address answered. The wait is the
-   *  loading idiom, never a sentence of its own. */
+  /** The wait shows as one spinner inside the address pill; the note below carries only verdicts. */
   it('stands one spinner for the listing even with the model menu open', async () => {
     armCustom();
     await act(async () => { mount({ listModels: () => new Promise<string[]>(() => {}) }); });
@@ -596,15 +536,14 @@ describe('the address of the user\'s own server', () => {
       .toBe(translations.en['agent.setup_list_unavailable']);
   });
 
-  /** The address survives the page, which is the other half of being able to change it: it is written
-   *  through the one storage door and read back sanitized on the next boot. */
+  /** The address is stored and read back sanitized on the next boot. */
   it('is on disk after the check, and comes back from disk', async () => {
     armCustom('https://gw.example/v1');
     await act(async () => { mount({ listModels: () => Promise.resolve(['a']) }); });
     fireEvent.change(input(), { target: { value: 'https://kept.example/v1/' } });
     await act(async () => { enter(); });
 
-    // A fresh boot: the store is put back to its defaults and hydrated off the same disk.
+    // A fresh boot: store defaults, hydrated from the same storage.
     await act(async () => {
       useAgentConnection.setState({ customBaseUrl: '', provider: 'claude', hydrated: false });
       await useAgentConnection.getState().hydrate();
@@ -616,18 +555,8 @@ describe('the address of the user\'s own server', () => {
   });
 });
 
-/**
- * What a change on this card applies to, and what it says about it.
- *
- * A connection change reaches the next job (the rule and its argument live at the config-read seam,
- * `agent/exec/runner-host.ts`), so the card's job is to say so at the moment of the press and never to
- * pretend the running job has moved. The note is the house toast rather than a line on the card: the
- * fact is about a moment, and a row that appeared would move the card at the instant it was being
- * used, which is the same rule the destructive verbs' spacer exists for.
- *
- * Said once per live job, not once per press. A model typed a character at a time is one change, and
- * the note is a note rather than forty of them.
- */
+/** A connection change reaches only the next job (`agent/exec/runner-host.ts`), so over a running job
+ *  the card says so in a toast, once per live job. */
 describe('a change made over a running job says which job it reaches', () => {
   const LIVE = { providerId: 'claude' as const, model: 'claude-sonnet-4-5' };
 
@@ -657,8 +586,7 @@ describe('a change made over a running job says which job it reaches', () => {
     expect(toasts).toEqual([translations.en['agent.setup_manage_next_job']]);
   });
 
-  /** Oversight is the exception and must not be noted: it is read live at every gate decision, so it
-   *  reaches the next write of the job already running. A note saying otherwise would be false. */
+  /** Oversight is read live at every gate decision, so it does reach the running job. */
   it('says nothing for oversight, which the running job does answer to', async () => {
     await act(async () => { mount({ liveConnection: LIVE, listModels: () => Promise.resolve(['a']) }); });
     await act(async () => { fireEvent.click(screen.getByText(translations.en['agent.oversight_yolo']!)); });
@@ -675,8 +603,7 @@ describe('model discovery preserves explicit selections', () => {
     useAgentConnection.setState({ model: { ...emptyModels(), custom: 'kept-model' } });
   };
 
-  /** Files a new address (Enter is the immediate spelling of the same self-running check) and lets
-   *  the list for it settle. */
+  /** Files a new address with Enter and lets its list settle. */
   const fileAddress = async (url: string) => {
     fireEvent.change(screen.getByTestId('manage-endpoint-input'), { target: { value: url } });
     await act(async () => { fireEvent.keyDown(screen.getByTestId('manage-endpoint-input'), { key: 'Enter' }); });
@@ -736,9 +663,6 @@ describe('model discovery preserves explicit selections', () => {
     expect(useAgentConnection.getState().model.custom).toBe('kept-model');
   });
 
-  /** A gear press is not an address change. The card is opened to read the oversight caption as often
-   *  as to change anything, and re-picking a model the user chose because a partial catalogue omits it
-   *  would be the card overruling them. */
   it('leaves the filed model alone when the card merely opens on a list that omits it', async () => {
     armCustom();
     await act(async () => { mount({ listModels: () => Promise.resolve(['served-a']) }); });
@@ -773,8 +697,7 @@ describe('model discovery preserves explicit selections', () => {
     expect(toasts).toEqual([]);
   });
 
-  /** The other side of the boundary: a server that answers badly (here an auth refusal) is reachable,
-   *  so the typed id keeps the trust an empty catalogue earns and the door stays open. */
+  /** A server that refuses (here auth) is still reachable, so no failure note is shown. */
   it('keeps the model where the server answers without a list, whatever the refusal was', async () => {
     armCustom();
     await act(async () => {
@@ -792,8 +715,6 @@ describe('model discovery preserves explicit selections', () => {
     await act(async () => { mount({ listModels: () => answer() }); });
     expect(screen.getByTestId('manage-endpoint-note').textContent)
       .toBe(translations.en['agent.setup_list_unavailable']);
-    // A gear press is not a check: the fetch this card makes on mount failing must not empty a pick
-    // the user made — only a check they pressed carries that authority.
     expect(useAgentConnection.getState().model.custom, 'a glance clears nothing').toBe('kept-model');
 
     answer = () => Promise.resolve(['only-this']);
@@ -803,12 +724,8 @@ describe('model discovery preserves explicit selections', () => {
   });
 });
 
-/**
- * The boundary between a failed endpoint and an unavailable list, as one table over the failure
- * shapes the deadline-bounded check settles with (`setup-parts.ts:endpointCheckVerdict`). A failed
- * endpoint is a check nothing answered (or that no request could be built for); everything with a
- * server behind it, however unhelpful the answer, is a list that is merely unavailable.
- */
+/** `setup-parts.ts:endpointCheckVerdict`: an endpoint fails when nothing answered or no request could
+ *  be built; any server answer, however unhelpful, only makes the list unavailable. */
 describe('what counts as the endpoint failing its check', () => {
   const UNREACHABLE: [string, unknown][] = [
     ['a fetch that failed', new Error('Failed to fetch')],
@@ -832,9 +749,7 @@ describe('what counts as the endpoint failing its check', () => {
   });
 });
 
-/** The rows read top-down in the order they depend on each other: the provider names the platform, the
- *  address decides which models exist, the model is chosen from what the address offers. A model row
- *  above the address would ask the user to choose from a list the row below has not established. */
+/** The rows follow their dependencies: provider, then the address, then the models it offers. */
 describe('the card reads in dependency order', () => {
   it('stands the address between the provider and the model', async () => {
     useAgentConnection.getState().setCustomBaseUrl('https://gw.example/v1');
@@ -853,7 +768,6 @@ describe('the card reads in dependency order', () => {
 
 /** Both dropdowns use the shared floating-menu card and its uniform radius. */
 describe('the dropdowns on this card are the house menu', () => {
-  /** jsdom preserves the shorthand rather than expanding its four sides. */
   const declaredRadius = (el: HTMLElement) => el.style.borderRadius;
 
   it.each(['manage-prov-row', 'manage-model-dd'])('opens a round-cornered house card from %s', (row) => {
@@ -862,15 +776,13 @@ describe('the dropdowns on this card are the house menu', () => {
 
     const card = screen.getByRole(row === 'manage-model-dd' ? 'group' : 'menu');
     expect(card.getAttribute('aria-label')).toBeTruthy();
-    // One radius, four corners: `radii.lg` as the shared card declares it, with nothing partial.
+    // jsdom keeps the shorthand, so one value means one radius for all four corners.
     expect(declaredRadius(card)).toBe(`${radii.lg}px`);
     expect(declaredRadius(card).trim().split(/\s+/), 'a per-corner declaration').toHaveLength(1);
-    // And the card is border-box, which is what keeps its own padding and edge from carrying its
-    // right corners past the row it hangs from.
+    // Border-box keeps the card's padding from carrying it past the row it hangs from.
     expect(getComputedStyle(card).boxSizing).toBe('border-box');
   });
 
-  /** A second popover of this card's own making would be a second answer to how a list looks. */
   it('renders no card of its own beside it', () => {
     mount({ jobCount: 1 });
     const own = [...screen.getByTestId('manage-screen').querySelectorAll<HTMLElement>('*')]

@@ -35,17 +35,23 @@ export const SHELF_BOX = {
   rowGap: 10,
 } as const;
 
-/** The room between the names and the cards, in css px: what the row floor both shelves share leaves. */
-export function tabRowGap(): number {
+/** The room between the names and the cards, in css px: what the row floor both shelves share
+ *  (`frame-plan.ts:FrameLayout.bar.tabsTop`) leaves. */
+export function tabRowGap(floor: number = SHELF_TABS.floor): number {
   const underRow = (ROW.card + 2 * ROW.pad) * SHELF_SCALE + SHELF_BOX.rowGap
     + SCROLL.thumb.h * SHELF_SCALE + SHELF_BOX.bottom;
-  return SHELF_TABS.floor - underRow;
+  return floor - underRow;
 }
 
-/** Search geometry in CSS pixels; the 476 × 82 drawing carries a 44.5 px em and 50 px inset. */
+/** The wide names' row's search group in CSS pixels: the brush button, then the field, together as
+ *  wide as the design's 476 × 82 field drawing alone, which carries a 44.5 px em and 50 px inset. */
+const SEARCH_GROUP = { w: Math.round((476 / 82) * SHELF_TABS.field), gap: SHELF_TABS.gap } as const;
+
+/** Search geometry in CSS pixels: the field at rest, beside the brush button in `group`. */
 export const SEARCH = {
-  w: Math.round((476 / 82) * SHELF_TABS.field),
+  w: SEARCH_GROUP.w - SEARCH_GROUP.gap - SHELF_TABS.field,
   h: SHELF_TABS.field,
+  group: SEARCH_GROUP,
   /** The placeholder's own em, which the typed query takes too. */
   text: SHELF_TABS.fieldText,
   padX: Math.round((50 / 82) * SHELF_TABS.field),
@@ -64,12 +70,51 @@ export const SEARCH = {
 const CARD_OVER_BAND = 1.227;
 
 /**
+ * Whether the wide names' row, the whole search group standing `lead` px past its names, would leave the
+ * names less than `least` px, the room two of them need whole, so the names row is hard to scroll and the
+ * field folds to a round search button (`was` says whether it stands folded now). Names that merely
+ * overflow scroll. All in the row's px. Folded, it unfolds only once a tab's gap more is free, so a row
+ * resting near the threshold never flips back and forth.
+ */
+export function searchFolds(was: boolean, { row, lead, least }: { row: number; lead: number; least: number }): boolean {
+  const names = row - lead - SEARCH.group.w;
+  return was ? names < least + SHELF_TABS.gap : names < least;
+}
+
+/** The room two names need whole in the row: the two widest and the gap between them, from their own widths. */
+export function twoNamesWide(widths: readonly number[]): number {
+  const [a = 0, b = 0] = [...widths].sort((x, y) => y - x);
+  return a + b + SHELF_TABS.gap;
+}
+
+/**
  * The card row: the tile from the ratio above, the design's gutter proportion, and inner padding for a
  * hovered card's 3% growth inside the clipping viewport.
  */
 const CARD_SIZE = (PLATE_BAND.top * CARD_OVER_BAND) / SHELF_SCALE;
 
 export const ROW = { card: CARD_SIZE, gap: (38.6 / 280) * CARD_SIZE, pad: 12 } as const;
+
+/**
+ * The cards on an upright window: a grid of at least `minColumns` columns `gap` css px apart, showing
+ * `rows` rows before it scrolls (a part row says there is more).
+ */
+export const UPRIGHT_GRID = { minColumns: 3, rows: 2.5, gap: 8 } as const;
+
+/**
+ * The upright grid's columns across `room` frame px and the share of their own size its cards, `card`
+ * frame px wide, stand at: the column count whose cards come nearest their own size with the grid's
+ * gap between them, never fewer than `minColumns`, the cards then sized to fill the room exactly, so
+ * the width left over goes to the cards rather than to the gaps.
+ */
+export function uprightCardFit(room: number, card: number): { columns: number; fit: number } {
+  const { gap, minColumns } = UPRIGHT_GRID;
+  const columns = Math.max(minColumns, Math.round((room + gap) / (card + gap)));
+  return { columns, fit: (room - (columns - 1) * gap) / columns / card };
+}
+
+/** How small the armed card stands in the bar the upright panel folds to, against its grid size. */
+export const FOLDED_CARD = 0.6;
 
 /**
  * The scrollbar under the row in its art's design px: the track stretched to the row, the thumb as long as

@@ -1,9 +1,8 @@
 /**
  * The candidate cache: the same question about the same map is answered once.
  *
- * The key is the map's fingerprint plus the whole recipe (region folded in), so the invalidation
- * story is exactly "the map changed or the question did" — there is no timer and no explicit
- * flush to forget.
+ * The key is the map's fingerprint plus the whole recipe (region folded in), so an entry is
+ * invalidated exactly when the map or the question changes; there is no timer and no explicit flush.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CommandType, TerrainType } from '../../../../core/model/types';
@@ -51,9 +50,9 @@ describe('the candidate cache', () => {
     expect(scoped).not.toBe(whole);
   });
 
-  /** The user's own round trip, through the shelf's own recipe builder: a tab left for the maze and
-   *  returned to must find the planet batch standing — `kindConfig` is pure over (kind, sliders,
-   *  seed) and nothing else may leak into the key. */
+  /** A round trip through the shelf's recipe builder: a tab left for the maze and returned to finds the
+   *  planet batch standing. `kindConfig` is pure over (kind, sliders, seed), and nothing else may leak
+   *  into the key. */
   it('answers a tab round trip from the cache', async () => {
     const kit = kitOn();
     const at = (kind: GenerateKind, seed: number) => kindConfig({
@@ -67,10 +66,9 @@ describe('the candidate cache', () => {
   });
 
   /**
-   * Landing card two after card one: candidate B was built against the empty map and the live map
-   * now carries A's planet — but a full run clears before it builds, and a planet clears to the
-   * ground B was built on. So B lands as itself, down to the object ids a rebuild would have minted
-   * fresh, and the planet underneath costs nothing.
+   * Landing card two after card one: candidate B was built against the empty map while the live map
+   * now carries A's planet, but a full run clears before it builds and a planet clears to the ground B
+   * was built on. So B lands as itself, down to the object ids a rebuild would mint fresh.
    */
   it('lands a card over another card\'s planet without building it again', async () => {
     const kit = kitOn();

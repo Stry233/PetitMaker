@@ -1,5 +1,5 @@
-// Stage 1's placements: Where each anchor region's buildings stand and which way their doors look.
-// The claims here are about the plan — the committed map is `pipeline.slow.test.ts`'s subject — so they
+// Stage 1's placements: where each anchor region's buildings stand and which way their doors look.
+// The claims here are about the plan (the committed map is `pipeline.slow.test.ts`'s subject), so they
 // are the ones a commit cannot repair: every anchor gets a spot, no two footprints share a cell, a
 // footprint stays inside its lot, and every door either faces the lot's entry side or the court lane
 // that leads back to it.

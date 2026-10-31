@@ -136,8 +136,7 @@ describe('what is on screen', () => {
   });
 
   it('places the grabs in proportion to their anchors', () => {
-    // Absolute px carry the chrome zoom, which is a property of the viewport, not of this
-    // component; the ratio between two anchors is what the projection is being asked for.
+    // Absolute px carry the viewport's chrome zoom, so the ratio between anchors is asserted.
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 4 }, { x: 6, y: 4 }]);
     const px = (label: string) => {
@@ -146,7 +145,7 @@ describe('what is on screen', () => {
     };
     const a = px('Curve point 1'), b = px('Curve point 2');
     expect(b.left / a.left).toBeCloseTo(3, 5);   // x 2 -> 6
-    expect(b.top).toBeCloseTo(a.top, 5);         // same row
+    expect(b.top).toBeCloseTo(a.top, 5);
   });
 
   it('goes away when the session ends', async () => {
@@ -180,7 +179,6 @@ describe('dragging', () => {
   });
 
   it('ghosts the path on every frame of the drag, so the drag can be aimed', () => {
-    // Without it the anchor moves and nothing else does until the release.
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
     drag(screen.getByLabelText('Curve point 1'), { x: 3, y: 7 });
@@ -269,8 +267,7 @@ describe('sizing against the map zoom', () => {
   const hitWidth = () => parseFloat((screen.getByLabelText('Curve point 1') as HTMLElement).style.width);
 
   it('shrinks the controls as the map zooms out', () => {
-    // A curve has an anchor every few cells: fixed-size controls swell to cover the very shape they
-    // are meant to be adjusting once the map is small.
+    // Anchors sit a few cells apart, so fixed-size controls would cover the curve on a small map.
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => { viewAtCellPx(64); });
     openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);

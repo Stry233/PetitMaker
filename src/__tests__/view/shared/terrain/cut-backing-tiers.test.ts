@@ -37,9 +37,9 @@ describe('cornerRevealTier — EDGE-only, layer-gated (what shows behind a cut)'
   });
 
   it('water lapping a TALLER edge wall reveals the wall AT THE WATERLINE (the bank, not the cliff top)', () => {
-    // a pool@2 against a taller cliff@4: the cliff banks the pool at the pool's
-    // Own layer — its higher mass rises behind the corner, it is not what the
-    // rounded water opens onto — so the reveal is tier 2, never the cliff's 4.
+    // A pool@2 against a taller cliff@4: the cliff banks the pool at the pool's own layer; its higher
+    // mass rises behind the corner and is not what the rounded water opens onto, so the reveal is
+    // tier 2, never the cliff's 4.
     expect(cornerRevealTier(at({ '0,-1': cell(M, 4) }), 0, W, 2)).toBe(2);
   });
 });

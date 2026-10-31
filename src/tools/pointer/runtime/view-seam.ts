@@ -194,6 +194,10 @@ export interface EditorView {
    *  so "a frame passed" is not "the map is on screen" — only the renderer knows when it drew. Fires
    *  on teardown too (a disposed view will never paint, and a waiter must never hang). */
   onNextPaint(cb: () => void): void;
+  /** The magnifier over a touch press: `at` is the layout point under the finger, and the view
+   *  magnifies what it drew there. Each call moves it; it stands until `hideLoupe`. */
+  showLoupe(at: { x: number; y: number }): void;
+  hideLoupe(): void;
 }
 
 /** Camera verbs the pointer machine drives. Each verb self-applies (no
@@ -214,7 +218,8 @@ export interface ViewCamera {
   endGesture?(): void;
   /** Re-frame the whole map, eased (the fit control and shortcut). */
   fitToMap(): void;
-  /** Two-finger twist → yaw, radians (3D only). */
+  /** Two-finger twist → yaw, radians (3D only); positive turns the ground counter-clockwise on
+   *  screen, with fingers that turned that way. */
   orbitTwist?(dRadians: number): void;
   /** Camera tilt as 0..1 across the view's polar range (3D only). */
   tilt?(value: number): void;

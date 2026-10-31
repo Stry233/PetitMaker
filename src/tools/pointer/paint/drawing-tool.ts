@@ -46,6 +46,7 @@ const CONTENT_ICON: Record<ContentType, PreviewIcon> = {
 
 export class DrawingTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.TerrainBrush;
+  magnifies(): boolean { return true; }
   grid(ctx: Pick<CurveToolContext, 'arming'>): GridId { return CONTENT_GRID[ctx.arming.contentType]; }
 
   /** The material, not the shape: the ghost already shows brush vs line vs rect. */
@@ -347,7 +348,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
         break;
 
       case 'curve':
-        if (this.chain.up(coord, ctx.eventTime) === 'finish') this.commitCurve(ctx, coord);
+        if (this.chain.up(coord, ctx.eventTime, ctx.doubleTapMs) === 'finish') this.commitCurve(ctx, coord);
         else this.previewCurve(coord, ctx);
         break;
 

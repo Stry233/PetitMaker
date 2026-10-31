@@ -1,123 +1,108 @@
 /*
- * The tour's state: whether it has been seen, and whether it is running now.
+ * The tour's run and its offer. A run is the deck of cards, a Show me standing in for the deck while
+ * it rings the live controls, and the recap at the end; the store owns where it stands
+ * (`state/slices/shell.ts:tourPhase`), which does not persist, because a tour resumed halfway through
+ * reads worse than one started again.
  *
- * "Seen" persists; the step index does not, because a tour resumed halfway through is a worse
- * experience than one started again. Skipping counts as seen: the tour is a courtesy, and someone
- * who skipped has made their choice.
- *
- * "Seen" is written when the tour starts, not when it ends: a reload halfway through would
- * otherwise replay it from step one, which is the same tour again for someone who was already
- * partway out of it. The cost is that a reload during the first minute spends the one automatic
- * offer; the Settings row is the way back, and it is the way anyone replays it anyway.
+ * The offer is recorded as a run starts (`state/tour-offer.ts`), so a reload part-way through does not
+ * replay it; Settings and Help are the way back.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useEditorStore } from '../../../state/store';
-import { PREFS, readStoredPref } from '../../../platform/storage/prefs';
-import { markTourSeen } from '../../../state/slices/shell';
-import type { TourStep } from './steps';
+import { firstLaunchTour, recordTourOffered, takeVisitStart, tourStanding, visitStanding, type TourStanding } from '../../../state/tour-offer';
+import { FIRST_TOUR_PHASE, type TourPhase } from '../../../state/slices/shell';
+import { hasAutosave } from '../../../io/storage/facts';
+import { TOUR_KINDS, type TourCard } from './deck';
+import { TOUR_VERSION } from './version';
+import { playedReel, reelFiles, reelForm } from './reels';
 
-export const TOUR_SEEN_KEY = PREFS.tourSeen.key;
+export type { TourPhase };
 
-/** Whether this browser has already been offered the tour. A browser whose storage cannot be read
- *  reads as seen, since an offer it cannot persist would repeat on every visit; an unset flag
- *  reads as unseen. */
-export function hasSeenTour(): boolean {
-  const stored = readStoredPref('tourSeen');
-  return !stored.available || stored.raw === '1';
+/** Where this browser stood with the tour this build offers as this page found it, whatever the
+ *  page has recorded since. */
+export function tourVisitStanding(): TourStanding {
+  return visitStanding(TOUR_VERSION);
 }
 
-/** Run the tour from its first step. Used by the startup check and by the Settings replay row. */
+/** Whether the offer is answered for this build's tour: the tour ran or was waived, or this
+ *  browser cannot keep the answer. Until then a visit may be a frame away from opening it. */
+export function tourSettled(): boolean {
+  return tourStanding(TOUR_VERSION) === 'offered';
+}
+
+/** What a visit about to open the tour fetches while the loading screen stands: the opening card's
+ *  poster, timing and the clip its `<video>` will choose, in the reader's locale and form. Nothing
+ *  where the tour will not open. */
+export function tourWarmFiles(): string[] {
+  if (firstLaunchTour(tourVisitStanding(), hasAutosave()) !== 'run') return [];
+  const { locale, inputMode, layoutShape } = useEditorStore.getState();
+  const files = reelFiles(locale, reelForm(inputMode, layoutShape), TOUR_KINDS[0]);
+  if (!files) return [];
+  return [files.poster, files.timing, playedReel(files)].filter((url): url is string => url !== null);
+}
+
+/** Run the tour from its first card. Used by the startup check, Settings and Help. */
 export function startTour(): void {
-  useEditorStore.getState().startTour();
+  useEditorStore.getState().startTour(TOUR_VERSION);
 }
 
-interface TourController {
-  running: boolean;
-  step: TourStep | null;
-  index: number;
-  /** How many steps this run has, which is not always how many the array has. */
-  total: number;
-  isLast: boolean;
-  /** Where a step sits in this run, 0-based, or -1 for one the run left out. The overlay's card can
-   *  be showing a step the index has already moved past, so its counter is numbered from the step
-   *  On it rather than from the current index. */
-  indexOf(step: TourStep): number;
-  next(): void;
-  /** Advance from a named step rather than from the current index. The overlay's card can lag the
-   *  current step while a target settles, and a Next press in that window must move on from the
-   *  step the visitor actually read, not from the one already being measured. */
-  advanceFrom(from: TourStep): void;
-  skip(): void;
-}
-
-/** Drives one run of the tour. The index resets as a run ends, so the next one opens on step one.
- *
- *  `steps` is the mounted shell's own step list, since what a step can point at is whatever that
- *  interface draws. */
-export function useTour(steps: readonly TourStep[]): TourController {
-  const running = useEditorStore((s) => s.tourRunning);
-  const finishTour = useEditorStore((s) => s.finishTour);
-  const [index, setIndex] = useState(0);
-
-  // The index is reset here, as a run ends, rather than by an effect watching `running`: the overlay
-  // stays mounted for the app's life, so a passive reset lands a commit late and the first commit of
-  // a replay renders (announces, applies the menu action of, and paints) the step the last run
-  // stopped on. `finish` is the only path out of a run, so this is the whole reset.
-  // The send-off is for reaching the end. Skipping is a request to be left alone, and a
-  // congratulation on top of it would be the tour talking back.
-  const finish = useCallback((completed: boolean) => {
-    setIndex(0);
-    finishTour(completed);
-  }, [finishTour]);
-
-  const skip = useCallback(() => finish(false), [finish]);
-
-  const advanceFrom = useCallback((from: TourStep) => {
-    // The updater stays pure: StrictMode invokes it twice, so a side effect placed inside would fire twice on the final step.
-    const i = steps.indexOf(from);
-    if (i < 0 || i >= steps.length - 1) { finish(true); return; }
-    setIndex(() => i + 1);
-  }, [finish, steps]);
-
-  const next = useCallback(() => {
-    const current = steps[index];
-    if (current) advanceFrom(current); else finish(true);
-  }, [index, steps, advanceFrom, finish]);
-
-  const indexOf = useCallback((step: TourStep) => steps.indexOf(step), [steps]);
-
-  return {
-    running,
-    step: running ? steps[index] ?? null : null,
-    index,
-    total: steps.length,
-    isLast: index === steps.length - 1,
-    indexOf,
-    next,
-    advanceFrom,
-    skip,
-  };
-}
-
-/** Offer the tour once, on the first visit this browser has made. Runs its check a single time, so
- *  a re-render after a skip cannot start it again.
- *
- *  `blocked` defers the offer while something else owns the screen: App passes the portrait guard's
- *  state, since a tour that points at panels covered by a "please rotate" overlay points at nothing.
- *
- *  `hasSavedMap` is passed in rather than read here: App already deserializes the autosave for the
- *  restore offer, and reading it a second time on the cold-start path costs a full parse of a map
- *  that can be 169x140. */
-export function useFirstLaunchTour(blocked: boolean, hasSavedMap: boolean): void {
-  const checked = useRef(false);
+/** Offer the tour once per version, as the editor first shows: the visit's start acts once a page,
+ *  so a re-render or a remount after a skip cannot start it again. `hasSavedMap` is passed in: the
+ *  app has already read the autosave for the welcome-back offer. A pictured shell (`live` false)
+ *  never offers it. */
+export function useFirstLaunchTour(hasSavedMap: boolean, live = true): void {
   useEffect(() => {
-    if (checked.current || blocked) return;
-    checked.current = true;
-    if (hasSeenTour()) return;
-    // A saved map with real content proves this browser has used the editor before (every existing
-    // user reaches this build with an autosave and no seen flag), so the first-launch offer does
-    // not apply to it; Settings still carries the replay for anyone who wants the tour anyway.
-    if (hasSavedMap) { markTourSeen(); return; }
-    startTour();
-  }, [blocked, hasSavedMap]);
+    if (!live) return;
+    const decision = takeVisitStart(TOUR_VERSION, hasSavedMap);
+    if (decision === 'waive') recordTourOffered(TOUR_VERSION);
+    else if (decision === 'run') startTour();
+  }, [hasSavedMap, live]);
+}
+
+export interface TourController {
+  running: boolean;
+  phase: TourPhase;
+  cards: readonly TourCard[];
+  go(card: number): void;
+  next(): void;
+  back(): void;
+  showMe(): void;
+  /** Moves a Show me on from `step`, or back to its card after the last. */
+  stepOn(step: number): void;
+  /** Leaves a Show me for its card. */
+  backToTips(): void;
+  /** Ends the run: Skip, Escape and the recap's Start building. */
+  finish(): void;
+}
+
+const phaseNow = (): TourPhase => useEditorStore.getState().tourPhase;
+
+/** Drives the run over `cards`, the deck this device offers, through the store's one transition. */
+export function useTour(cards: readonly TourCard[]): TourController {
+  const running = useEditorStore((s) => s.tourRunning);
+  const phase = useEditorStore((s) => s.tourPhase);
+  const setPhase = useEditorStore((s) => s.setTourPhase);
+  const finish = useEditorStore((s) => s.finishTour);
+  const backToTips = useEditorStore((s) => s.leaveShowMe);
+  const go = useCallback((card: number) => setPhase({ kind: 'deck', card: Math.max(0, Math.min(cards.length - 1, card)) }), [cards.length, setPhase]);
+  const next = useCallback(() => {
+    const p = phaseNow();
+    if (p.kind === 'deck') setPhase(p.card < cards.length - 1 ? { kind: 'deck', card: p.card + 1 } : { kind: 'recap' });
+  }, [cards.length, setPhase]);
+  const back = useCallback(() => {
+    const p = phaseNow();
+    if (p.kind === 'deck' && p.card > 0) setPhase({ kind: 'deck', card: p.card - 1 });
+  }, [setPhase]);
+  const showMe = useCallback(() => {
+    const p = phaseNow();
+    if (p.kind === 'deck' && cards[p.card]?.show?.length) setPhase({ kind: 'show', card: p.card, step: 0 });
+  }, [cards, setPhase]);
+  const stepOn = useCallback((from: number) => {
+    const p = phaseNow();
+    if (p.kind !== 'show' || p.step !== from) return;
+    const steps = cards[p.card]?.show?.length ?? 0;
+    setPhase(from + 1 < steps ? { ...p, step: from + 1 } : { kind: 'deck', card: p.card });
+  }, [cards, setPhase]);
+
+  return { running, phase: running ? phase : FIRST_TOUR_PHASE, cards, go, next, back, showMe, stepOn, backToTips, finish };
 }

@@ -1,9 +1,7 @@
 /*
- * The Help figures' claims held to the rules: every scene's timeline runs headless against its own
- * real world (`SandboxWorld` on a real planet template), and what a demo shows is asserted to be what
- * the editor does — the builds land, the ghosts' validity answers come from the registry, and the
- * two refusal demos refuse with exactly the error the caption stands beside. The `DemoView` seam is
- * a recorder here; in the app it is the real overlay layer.
+ * Help figures held to the rules: each scene runs headless on `SandboxWorld` with a real planet
+ * template, and what a demo shows is what the editor does, refusals included with the captioned
+ * error. `DemoView` is a recorder here.
  */
 import { describe, expect, it } from 'vitest';
 import { holdsTemplateTerrain } from '../../../core/model/template';
@@ -147,7 +145,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('terrain: the free stroke wanders and turns, the retraced part stacks to 2, the shift line lays level 1', () => {
     const run = play(HELP_SCENES.terrain!);
-    // The wandering stroke covers two rows — a ruled line would sit on one.
+    // The wandering stroke covers two rows: a ruled line would sit on one.
     for (const c of [{ x: 65, y: 100 }, { x: 66, y: 100 }, { x: 66, y: 101 }]) {
       expect(terrainAt(run, c.x, c.y)).toEqual({ type: TerrainType.Mountain, elevation: 1 });
     }
@@ -274,8 +272,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(world.state.cells[100]?.[73]?.terrain?.patchOnly).toBeFalsy();
     for (const step of steps) { step.on?.(ctx); step.during?.(ctx, 1); }
     const hollow = world.state.cells[100]?.[73]?.terrain;
-    // What the click left stands at the taller tier and is a patch: cosmetic, carrying no support,
-    // which is what "it does not fill the hollow with solid terrain" means in the data.
+    // The click leaves a cosmetic patch at the taller tier that carries no support.
     expect(hollow?.elevation).toBe(2);
     expect(hollow?.patchOnly).toBe(true);
     // A wrapped corner's bevel is the inner triangle, the shape the gamma path lays.
@@ -394,8 +391,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(objectCount(run, 'tree-apple')).toBe(0);
     expect(objectCount(run, 'building-forest-cabin')).toBe(1);
     expect(run.world.state.objects.get(ANCHOR_LANDMARK.id)?.locked).toBe(true);
-    // The count the demo's toast claims is what actually survived locked of what the band caught:
-    // the plaza, and none of the planet's other landmarks.
+    // The toast counts what the band caught that survived locked: the plaza alone.
     const survivedLocked = [...run.world.state.objects.values()].filter((o) => o.locked && o.id === ANCHOR_LANDMARK.id).length;
     const claim = run.steps.find((s) => s.toastKey === 'toast.group_delete_kept');
     expect(claim?.toastParams).toEqual({ n: survivedLocked });
@@ -647,8 +643,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     const path = [{ x: 65, y: 100 }, { x: 66, y: 100 }, { x: 67, y: 100 }, { x: 67, y: 101 }, { x: 68, y: 101 }];
     for (const c of path) expect(terrainAt(run, c.x, c.y)?.type, `${c.x},${c.y}`).toBe(TerrainType.Mountain);
     expect(terrainAt(run, 66, 99)?.type ?? TerrainType.None).not.toBe(TerrainType.Mountain);
-    // Size 3, the real per-point brush footprint unioned along the same bend: every cell it
-    // covers stands, which reads as a band three cells wide rather than the path alone.
+    // Size 3: every cell of the brush footprint unioned along the same bend stands.
     const path2 = path.map((p) => ({ x: p.x, y: p.y + 4 }));
     const wide = new Set<string>();
     for (const p of path2) for (const c of brushCells(p.x, p.y, 3)) wide.add(`${c.x},${c.y}`);

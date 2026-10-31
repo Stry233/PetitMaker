@@ -1,20 +1,9 @@
 /**
- * No DOM source may name a cursor keyword.
- *
- * A raw keyword hands that control back to the operating system, and one reintroduced literal is
- * invisible in review.
- *
- * Every cursor outside the canvas goes through the `cursors` tokens in ui/design/styles (which resolve to
- * the custom properties ui/design/cursors/cursor-vars writes onto <html>) or, where a component genuinely
- * needs a canvas cursor, through `cursorCss(id)`. The canvas surface itself is exempt by
- * construction: `view/interaction/cursor-controller` is the one writer of `style.cursor`, and it
- * is not under these roots. Nothing else is exempt, `ui/design/cursors` included: the keywords its
- * sheet spells out are the fallbacks of `var(--pw-cursor-*, keyword)`, which is a form the scan
- * reads as legitimate wherever it appears.
- *
- * The scan covers all three ways a value can be produced — the declaration in a stylesheet or an
- * inline-style object, `el.style.cursor = …`, and `setProperty('cursor', …)` — and it reads a
- * declaration to the end of its value so multiline and ternary expressions are covered.
+ * No DOM source names a cursor keyword: a raw keyword hands the pointer back to the operating system.
+ * Cursors go through the `cursors` tokens in ui/design/styles (custom properties ui/design/cursors/
+ * cursor-vars writes onto <html>) or `cursorCss(id)`. The canvas surface's one writer,
+ * `view/interaction/cursor-controller`, is outside these roots. A `var(--pw-cursor-*, keyword)`
+ * fallback is legitimate wherever it appears.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';
@@ -22,17 +11,14 @@ import { cursors } from '../../../ui/design/styles';
 import { repoFiles } from '../../_support/source-graph';
 
 // Vitest runs from the repo root.
-
 const REPO = process.cwd();
 
-/** Everywhere the app renders DOM. Both canvas views are here because both render React around
- *  their surface; only the surface itself is the controller's, and the controller lives elsewhere. */
+/** Everywhere the app renders DOM, including the React around both canvas views. */
 const ROOTS = ['src/ui', 'src/legal', 'src/view/map2d', 'src/view/map3d'];
 
 /**
- * Every CSS cursor keyword that makes the OS draw the pointer, and the token that replaces it.
- * `null` means the catalogue has no equivalent yet: naming the keyword is still the bug, and the
- * fix is a new id in `assets/cursors/cursor-spec`, not a literal at the call site.
+ * Every CSS cursor keyword that makes the OS draw the pointer, and the token that replaces it. `null`
+ * means no token exists: the remedy is a new id in `assets/cursors/cursor-spec`, not a literal.
  */
 const REPLACEMENT: Record<string, keyof typeof cursors | null> = {
   pointer: 'clickable',
@@ -75,7 +61,7 @@ const REPLACEMENT: Record<string, keyof typeof cursors | null> = {
 
 const KEYWORDS = Object.keys(REPLACEMENT);
 
-/** Repo-relative POSIX paths of every source file under `dir`. */
+/** Appends the repo-relative path of every `.ts`, `.tsx` and `.css` file under `dir`. */
 function walk(dir: string, out: string[]): void {
   out.push(...repoFiles(dir, { accept: /\.(ts|tsx|css)$/ }));
 }
@@ -89,10 +75,7 @@ function sources(): string[] {
   return files.sort();
 }
 
-/**
- * The three ways a cursor value is produced. Each pattern matches only up to the value, which
- * `valueEnd` then delimits.
- */
+/** The three ways a cursor value is produced; each matches up to the value, which `valueEnd` delimits. */
 const STARTS: readonly { re: RegExp; label: string }[] = [
   // A stylesheet declaration or an inline-style object entry. The leading guard keeps
   // `--pw-cursor:`-style custom properties and identifiers ending in "cursor" out.
@@ -102,13 +85,9 @@ const STARTS: readonly { re: RegExp; label: string }[] = [
 ];
 
 /**
- * Index just past the end of a value starting at `from`.
- *
- * Stops at a top-level `,` `;` `}` or `)` — never at a newline. A newline is not a terminator in
- * either language, and treating it as one is what let a prettier-wrapped ternary
- * (`cursor: disabled\n  ? 'not-allowed'\n  : 'pointer',`) through: the scan saw the bare condition
- * and nothing else. Nesting is tracked so a comma inside `url(…)`, `var(…)` or a call argument
- * list does not end the value early.
+ * Index just past the end of a value starting at `from`: a top-level `,` `;` `}` or `)`, never a
+ * newline, which ends nothing in either language and would cut a wrapped ternary short. Nesting is
+ * tracked so a comma inside `url(…)`, `var(…)` or a call does not end the value.
  */
 function valueEnd(src: string, from: number): number {
   let depth = 0;
@@ -121,7 +100,7 @@ function valueEnd(src: string, from: number): number {
   return src.length;
 }
 
-/** The keyword literals in one value — quoted in TS/TSX, bare in CSS. */
+/** The keyword literals in one value: quoted in TS/TSX, bare in CSS. */
 function offendingKeywords(value: string, isCss: boolean): string[] {
   const hits = isCss
     // A var() reference resolves to one of ours; anything else in a stylesheet is a raw keyword.
@@ -139,7 +118,7 @@ export function scanSource(file: string, src: string): string[] {
       const start = match.index + match[0].length;
       const value = src.slice(start, valueEnd(src, start));
       for (const keyword of offendingKeywords(value, isCss)) {
-        // From the match's own offset: the same value can appear many times in one file.
+        // From the match's own offset: one value can appear many times in a file.
         const line = src.slice(0, match.index).split('\n').length;
         const token = REPLACEMENT[keyword];
         problems.push(
@@ -161,25 +140,21 @@ describe('cursors come from the tokens, never from a keyword', () => {
     expect(files.length).toBeGreaterThan(40);
     expect(files.filter((f) => readFileSync(`${REPO}/${f}`, 'utf8').includes('cursor:')).length)
       .toBeGreaterThan(20);
-    // Two files outside the obvious roots, named so a future narrowing of `ROOTS` fails here rather
-    // than silently shrinking the sweep.
+    // Named so that narrowing `ROOTS` fails here rather than silently shrinking the sweep.
     expect(files).toContain('src/ui/design/styles.ts');
     expect(files).toContain('src/view/map2d/PixiCanvas.tsx');
   });
 
   it('catches the shapes a keyword actually comes back in', () => {
-    // A prettier-wrapped ternary: the value continues over three lines and the keywords are on
-    // neither the first nor the last of them.
+    // A wrapped ternary whose keywords sit on neither its first nor its last line.
     expect(scanSource('x.tsx', "style={{\n  cursor: disabled\n    ? 'not-allowed'\n    : 'pointer',\n}}"))
       .toHaveLength(2);
-    // The imperative forms, which no declaration pattern can see.
     expect(scanSource('x.ts', "el.style.cursor = 'pointer';")).toHaveLength(1);
     expect(scanSource('x.ts', "el.style.setProperty('cursor', 'wait');")).toHaveLength(1);
-    // Keywords outside the original list.
     expect(scanSource('x.tsx', "{ cursor: 'zoom-in' }")).toHaveLength(1);
     expect(scanSource('x.css', 'a { cursor: ew-resize; }')).toHaveLength(1);
     expect(scanSource('x.css', 'a { cursor: none; }')).toHaveLength(1);
-    // …and no false positive on the two legitimate forms.
+    // The two legitimate forms.
     expect(scanSource('x.tsx', '{ cursor: cursors.clickable, pointerEvents: \'none\' }')).toEqual([]);
     expect(scanSource('x.css', 'a { cursor: var(--pw-cursor-clickable, pointer); }')).toEqual([]);
   });

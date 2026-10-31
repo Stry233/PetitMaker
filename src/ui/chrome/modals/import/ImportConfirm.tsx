@@ -1,4 +1,5 @@
 import { windowFooterPrimary, windowFooterGhost, skin, windowTitle } from '../../../design/window-skin';
+import { WindowBody, windowColumn } from '../../../primitives/Window';
 /**
  * The look before the leap: a decoded map's picture, title and description, and the word that
  * installs it. Every import path shows this one card, whether the file came through the Import
@@ -47,19 +48,21 @@ export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCan
   const t = useT();
   const title = preview.notes?.title ?? name;
   return (
-    <div data-testid="import-confirm" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={windowTitle}>{t('import.confirm_title')}</div>
-      <div data-testid="import-picture" style={pictureStage}>
-        <PlanetPreview template={preview.state.template} state={preview.state} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ ...roleFont('lead'), color: skin.ink, overflowWrap: 'anywhere' }}>{title}</div>
-        {preview.notes?.description && (
-          <div style={{ ...roleFont('body'), color: skin.plateInk, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{preview.notes.description}</div>
-        )}
-      </div>
-      {replacing && <div role="alert" style={confirmPanel}>{t('import.confirm_replace')}</div>}
-      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+    <div data-testid="import-confirm" style={{ ...windowColumn, gap: 12 }}>
+      <div style={{ ...windowTitle, flex: 'none' }}>{t('import.confirm_title')}</div>
+      <WindowBody contentStyle={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div data-testid="import-picture" style={pictureStage}>
+          <PlanetPreview template={preview.state.template} state={preview.state} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ ...roleFont('lead'), color: skin.ink, overflowWrap: 'anywhere' }}>{title}</div>
+          {preview.notes?.description && (
+            <div style={{ ...roleFont('body'), color: skin.plateInk, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{preview.notes.description}</div>
+          )}
+        </div>
+        {replacing && <div role="alert" style={confirmPanel}>{t('import.confirm_replace')}</div>}
+      </WindowBody>
+      <div style={{ display: 'flex', gap: 10, marginTop: 4, flex: 'none' }}>
         <ActionButton style={windowFooterGhost} onClick={onCancel}>
           {t('import.drop_cancel')}
         </ActionButton>

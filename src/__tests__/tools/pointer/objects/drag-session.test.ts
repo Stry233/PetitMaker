@@ -26,8 +26,10 @@ function world(objects: PlacedObject[], selection: BlockRef[]) {
     selection: () => selected,
     setSelection: (blocks) => { selected = blocks; },
     report: (refusal) => { if (refusal) refusals.push(refusal); },
+    notify: () => {},
+    t: (key) => key,
   };
-  const view = { overlay: { showGhost: vi.fn(), showObjectMove: vi.fn() }, plopObject: vi.fn() } satisfies ObjectDragView;
+  const view = { overlay: { showGhost: vi.fn(), showObjectMove: vi.fn(), showGroupPlacementGhost: vi.fn() }, plopObject: vi.fn() } satisfies ObjectDragView;
   return { state, executor, port, view, refusals, selection: () => selected };
 }
 

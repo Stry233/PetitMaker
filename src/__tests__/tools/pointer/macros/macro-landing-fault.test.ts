@@ -62,7 +62,7 @@ function makeMap(): { state: GridState; executor: CommandExecutor } {
 }
 
 /**
- * The live executor with its stroke commit, bare or through a transaction, throwing for the first `faults` landings — a rule or
+ * The live executor with its stroke commit, bare or through a transaction, throwing for the first `faults` landings: a rule or
  * executor fault, the one thing `landMacroRun` rethrows rather than reporting. Everything else
  * delegates, so the rollback it performs on the way out is the real one.
  */
@@ -88,7 +88,7 @@ function faulty(real: CommandExecutor, faults: { left: number }): CommandExecuto
   }) as CommandExecutor;
 }
 
-/** How much terrain stands on the map — what a raise adds and a rollback takes back. */
+/** How much terrain stands on the map: what a raise adds and a rollback takes back. */
 const raised = (state: GridState): number =>
   state.cells.flat().filter((c) => c.terrain !== null).length;
 

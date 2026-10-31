@@ -11,7 +11,7 @@ type PillProps = Omit<ActionButtonProps, 'style'> & {
 };
 
 export const Pill = forwardRef<HTMLButtonElement, PillProps>(function Pill({ variant = 'quiet', on = 'plate', disabled = false, busy = false, style, 'data-testid': testId = 'pill', ...props }, ref) {
-  const drawn: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: 'none', ...windowPill(variant, disabled || busy, on), ...style };
+  const drawn: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: 'none', ...windowPill(variant, disabled, on), ...style };
   // A hover-tinted pill hands its skin's fill to Framer (`hover-fill.ts`).
   const { background, backgroundColor, ...undrawn } = drawn;
   const fill = props.hoverFill === undefined ? undefined : String(backgroundColor ?? background);

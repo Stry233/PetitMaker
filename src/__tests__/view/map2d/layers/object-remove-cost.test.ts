@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * `ObjectLayer.removeObjects` must cost the removal, not the map. A road corner-trim's remove+add
- * pairs drive it several times per brush dab, so a `this.lodSprites.filter(...)` tail — a full pass
+ * pairs drive it several times per brush dab, so a `this.lodSprites.filter(...)` tail (a full pass
  * over every sprite-bearing decoration on the map, every call, whatever the ids being removed
- * actually are — makes every dab of a road stroke heavier as the map fills up, on a session that has
+ * actually are) makes every dab of a road stroke heavier as the map fills up, on a session that has
  * accumulated thousands of decorations. `lodSprites` is keyed by object id, so a removal drops its
  * own entry directly.
  *

@@ -1,19 +1,7 @@
 /**
- * Whose surface a road macro lays, through the tool the two aimed gestures ship behind.
- *
- * `readRoadStyle` works out what a map is already paved with so a new lane comes out matching the
- * street it grows from, and a caller that always names a material never reaches it. The store seeds
- * `tileMaterial` with the catalog's first road because the tile brush needs something armed, so a shell
- * caller passing that seed as `material` overrides the map's own surface on every press with a decision
- * nobody made. The agent's `build_road_network` names no material at all, which is why it does reach the
- * feature.
- *
- * The rule this pins: a surface the caller named wins, and the map's own fills in when nobody
- * chose. `tileMaterialPicked` is the store's answer to which of the two is happening
- * (`state/slices/edit.ts`), and `MacroTool` reads it through the context seam.
- *
- * The whole-map press's own half of the same rule is pinned on the shell surface it runs from, in
- * `ui/shell/bars/terrain/terrain-bar.slow.test.tsx` — there is no tool under that gesture to drive.
+ * A road macro lays the surface the user picked, else the map's own (`readRoadStyle`). The store
+ * arms a default `tileMaterial` for the tile brush, so `tileMaterialPicked` says whether anyone
+ * chose it. The whole-map press is covered in `ui/shell/bars/terrain/terrain-bar.slow.test.tsx`.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';
@@ -33,8 +21,7 @@ const SHORE = 3;
 
 interface Kit { state: GridState; executor: CommandExecutor; registry: ReturnType<CommandExecutor['getRegistry']> }
 
-/** An open, flat, buildable map with a sea border, already paved with a park stone street along
- *  y = 10: the surface a lane laid beside it should come out in. */
+/** A flat buildable map with a sea border and a park stone street along y = 10. */
 function stoneStreet(): Kit {
   const state = makeState(SIZE, SIZE);
   for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
@@ -72,7 +59,7 @@ async function dragRoad(kit: Kit, over: ToolCtxOver, from: MacroCoord, to: Macro
 describe('which surface a road macro lays', () => {
   it('matches the street already standing when nobody has picked one', async () => {
     const kit = stoneStreet();
-    // The store's own fresh state: dirt armed for the tile brush, chosen by no one.
+    // The store's fresh state: dirt armed for the tile brush, not picked.
     const laid = await dragRoad(kit, { tileMaterial: 'path-overgrown-dirt', tileMaterialPicked: false }, { x: 12, y: 20 }, { x: 30, y: 20 });
     expect(laid.size, 'the route laid nothing to read a material off').toBeGreaterThan(0);
     expect([...laid]).toEqual(['path-park-stone']);

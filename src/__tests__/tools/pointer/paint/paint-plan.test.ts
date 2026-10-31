@@ -134,8 +134,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
 
   it('a circle figure straddling the edge, drawn through the REAL tool, dodges the retry storm too', () => {
     // The pin above drives planPaint directly, which cannot see DrawingTool's per-cell retry on a
-    // refused batch — the storm this fix exists to defuse (measured ~24k validations pre-fix for
-    // this figure). This one drives the tool itself, exactly like the rect pin.
+    // refused batch, where the retry storm lives. This one drives the tool itself, exactly like the rect pin.
     const state = makeState(64, 64);
     const registry = createDefaultRegistry();
     const ex = makeExecutor(state, registry);

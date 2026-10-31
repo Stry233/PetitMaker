@@ -1,6 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
-import { readScrollGeometry, useScrollGeometry, type ScrollGeometry } from '../../primitives/scroll-geometry';
-import { STOP_EPS } from '../../primitives/scroll-fade';
+import { readScrollGeometry, scrollTravel, useScrollGeometry, withinStop, type ScrollGeometry } from '../../primitives/scroll-geometry';
 import { useEffectEvent } from '../../primitives/use-effect-event';
 
 /** Native gestures can reach a painted edge that trails streamed content, in local CSS pixels. */
@@ -26,7 +25,7 @@ export function useFollowNewest(
       if (event.type === 'pointermove' && (event as PointerEvent).buttons === 0) return;
       // A press on content in a record standing at its foot is a click, not a scroll. Scrollbar
       // presses target the viewport itself and arm, since the track and thumb scroll natively.
-      if (event.type === 'pointerdown' && event.target !== el && el.scrollHeight - el.clientHeight - el.scrollTop <= STOP_EPS) return;
+      if (event.type === 'pointerdown' && event.target !== el && scrollTravel(readScrollGeometry(el), 'y').end === 0) return;
       const wheel = event.type === 'wheel' ? event as WheelEvent : null;
       if (wheel && (wheel.ctrlKey || Math.abs(wheel.deltaX) >= Math.abs(wheel.deltaY))) return;
       // Native scrolling can reach this foot after streamed text has already moved it.
@@ -46,16 +45,16 @@ export function useFollowNewest(
       // A shorter document can clamp the offset; CSS zoom rounds its actual limit. Only a move that
       // follows the reader's own input counts as scrolling away: the browser can drop the offset by
       // itself, as when a height animation is cancelled and the box briefly takes its natural size.
-      if (inputLimit.current !== null && g.top < Math.min(previous.top, limit) - (previous.top > limit ? STOP_EPS : 0)) {
+      if (inputLimit.current !== null && (previous.top > limit ? !withinStop(limit - g.top) : g.top < previous.top)) {
         following.current = false;
         inputLimit.current = null;
       } else if (g.top > previous.top) {
         const target = inputLimit.current ?? previous.limit;
-        const slack = inputLimit.current !== null && limit > inputLimit.current ? FOLLOW_SLACK : STOP_EPS;
-        following.current = Math.min(target, limit) - g.top <= slack;
+        const left = Math.min(target, limit) - g.top;
+        following.current = inputLimit.current !== null && limit > inputLimit.current ? left <= FOLLOW_SLACK : withinStop(left);
       }
       // Input that ends at the foot has done its scrolling; a later drop is the browser's.
-      if (g.top >= previous.top && limit - g.top <= STOP_EPS) inputLimit.current = null;
+      if (g.top >= previous.top && withinStop(limit - g.top)) inputLimit.current = null;
     }
     position.current = { top: g.top, limit };
   };
@@ -65,7 +64,7 @@ export function useFollowNewest(
     const geometry = readScrollGeometry(el);
     // Rendering can precede the native scroll event for a reader's new offset.
     readPosition(geometry);
-    if (!active || !following.current || geometry.scrollHeight - geometry.height - geometry.top <= STOP_EPS) return;
+    if (!active || !following.current || scrollTravel(geometry, 'y').end === 0) return;
     el.scrollTop = el.scrollHeight;
     position.current = { top: el.scrollTop, limit: geometry.scrollHeight - geometry.height };
     inputLimit.current = null;

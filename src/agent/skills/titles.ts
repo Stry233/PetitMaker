@@ -5,7 +5,7 @@ import type { I18nKey } from '../../i18n/keys';
 
 /** Every skill name; `index.ts:SKILLS` holds exactly these. */
 const SKILL_NAMES = [
-  'site-analysis', 'composition', 'terrain-shaping', 'settlement-design', 'ecology-planting', 'street-grammar',
+  'site-analysis', 'plan-on-map', 'build-from-plan', 'composition', 'terrain-shaping', 'settlement-design', 'ecology-planting', 'street-grammar',
   'design-review', 'pro-terraforming', 'garden-town', 'water-garden', 'figure-landscape', 'cozy-village',
   'terraced-hill-park',
 ] as const;

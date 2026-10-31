@@ -1,57 +1,25 @@
 /*
- * The first-launch tour's shape: what a step is, and how an element says it can be pointed at.
- *
- * A step names an i18n key pair and a target, never a position: the overlay measures the target
- * element at runtime, because the menu scale, the chrome zoom and the persisted uiZoom each move
- * this chrome independently. The machinery is here and in `TourOverlay`/`use-tour`; the content is
- * the shell's, since what a step can point at is whatever the interface draws (`ui/shell/tour/tour-steps`).
- * Adding a step is one entry there plus its keys in the seven locales.
+ * How a live control says the tour's Show me can ring it. A step names targets, never positions: the
+ * spotlight measures them at runtime, because the menu scale, the chrome zoom and the persisted uiZoom
+ * each move the chrome independently.
  */
 import type { BuildMode } from '../../../state/editing/edit-mode';
-import type { ViewMode } from '../../../platform/storage/prefs';
-import type { I18nKey } from '../../../i18n/keys';
 
-/** The elements a step can point at. Each is carried by exactly one element, via `tourTargetAttr`. */
+/** The elements a Show me step can ring or an arrival bubble points at (`chrome/floating/MenuBubbles.tsx`,
+ *  the region-load notice's `load` and the object shelf's `shelf-brush` among them). A target several elements carry (the shelf's cards, the
+ *  recipe cards) points at the first of them on screen; the rest are carried by one element each. */
 export type TourTargetId =
-  | 'modes' | 'bar' | 'view3d' | 'assistant' | 'share' | 'menu' | 'load';
-
-export interface TourStep {
-  /** The step's name, unique in its run; the host's step list is the one list of ids. */
-  id: string;
-  titleKey: I18nKey;
-  bodyKey: I18nKey;
-  /** The element this step points at. Omitted for a step about the app as a whole: the map fills
-   *  the viewport, and a spotlight on everything is a spotlight on nothing (it would leave the dim
-   *  entirely off screen and push the bubble past the edge). Such a step dims the whole app and
-   *  centres its bubble instead. */
-  target?: TourTargetId;
-  /** Which side of the target the bubble prefers, for a step that has a target. The overlay honours
-   *  it only where the bubble actually fits beside the spotlight; otherwise it places the bubble on
-   *  a side that does fit (see `place-beside.ts`). */
-  side: 'left' | 'right' | 'above' | 'below';
-  /** The build mode the shell selects as this step becomes current, applied by the shell's host.
-   *  The bottom bar is the selected mode's, so a step about the tools has nothing in the DOM to
-   *  point at until the mode is on; `null` clears it, which is how the run ends with the interface
-   *  at rest. Absent means leave it alone, so the two states are distinct. */
-  mode?: BuildMode;
-  /** The map view this step is about, applied by the shell's host as the step becomes current. The
-   *  3D scene is built lazily, so the flip rides the step that points at the toggle rather than the
-   *  steps that describe the 3D view: the visitor reads that step's card while the scene builds and
-   *  the planet flies in behind it, and the steps that follow open onto a view already standing.
-   *  Absent means leave it alone. Whatever a run borrows, the shell puts back as the run ends. */
-  view?: ViewMode;
-  /** The step shows the brand lockup above its title: the tour's opening step is the app introducing
-   *  itself. The logo alone, without the name (see `BrandLockup`'s `logoOnly`). */
-  brand?: boolean;
-}
+  | 'modes' | `mode:${BuildMode}` | 'bar' | 'view3d' | 'assistant' | 'share' | 'menu' | 'load'
+  | 'brush' | 'eraser' | 'add-layer' | 'generate-kinds' | 'recipe' | 'shelf-card' | 'shelf-brush' | 'share-tabs'
+  | 'fit' | 'zoom-in' | 'zoom-out' | 'turn-left' | 'turn-right';
 
 /** Mark an element as a tour target. Spread onto the element: `<div {...tourTargetAttr('menu')} />`. */
 export function tourTargetAttr(id: TourTargetId): { 'data-tour-target': TourTargetId } {
   return { 'data-tour-target': id };
 }
 
-/** The selector for a target's carrier, for code that measures the live DOM (the tour's own
- *  measure, the Help figures): built from the typed id, so a renamed target is a compile error. */
+/** The selector for a target's carriers, for code that measures the live DOM (the spotlight, the Help
+ *  figures): built from the typed id, so a renamed target is a compile error. */
 export function tourTargetSelector(id: TourTargetId): string {
   return `[data-tour-target="${id}"]`;
 }

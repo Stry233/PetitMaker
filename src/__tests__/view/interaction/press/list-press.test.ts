@@ -3,8 +3,13 @@
  * scrolling the list.
  */
 import { describe, it, expect } from 'vitest';
-import { LIST_HOLD_MS, resolveListPress, type ListPressFacts } from '../../../../view/interaction/press/list-press';
-import { DRAG_THRESHOLD, TOUCH_SLOP } from '../../../../view/interaction/press/travel';
+import { resolveListPress, type ListPressFacts } from '../../../../view/interaction/press/list-press';
+import { GESTURE_TIMING } from '../../../../platform/input/gesture-timing';
+
+const DRAG_THRESHOLD = GESTURE_TIMING.pc.dragThreshold;
+const TOUCH_SLOP = GESTURE_TIMING.touch.dragThreshold;
+const LIST_HOLD_MS = GESTURE_TIMING.pc.holdMs;
+const TOUCH_HOLD_MS = GESTURE_TIMING.touch.holdMs;
 
 const press = (over: Partial<ListPressFacts>): ListPressFacts => ({ pointerType: 'mouse', heldMs: 0, dx: 0, dy: 0, ...over });
 
@@ -34,7 +39,7 @@ describe('a mouse press on a list entry', () => {
 
 describe.each(['touch', 'pen'])('a %s press on a list entry', (pointerType) => {
   it('is undecided while it stays within the slop before the hold, so a lift is a tap', () => {
-    expect(resolveListPress(press({ pointerType, heldMs: LIST_HOLD_MS - 1, dx: TOUCH_SLOP }))).toBe('wait');
+    expect(resolveListPress(press({ pointerType, heldMs: TOUCH_HOLD_MS - 1, dx: TOUCH_SLOP }))).toBe('wait');
   });
 
   it('scrolls when it moves before the hold, however far a mouse would have carried', () => {
@@ -43,10 +48,10 @@ describe.each(['touch', 'pen'])('a %s press on a list entry', (pointerType) => {
   });
 
   it('carries when held in place', () => {
-    expect(resolveListPress(press({ pointerType, heldMs: LIST_HOLD_MS, dx: 2, dy: -3 }))).toBe('carry');
+    expect(resolveListPress(press({ pointerType, heldMs: TOUCH_HOLD_MS, dx: 2, dy: -3 }))).toBe('carry');
   });
 
   it('scrolls rather than carries when the hold arrives after the press already slid away', () => {
-    expect(resolveListPress(press({ pointerType, heldMs: LIST_HOLD_MS, dx: TOUCH_SLOP + 1 }))).toBe('scroll');
+    expect(resolveListPress(press({ pointerType, heldMs: TOUCH_HOLD_MS, dx: TOUCH_SLOP + 1 }))).toBe('scroll');
   });
 });

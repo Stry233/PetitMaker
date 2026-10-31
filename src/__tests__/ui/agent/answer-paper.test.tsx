@@ -51,7 +51,7 @@ function reads(n: number): OpRow[] {
   }));
 }
 
-/* ── the four fixtures, as the projection would settle them ────────────────── */
+/* The four fixtures, as the projection would settle them. */
 
 /** A map question answered from reads alone. */
 const ANSWER = makeJob({
@@ -97,7 +97,7 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-/* ── which jobs the paper is for ───────────────────────────────────────────── */
+/* Which jobs the paper is for. */
 
 describe('the answer boundary is the projection\'s kind, not a count of ops', () => {
   it('claims the answer and the quiet giveup, and leaves the build to the receipt', () => {
@@ -132,7 +132,7 @@ describe('the answer boundary is the projection\'s kind, not a count of ops', ()
   });
 });
 
-/* ── the paper itself ──────────────────────────────────────────────────────── */
+/* The paper itself. */
 
 describe('the answer paper: the words are the product', () => {
   it('carries the order at the subject rung and the model\'s own text at the body rung', () => {
@@ -144,12 +144,8 @@ describe('the answer paper: the words are the product', () => {
     expect(text.style.color).toBe(rgb(PLATE_INK));
   });
 
-  /**
-   * A model writes markdown whether or not it is asked to, and the card that draws its answer has to
-   * read as the answer it wrote. Printed flat, the live `deepseek-r1:32b` reply below lost every
-   * paragraph break to a space and stood its `**` and its backticks in the prose: a five-step answer
-   * as one wall of ink with the machinery showing.
-   */
+  /** Models write markdown unasked; printed flat, this reply would lose its paragraph breaks and show
+   *  its `**` and backticks. */
   it('renders the model\'s markdown: its own paragraphs, its lists, its emphasis, and no markers left standing', () => {
     const lake = [
       'Here is how I would build it.',
@@ -168,7 +164,7 @@ describe('the answer paper: the words are the product', () => {
     expect(text.querySelectorAll('ol > li')).toHaveLength(2);
     expect(text.querySelectorAll('strong')).toHaveLength(2);
     expect(text.querySelector('code')?.textContent).toBe('Painting terrain');
-    // The words are untouched: rendering the markers is not the same act as deleting them.
+    // The words stay and only the markers go; a tool name in code reads as its label.
     expect(text.textContent).toContain('Create a Lake');
     expect(text.textContent).not.toContain('paint_terrain');
     expect(text.textContent).toContain('Painting terrain');
@@ -188,8 +184,7 @@ describe('the answer paper: the words are the product', () => {
     expect(text.textContent).not.toContain('##');
   });
 
-  /** The model's links are the model's. Its words stand; a press that navigates wherever it chose
-   *  does not, on a surface that reads as the app talking. */
+  /** A link keeps its words but does not navigate, since this surface reads as the app talking. */
   it('keeps a link\'s words and gives it nothing to press', () => {
     const { getByTestId } = renderWithI18n(
       <AnswerPaper job={makeJob({ kind: 'answer', outcome: 'done', summary: 'See [the wiki](https://example.com/x).' })} />,
@@ -217,8 +212,7 @@ describe('the answer paper: the words are the product', () => {
     expect(none.queryByTestId('answer-reads')).toBeNull();
   });
 
-  /** A refusal is an answer. Not a failure and not a success: no danger paper, no danger ink, no
-   *  Built stamp, and (below) no dance. */
+  /** A refusal is an answer, neither failure nor success, and (below) does not dance. */
   it('gives a refusal no danger token and no Built stamp', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(<AnswerPaper job={REFUSED} />);
     const paper = getByTestId('answer-paper');
@@ -232,8 +226,7 @@ describe('the answer paper: the words are the product', () => {
     expect(paper.textContent).not.toContain(translations.en['agent.ticket_stamp_done']);
   });
 
-  /** The panel's own voice, at the muted rung: fabricating first-person words the model never said
-   *  would be worse than none. */
+  /** The panel's own voice at the muted rung, never words put in the model's mouth. */
   it('speaks for itself when the job said nothing, and never in the model\'s person', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(<AnswerPaper job={SILENT} />);
     expect(getByTestId('answer-paper').getAttribute('data-stamp')).toBe('ended');
@@ -243,7 +236,7 @@ describe('the answer paper: the words are the product', () => {
     expect(queryByTestId('answer-text')).toBeNull();
   });
 
-  /** One grammar for "A QUESTION IS STANDING": the gate family's yellow spine and its quick row,
+  /** One grammar for "a question is standing": the gate family's yellow spine and its quick row,
    *  whether the job built or only read. */
   it('wears the ask grammar while its closing question stands', () => {
     const { getByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} />);
@@ -259,7 +252,7 @@ describe('the answer paper: the words are the product', () => {
   });
 });
 
-/* ── filing it away ────────────────────────────────────────────────────────── */
+/* Filing it away. */
 
 describe('File it away', () => {
   it('files the record by its own order seq', () => {
@@ -284,7 +277,7 @@ describe('File it away', () => {
   });
 });
 
-/* ── the shell's terminal render ───────────────────────────────────────────── */
+/* The shell's terminal render. */
 
 describe('the panel picks the receipt or the paper by what the job was', () => {
   it('stands the paper for a zero-write job and the receipt for a built one', () => {
@@ -348,7 +341,7 @@ describe('the panel picks the receipt or the paper by what the job was', () => {
   });
 });
 
-/* ── the dock's two faces ──────────────────────────────────────────────────── */
+/* The dock's two faces. */
 
 describe('the status card says what the desk was left with', () => {
   function dock(job: JobView) {
@@ -362,8 +355,7 @@ describe('the status card says what the desk was left with', () => {
     expect(getByTestId('dock-glyph').getAttribute('data-icon')).toBe('pw-reply-bubble');
   });
 
-  /** A refusal read the map not at all, and "0 reads" is a count of nothing. What the user wants to
-   *  know is that the map is untouched. */
+  /** A refusal read nothing, so the meta says the map is untouched rather than "0 reads". */
   it('says no edits were made where an answer read nothing', () => {
     const { getByTestId } = dock(REFUSED);
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_answered']);
@@ -384,7 +376,7 @@ describe('the status card says what the desk was left with', () => {
   });
 });
 
-/* ── the history line ──────────────────────────────────────────────────────── */
+/* The history line. */
 
 describe('an answered job\'s history line says what it WAS, never "0 edits"', () => {
   function rows(job: JobView) {
@@ -421,7 +413,7 @@ describe('an answered job\'s history line says what it WAS, never "0 edits"', ()
   });
 });
 
-/* ── the celebrate rule ────────────────────────────────────────────────────── */
+/* The celebrate rule. */
 
 /** The hook under a probe, so the rule can be driven with projections rather than with a session. */
 function CelebrateProbe({ view }: { view: PanelView }) {
@@ -432,8 +424,7 @@ function CelebrateProbe({ view }: { view: PanelView }) {
 describe('a dance only for built things', () => {
   afterEach(() => { vi.useRealTimers(); });
 
-  /** The hook is thin by rule: it fires on the projection's own `celebrate` and derives nothing. A
-   *  job carrying the flag dances whatever its ops look like from here. */
+  /** The hook fires on the projection's own `celebrate` and derives nothing. */
   it('fires on the projection\'s own celebrate flag, at the edge of a new settlement', () => {
     const { getByTestId, rerender } = renderWithI18n(<CelebrateProbe view={makeView()} />);
     expect(getByTestId('probe').textContent).toBe('none');
@@ -450,8 +441,7 @@ describe('a dance only for built things', () => {
     }
   });
 
-  /** A `done` job whose writes never landed carries `celebrate: false` from the projection, and the
-   *  hook must not second-guess it off the outcome. */
+  /** The projection gives such a job `celebrate: false`, and the hook does not second-guess it. */
   it('does not dance for a done job whose every write was put back', () => {
     const reverted = makeJob({ orderSeq: 12, kind: 'build', outcome: 'done', celebrate: false });
     const { getByTestId, rerender } = renderWithI18n(<CelebrateProbe view={makeView()} />);
@@ -464,7 +454,7 @@ describe('a dance only for built things', () => {
     expect(getByTestId('probe').textContent).toBe('none');
   });
 
-  /* ── both hosts ── */
+  /* Both hosts. */
 
   it('reaches the desk character in the panel, and only for the built job', () => {
     const shell = (view: PanelView) => <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />;
@@ -508,11 +498,10 @@ describe('a dance only for built things', () => {
   });
 });
 
-/* ── the words, in every locale ────────────────────────────────────────────── */
+/* The words, in every locale. */
 
 describe('the answer family speaks every locale', () => {
-  /** The paper's own text is the model's, never re-run through the dictionary: a summary logged in
-   *  one language must not be half-translated by a later locale switch. */
+  /** The model's words are never re-run through the dictionary on a locale switch. */
   it('renders the model\'s words verbatim under a different locale', () => {
     useEditorStore.setState({ locale: 'ru' });
     const { getByTestId } = renderWithI18n(<AnswerPaper job={ANSWER} />);

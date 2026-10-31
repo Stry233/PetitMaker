@@ -1,7 +1,4 @@
-/**
- * `road-link`: two taps lay one route between them — driven through the real `applyMacro` path
- * (build → replay → commit), same as every other macro. Fixture style follows `macro-quality.test.ts`.
- */
+/** `road-link`: two taps lay one route between them, through the real `applyMacro` path. */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
@@ -22,8 +19,7 @@ const SHORE = 3;
 
 interface Kit extends EditContext { executor: CommandExecutor }
 
-/** An open, flat, buildable map with a sea border — same shape as `macro-quality.test.ts`'s
- *  `makeKit`, without the cone (road-link has no terrain-reading probe to satisfy). */
+/** An open, flat, buildable map with a void border: `macro-quality.test.ts`'s `makeKit` without the cone. */
 function makeKit(size = SIZE): Kit {
   const state = makeState(size, size);
   for (let y = 0; y < size; y++) {
@@ -42,7 +38,7 @@ function place(kit: Kit, catalogId: string, x: number, y: number, rotation: Rota
   return obj;
 }
 
-/** Every Road/Bridge/Ramp-category object currently on the map, as `MacroCoord`s. */
+/** The positions of every road, bridge and ramp on the map. */
 function roadCells(state: GridState): MacroCoord[] {
   const out: MacroCoord[] = [];
   for (const o of state.objects.values()) {
@@ -78,8 +74,7 @@ describe('road-link: two taps', () => {
 
   it('lays roads, bridges and ramps, and nothing else', () => {
     const kit = makeKit();
-    // A ford: 4-wide water strip, capped top+bottom by mountain at elev 1 so it has no exposed
-    // face (same fixture shape as network.test.ts's own ford) — a run that must bridge to connect.
+    // A 4-wide water ford capped top and bottom by layer-1 mountain, as in `network.test.ts`.
     for (let y = 0; y < SIZE; y++) {
       for (let x = 20; x <= 23; x++) {
         if (y < 15 || y > 24) setTerrain(kit.state, x, y, TerrainType.Mountain, 1);
@@ -101,8 +96,7 @@ describe('road-link: two taps', () => {
 
   it('bridges a water gap rather than walking round', () => {
     const kit = makeKit();
-    // A ford: 4-wide water strip, capped top+bottom by mountain at elev 1 so it has no exposed
-    // face (same fixture shape as network.test.ts's own ford).
+    // A 4-wide water ford capped top and bottom by layer-1 mountain, as in `network.test.ts`.
     for (let y = 0; y < SIZE; y++) {
       for (let x = 20; x <= 23; x++) {
         if (y < 15 || y > 24) setTerrain(kit.state, x, y, TerrainType.Mountain, 1);
@@ -122,11 +116,9 @@ describe('road-link: two taps', () => {
 
   it('leaves a plant on the only line standing, and reports it', () => {
     const kit = makeKit();
-    // A wide lake (too deep for any bridge span) crossed by a dry causeway three cells wide — the
-    // placement analysis only reads a cell "open" when its whole 8-neighbourhood shares its level
-    // (`analysis.ts`'s level-interior test), so a ONE-wide strip would never register as open at
-    // all; three wide leaves exactly its centre column open, the only 4-connected path north-south.
-    // A tree sits on that column.
+    // A lake too wide to bridge, crossed by a 3-wide causeway: the placement analysis reads a cell
+    // open only when its whole 8-neighbourhood is level, so only the centre column is open, and a
+    // tree stands on it.
     for (let y = 15; y <= 24; y++) {
       for (let x = SHORE; x < SIZE - SHORE; x++) {
         if (x >= 19 && x <= 21) continue;
@@ -144,8 +136,8 @@ describe('road-link: two taps', () => {
 
   it('the offer index chooses, and clamps out of range', () => {
     const kit = makeKit();
-    // A wall of decorations blocks the direct row; a lake sits just above it, so going up and over
-    // hugs the water while going down and under does not (route-offers.test.ts's own fixture).
+    // Flowers block the direct row and a lake lies above it, so the two detours differ
+    // (`route-offers.test.ts`'s fixture).
     for (let x = 15; x <= 25; x++) place(kit, 'flower-daisy', x, 20);
     for (let x = 15; x <= 25; x++) setTerrain(kit.state, x, 18, TerrainType.Water, 0);
     const from = { x: 10, y: 20 }, to = { x: 30, y: 20 };
@@ -161,7 +153,6 @@ describe('road-link: two taps', () => {
     expect(second.size).toBeGreaterThan(0);
     expect([...first].sort().join('|')).not.toBe([...second].sort().join('|'));
 
-    // A wildly out-of-range offer clamps into range rather than throwing.
     expect(() => laidCells({ offer: 99 })).not.toThrow();
   });
 
@@ -222,9 +213,7 @@ describe('road-link: one point', () => {
 });
 
 describe('routeWorld', () => {
-  /** The cache key has to carry `near`: `style.materialId` ("the nearest standing street") is a function
-   *  of it, so a key of `${cellsVersion}|${objectsVersion}|${regionKey}` alone answers a second call on
-   *  the same unedited map with the first call's material. */
+  /** `style.materialId` is the street nearest `near`, so the cache key must carry `near`. */
   it('reads the material nearest EACH call\'s own `near`, not a stale cache hit', () => {
     const kit = makeKit();
     place(kit, 'path-park-stone', 5, 5);
@@ -238,8 +227,7 @@ describe('routeWorld', () => {
   });
 });
 
-/** A fresh kit sharing `state`'s terrain/objects (cloned via a plain state re-wrap) — for comparing
- *  two runs from the same starting map without one run's edits leaking into the other. */
+/** A kit over a copy of `state`, so two runs from one starting map do not see each other's edits. */
 function makeKitFrom(state: GridState): Kit {
   const clone: GridState = {
     template: state.template,

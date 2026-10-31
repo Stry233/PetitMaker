@@ -1,7 +1,7 @@
 /**
- * A shell drives the map through a typed surface. `window.__petit*` was published by one canvas's
- * mount effect, so every view command in the app depended on that canvas being mounted, and every
- * call site carried an optional-call in place of a type.
+ * A shell drives the map through a typed surface. A `window.__petit*` bridge published by one canvas's
+ * mount effect would make every view command depend on that canvas being mounted and every call site
+ * an optional call.
  */
 import { describe, it, expect } from 'vitest';
 import { resolve, relative } from 'node:path';

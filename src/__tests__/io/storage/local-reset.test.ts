@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // jsdom's localStorage descriptor is flaky under some node versions (see
-// key-storage.test.ts) — stub a plain in-memory implementation.
+// key-storage.test.ts); stub a plain in-memory implementation.
 const mem = new Map<string, string>();
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => mem.get(k) ?? null,
@@ -71,5 +71,24 @@ describe('an autosave still owed when the wipe runs', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a reset while a Show me stands', () => {
+  it('[FILE-33] leaves nothing written after the wipe, the view it lent out included', async () => {
+    const { autosave } = await import('../../../editor/session/autosave');
+    const { wipeLocalData } = await import('../../../io/storage/local-reset');
+    const { useEditorStore } = await import('../../../state/store');
+    const s = () => useEditorStore.getState();
+    s().setViewMode('2d');
+    s().startTour(1);
+    s().setTourPhase({ kind: 'show', card: 1, step: 0 });
+    s().poseTour({ view: '3d' });
+    mem.clear();
+    await wipeLocalData(autosave);
+    window.dispatchEvent(new Event('pagehide'));
+    expect([...mem.keys()]).toEqual([]);
+    s().finishTour();
+    autosave.setSuspended(false);
   });
 });

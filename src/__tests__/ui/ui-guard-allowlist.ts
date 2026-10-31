@@ -27,5 +27,6 @@ export const GUARD_EXEMPT: Partial<Record<GuardId, Readonly<Record<string, strin
     'src/ui/design/focus-source.ts': 'records whether focus came from keyboard or pointer; it dismisses nothing',
     'src/ui/app/use-ui-zoom-shortcut.ts': 'the UI-scale keys, live behind every modal; they dismiss nothing',
     'src/ui/shell/use-editor-shortcuts.ts': 'the global shortcut router; it dismisses nothing',
+    'src/ui/session/tour-watch.ts': "notes the visitor's presses so a Show me step finishes once they let go; it dismisses nothing",
   },
 };

@@ -1,14 +1,7 @@
 /**
- * The 3D ghost trims where the stroke will.
- *
- * `ToolOverlay.showGhost` already carried the trim the stroke's auto-trim pass will apply — the
- * tool works it out once (`previewAutoTrim`) and hands it to whichever view is live. The 2D overlay
- * drew it; the 3D one dropped the argument, so every 3D preview promised square corners over a
- * stroke that commits rounded ones. These pin the geometry that closes it, and that the payload
- * crossing the seam is the tool's own rather than a second derivation.
- *
- * The decal builder is pure (data in, positions out), so the shape questions are answered without a
- * GPU; the one class-level pin is that OverlayLayer3D actually forwards what it is given.
+ * The 3D ghost trims where the stroke will: the tool computes the auto-trim once (`previewAutoTrim`)
+ * and `ToolOverlay.showGhost` hands it to whichever view is live. The decal builder is pure, so no
+ * GPU is needed; OverlayLayer3D is checked only for forwarding the trim.
  */
 import { describe, it, expect } from 'vitest';
 import { cellDecals, DECAL_LIFT, type DecalMesh } from '../../../../view/map3d/geometry/overlay-decals';
@@ -24,7 +17,7 @@ import { makeToolCtx, arm } from '../../../_support/tool-ctx';
 import { cell, point } from '../../../_support/grid';
 import { mixedCellSet } from '../../../../core/grid/grids';
 
-/** Total XZ area the decal mesh covers, summed over its triangles — a square cell is 1. */
+/** Total XZ area the decal mesh covers, summed over its triangles; a square cell is 1. */
 function area(m: DecalMesh): number {
   let total = 0;
   for (let i = 0; i < m.index.length; i += 3) {
@@ -71,9 +64,8 @@ describe('3D ghost decals: the trimmed shape', () => {
     const cells = [{ x: 5, y: 5 }];
     const square = area(cellDecals(s, cells, 'terrain'));
     const rounded = area(cellDecals(s, cells, 'terrain', [trimOf(5, 5, ['fan', 'square', 'square', 'square'])]));
-    // A rounded corner keeps π/4 of its quadrant (approximated by the fan's straight steps), so the
-    // cell loses a little under a sixteenth of itself — and loses it exactly once: a leftover square
-    // under the trimmed cell would have kept the area at 1.
+    // A rounded corner keeps π/4 of its quadrant (the fan approximates the arc), so the cell loses
+    // 0.25 - π/16; a leftover square underneath would keep the area at 1.
     expect(rounded).toBeLessThan(square);
     expect(rounded).toBeGreaterThan(square - 0.25);
     expect(square - rounded).toBeCloseTo(0.25 - Math.PI / 16, 2);
@@ -86,7 +78,7 @@ describe('3D ghost decals: the trimmed shape', () => {
     const s = makeState(20, 20) as GridState;
     const corners: Corners = ['tri-NW', 'empty', 'square', 'fan'];
     const m = cellDecals(s, [{ x: 5, y: 5 }], 'terrain', [trimOf(5, 5, corners)]);
-    // The cell's world origin, read back off the mesh rather than recomputed.
+    // The cell's world origin, read off the mesh.
     const xs = [...verts(m)].map((k) => k.split(',').map(Number) as [number, number]);
     const x0 = Math.min(...xs.map((p) => p[0])), z0 = Math.min(...xs.map((p) => p[1]));
 
@@ -113,7 +105,7 @@ describe('3D ghost decals: the trimmed shape', () => {
     // The notch-fill lands on a cell the stroke never lists; the ghost still has to show it.
     const m = cellDecals(s, [{ x: 5, y: 5 }], 'terrain', [trimOf(9, 9, ['fan', 'empty', 'empty', 'empty'], true)]);
     const xs = [...verts(m)].map((k) => Number(k.split(',')[0]));
-    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(3);   // two cells apart, both drawn
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(3);   // both cells drawn
     expect(area(m)).toBeGreaterThan(1);
   });
 
@@ -122,8 +114,7 @@ describe('3D ghost decals: the trimmed shape', () => {
     const corners: Corners = ['fan', 'empty', 'empty', 'empty'];
     const patch = cellDecals(s, [], 'terrain', [trimOf(5, 5, corners, true)]);
     const outer = cellDecals(s, [], 'terrain', [trimOf(5, 5, corners, false)]);
-    // Same area (both are a quarter disc), opposite anchor: the fillet's arc bulges into the notch
-    // it fills, so the two share only the quadrant's diagonal endpoints.
+    // Same quarter-disc area, opposite anchor: the fillet's arc bulges into the notch it fills.
     expect(area(patch)).toBeCloseTo(area(outer), 6);
     expect(verts(patch)).not.toEqual(verts(outer));
   });
@@ -134,8 +125,8 @@ describe('3D ghost decals: the trimmed shape', () => {
   });
 });
 
-/** A flat map with a layer-1 plain, and a mountain brush armed a layer above it — the stroke whose
- *  corners auto-trim rounds. Returns the ghost payloads the tool issues. */
+/** A layer-1 plain with a mountain brush armed a layer above, whose corners auto-trim rounds.
+ *  Records the ghost payloads the tool issues. */
 function world(autoEdgeCut: 'off' | 'round') {
   const state = makeState(40, 40);
   const executor = makeExecutor(state);
@@ -168,14 +159,12 @@ describe('the seam: one payload, both views', () => {
     const promised = w.ghost[w.ghost.length - 1]!;
     expect(promised.trim.length, 'a brush dab a layer up rounds its exposed corners').toBeGreaterThan(0);
 
-    // The same payload object the 2D overlay is handed, with no 3D-side recomputation: the tool
-    // never learns which view is live.
+    // The tool's own payload, reduced through `filletOnly` as the overlays reduce it.
     const trim = promised.trim.map((t) => ({ x: t.x, y: t.y, patch: t.patch, corners: filletOnly(t.corners, t.patch) as Corners }));
     const square = area(cellDecals(w.state, promised.cells, 'terrain'));
     const shaped = area(cellDecals(w.state, promised.cells, 'terrain', trim));
     expect(shaped).toBeLessThan(square);
-    // Every cell the payload named lost part of itself, and none lost more than the cut it
-    // describes could take (a per-cell average, so the pin survives a different mix of corners).
+    // Per trimmed cell on average, some area is lost and never more than a cut can take.
     const lostPerCell = (square - shaped) / promised.trim.length;
     expect(lostPerCell).toBeGreaterThan(0.01);
     expect(lostPerCell).toBeLessThan(0.75);
@@ -200,8 +189,7 @@ describe('the seam: one payload, both views', () => {
         { geometry: { getAttribute(n: string): { count: number } } } | undefined;
       return mesh?.geometry.getAttribute('position').count ?? 0;
     };
-    // A rounded corner replaces a 4-vertex quad with the fan's arc, so the vertex count moves —
-    // the argument cannot be silently ignored.
+    // A rounded corner replaces a 4-vertex quad with the fan's arc, raising the vertex count.
     expect(built()).toBe(8);
     expect(built([trimOf(5, 5, ['fan', 'square', 'square', 'square'])])).toBeGreaterThan(8);
   });

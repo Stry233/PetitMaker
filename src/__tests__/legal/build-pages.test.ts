@@ -25,7 +25,7 @@ import {
 // The static legal-page generator (crawlable zero-JS pages +
 // sitemap/robots/security.txt).
 
-// A fully release-ready fixture config — mirrors validate-config.test.ts's
+// A fully release-ready fixture config; it mirrors validate-config.test.ts's
 // `resolvedConfig()` fixture so this suite exercises a config that passes
 // validateLegalConfig cleanly, isolating the page-generation logic under test
 // from the real `LEGAL` instance.
@@ -91,7 +91,7 @@ describe('pageHtml', () => {
     const en = pageHtml('license', 'en', cfg);
     const zh = pageHtml('license', 'zh', cfg);
     expect(en).toContain('<html lang="en">');
-    expect(zh).toContain('<html lang="en">'); // falls back — no zh source exists
+    expect(zh).toContain('<html lang="en">'); // falls back: no zh source exists
     expect(zh).not.toContain('hreflang="zh"');
   });
 

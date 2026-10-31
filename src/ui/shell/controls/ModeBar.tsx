@@ -4,10 +4,11 @@
  * take no transform (each bar is fixed to the window) but stand at their bars' rung, since an opacity
  * under 1 makes a stacking context that would otherwise pass under the screen's vignette.
  */
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ItemCategory } from '../../../config/catalog/categories';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import type { BuildMode } from '../../../state/editing/edit-mode';
-import { useEditorStore } from '../../../state/store';
+import { useEditorStore, type EditorStore } from '../../../state/store';
 import { presence } from '../../design/motion';
 import { useBeat, useTransition } from '../../design/motion/use-motion';
 import { z } from '../../design/styles';
@@ -15,40 +16,58 @@ import { SurfaceBoundary } from '../../chrome/guards/SurfaceBoundary';
 import { BarFailure } from '../bars/BarFailure';
 import { EditToolbar } from '../bars/EditToolbar';
 import { ObjectShelf } from '../bars/objects/ObjectShelf';
+import { MultiSelectBar } from '../bars/selection/MultiSelectBar';
 import { planetShelfItems } from '../bars/objects/object-shelf';
 import { ScopeScreen } from '../bars/generate/ScopeScreen';
+import { ObjectBrushBar } from '../bars/objects/ObjectBrushBar';
 import type { ContentType } from '../../../state/editing/edit-mode';
 import { GenerateShelf } from '../edition-surfaces';
 
-const agentSelecting = (): boolean => {
-  const state = useEditorStore.getState();
-  return state.selectingRegion && state.regionSelectionOwner === 'agent';
-};
+/** What stands in the bar's place: the scope screen while a region is being selected, for the assistant
+ *  or the generate shelf, or the object shelf's brush bar (EDIT-64). */
+type Cover = 'scope' | 'brush';
+const coverOf = (s: EditorStore): Cover | null =>
+  s.selectingRegion ? 'scope' : s.objectBrushBar && s.editMode.mode === 'object' ? 'brush' : null;
+const covering = (): boolean => coverOf(useEditorStore.getState()) !== null;
 const finishScope = () => useEditorStore.getState().setSelectingRegion(false);
+const finishBrush = () => useEditorStore.getState().setObjectBrushBar(false);
+const coverScreen = (cover: Cover) => (cover === 'brush' ? <ObjectBrushBar onDone={finishBrush} /> : <ScopeScreen onDone={finishScope} />);
 /** A bar that throws stands its slot's band in its place; choosing another mode or toolbar mounts that one fresh. */
 const barFailure = (retry: () => void) => <BarFailure onRetry={retry} />;
 
 /**
- * The assistant's region selection replaces the bar: the bar fades out before the scope screen
- * enters, and the scope screen leaves before the bar returns, the bar staying mounted and inert in
- * between. Reduced motion swaps before paint.
+ * A region selection, or the object shelf's brush bar, replaces the bar: the bar fades out before the
+ * screen enters, and the screen leaves before the bar returns, the bar staying mounted and inert in
+ * between, so the bar that opened the screen keeps its claim on what it offers and the shelf its tab.
+ * Reduced motion swaps before paint.
  */
 export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentType | null }) {
-  const covered = useEditorStore((s) => s.selectingRegion && s.regionSelectionOwner === 'agent');
+  const cover = useEditorStore(coverOf);
+  const covered = cover !== null;
+  // The screen leaving keeps its face until its exit ends.
+  const shownCover = useRef<Cover>(cover ?? 'scope');
+  if (cover) shownCover.current = cover;
   const leaving = useBeat('mode.switch', 'bar.leaving');
   const arriving = useBeat('mode.switch', 'bar.arriving');
   // A bar arriving with no travel must not paint a frame at its starting value.
   const reduced = useReducedMotionConfig();
-  const toolbar = surface ?? (mode === 'annotate' ? 'notes' : null);
-  const bar = toolbar ? <EditToolbar bar={toolbar} />
-    : mode === 'object' ? <ObjectShelf source={planetShelfItems} />
+  // Touch multi-select stands in whatever bar the mode shows until Done.
+  const multi = useEditorStore((s) => s.multiSelectLatched);
+  // Multi-select unmounts the object shelf without leaving the mode, so Done gives it back on the same tab.
+  const shelfTab = useRef<ItemCategory | null>(null);
+  useEffect(() => { if (mode !== 'object') shelfTab.current = null; }, [mode]);
+  const toolbar = multi ? null : surface ?? (mode === 'annotate' ? 'notes' : null);
+  const bar = multi ? <MultiSelectBar />
+    : toolbar ? <EditToolbar bar={toolbar} />
+    : mode === 'object' ? <ObjectShelf source={planetShelfItems} leftTab={shelfTab} />
       : mode === 'generate' ? <GenerateShelf /> : null;
   const scopeLeave = useTransition('mode.bar.leave');
   const scopeEnter = useTransition('mode.bar.enter');
   const [scopeReady, setScopeReady] = useState(covered);
   const hidden = covered || (!reduced && scopeReady);
   const hasBar = bar !== null;
-  const barKey = toolbar ? 'toolbar' : mode;
+  const barKey = multi ? 'multi-select' : toolbar ? 'toolbar' : mode;
+  const surfaceKey = multi ? 'multi-select' : toolbar ?? mode;
 
   useLayoutEffect(() => {
     if (reduced) setScopeReady(covered);
@@ -67,10 +86,11 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
           hidden: { opacity: 0, transition: scopeLeave, transitionEnd: { visibility: 'hidden' } },
           visible: { opacity: 1, visibility: 'visible', transition: scopeEnter },
         }}
-        onAnimationComplete={(definition) => { if (definition === 'hidden' && agentSelecting()) setScopeReady(true); }}
+        onAnimationComplete={(definition) => { if (definition === 'hidden' && covering()) setScopeReady(true); }}
         style={{ position: 'relative', zIndex: z.panel, display: reduced && covered ? 'none' : undefined }}
       >
-        <AnimatePresence>
+        {/* Nothing beside the bar moves by layout projection, so its presence re-renders nothing around it. */}
+        <AnimatePresence presenceAffectsLayout={false}>
           {bar ? (
             <motion.div
               key={barKey}
@@ -79,18 +99,18 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
               exit={{ opacity: 0, transition: leaving }}
               style={{ position: 'relative', zIndex: z.panel }}
             >
-              <SurfaceBoundary name={`${toolbar ?? mode} bar`} resetKey={toolbar ?? mode} fallback={barFailure}>{bar}</SurfaceBoundary>
+              <SurfaceBoundary name={`${surfaceKey} bar`} resetKey={surfaceKey} fallback={barFailure}>{bar}</SurfaceBoundary>
             </motion.div>
           ) : null}
         </AnimatePresence>
       </motion.div>
       {reduced ? (
-        covered && <ScopeScreen onDone={finishScope} />
+        cover && coverScreen(cover)
       ) : (
-        <AnimatePresence onExitComplete={() => { if (!agentSelecting()) setScopeReady(false); }}>
+        <AnimatePresence onExitComplete={() => { if (!covering()) setScopeReady(false); }}>
           {covered && scopeReady && (
-            <motion.div key="assistant-scope" {...presence('mode.bar.enter', { opacity: 0 }, { leave: 'mode.bar.leave' })} style={{ position: 'relative', zIndex: z.panel }}>
-              <ScopeScreen onDone={finishScope} />
+            <motion.div key={shownCover.current} {...presence('mode.bar.enter', { opacity: 0 }, { leave: 'mode.bar.leave' })} style={{ position: 'relative', zIndex: z.panel }}>
+              {coverScreen(shownCover.current)}
             </motion.div>
           )}
         </AnimatePresence>

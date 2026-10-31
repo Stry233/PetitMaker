@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The helper lane: what a `delegate_task` child is doing, said inside the parent's
- * own ticket, and the roll-up its own row keeps once the child is gone.
- *
- * The lane renders from a `LaneView`, which is the shape rather than any one carrier: the live half
- * comes off `store.childLive` today and the trouble faces are drawn here from a fixture, so they
- * ship testable ahead of the carrier that will report them.
- *
- * Everything here goes through `I18nProvider` (the lane is all words), with the `localStorage` stub
- * the store's persistence needs in jsdom — same wrapper `job-ticket.test.tsx` uses.
+ * The helper lane: what a `delegate_task` child is doing, shown inside the parent's ticket, and the
+ * roll-up its row keeps once the child is gone. Lanes render from `LaneView` fixtures (live, the
+ * shape comes off `store.childLive`), with the jsdom `localStorage` stub the store's persistence needs.
  */
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
@@ -58,11 +52,8 @@ describe('Lane: the head', () => {
   });
 
   /**
-   * A lane opens at zero and stays there for its whole first think: `executor.ts` reports the child
-   * before running it, so the first lane the panel sees carries `ops: 0` until the child's first tool
-   * result — seconds to minutes on a reasoning model. "0 steps" beside a live spinner is a count of
-   * an absence, the same class every other count in the panel suppresses; the seat stays, so nothing
-   * moves when the first step lands.
+   * The child is reported before it runs, so a lane carries `ops: 0` through its whole first think.
+   * Like every panel count, zero shows nothing; the seat stays, so nothing moves when the first step lands.
    */
   it('counts nothing while the helper has taken no step yet', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ ops: 0 })} />);
@@ -70,7 +61,6 @@ describe('Lane: the head', () => {
     expect(getByTestId('lane-spin'), 'the spinner is what says it is working').toBeTruthy();
   });
 
-  /** A helper one step in is not "1 steps": the reachable n=1 case, named singular. */
   it('says one step, not one steps, when the helper has taken exactly one', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ ops: 1 })} />);
     expect(getByTestId('lane-count').textContent).toBe('1 step');
@@ -90,9 +80,8 @@ describe('Lane: the head', () => {
     expect(queryByTestId('lane-spin')).toBeNull();
   });
 
-  /** `delegate_task`'s schema asks for complete, self-contained instructions in `task` — a
-   *  paragraph the two-line clamped name was never going to read well. A `label` is the short name
-   *  the model gave it on purpose, and it wins outright. */
+  /** `task` holds complete, self-contained instructions, too long for a two-line clamped name, so a
+   *  `label` wins outright. */
   it('names the helper by its label when the model gave one, over the whole task paragraph', () => {
     const lane = makeLane({
       label: 'north grove',
@@ -102,17 +91,15 @@ describe('Lane: the head', () => {
     expect(getByTestId('lane-name').textContent).toBe('Helper: north grove');
   });
 
-  /** No label at all (an older call, or a model that skipped it): the name falls back to the first
-   *  Line of the task, not the whole thing — a task that carries its own line breaks must not spill
-   *  a second line's words into what is meant to read as a name. */
+  /** Only the first line, so a multi-line task does not spill into the name. */
   it('falls back to the first line of the task when the model gave no label', () => {
     const lane = makeLane({ label: undefined, task: 'line one of the order\nline two, never shown here' });
     const { getByTestId } = renderWithI18n(<Lane lane={lane} />);
     expect(getByTestId('lane-name').textContent).toBe('Helper: line one of the order');
   });
 
-  /** A helper's own wait reads in the lane, in the same grammar the dock uses for the parent's: the
-   *  cause in the head, the attempt as the count, the clock as the mark. */
+  /** The same grammar the dock uses for the parent's wait: cause in the head, attempt as the count,
+   *  clock as the mark. */
   it('says a retry in the head, counts the attempt and shows the clock', () => {
     const lane = makeLane({ retry: { attempt: 2, of: 5, seconds: 9 } });
     const { getByTestId } = renderWithI18n(<Lane lane={lane} />);
@@ -130,8 +117,6 @@ describe('Lane: the line', () => {
     expect(line.textContent).toContain('Planting a forest');
   });
 
-  /** Before the first step lands there is no tool to name, so the line says the task itself rather
-   *  than standing empty. */
   it('falls back to the task before the helper has run anything', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ ops: 0, opName: undefined })} />);
     expect(getByTestId('lane-line').textContent).toContain('planting the grove');
@@ -160,8 +145,7 @@ describe('the delegate row and its lane', () => {
     expect(other.queryByTestId('lane')).toBeNull();
   });
 
-  /** The cause reads twice: a folded op list can hide the lane, and a refusal the user cannot see is
-   *  a refusal that did not happen as far as they know. */
+  /** The cause shows twice, since a folded op list can hide the lane. */
   it('mirrors the helper\'s trouble onto the delegate row\'s own chip', () => {
     const { getAllByTestId } = renderWithI18n(
       <OpRow op={delegateOp()} lane={makeLane({ error: 'ground not flat' })} />,
@@ -183,10 +167,8 @@ describe('the delegate row and its lane', () => {
     expect(getByTestId('op-chip').textContent).toBe('2 steps');
   });
 
-  /** `OpsList` hands the same live lane to every row in the job — there is only ever one child
-   *  in flight, but a job that delegated twice carries one settled delegate row beside the running
-   *  one, and the settled row must not wear a lane that is not its own (and must keep its own
-   *  rollup, which a wrongly-drawn lane would suppress). */
+  /** `OpsList` hands the one live lane to every row; a job that delegated twice has a settled delegate
+   *  row beside the running one, which keeps its own rollup instead. */
   it('draws the live lane on the row that is still running, and rolls up the settled one beside it', () => {
     const ops: OpRowData[] = [
       delegateOp({
@@ -224,8 +206,7 @@ describe('laneRollup: what a finished helper leaves on the row', () => {
     expect(laneRollup({ childOps: [{ name: 'a', status: 'ok' }] }, t)).toEqual({ text: '1 step' });
   });
 
-  /** A call that never reached a child at all (a malformed task, an abort before the first step)
-   *  has nothing to roll up, and an empty chip beside the row would claim otherwise. */
+  /** A call that never reached a child (a malformed task, an abort before the first step). */
   it('says nothing for a result carrying no child record', () => {
     expect(laneRollup(undefined, t)).toBeUndefined();
     expect(laneRollup({}, t)).toBeUndefined();

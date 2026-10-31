@@ -15,7 +15,7 @@ describe('planToCommands', () => {
   });
 
   it('builds mountains CUMULATIVELY bottom-up so no layer floats (V-MTN-02)', () => {
-    // a single tier-3 cell must be painted at 1, then 2, then 3 — present in every lower layer.
+    // a single tier-3 cell is painted at 1, then 2, then 3, so it stands in every lower layer.
     const plan: TerrainPlan = { width: 1, height: 1, tier: new Int8Array([3]), water: new Int8Array([-1]) };
     const cmds = planToCommands(plan, null);
     const elevs = cmds.map((c) => c.elevation);

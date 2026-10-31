@@ -13,11 +13,6 @@ import { MapPlate, plateButton, plateLabel } from './MapPlate';
 
 const TICK = 18;
 
-/** Whether a hand repair is under way, which is when the plate stands. */
-export function useRepairLive(): boolean {
-  return useEditorStore((s) => s.repairSession?.phase === 'hand');
-}
-
 export function RepairPlate({ motionProps }: { motionProps?: Record<string, unknown> }) {
   const t = useT();
   const locale = useLocale();

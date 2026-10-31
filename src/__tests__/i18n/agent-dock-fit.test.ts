@@ -1,7 +1,7 @@
 /**
  * The four assistant strings whose field has been measured. They stand in a one-line slot with an
- * ellipsis or in an input placeholder, which clips silently, and the Russian, Japanese, French and
- * Indonesian copy once lost the words that carry the meaning. Widths are advance sums in the app's
+ * ellipsis or in an input placeholder, which clips silently, so Russian, Japanese, French and
+ * Indonesian copy can lose the words that carry the meaning. Widths are advance sums in the app's
  * faces at the role's size and rooms are the slot's, both in frame px; changing a value means
  * measuring it against the same room.
  *

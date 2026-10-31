@@ -1,9 +1,8 @@
 import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useWeightVars } from '../../design/scale';
+import { useSurfaceZoom, useWeightVars } from '../../design/scale';
 import { AnchoredConfirm } from '../../primitives/AnchoredConfirm';
 import type { ConfirmationContentProps } from '../../primitives/ConfirmationContent';
-import { useFrameZoom } from '../../shell/use-frame-zoom';
 
 /** Card width in frame px: the panel's own column less its gutters. */
 const CONFIRM_W = 300;
@@ -18,7 +17,7 @@ export function PanelConfirm({ anchor, help, testId, ...content }: ConfirmationC
   help: string;
   testId?: string;
 }) {
-  const zoom = useFrameZoom();
+  const zoom = useSurfaceZoom();
   const weights = useWeightVars();
   // Portalled out of the panel, whose zoom and clipping would otherwise scale and cut the card.
   return createPortal(

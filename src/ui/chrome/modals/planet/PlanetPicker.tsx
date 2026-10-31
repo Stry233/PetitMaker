@@ -21,6 +21,7 @@ import { font, radii, shadows } from '../../../design/styles';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { SEA } from '../../../design/tokens';
+import { useNameReveal } from '../../../primitives/use-name-reveal';
 
 /** One planet the window can choose: a built-in by its template id, a saved one by its entry id, and an
  *  unsaved current planet by its template id with no entry. */
@@ -65,13 +66,14 @@ function Row({ testId, chosen, disabled, art, name, here, onClick }: {
   testId: string; chosen?: boolean; disabled?: boolean; art: ReactNode; name: string; here?: boolean; onClick: () => void;
 }) {
   const t = useT();
+  const hereName = useNameReveal(t('planet.current'));
   return (
     <ActionButton interaction="row" data-testid={testId} aria-pressed={chosen === undefined ? undefined : chosen}
       aria-current={here ? 'true' : undefined} disabled={disabled} onClick={onClick}
       style={{ ...rowStyle, background: chosen ? skin.active : 'transparent' }}>
       {art}
       <span style={{ ...nameStyle, ...roleFont(chosen ? 'menu' : 'label') }}>{name}</span>
-      {here && <span data-testid="planet-current" role="img" aria-label={t('planet.current')} title={t('planet.current')} style={hereDot} />}
+      {here && <span data-testid="planet-current" role="img" aria-label={t('planet.current')} {...hereName.bind} style={hereDot}>{hereName.bubble}</span>}
     </ActionButton>
   );
 }
@@ -89,9 +91,15 @@ interface PlanetPickerProps {
   newDisabled: boolean;
   /** Absent where the edition reads no planet files. */
   onImport?: () => void;
+  /** Overrides the list's own size, for a window standing in one column. */
+  style?: CSSProperties;
+  /** False where the window's body scrolls the whole list with what stands around it. */
+  scrolls?: boolean;
 }
 
-export function PlanetPicker({ current, builtin, mine, chosenKey, currentId, onChoose, onNew, newDisabled, onImport }: PlanetPickerProps) {
+export function PlanetPicker(
+  { current, builtin, mine, chosenKey, currentId, onChoose, onNew, newDisabled, onImport, style, scrolls = true }: PlanetPickerProps,
+) {
   const t = useT();
   const choice = (c: PlanetChoice) => (
     <Row key={c.key} testId={`planet-${c.key}`} chosen={c.key === chosenKey} here={c.template.id === currentId} name={c.name}
@@ -99,9 +107,8 @@ export function PlanetPicker({ current, builtin, mine, chosenKey, currentId, onC
         : <img src={iconUrl(`planet-${c.key}`)} alt="" draggable={false} style={{ ...artStyle, objectFit: 'contain' }} />}
       onClick={() => onChoose(c.key)} />
   );
-  return (
-    <ScrollArea gutter="stable" fade="both" style={listStyle}
-      contentStyle={{ display: 'flex', flexDirection: 'column', gap: 4, padding: CONTROL_CLEARANCE }}>
+  const rows = (
+    <>
       {current && (
         <>
           <div style={{ ...groupStyle, marginTop: 2 }}>{t('planet.current_group')}</div>
@@ -118,6 +125,11 @@ export function PlanetPicker({ current, builtin, mine, chosenKey, currentId, onC
           art={<span style={actionArt}><ImportFileIcon /></span>} />
       )}
       {mine.map(choice)}
-    </ScrollArea>
+    </>
   );
+  const box = style ? { ...listStyle, ...style } : listStyle;
+  const content: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, padding: CONTROL_CLEARANCE };
+  return scrolls
+    ? <ScrollArea gutter="stable" fade="both" style={box} contentStyle={content}>{rows}</ScrollArea>
+    : <div style={{ ...box, ...content, boxSizing: 'border-box' }}>{rows}</div>;
 }

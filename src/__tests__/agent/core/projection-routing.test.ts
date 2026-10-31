@@ -136,10 +136,10 @@ type NoteTag = EventOf<'systemNote'>['note'];
 const NOTE_TAG_ROUTING: Record<NoteTag, Routes> = {
   delivery: ['fold:damper stamp', 'record:the loop\'s one-per-job zero-write closing nudge; wording undisplayed'],
   review: ['fold:damper stamp', 'record:the loop\'s one-per-job review invitation; wording undisplayed'],
-  'plan-close': ['fold:damper stamp', 'record:the loop\'s one-per-job unfinished-plan closing guard; wording undisplayed'],
+  'plan-close': ['fold:damper stamp', 'record:the loop\'s one-per-job unfinished-plan closing guard; wording undisplayed'],  'plan-sketch': ['fold:damper stamp', 'record:the loop\'s one-per-job unfiled-drawn-plan closing guard; wording undisplayed'],
 };
 
-/** Every `ToolResultDetail` member — the view-only extras a result carries. */
+/** Every `ToolResultDetail` member, the view-only extras a result carries. */
 const DETAIL_ROUTING: { [F in keyof ToolResultDetail]-?: Routes } = {
   partialRevert: ['ui:the op row and helper rollup distinguish retained edits from a full rollback', 'fold:retainedWrite keeps a partly kept write as landed'],
   banner: ['fold:the op summary skips the content\'s first line'],

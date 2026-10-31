@@ -15,7 +15,7 @@ import { ToolType } from '../../../../state/editing/vocabulary';
 import { useEditorStore } from '../../../../state/store';
 import { ToolManager } from '../../../../tools/pointer/runtime/tool-manager';
 import { makeExecutor, makeState } from '../../../_support/map-state';
-import { makeStubView } from '../../../_support/tool-manager';
+import { headlessViewVerbs, makeStubView } from '../../../_support/tool-manager';
 import { armedEditMode } from '../../../_support/store';
 import { editorToolWiring } from '../../../../editor/session/tool-wiring';
 
@@ -50,7 +50,7 @@ function setup(tool: ToolType, objects: PlacedObject[] = []) {
       cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 10 }) },
     overlay: { showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(), clearHover: vi.fn(), showHover: vi.fn(),
       clearSelection: vi.fn(), showSelection: vi.fn(), flashCommit: vi.fn(), showObjectMove: vi.fn() },
-    camera: { pan: vi.fn(), zoomBy: vi.fn() }, 
+    camera: { pan: vi.fn(), zoomBy: vi.fn() }, ...headlessViewVerbs(),
   } as unknown as ActiveView;
   manager.setActiveTool(tool); useEditorStore.setState({ activeLayer: 1 });
   registerToolManager(manager); setActiveView(view);

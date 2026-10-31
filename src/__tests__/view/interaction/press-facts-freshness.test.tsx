@@ -90,9 +90,8 @@ function arm(item: string | null, ...objects: PlacedObject[]): void {
   });
 }
 
-/** A touch tap at a cell: pointerdown then pointerup, `pointerType: 'touch'` throughout and no
- *  pointermove in between — the one shape a mouse gesture can always avoid (a real finger has
- *  nothing to hover with) and the one this finding is about. */
+/** A touch tap at a cell: pointerdown then pointerup with no pointermove between, as a finger has
+ *  nothing to hover with. */
 function touchTap(at: { x: number; y: number }): void {
   const sx = at.x * 10 + 5, sy = at.y * 10 + 5;
   el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: sx, clientY: sy, pointerType: 'touch', pointerId: 1 }));
@@ -132,25 +131,18 @@ describe('a touch tap decides from the arming as it stands, not as it stood', ()
   });
 
   it('selects the road under a fresh, unspannable bridge arming — even though the ctx last settled on a tree', () => {
-    // A road tile is a coating: V-PLACE-OVERLAP exempts it, so a point item that is otherwise legal
-    // here (a tree, on flat open grass) reads `placementAllowed: true` over it — that is the ctx
-    // this test deliberately settles on first, with a real (non-touch) tap elsewhere, exactly the
-    // kind of press that already refreshes the mirror on its own.
+    // V-PLACE-OVERLAP exempts a road coating, so a tree reads `placementAllowed: true` over it. A
+    // first tap on an empty cell settles the context on the tree.
     arm('tree-apple', road('r1', 5, 5));
-    touchTap({ x: 15, y: 15 }); // settles ctx on 'tree-apple' via a real press (harmless empty cell)
+    touchTap({ x: 15, y: 15 });
     expect(ids()).toEqual([]);
 
-    // Re-arm through the store alone — the shelf picking a new card, with no pointer event
-    // following it. `bridge-plank` cannot span flat ground with no gap (already established by
-    // `tool-cursors.test.ts`'s "refuses a bridge where no legal span exists"), so its
-    // `placementAllowed` at this same cell is false — the opposite of the tree's.
+    // Re-arm through the store alone, as the shelf does. A bridge cannot span flat ground, so its
+    // `placementAllowed` here is false.
     setStoreState({ ...armedEditMode({ item: 'bridge-plank', tool: ToolType.ObjectPlacer }) });
 
-    // The touch-tap shape: no move precedes it, so nothing but `getContext()` itself can hand the
-    // press a fresh mirror. Stale (pre-fix): `placementAllowed` still reads the tree's `true`, so
-    // `armedPressSelects` is false, the press falls through to a refused tool-stroke, and the road
-    // is never selected. Fresh (post-fix): `placementAllowed` reads the bridge's `false`, so the
-    // press selects the unlocked road instead.
+    // Only `getContext()` can refresh the mirror here; a stale one would read the tree's `true` and
+    // send the press to a refused tool stroke instead of selecting the road.
     touchTap({ x: 5, y: 5 });
 
     expect(ids(), 'the press acted on the NEW (bridge) arming, not the one the mirror last held').toEqual(['r1']);

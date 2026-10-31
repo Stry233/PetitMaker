@@ -38,12 +38,12 @@ vi.mock('../../../../../io/share/export', async (importOriginal) => {
     }),
   };
 });
-// downloadBlob calls URL.createObjectURL, which jsdom doesn't implement — capture the Blob instead.
+// downloadBlob calls URL.createObjectURL, which jsdom doesn't implement; capture the Blob instead.
 vi.mock('../../../../../io/export/download', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../../io/export/download')>();
   return { ...actual, downloadBlob: vi.fn() };
 });
-// No 2D renderer is registered in jsdom — stand in for the view host's capture verb.
+// No 2D renderer is registered in jsdom; stand in for the view host's capture verb.
 vi.mock('../../../../../editor/host/host', () => ({
   host: { capture2d: vi.fn(() => null), capture2dImage: vi.fn(() => null), capture2dTextureCap: () => 16384 },
 }));
@@ -67,7 +67,7 @@ function mountStateWith(setupExec?: (e: CommandExecutor) => void) {
   useEditorStore.getState().openShare('friend');
 }
 
-/** Minimal proxy-based CanvasRenderingContext2D stub — property sets are stored; any method GET
+/** Minimal proxy-based CanvasRenderingContext2D stub: property sets are stored; any method GET
  *  returns a no-op except the couple of read-backs the export painter/encoder actually need. */
 function makeFakeCtx(): CanvasRenderingContext2D {
   const store: Record<string, unknown> = {};
@@ -267,22 +267,19 @@ describe('ExportModal', () => {
     });
 
     it('the preview shows NO image while the code is encoding (no placeholder), then the real one', async () => {
-      // The encode is held open until the test releases it, so each state is sampled by what has
-      // happened rather than by how long it took.
+      // The encode is held until released, so each state is sampled by event rather than by time.
       const build = vi.mocked(buildShareCode).getMockImplementation()!;
       let release!: () => void;
       const encoded = new Promise<void>((resolve) => { release = resolve; });
       vi.mocked(buildShareCode).mockImplementationOnce(async (...args) => { await encoded; return build(...args); });
       mountStateWith();
       const { baseElement: container } = render(<ShareWindow />, { wrapper: Wrapper });
-      // Inside the debounce and then during the encode, the preview stays in its loading state: the
-      // composition (with any stand-in band) is never shown.
+      // Through the debounce and the encode the preview stays loading, with no stand-in band.
       expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
       expect(container.querySelector('[data-export-preview]')).toBeNull();
       await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1), { timeout: 3000 });
       await act(() => new Promise<void>((r) => setTimeout(r, 0)));
       expect(container.querySelector('[data-export-preview]')).toBeNull();
-      // Once the real code exists, the preview paints and the image appears.
       release();
       await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy(), { timeout: 3000 });
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
@@ -300,7 +297,7 @@ describe('ExportModal', () => {
       const input = screen.getByLabelText('Title');
       for (const value of ['山', '山下', '山下的家']) fireEvent.change(input, { target: { value } });
 
-      // Inside the settle window nothing moves: no rebuild, no repaint, the picture stays up.
+      // Inside the settle window there is no rebuild and no repaint.
       await act(() => new Promise<void>((r) => setTimeout(r, 200)));
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length).toBe(paintsBefore);
@@ -317,26 +314,22 @@ describe('ExportModal', () => {
       mountStateWith();
       render(<ShareWindow />, { wrapper: Wrapper });
 
-      // The cached preview asset arrives after the debounce, without any export click.
       await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1), { timeout: 3000 });
-      // Built for the standard preset's export width — the same width compose will use.
+      // The standard preset's export width, which compose also uses.
       expect(vi.mocked(buildShareCode).mock.calls[0]![3]).toBe(1600);
 
       fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
       await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
-      // The export reused the previewed canvas (same width + title + session createdAt) —
-      // the band in the preview is the band in the file.
+      // The export reuses the previewed canvas, so the band in the preview is the band in the file.
       expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('nested FooterEditor Escape does not bubble to close the whole modal', () => {
     it('Escape closes the tag-insert menu but leaves ExportModal open (onClose not called)', async () => {
-      // jsdom has no scrollIntoView — the menu's highlight-follow effect calls it on open.
+      // jsdom has no scrollIntoView; the menu's highlight-follow effect calls it on open.
       Element.prototype.scrollIntoView = vi.fn();
-      // Both the menu's exit and (were it to fire) ModalShell's exit are framer-motion
-      // transitions — skip them so DOM removal settles deterministically rather than
-      // racing real animation timing (same pattern as src/__tests__/legal/a11y.test.tsx).
+      // Skipping framer-motion exits lets DOM removal settle without racing animation timing.
       MotionGlobalConfig.skipAnimations = true;
       try {
         mountStateWith();
@@ -347,14 +340,11 @@ describe('ExportModal', () => {
         const insertBtn = screen.getByRole('button', { name: /insert tag/i });
         fireEvent.click(insertBtn);
 
-        // The menu is open; its Fill row is always present.
         expect(screen.getByRole('menuitemradio', { name: /fill/i })).toBeTruthy();
 
-        // Escape belongs to the foreground surface: the menu closes and the window behind it stays.
+        // Escape belongs to the foreground surface: the menu closes and the window stays.
         fireEvent.keyDown(insertBtn, { key: 'Escape' });
         await waitFor(() => expect(screen.queryByRole('menuitemradio', { name: /fill/i })).toBeNull());
-        // …but ExportModal itself stays open: onClose is never invoked, so the modal flag holds
-        // and the modal's own controls are still present.
         expect(useEditorStore.getState().modals.share).toBe(true);
         expect(screen.getByRole('button', { name: 'Export image' })).toBeTruthy();
       } finally {

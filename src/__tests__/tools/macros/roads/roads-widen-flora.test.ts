@@ -1,19 +1,11 @@
 /**
- * The `roads` macro widened, over a planting already standing in the widened corridor.
+ * The `roads` macro widened over a planting standing in the widened corridor. `widenRoads` places
+ * road tiles through the executor, not `tryPlace`, and a plant is not a coating, so V-PLACE-OVERLAP
+ * would refuse the tile. A standing planting therefore necks the corridor and stays, whoever placed
+ * it: a press builds on a clone with an empty provenance ledger, so authorship cannot decide.
  *
- * `widenRoads` dilates each road tile the router laid into a `width`-sized block by placing new
- * road objects directly — unlike `tryDecorate`/`tryPlace` in `tools/placement/object.ts`,
- * it never goes through the populator's own overlap/authorship gates. A tree or flower is not a
- * coating, so V-PLACE-OVERLAP refuses the road tile outright and an unguarded place would just fail
- * there: a hole in the pavement with the plant standing in the middle of a wide street.
- *
- * A standing planting therefore necks the corridor and stays where it stands, whoever placed it and
- * whatever the ledger knows — and the third case is why it cannot be an authorship question: a press
- * builds on a detached clone whose ledger is empty, so "spare the human-authored ones" spared none.
- *
- * Fixture: a one-cell landmark hub and a hamlet stall 6 cells apart on an empty flat map (seed 3), which pave a
- * short vertical street; (10,13) is a cell the width-3 dilation reaches but the width-1 core path
- * does not (confirmed empirically against this fixture — see the scenarios below).
+ * Fixture: a one-cell landmark hub and a stall 6 cells apart (seed 3) pave a short vertical street;
+ * (10,13) is a cell the width-3 dilation reaches but the width-1 core path does not.
  */
 import { describe, it, expect } from 'vitest';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
@@ -57,8 +49,7 @@ function objectAt(state: GridState, x: number, y: number) {
 describe('a wide road necks around a planting rather than mowing it', () => {
   it('leaves a planting with no authorship on record standing, and counts the cell', () => {
     const { state, ctx } = setup();
-    // Placed directly onto state.objects, bypassing the executor: the same "no authorship on
-    // record" shape a generated map's own un-authored planting has.
+    // Set straight into state.objects, so the ledger has no authorship for it.
     const obj = { id: generateObjectId(), catalogId: floraId, position: WIDEN_ONLY_CELL, rotation: 0 as const, elevation: 0 };
     state.objects.set(obj.id, obj);
 
@@ -83,10 +74,7 @@ describe('a wide road necks around a planting rather than mowing it', () => {
     expect(standing!.catalogId).toBe(floraId);
   });
 
-  // The path a press takes. `applyMacro` builds on a scratch clone with its own empty provenance
-  // ledger, so a spare that asked the ledger whether this plant was hand-placed spared nothing here
-  // and the press deleted it. Driving the widen through the tool the shelf runs is the only way to
-  // see that; the two cases above run on the live executor, where the ledger was intact.
+  // `applyMacro` builds on a scratch clone with an empty provenance ledger, unlike the two cases above.
   it('the whole-map press leaves a hand-placed planting standing at width 3', () => {
     const { state, ctx, place } = setup();
     place(floraId, WIDEN_ONLY_CELL.x, WIDEN_ONLY_CELL.y);
@@ -104,16 +92,12 @@ describe('a wide road necks around a planting rather than mowing it', () => {
 });
 
 /**
- * And the user is told. Above width 1 the neck is the normal outcome, not a corner: the count was
- * measured, reported by `layRoadNetwork`, and then dropped on the floor by `tools/macros/index.ts`,
- * so someone asked for a 3-wide road, got a 1-wide pinch in the middle of it and heard nothing. The
- * pinch is not something the map can show for itself either — the press is made from the bar, the
- * pinch can be anywhere along the route, and a road that is 3 wide except at one cell reads as a
- * road that is 3 wide.
+ * A one-cell pinch anywhere along a wide road is easy to miss on the map, so the count travels from
+ * `layRoadNetwork` through `tools/macros/index.ts` to a toast.
  */
 describe('a necked road says so', () => {
-  /** Beside the corridor a width-3 route from (5,5) to (25,5) dilates into, and clear of the line
-   *  itself: at y=4 or y=3 the router jogs around the plant instead and nothing necks. */
+  /** Inside the width-3 dilation of the (5,5) to (25,5) route but off its line: at y=4 or y=3 the
+   *  router jogs around the plant instead and nothing necks. */
   const BESIDE_THE_LINE = { x: 15, y: 6 };
   const LINK_FROM = { x: 5, y: 5 }, LINK_TO = { x: 25, y: 5 };
 
@@ -148,7 +132,7 @@ describe('a necked road says so', () => {
   it('and the tool that ships it posts the toast', async () => {
     const { state, ctx, place } = setup();
     place(floraId, BESIDE_THE_LINE.x, BESIDE_THE_LINE.y);
-    // The bar's own width, which is where a road macro's width comes from (`MacroTool.linkOpts`).
+    // Brush size 3 is the road width the drag passes (`drag-tool.ts`).
     const said: string[] = [];
     const toolCtx = makeToolCtx(state, ctx.executor as CommandExecutor, 3, 1, { armedMacro: 'road-link', notify: (text) => { said.push(text); } });
     try {

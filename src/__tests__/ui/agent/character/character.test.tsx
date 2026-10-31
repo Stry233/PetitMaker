@@ -1,23 +1,25 @@
 // @vitest-environment jsdom
 /**
  * jsdom has no Web Animations API, so this polyfills the slice `Character.tsx` calls: a fake
- * `Animation` recording keyframes and options, tracking `playState`, and for a forwards fill
- * finishing on its own `duration` (through `setTimeout`, so fake timers drive it) and then holding
- * its last keyframe over the inline style, as a real one does until cancelled. `visualTransform(el)`
- * reads that override, so the badge-cancel test can tell a stale finished animation showing
- * `scale(0)` from an inline `scale(0)`, the case `setBadge`'s cancel-before-pop exists for.
+ * `Animation` that records keyframes and options, tracks `playState`, and for a forwards fill
+ * finishes after `duration` (on `setTimeout`, so fake timers drive it) and then holds its last
+ * keyframe over the inline style until cancelled, as a real one does.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { StrictMode } from 'react';
-import { render, act, fireEvent } from '@testing-library/react';
+import { render, renderHook, act, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { Character } from '../../../../ui/agent/character/Character';
-import { cueCharacter, setIntentDream } from '../../../../ui/agent/character/intent';
+import { useCharacterChannel, type CharacterChannel } from '../../../../ui/agent/character/intent';
 import { Badge } from '../../../../ui/agent/character/badges';
 import { MICRO, POSE_DWELL, POSES, PRESS_SQUASH, WAKE_BEAT, poseForPhase, type PoseName } from '../../../../ui/agent/character/poses';
 import type { SessionPhase } from '../../../../agent/core/project-view';
 import { amplitude, framerMotion } from '../../../../ui/design/motion';
 import { pressable } from '../../../../ui/design/styles';
+
+/** The live channel, as a surface outside any picture holds it. */
+let live: CharacterChannel;
+beforeAll(() => { live = renderHook(useCharacterChannel).result.current; });
 
 type FakeKeyframe = { transform?: string; opacity?: number; offset?: number };
 type FakeOptions = { duration?: number; delay?: number; easing?: string; iterations?: number; fill?: FillMode; composite?: string };
@@ -37,8 +39,7 @@ class FakeAnimation {
     this.fill = options.fill ?? 'none';
     registryFor(target).push(this);
     const total = (options.delay ?? 0) + (options.duration ?? 0);
-    // Infinite-iteration loops never finish on their own (matches the real API: only a bounded
-    // animation's playState settles to 'finished' by itself).
+    // As in the real API, only a bounded animation settles to 'finished' by itself.
     if ((options.iterations ?? 1) !== Infinity) {
       this.timer = setTimeout(() => this.finish(), total);
     }
@@ -60,8 +61,7 @@ class FakeAnimation {
 }
 
 let anims = new WeakMap<Element, FakeAnimation[]>();
-/** Every `.animate()` call made anywhere in the character since the last mount: the count is the
- *  churn a convulsion is made of, and the recorded options are what a beat is pinned by. */
+/** Every `.animate()` call made in the character since the last reset. */
 let animateCalls: {
   part: string | undefined;
   iterations: number | undefined;
@@ -76,8 +76,8 @@ function registryFor(el: Element): FakeAnimation[] {
   return list;
 }
 
-/** The element's effective transform: a still-finished `forwards`/`both` animation overrides the
- *  element's own inline style until canceled, exactly like a real composited Web Animation. */
+/** The element's effective transform: a finished `forwards`/`both` animation overrides the inline
+ *  style until cancelled, so a stale `scale(0)` hold is visible here. */
 function visualTransform(el: HTMLElement): string {
   const list = registryFor(el).filter((a) => a.playState === 'finished' && (a.fill === 'forwards' || a.fill === 'both'));
   const top = list[list.length - 1];
@@ -143,9 +143,7 @@ describe('poseForPhase', () => {
     }
   });
 
-  /** The three poses a surface owns rather than a phase: the two the setup screen passes in and the
-   *  one the region marking does. A phase mapping that started answering one of them would be
-   *  claiming a moment it cannot see. */
+  /** Two poses belong to the setup screen and one to region marking; no phase may claim them. */
   it('never returns a pose a surface owns', () => {
     const phases: SessionPhase[] = ['idle', 'thinking', 'streaming', 'executing', 'gated', 'retrying', 'pausing', 'paused', 'aborted', 'incident'];
     const surfaceOwned: PoseName[] = ['keylean', 'pleased', 'watching'];
@@ -161,7 +159,6 @@ describe('the pose table', () => {
   it('gives each pose a resting frame the reduced-motion path can hold', () => {
     for (const [name, spec] of Object.entries(POSES)) {
       expect(typeof spec.static, name).toBe('string');
-      // A pose with no tracks at all would be a name with no choreography behind it.
       const tracks = [...(spec.enter ?? []), ...(spec.seq ?? []), ...(spec.loops ?? [])];
       expect(tracks.length, name).toBeGreaterThan(0);
     }
@@ -248,22 +245,19 @@ describe('the badge-cancel gotcha (fill:forwards swap-out re-asserting scale(0))
     const { container, rerender } = render(<Character pose="thinking" size={64} />);
     const badgeEl = part(container, 'badge');
 
-    // First badge (thinking → idea) lands synchronously: nothing to swap out yet.
+    // The first badge lands synchronously: nothing to swap out yet.
     expect(container.querySelector('img[data-badge="idea"]')).not.toBeNull();
     expect(visualTransform(badgeEl)).toBe('scale(1)');
 
-    // Rapid second pose change before the first badge's own pop-in animation would finish:
-    // this is what arms the swap-out (fill:'forwards', 110ms) whose hold must be canceled. A pose
-    // asked for is worn one dwell later (`POSE_DWELL`), which is when the swap is armed.
+    // A second pose before the first badge's pop-in finishes arms the swap-out (fill 'forwards',
+    // 110ms) whose hold must be cancelled. The pose is worn, and the swap armed, one `POSE_DWELL` later.
     act(() => { rerender(<Character pose="working" size={64} />); });
     act(() => { vi.advanceTimersByTime(POSE_DWELL); });
 
-    // Mid-flight: the swap-out has been armed but not yet applied its forwards hold.
     act(() => { vi.advanceTimersByTime(60); });
     expect(container.querySelector('img[data-badge="idea"]'), 'still showing the outgoing badge mid-swap').not.toBeNull();
 
-    // Let the swap-out finish (110ms total) and the scheduled pop-in fire (170ms total: the
-    // recorded gotcha's window, `BADGE_SWAP_OUT_MS + BADGE_SWAP_GAP_MS`).
+    // Past `BADGE_SWAP_OUT_MS + BADGE_SWAP_GAP_MS` (170ms), when the new badge pops in.
     act(() => { vi.advanceTimersByTime(200); });
 
     expect(container.querySelector('[data-badge="refresh"]'), 'the new badge is showing').not.toBeNull();
@@ -273,19 +267,11 @@ describe('the badge-cancel gotcha (fill:forwards swap-out re-asserting scale(0))
 });
 
 /**
- * A pose is a gesture, and a gesture is never cut short.
- *
- * The pose she wears is derived from the session's phase, and that phase is derived from the live
- * streaming parts: inside one model turn it moves from `streaming` to `executing` and back as text
- * and tool calls arrive, several times a second. Adopting each of those as it landed cancelled every
- * animation on her and restarted the next entrance from nothing — measured in the live app at a 140ms
- * input, 142 restarts in 20 seconds, which is what "she convulses" is made of, and what a breath
- * restarted seven times a second reads as.
+ * A pose is never cut short. Within one model turn the phase flips between `streaming` and
+ * `executing` several times a second; adopting each flip would restart every animation on her.
  */
 describe('the pose engine under a phase that flaps', () => {
-  // The clock is faked too, not just the timers: the dwell is measured against `performance.now()`,
-  // so a run whose timers jump 20 seconds while the clock stands still would test a state the app
-  // cannot be in (every wait re-derived as the full dwell, so nothing ever lands).
+  // The clock is faked with the timers because the dwell is measured against `performance.now()`.
   beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] }); });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -299,17 +285,14 @@ describe('the pose engine under a phase that flaps', () => {
     for (let t = 0; t < span; t += every) {
       i += 1;
       const pose = i % 2 ? 'working' as const : 'thinking' as const;
-      // The commit on its own, then the clock: the effect has to see the change at the moment it
-      // arrives, or the dwell is measured from a clock that has already moved on.
+      // Commit before advancing, so the effect sees the change when it arrives.
       act(() => { rerender(<Character pose={pose} size={64} />); });
       act(() => { vi.advanceTimersByTime(every); });
     }
-    // Both poses breathe on the same part, so a loop starting on `body` is exactly one landing
-    // (`working` also loops its `pose` part, which would count a landing twice). What is bounded is
-    // how many times that can happen: one per dwell, plus the one in flight.
+    // Both poses loop on `body`, so one infinite `body` loop is one landing; at most one per dwell,
+    // plus the one in flight.
     const landings = animateCalls.filter((a) => a.iterations === Infinity && a.part === 'body').length;
     expect(landings).toBeLessThanOrEqual(Math.ceil(span / POSE_DWELL) + 1);
-    // And well under 142, the measured reading this bound exists to rule out over this span.
     expect(landings).toBeLessThan(50);
     expect(landings).toBeGreaterThan(0);
   });
@@ -321,8 +304,7 @@ describe('the pose engine under a phase that flaps', () => {
     const running = () => part(container, 'body').getAnimations().length;
     const before = running();
     expect(before).toBeGreaterThan(0);
-    // Four phase changes inside one dwell: the pose she is wearing keeps its own animations, and
-    // nothing is torn down and rebuilt per commit.
+    // Four phase changes inside one dwell.
     act(() => {
       for (const pose of ['working', 'thinking', 'working', 'thinking'] as const) {
         rerender(<Character pose={pose} size={64} />);
@@ -333,9 +315,8 @@ describe('the pose engine under a phase that flaps', () => {
     expect(animateCalls.filter((a) => a.iterations === Infinity)).toHaveLength(0);
   });
 
-  /** The ambient gestures compose with the breath rather than replacing it: both play on the same
-   *  part and the same property, so a flick that replaced the transform dropped the breath to its
-   *  rest value for its own 120ms and snapped it back at the end. */
+  /** The flick shares the breath's part and property, so replacing the transform would snap the
+   *  breath to rest for the flick's duration. */
   it('plays the ear-flick additively over the breath', () => {
     expect(MICRO.earflick.part).toBe('body');
     expect(POSES.idle.loops?.[0]?.part).toBe('body');
@@ -388,7 +369,7 @@ describe('the sleeping pose', () => {
   it('holds the lids down and wears the plume for the whole pose', () => {
     expect(POSES.sleeping.lids).toBe(true);
     expect(POSES.sleeping.badge).toBe('zzz');
-    // A sleeper does not blink: the lids are already down, so a timer here would animate nothing.
+    // No blink timer: the lids are already down.
     expect(POSES.sleeping.timers).toBeUndefined();
   });
 
@@ -401,13 +382,8 @@ describe('the sleeping pose', () => {
   });
 });
 
-/**
- * The engine survives StrictMode's simulated remount. React's dev-only mount, cleanup, mount cycle
- * runs the unmount cleanup — which cancels every animation and timer — and then the effects again
- * on the same instance, whose `worn` ref still claims the pose is standing. Without resetting it
- * the re-run rebuilt nothing, and in the dev app she booted into a still: pose applied, lids down,
- * not one animation on any part (no slump, no breath) until the first pose change.
- */
+/** StrictMode's dev-only remount cancels every animation and timer, then reruns the effects on the
+ *  same instance, whose `worn` ref still claims the pose; the engine must rebuild it. */
 describe('the engine under StrictMode\'s double mount', () => {
   afterEach(() => vi.useRealTimers());
 
@@ -436,19 +412,17 @@ describe('the Connect-press wake beat', () => {
     const { container, rerender } = render(<Character pose="sleeping" size={64} />);
     act(() => { vi.advanceTimersByTime(POSE_DWELL); });
     animateCalls = [];
-    act(() => { cueCharacter({ kind: 'wake' }); });
+    act(() => { live.cue({ kind: 'wake' }); });
     const beats = animateCalls.filter((a) => a.part === 'pose');
     expect(beats).toHaveLength(1);
     expect(beats[0]?.duration).toBe(WAKE_BEAT.dur);
     expect(beats[0]?.easing).toBe(WAKE_BEAT.easing);
     expect(beats[0]?.keyframes).toEqual(WAKE_BEAT.keyframes);
 
-    // The key screen lands (`idle`): its clear cancels the sleep pose's own forwards-filled droop,
-    // and the beat plays on underneath the new pose.
+    // Landing on `idle` cancels the sleep pose's forwards-filled droop; the beat plays on.
     act(() => { rerender(<Character pose="idle" size={64} />); });
     const poseEl = part(container, 'pose');
     expect(poseEl.getAnimations().map((a) => a.playState)).toEqual(['running']);
-    // And the lids open on the same press, with the landing pose.
     expect(part(container, 'lid-l').style.transform).toBe('scaleY(0)');
     expect(part(container, 'lid-r').style.transform).toBe('scaleY(0)');
   });
@@ -456,7 +430,7 @@ describe('the Connect-press wake beat', () => {
   it('plays nothing when she is already awake', () => {
     render(<Character pose="idle" size={64} />);
     animateCalls = [];
-    act(() => { cueCharacter({ kind: 'wake' }); });
+    act(() => { live.cue({ kind: 'wake' }); });
     expect(animateCalls.filter((a) => a.part === 'pose')).toHaveLength(0);
   });
 
@@ -465,7 +439,7 @@ describe('the Connect-press wake beat', () => {
       <MotionConfig reducedMotion="always"><Character pose="sleeping" size={64} /></MotionConfig>,
     );
     animateCalls = [];
-    act(() => { cueCharacter({ kind: 'wake' }); });
+    act(() => { live.cue({ kind: 'wake' }); });
     expect(animateCalls).toHaveLength(0);
   });
 });
@@ -488,11 +462,11 @@ describe('the press acknowledgement', () => {
     expect(squashes[0]?.keyframes).toEqual(PRESS_SQUASH.keyframes);
   });
 
-  /** The surface that owns a press she cannot hear (the keyless rest's Connect) cues the same squash. */
+  /** A surface that owns the press (the keyless rest's Connect) cues the same squash. */
   it('acknowledges a cue too', () => {
     render(<Character pose="idle" size={64} />);
     animateCalls = [];
-    act(() => { cueCharacter({ kind: 'acknowledge' }); });
+    act(() => { live.cue({ kind: 'acknowledge' }); });
     expect(animateCalls.filter((a) => a.part === 'body' && a.composite === 'add')).toHaveLength(1);
   });
 
@@ -510,12 +484,8 @@ describe('the press acknowledgement', () => {
   });
 });
 
-/**
- * The plume's three marks play. The pose table's own line for `sleeping` says "z marks in sequence",
- * and while the badge was a still drawing that sentence described nothing on screen. The beat is
- * `pw-zzzfade` in `design/animations.css`, which carries the reduced-motion gate with it; the marks
- * carry its class and the two delays that make them a sequence rather than a blink.
- */
+/** The three z marks share `pw-zzzfade` (`design/animations.css`, reduced-motion gated) and two
+ *  delay classes make them a sequence. */
 describe('the sleeper\'s zzz', () => {
   it('gives each mark the shared fade and staggers the last two', () => {
     const { container } = render(<Badge id="zzz" />);
@@ -523,7 +493,6 @@ describe('the sleeper\'s zzz', () => {
     expect(marks).toHaveLength(3);
     expect(marks[1]?.classList.contains('pw-zzz-mark-2')).toBe(true);
     expect(marks[2]?.classList.contains('pw-zzz-mark-3')).toBe(true);
-    // The first carries no delay class: it is the one the other two are late against.
     expect(marks[0]?.getAttribute('class')).toBe('pw-zzz-mark');
   });
 });
@@ -533,28 +502,27 @@ describe('the sleeper\'s zzz', () => {
 describe('the sleeper\'s plume', () => {
   const plume = (c: HTMLElement) => part(c, 'dream-badge');
 
-  afterEach(() => { act(() => { setIntentDream('off'); }); });
+  afterEach(() => { act(() => { live.setDream('off'); }); });
 
   it('stands beside the pose rather than inside it', () => {
-    act(() => { setIntentDream('zzz'); });
+    act(() => { live.setDream('zzz'); });
     const { container } = render(<Character pose="sleeping" size={60} />);
     const flip = part(container, 'flip');
     expect(plume(container).parentElement).toBe(flip.parentElement);
     expect(flip.contains(plume(container))).toBe(false);
-    // And the pose's own badge stands down, so one shoulder never carries two.
+    // The pose's own badge hides, so only one badge shows.
     expect(part(container, 'badge').style.opacity).toBe('0');
   });
 
-  /** The disc is the same element before and after, which is what gives its transition a state to
-   *  arrive from. */
+  /** The disc stays the same element so its transition has a state to arrive from. */
   it('keeps the glyph\'s disc mounted so it can arrive, and swaps it in for the zzz', () => {
-    act(() => { setIntentDream('zzz'); });
+    act(() => { live.setDream('zzz'); });
     const { container, rerender } = render(<Character pose="sleeping" size={60} />);
     const disc = part(container, 'dream-glyph');
     expect(disc.style.opacity).toBe('0');
     expect(part(container, 'dream-zzz').style.opacity).toBe('1');
 
-    act(() => { setIntentDream('pw-road'); });
+    act(() => { live.setDream('pw-road'); });
     rerender(<Character pose="sleeping" size={60} />);
     expect(part(container, 'dream-glyph')).toBe(disc);
     expect(disc.style.opacity).toBe('1');
@@ -563,19 +531,19 @@ describe('the sleeper\'s plume', () => {
   });
 
   it('breathes once as the zzz come back, and not on the way out', () => {
-    act(() => { setIntentDream('pw-road'); });
+    act(() => { live.setDream('pw-road'); });
     const { container, rerender } = render(<Character pose="sleeping" size={60} />);
     const breaths = () => animateCalls.filter((a) => a.part === 'dream-puff').length;
     expect(breaths()).toBe(0);
 
-    act(() => { setIntentDream('zzz'); });
+    act(() => { live.setDream('zzz'); });
     rerender(<Character pose="sleeping" size={60} />);
     expect(breaths()).toBe(1);
     expect(part(container, 'dream-puff')).toBeTruthy();
   });
 
   it('cuts every plume beat under reduced motion', () => {
-    act(() => { setIntentDream('zzz'); });
+    act(() => { live.setDream('zzz'); });
     const { container } = render(
       <MotionConfig reducedMotion="always"><Character pose="sleeping" size={60} /></MotionConfig>,
     );

@@ -1,13 +1,13 @@
-import { framerMotion } from '../../../design/motion';
-import { font, radii } from '../../../design/styles';
-import { useChromeScale } from '../../../design/scale';
-import { toolbarLabel } from '../../../../state/keymap/toolbar';
-import { useToolbarContext } from '../../../session/use-toolbar-context';
 /*
  * The keyboard window: the board tinted by command category at the engaged modifier layer, a search
  * over every command, and Record (taking the chord from its holder), Clear and Reset for the chosen one,
  * all read from the command registry and the override store.
  */
+import { framerMotion } from '../../../design/motion';
+import { font, radii } from '../../../design/styles';
+import { useSurfaceZoom } from '../../../design/scale';
+import { toolbarLabel } from '../../../../state/keymap/toolbar';
+import { useToolbarContext } from '../../../session/use-toolbar-context';
 import { SUPPORTS_JSON_FILES } from '../../../../platform/build/edition';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
@@ -16,15 +16,15 @@ import { skin, windowInset } from '../../../design/window-skin';
 import { Pill } from '../../../primitives/Pill';
 import { roleFont } from '../../../design/text-weight';
 import { ModalShell } from '../../../primitives/ModalShell';
-import { KEYBOARD_H, KEYBOARD_W, KeyboardBoard } from './KeyboardBoard';
-import { WindowHeader, windowFrame } from '../../../primitives/Window';
+import { BOARD_OUTER_W, BOARD_RING, KEYBOARD_H, KeyboardBoard } from './KeyboardBoard';
+import { WINDOW_PADDING_X, WindowHeader, windowFrame } from '../../../primitives/Window';
 import { FloatMenu } from '../../../primitives/FloatMenu';
 import { ChevronIcon } from '../../../primitives/line-glyphs';
 import { useTransition } from '../../../design/motion/use-motion';
 import { useWindow, type WindowProps } from '../use-window';
 import { useScrollFadeBoth } from '../../../primitives/scroll-fade';
 import { useWheelToHorizontal } from '../../../primitives/wheel-horizontal';
-import { showToast } from '../../floating/Toast';
+import { showToast } from '../../../../platform/channels/toast-bus';
 import { downloadKeymap, readKeymapFile } from '../../../../editor/export/files';
 import { COMMANDS, COMMAND_BY_ID, type EditorCommand } from '../../../../editor/commands/commands';
 import { aliasIndex, bindingIndex, effectiveCombo, detectPreset } from '../../../../state/keymap/resolve';
@@ -35,9 +35,6 @@ import { CATEGORY_COLOR, CATEGORY_ORDER, type Layer } from './layout';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { boardZoomFor, BoardHBar } from './BoardHBar';
 
-// Keycap metrics. Sized so the labels stay legible after the chrome zoom shrinks the card on a short
-// viewport, and so keycap type sits in the same range as the rest of the chrome (the board simply gets
-// wider; the 96vw cap + horizontal scroll already handle that).
 const BASE_LAYER: Layer = { ctrl: false, alt: false, shift: false };
 
 /* ── small styled atoms ──────────────────────────────────────────────────── */
@@ -70,19 +67,12 @@ const comboChip: CSSProperties = {
 /** The preset menu's width, in css px: the longest preset name with its check. */
 const PRESET_MENU_W = 196;
 
-/* ── entrance ─────────────────────────────────────────────────────────────────
- * A grid this dense reads heavy if it simply scales up with the card, so the board assembles itself
- * just after the card lands: the three clusters are staggered, and within the main block each row
- * settles, so the eye follows it coming together instead of being handed all ~100 keys at once.
- * One short cascade (~0.3s total), spring physics, and no movement at all under reduced motion.
- */
-/* ── component ────────────────────────────────────────────────────────────── */
-
-// Card must fit the board + card padding (48) + the vertical region's both-edges gutter (24, always
-// reserved) + the board row's ring padding (12) + a small buffer, else the horizontal bar shows even
-// when the board fits. The viewport caps leave a rim of backdrop on every side; inside them the board
-// zooms down to its floor before it scrolls.
-const CARD_WIDTH = KEYBOARD_W + 48 + 24 + 12 + 8;
+/** Room left at each side of the board when the window has it. Inside the viewport caps the board zooms
+ *  down to its floor before it scrolls. */
+const BOARD_SIDE_ROOM = 16;
+const CARD_WIDTH = BOARD_OUTER_W + 2 * (BOARD_SIDE_ROOM + WINDOW_PADDING_X);
+/** The region's height past the board's own: the ring above the keys and a strip below them. */
+const REGION_SLACK = BOARD_RING + 14;
 
 export function KeyboardModal(props: WindowProps) {
   const t = useT();
@@ -119,7 +109,7 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
   const kbdFade = useScrollFadeBoth(kbdRef);
   // When the window is short enough that only sideways travel remains, a mouse's vertical
   // notches drive it; with vertical room the hook stands aside and the wheel scrolls as usual.
-  useWheelToHorizontal(kbdRef, { zoom: useChromeScale() });
+  useWheelToHorizontal(kbdRef, { zoom: useSurfaceZoom() });
 
   // The board region's live scroll geometry, feeding the drawn horizontal bar below it and the
   // board's own zoom.
@@ -132,8 +122,8 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
     // scroll height carries whether or not the cap is binding yet.
     const card = el.parentElement;
     const cap = card ? parseFloat(getComputedStyle(card).maxHeight) : NaN;
-    const roomH = card && Number.isFinite(cap) ? cap - (card.scrollHeight - el.offsetHeight) - 20 : Infinity;
-    setBoardZoom(boardZoomFor(el.clientWidth, KEYBOARD_W + 12, roomH, KEYBOARD_H));
+    const roomH = card && Number.isFinite(cap) ? cap - (card.scrollHeight - el.offsetHeight) - REGION_SLACK : Infinity;
+    setBoardZoom(boardZoomFor(el.clientWidth, BOARD_OUTER_W, roomH, KEYBOARD_H));
     setHbar((p) => (p.left === el.scrollLeft && p.vw === el.clientWidth && p.cw === el.scrollWidth)
       ? p
       : { left: el.scrollLeft, vw: el.clientWidth, cw: el.scrollWidth });
@@ -224,7 +214,7 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
       {/* search (left) + reset-all (right), the same two ends the modifier row below hangs its own
           controls from. The field is a reading width rather than the board's: a search box a metre
           wide is a metre of empty paper, and its results list would inherit that span. */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
         <div ref={searchRef} style={{ flex: '0 1 460px' }}>
           <input
             value={search}
@@ -260,7 +250,7 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* modifier-layer chips (left) + shortcut-style preset picker & JSON import/export (right) */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexShrink: 0, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, flexShrink: 0, alignItems: 'center' }}>
         <Pill style={chip(!layer.ctrl && !layer.alt && !layer.shift)} onClick={() => setLayer(BASE_LAYER)}>{t('kbd.layer.base')}</Pill>
         <Pill style={chip(layer.shift)} onClick={() => toggleMod('shift')}>Shift</Pill>
         <Pill style={chip(layer.ctrl)} onClick={() => toggleMod('ctrl')}>Ctrl</Pill>
@@ -294,11 +284,9 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Only the keyboard scrolls (header above + footer below stay pinned). One region scrolls both
-          axes; its height = board + 6px top room (hover lift + selection ring) + 14px bottom strip so
-          the horizontal bar has room without spuriously triggering the vertical one. It shrinks under
-          height pressure (high UI zoom) and scrolls; the fade says "more", and the drawn bar below
-          the region is the grabbable handle for the horizontal axis. */}
-      <div ref={kbdRef} id="kbd-region" data-testid="kbd-region" className="pw-noscroll" onScroll={measureHbar} style={{ ...kbdRegion, height: KEYBOARD_H * boardZoom + 20, ...kbdFade }}>
+          axes; it shrinks under height pressure (high UI zoom) and scrolls; the fade says "more", and
+          the drawn bar below the region is the grabbable handle for the horizontal axis. */}
+      <div ref={kbdRef} id="kbd-region" data-testid="kbd-region" className="pw-noscroll" onScroll={measureHbar} style={{ ...kbdRegion, height: KEYBOARD_H * boardZoom + REGION_SLACK, ...kbdFade }}>
         {/* Must not be keyed by the active layer: keying it remounts every keycap on each
             Ctrl/Shift/Alt press, which replays the entrance instead of switching layer. The container
             stays stable and each key cross-fades its own label + eases its own tint. `initial/animate`

@@ -1,9 +1,9 @@
 /**
  * Smart planting: the spray, and the per-tier adaptation.
  *
- * A held press keeps planting — one burst now, one per clock tick, one per few cells of travel —
- * and the whole hold folds to one undo entry, so undo takes back the gesture rather than a puff
- * of it. A disc over mixed elevations plants every tier as its own confined ecology run: run
+ * A held press keeps planting (one burst at the press, one per clock tick, one per few cells of
+ * travel) and the whole hold folds to one undo entry, so undo takes back the gesture rather than a
+ * puff of it. A disc over mixed elevations plants every tier as its own confined ecology run: run
  * once over all of them, the terraces' narrow bands starve inside the stand noise's glades.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';

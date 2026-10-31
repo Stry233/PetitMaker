@@ -1,13 +1,7 @@
 /**
- * The pool settles every job it takes, whatever goes wrong with the workers.
- *
- * Every caller of the pool awaits it with a main-thread fallback ready behind a `catch`
- * (`candidates.ts:buildCandidate`, `macros/run.ts:applyMacroAsync`, `macros/runtime/preview.ts`), so a
- * rejection costs a frame and a hang costs the feature: a generate card that never arrives, a
- * macro press that never lands. `Worker` does not exist in this environment, so the pool is driven
- * here by a fake one whose `postMessage` can be made to fail the way a real one does (a payload
- * structured-clone refuses, a worker already gone), and each test asserts the same thing — that
- * every job settled, one way or the other.
+ * The pool settles every job it takes, whatever goes wrong with the workers. Every caller keeps a
+ * main-thread fallback behind a `catch`, so a rejection costs a frame but a hang loses the feature.
+ * A fake `Worker` stands in for the missing global; its `postMessage` can fail as a real one does.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CellZone } from '../../../../core/game/zones';
@@ -57,14 +51,12 @@ class FakeWorker {
   terminate(): void { this.terminated = true; }
 }
 
-/** Lets the pool act on an answer: it settles the job and dispatches the next one a few
- *  microtasks after the worker's message. */
+/** The pool settles a job and dispatches the next a few microtasks after the worker's message. */
 async function settled(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-/** Hand one queued question its answer, the way a worker does, and let the pool act on it. Returns
- *  whatever escaped the message handler, which for a healthy pool is nothing. */
+/** Answers the oldest posted job as a worker would; returns whatever escaped the message handler. */
 async function deliverOne(answer: Record<string, unknown> = {}): Promise<unknown> {
   const next = posted.shift();
   if (!next) throw new Error('nothing was posted');
@@ -90,7 +82,7 @@ async function refuseOne(): Promise<unknown> {
   return null;
 }
 
-/** A 2x2 planet: enough for the pool to encode a grid, and nothing crosses the wire here anyway. */
+/** A 2x2 planet: enough for the pool to encode a grid. */
 function tinyState(): GridState {
   const template: MapTemplate = {
     id: 'pool-test', name: { en: 'pool-test' }, width: 2, height: 2,
@@ -118,14 +110,13 @@ async function loadPool(): Promise<Pool> {
   return import('../../../../tools/generation/run/candidate-pool');
 }
 
-/** The rules module of the graph `loadPool` loaded, and its default registry: the pool names a
+/** The rules module from `loadPool`'s fresh graph and its default registry: the pool identifies a
  *  registry's set by that graph's own class. */
 let rulesModule: typeof import('../../../../rules');
 let rules: RuleDispatcher;
 
-/** Every job's fate as a word, 'unsettled' for one the pool never answered. Resolved or rejected
- *  are one answer here: either sends the caller down its main-thread path, and a hang sends it
- *  nowhere. */
+/** Each job's fate, 'unsettled' for one the pool never answered. Resolved and rejected are both
+ *  'settled': either sends the caller down a path. */
 function fates(jobs: Promise<unknown>[]): Promise<string[]> {
   const sentinel = new Promise<string>((r) => setTimeout(() => r('unsettled'), 50));
   return Promise.all(jobs.map((p) => Promise.race([p.then(() => 'settled', () => 'settled'), sentinel])));
@@ -305,8 +296,7 @@ describe('a pool whose workers stop taking jobs', () => {
     expect(dispatched, 'the pool filled its slots').toBeGreaterThanOrEqual(1);
     expect(jobs.length, 'and left some queued').toBeGreaterThan(dispatched);
 
-    // From here every post refuses, so the dispatch that runs inside the worker's own message
-    // handler is the one that fails.
+    // Every post now refuses, so the dispatch inside the worker's message handler fails.
     failPost = () => true;
     const escaped = await deliverOne();
 
@@ -316,8 +306,7 @@ describe('a pool whose workers stop taking jobs', () => {
   });
 
   it('settles a job whose answer this thread could not deserialize, and keeps the slot', async () => {
-    // Without a `messageerror` handler the slot still holds that job, so it takes no further work
-    // and the caller waits forever instead of falling back to the main thread.
+    // Without a `messageerror` handler the slot would hold the job forever and take no more work.
     const pool = await loadPool();
     const state = tinyState();
     const first = pool.runCandidateInPool({ state, config, region: null, rules });

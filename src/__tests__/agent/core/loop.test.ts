@@ -15,9 +15,8 @@ import { TOOL_FACTS, wireSchemas } from '../../../agent/tools';
 
 const GUIDES = TOOL_FACTS.guides;
 
-/** Drains the microtask queue: everything in this file resolves through promise chains alone
- *  (no real timers), so a fixed, generous number of `await`s is enough to run the loop up to its
- *  next genuinely blocking wait (an unanswered gate). */
+/** Drains the microtask queue. Nothing here uses real timers, so 50 awaits run the loop up to its
+ *  next blocking wait (an unanswered gate). */
 async function flush(): Promise<void> {
   for (let i = 0; i < 50; i++) await Promise.resolve();
 }
@@ -43,10 +42,8 @@ function makeExecutor(opts: {
   };
 }
 
-/** Stand-ins for the ordinary parent job's two ungated control tools: `processCalls` special-cases
- *  `update_plan`/`suggest_reply` only when `deps.tools` advertises them by name (a subagent wired
- *  via `wireSchemas({subagent:true})` excludes both), so the default fixture here must carry them
- *  for every test below that exercises either call under the parent path. */
+/** The parent job's two control tools. `processCalls` answers `update_plan` and `suggest_reply`
+ *  itself only when `deps.tools` names them; a subagent's tools exclude both. */
 const PARENT_CONTROL_TOOLS = [
   { name: 'update_plan', description: 'stand-in', parameters: {} },
   { name: 'suggest_reply', description: 'stand-in', parameters: {} },
@@ -147,12 +144,8 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * A normalized prose call is a call, all the way down.
-   *
-   * The events here are exactly what `providers/openai.ts` delivers for a gateway that types the
-   * call into its message body: no text part, a tool part, `stop: 'tool-calls'` and the turn's own
-   * quirk marker. Unnormalized the same wire ended the job `done` with the JSON as its summary and
-   * the executor never touched — a silent turn wearing a receipt.
+   * The events are what `providers/openai.ts` delivers for a gateway that types the call into its
+   * message body: no text part, a tool part, `stop: 'tool-calls'` and the quirk marker.
    */
   it('runs a turn the adapter normalized out of prose, records the quirk, and does not settle on it', async () => {
     const log = createLog(() => 0);
@@ -223,12 +216,12 @@ describe('runJob core flows', () => {
     await runJob(log, deps);
 
     const plans = eventsOf(log).filter((e) => e.kind === 'plan');
-    expect(plans).toHaveLength(2); // the plan and one revision; the third filing landed no event
+    expect(plans).toHaveLength(2); // the third filing landed no event
     const refusal = eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === 'p3');
     expect(refusal?.kind === 'toolResult' && refusal.isError).toBe(true);
     expect(refusal?.kind === 'toolResult' && refusal.content).toContain('commitment');
     expect(refusal?.kind === 'toolResult' && refusal.detail?.damper).toBe(true);
-    expect(executor.calls).toEqual([]); // no filing ever reached the executor
+    expect(executor.calls).toEqual([]);
   });
 
   it('[ASST-16] update_plan gates first under checkpoint oversight; a later wide tool gates on its own', async () => {
@@ -336,9 +329,8 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * The settle banks its own depth, which is the upper half of the pair the panel's take-back reads:
-   * the first checkpoint says where the job's writes began, this says where they ended, so anything
-   * above it is the user's own later work and a rewind can name the two apart.
+   * The first checkpoint marks where the job's writes began and `jobEnd.undoIndex` where they ended,
+   * so a rewind can tell the job's work from the user's later edits.
    */
   it('stamps the undo depth the job settled at on every jobEnd, aborts included', async () => {
     const log = createLog(() => 0);
@@ -352,7 +344,7 @@ describe('runJob core flows', () => {
     const deps = makeDeps({ adapter, executor, undoStackSize: () => depth });
 
     await runJob(log, deps);
-    // The write moved the stack; the settle reads it where it stands.
+    // A later change to the stack leaves the stamped depth alone.
     depth = 7;
     const end = eventsOf(log).find((e) => e.kind === 'jobEnd');
     expect(end).toMatchObject({ outcome: 'done', undoIndex: 3 });
@@ -536,12 +528,9 @@ describe('runJob core flows', () => {
   });
 
   /**
-   * The advertised schema and this parser are one contract, and nothing else in the tree holds them
-   * together: the loop intercepts `update_plan` before the executor, so no handler's own validation
-   * stands between the two. Drifted apart — a schema demanding `{title, status}` while the parser
-   * reads `label` — every plan a well-behaved model sends is refused and the tool cannot succeed
-   * once. The stage here is built from the schema's own
-   * `required` list rather than written out, so moving one without the other fails this.
+   * The loop intercepts `update_plan` before the executor, so only this test holds the advertised
+   * schema and the loop's parser together. The stage is built from the schema's `required` list, so
+   * changing one without the other fails here.
    */
   it("accepts a stage of exactly the shape update_plan's own schema requires", async () => {
     const schema = wireSchemas().find((s) => s.name === 'update_plan');
@@ -600,9 +589,8 @@ describe('runJob core flows', () => {
       toolTurn([{ callId: 'plan-1', name: 'update_plan', args: { stages: [{ label: 'streets' }] } }]),
       textTurn('done'),
     ]);
-    // Mirrors createExecutor's real behavior for a name outside its wired `allowed` set
-    // (exec/executor.ts): an unadvertised tool answers with its own unknown-tool error rather
-    // than ever reaching the loop's update_plan interception.
+    // As `createExecutor` (exec/executor.ts) does, a tool outside the wired set answers with an
+    // unknown-tool error instead of reaching the loop's update_plan interception.
     const executor = makeExecutor({
       result: (call) => (call.name === 'update_plan'
         ? { content: 'Unknown tool "update_plan".', isError: true }
@@ -653,12 +641,12 @@ describe('runJob core flows', () => {
       textTurn('done'),
     ]);
     const executor = makeExecutor();
-    const deps = makeDeps({ adapter, executor }); // default tools: PARENT_CONTROL_TOOLS, advertises suggest_reply
+    const deps = makeDeps({ adapter, executor });
 
     const outcome = await runJob(log, deps);
 
     expect(outcome).toBe('done');
-    expect(executor.calls).toEqual([]); // never reaches the executor
+    expect(executor.calls).toEqual([]);
     const result = eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === 'sr-1');
     expect(result).toMatchObject({ isError: false, content: 'Noted.' });
   });
@@ -727,12 +715,9 @@ describe('runJob core flows', () => {
 });
 
 /**
- * Write-ness and the minting turn are stamped at execute time, on every `toolResult` the loop
- * appends and on every `gateAsked` it asks. The projection then answers "was this a build or an
- * answer?" and "which turn does this call belong to?" from the log alone, with no side channel:
- * `isWrite` is the executor's fact and the executor is not in scope at fold time, and a callId is
- * only unique within one assistant turn, so the seq of the turn that minted the occurrence is the
- * only durable key for it.
+ * Write-ness and the minting turn are stamped on every `toolResult` and `gateAsked` at execute time,
+ * so the projection reads them from the log alone: the executor is out of scope at fold time, and a
+ * callId is unique only within one assistant turn, so that turn's seq is the durable key.
  */
 describe('a result carries its own write-ness and the turn that minted it', () => {
   function assistantSeqs(log: SessionLog): number[] {
@@ -864,9 +849,8 @@ describe('a result carries its own write-ness and the turn that minted it', () =
     expect(await promise).toBe('done');
   });
 
-  /* A gate survives a reload, and the resume is what re-raises it. The projection withholds
-   * `view.gate` while the phase is paused (nothing is asking), so this is the other half of that
-   * contract: the ask has to come back, with a loop behind it, the moment the job is resumed. */
+  /* The projection withholds `view.gate` while paused, so resuming must re-raise the gate with a
+   * loop behind it. */
   it('re-enters a gate left unanswered by a reload, and the answer then runs the call', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'raise the ridge');
@@ -977,10 +961,8 @@ describe('a governor nudge that escalates a result stamps it as dampered', () =>
 });
 
 /**
- * A refused call, resent unchanged, is refused without running. The identical arguments against
- * the same map earn the identical error, so the loop answers with that error itself instead of
- * spending an execution; a success with those args, or any successful write since the failure,
- * reopens the ground.
+ * Identical arguments against the same map earn the identical error, so the loop answers with it
+ * itself. A success with those args, or any successful write since the failure, allows the call again.
  */
 describe('an identical retry of a just-failed call is refused without running', () => {
   const PAINT = { name: 'paint_terrain', args: { terrain: 'water', elevation: 2 } };
@@ -1188,16 +1170,10 @@ describe('explicit plan progress', () => {
 });
 
 /**
- * The closing words survive the settle. A `jobEnd` carrying an outcome and nothing else would
- * leave the answer card no text to show, and every finished job would read alike. The settle
- * carries the closing text as `summary` and marks it when it ends in a question, which is the fact
- * the done.question state and the celebrate hold both read. A quiet giveup carries neither: no
- * words were said, and inventing some would put a sentence in the model's mouth.
- *
- * The words ride every outcome that has them (a cap was told to wrap up; an abort still said what
- * it said), and the question mark rides only the ones the model ended: a truncated fragment or a
- * cut-off sentence that happens to stop on "?" must never leave the job waiting on an answer to a
- * question nobody asked.
+ * `jobEnd` carries the closing text as `summary` and sets `question` when it ends in one, which the
+ * done.question state and the celebrate hold read. A quiet giveup carries neither. The summary rides
+ * every outcome that has words (a capped or aborted job included); `question` rides only a close the
+ * model finished, never a truncated fragment that happens to stop on "?".
  */
 describe('the closing words settle into the record', () => {
   function lastEnd(log: SessionLog) {
@@ -1412,20 +1388,14 @@ describe('the closing words settle into the record', () => {
 });
 
 /**
- * The construction beat: a real pause between consecutive writes, so the work is watchable.
- *
- * A batch of writes lands in one microtask burst, which on the glass is the map jumping to its
- * finished state with the working animation never having played a frame. The beat is spent in the
- * Loop rather than in a renderer: a render delay would hold the panel's own report back too, and the
- * edits would already have landed either way. Reads are unpaced (nothing lands for them to show), the
- * first write of a batch is unpaced (there is nothing to pace it against), and the wait is the
- * injected `sleep` — the runner's skippable one — so a stop cuts straight through it.
+ * The construction beat: a pause between consecutive writes, so a batch does not land in one
+ * microtask burst before the working animation plays a frame. Reads and a batch's first write are
+ * unpaced, and the wait is the injected `sleep`, so a stop cuts through it.
  */
 describe('the construction beat', () => {
   const WRITES = new Set(['paint_terrain']);
 
-  /** The sleeps the loop asked for, resolved at once so the test stays synchronous in promise time.
-   *  The signal is recorded too: a beat nothing can interrupt outlives the stop meant to end it. */
+  /** Records each requested sleep and its signal, resolving at once. */
   function sleepSpy(): { calls: { ms: number; signal: AbortSignal }[]; sleep: NonNullable<LoopDeps['sleep']> } {
     const calls: { ms: number; signal: AbortSignal }[] = [];
     return {
@@ -1484,8 +1454,7 @@ describe('the construction beat', () => {
     expect(spy.calls).toEqual([]);
   });
 
-  /** A skipped write is not a write. Nothing landed on the map for the next one to be paced against,
-   *  so a batch the user declined runs at its own speed. */
+  /** A declined write lands nothing, so the next write is not paced against it. */
   it('paces nothing after a write the user declined', async () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'build two things', mapContext: 'Hexia' });
@@ -1513,8 +1482,7 @@ describe('the construction beat', () => {
     expect(spy.calls, 'the first write never landed').toEqual([]);
   });
 
-  /** A stop cuts through the beat. The wait carries the job's own signal, so an abort inside it ends
-   *  the job there rather than after the pause it was waiting out. */
+  /** The wait carries the job's signal, so an abort inside it ends the job there. */
   it('ends the job where the beat was, when the stop lands inside it', async () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'build two things', mapContext: 'Hexia' });
@@ -1543,9 +1511,8 @@ describe('the construction beat', () => {
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
   });
 
-  /** Max, not sum. The inter-turn courtesy wait and the beat are two answers to the same question
-   *  (how fast may this job go), and they cover different gaps: the beat is inside a batch, the
-   *  courtesy is between turns. A batch of one write therefore adds nothing to a turn boundary. */
+  /** The beat paces writes inside a batch and the courtesy wait paces turns, so a one-write batch
+   *  adds nothing at the turn boundary. */
   it('adds nothing to a turn boundary, which the courtesy wait already owns', async () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'build one thing', mapContext: 'Hexia' });
@@ -1567,16 +1534,12 @@ describe('the construction beat', () => {
 });
 
 /**
- * The delivery nudge: finishing means delivering. A closing turn (text, no real tool call) on a job
- * that could write but landed nothing is answered once with the delivery contract instead of
- * settling — build the order's intent on the map as it stands, or state plainly that it cannot be
- * done. The note is a `systemNote` log event, so it reaches the model through the ordinary replay
- * and survives into the record; the close after it is final whatever it says, which is what bounds
- * the nudge to one extra turn per job.
+ * A closing turn on a job that could write but landed nothing is answered once with the delivery
+ * nudge, a `systemNote` the model reads through the ordinary replay. The close after it is final,
+ * which bounds the nudge to one extra turn per job.
  */
 describe('the delivery nudge', () => {
-  /** The default fixture tools plus one advertised write verb: the nudge asks for an edit, so it
-   *  only speaks to a job whose tool set could land one. */
+  /** One advertised write tool: the nudge speaks only to a job whose tools could land an edit. */
   const BUILD_TOOLS = [
     ...PARENT_CONTROL_TOOLS,
     { name: 'paint_terrain', description: 'stand-in', parameters: {} },
@@ -1774,13 +1737,9 @@ describe('the delivery nudge', () => {
 });
 
 /**
- * The review beat: the review serves the order. The first closing turn of a job whose build landed
- * (`REVIEW_MIN_WRITES` writes or more) is answered once with an invitation to re-read the order,
- * judge the map against its own words alone, and fix the one thing it asked for that is weakest,
- * before the close stands. It is the delivery nudge's complement, and the two grounds are disjoint
- * at any one close: zero landed writes is delivery's, a landed build is this one's, and a couple of
- * aimed edits in between is neither's. Each fires at most once per job, so a job is answered at most
- * twice however it closes, and the close after a note is always final.
+ * The first close of a job with `REVIEW_MIN_WRITES` or more landed writes is answered once with the
+ * review nudge. Zero writes is the delivery nudge's ground and anything in between is neither's;
+ * each fires at most once per job, and the close after a note is final.
  */
 describe('the review beat', () => {
   const BUILD_TOOLS = [
@@ -1788,8 +1747,7 @@ describe('the review beat', () => {
     { name: 'paint_terrain', description: 'stand-in', parameters: {} },
   ];
   const writeExecutor = () => makeExecutor({ writeNames: new Set(['paint_terrain']) });
-  /** The write batches below would otherwise spend a real construction beat between every landed
-   *  write; what is under test here is the close, not the pace. */
+  /** Skips the construction beat between the batches' writes. */
   const instantSleep: NonNullable<LoopDeps['sleep']> = () => Promise.resolve();
 
   function systemNotes(log: SessionLog) {
@@ -1931,10 +1889,9 @@ describe('the review beat', () => {
     });
   });
 
-  /** A review pass needs room: a look, the fixes (whose calls never run on the final turn), a
-   *  refusal answered, and a close that can still settle done. Inside that window the beat would
-   *  only convert a done into a capped re-summary, so the close stands. The two scripts below close
-   *  on their second turn, so `2 + REVIEW_MIN_TURNS_LEFT` turns is the least cap the beat fits under. */
+  /** With fewer than `REVIEW_MIN_TURNS_LEFT` turns left the review would only turn a done into a
+   *  capped re-summary. Both scripts close on their second turn, so `2 + REVIEW_MIN_TURNS_LEFT` is
+   *  the least cap the beat fits under. */
   it('leaves the cap window alone: a close with too few turns left settles instead of spending them', async () => {
     const log = createLog(() => 0);
     seedOrder(log, 'build a hamlet');

@@ -24,10 +24,9 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// A synthetic camera of its own, 680 x 300 ground pixels a frame: the evidence reads a tile of any
-// size, and the scenes' landmark ties (a deck narrower than its footprint, paving mostly in the
-// grass's colour) were laid out for this one. Under the calibration's tile they resolve half a cell
-// to two cells apart with the scan's step, so these tests pin the reading, not the camera.
+// A synthetic camera of 680 x 300 ground pixels a frame. The scenes' landmark ties (a deck narrower
+// than its footprint, paving mostly in the grass's colour) are laid out for this tile; under the
+// calibration's tile they resolve differently, so these tests pin the reading, not the camera.
 const { width: W, height: H } = { width: 680, height: 300 };
 
 interface Run {
@@ -37,8 +36,7 @@ interface Run {
 }
 
 /** Scans `scene` row by row; `keep` drops frame positions, as a partial scan would. With `jitter`
- *  the frames fall at every sub-pixel phase, as a real camera's do, so the evidence resolves where an
- *  edge lies within a pixel. */
+ *  frames fall at every sub-pixel phase, as a real camera's do, so an edge resolves within a pixel. */
 function scan(
   scene: Scene, keep: (p: FramePosition, all: readonly FramePosition[]) => boolean = () => true, blur?: number, jitter = false,
   recolour?: (rgb: readonly number[]) => number[],
@@ -450,8 +448,8 @@ describe('the grass edge offset', () => {
 });
 
 describe('a shaded beach', () => {
-  // A beach slope facing away from the light reads dark; a shore model fooled by it calls every
-  // cell it decides sea, and the beach still stands where it lies deeper than the drawn beach reaches.
+  // A beach slope facing away from the light reads dark. With a shore model that calls every cell
+  // sea, the beach still stands where it lies deeper than the beach reach.
   const allSea: ShoreModel = { features: SHORE_MODEL.features, predict: () => 0 };
   const beach: CellRect = { x: 38, y: 76, w: 32, h: 8 };
   const run = scan(islandScene({ sand: [beach] }));
@@ -523,9 +521,9 @@ describe('water the open sea does not reach', () => {
 });
 
 describe('ground under a place-bound tint', () => {
-  // Some places light grass and sea alike into a colour in the sea's hue band. The north of the
-  // island is tinted, its grass, beach-side sea and open sea alike, and so is a stretch of sea off
-  // the south coast: one colour, read as grass inside the beach and as sea outside it.
+  // Some places light grass and sea alike into a colour in the sea's hue band. The island's north
+  // (grass and sea) and a stretch of sea off the south coast share one tint, read as grass inside
+  // the beach and as sea outside it.
   const north: CellRect = { x: 0, y: 0, w: 112, h: 46 };
   const shallows: CellRect = { x: 30, y: 84, w: 50, h: 8 };
   const scene = islandScene({ tinted: [north, shallows] });
@@ -591,7 +589,6 @@ describe('a planet drawn in other colours', () => {
 
 describe('a partial scan', () => {
   it('still makes a planet and reports the cells no frame saw', () => {
-    // Drop the south-east corner: the last two rows of frames in the last column.
     const run = scan(islandScene(), (p, all) => {
       const maxX = Math.max(...all.map((q) => q.x));
       const maxY = Math.max(...all.map((q) => q.y));

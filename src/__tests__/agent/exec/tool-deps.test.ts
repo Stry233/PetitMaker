@@ -1,8 +1,6 @@
 /**
- * The tool dependencies the runner gets per job over the live editor. They are all optional but the
- * first three (a headless test wires none of them), so dropping one type-checks and costs the agent a
- * capability at run time. The expected set is pinned by name here: a future drop fails this test
- * rather than a user's job.
+ * The tool dependencies the runner gets per job over the live editor. All but the first three are
+ * optional, so dropping one still type-checks; the expected set is pinned by name instead.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 
@@ -39,8 +37,6 @@ afterEach(() => {
 });
 
 describe('the tool dependencies built per job', () => {
-  /** Every member the panel is expected to wire. A name leaving this list is a capability the agent
-   *  loses, so the list is the test. */
   const EXPECTED = [
     'editAnnotations', 'getState', 'getExecutor', 'getRegion', 'getSelectedBlock', 'undoFloor',
     'onFlash', 'getProvenanceSource', 'requestExport', 'catalogName',
@@ -52,8 +48,7 @@ describe('the tool dependencies built per job', () => {
     for (const key of EXPECTED) {
       expect(typeof (deps as unknown as Record<string, unknown>)[key], key).toBe('function');
     }
-    // The set, not just its members: an extra one is a mirror of state the loop already keeps (the
-    // plan is log events), so it is worth failing on too.
+    // An extra member would mirror state the loop already keeps (the plan is log events).
     expect(Object.keys(deps).sort()).toEqual([...EXPECTED].sort());
   });
 
@@ -65,9 +60,7 @@ describe('the tool dependencies built per job', () => {
     expect(deps.getRegion()).toEqual([{ x: 3, y: 4 }]);
   });
 
-  /** The snapshotters are the pair of dependencies that are conditional: a model that cannot read
-   *  an image must not be sent one, and `view_map` degrades to the token grid instead. They travel
-   *  together — the region member is the look-closer half of the same capability. */
+  /** Without them `view_map` degrades to the token grid. */
   it('wires both snapshotters only for a model that can read an image', () => {
     installMap();
     expect(depsFor(false).snapshot).toBeUndefined();
@@ -76,11 +69,7 @@ describe('the tool dependencies built per job', () => {
     expect(typeof depsFor(true).snapshotRegion).toBe('function');
   });
 
-  /**
-   * The export disclosure has to name what a human approved. The fact is read off the log's own gate
-   * pair for this call, and `allow-always` is deliberately not one of them: it is a standing session
-   * permission rather than a press about this edit.
-   */
+  /** `allow-always` is a standing session permission, not a human approving this edit. */
   it('reports the approval the log records for this call, and reads allow-always as a plain AI write', () => {
     installMap();
     const log = useAgentSession.getState().log;
@@ -101,8 +90,7 @@ describe('the tool dependencies built per job', () => {
     expect(src().toolCallId).toBeUndefined();
   });
 
-  /** And the call's id reaches it, which is the only route it has: the stroke runner is handed the
-   *  dependencies and never the call. */
+  /** The stroke runner is handed the dependencies and never the call, so this is the id's only route. */
   it('hands the executing call s own id to the provenance source', async () => {
     installMap();
     const seen: (string | undefined)[] = [];
@@ -112,33 +100,21 @@ describe('the tool dependencies built per job', () => {
     expect(seen).toEqual(['call-42']);
   });
 
-  /**
-   * The author is the connection the job launched with, frozen here rather than read per call.
-   *
-   * This function runs once per job (the runner asks at launch), so the pair it captures is the one
-   * the requests actually go out on; a model armed mid-run is never filed as the author of edits the
-   * previous model made.
-   */
+  /** The runner builds the set once at launch, so the captured pair is the one requests go out on. */
   it('files every edit of a job under the model that was armed when it launched', () => {
     installMap();
     useAgentConnection.setState({ provider: 'claude', model: { ...emptyModelMap(), claude: 'model-a' } });
     const deps = depsFor(false);
 
-    // The user arms another model while the job this dependency set belongs to is still running.
+    // Another model is armed while the job is still running.
     useAgentConnection.setState({ model: { ...emptyModelMap(), claude: 'model-b' } });
 
     expect(deps.getProvenanceSource!('call-1')).toMatchObject({ provider: 'claude', model: 'model-a' });
-    // And the next job, which asks for its own set, is filed under the model it will really use.
     expect(depsFor(false).getProvenanceSource!('call-2'))
       .toMatchObject({ provider: 'claude', model: 'model-b' });
   });
 
-  /**
-   * The map and the painted region are frozen at launch too, by the same argument and in the same
-   * call: a job's scope is what the user had painted when they gave the order, so a repaint mid-run
-   * does not silently move the boundary the region lock is enforcing, and a map installed mid-run
-   * does not become the thing a running job edits.
-   */
+  /** A repaint mid-run must not move the boundary the region lock enforces. */
   it('freezes the map and the painted region per job, so neither moves under a running one', () => {
     const first = installMap();
     const deps = depsFor(false);
@@ -148,7 +124,6 @@ describe('the tool dependencies built per job', () => {
 
     expect(deps.getState()).toBe(first);
     expect(deps.getRegion()).toEqual([{ x: 3, y: 4 }]);
-    // The next job reads the store as it now stands.
     const next = depsFor(false);
     expect(next.getState()).toBe(second);
     expect(next.getRegion()).toEqual([{ x: 3, y: 4 }]);

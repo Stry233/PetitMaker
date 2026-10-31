@@ -12,7 +12,7 @@ import type { CSSProperties } from 'react';
 import { useEditorStore } from '../../../../state/store';
 import { autosaveWorthy } from '../../../../io/storage/facts';
 import { ImportDropZone, IMPORT_CARD_WIDTH } from './ImportDropZone';
-import { windowFrame } from '../../../primitives/Window';
+import { windowColumn, windowFrame } from '../../../primitives/Window';
 import { ImportConfirm } from './ImportConfirm';
 import { useImportFlow, type ImportRouting } from './use-import-flow';
 import { ModalShell } from '../../../primitives/ModalShell';
@@ -27,7 +27,8 @@ const inSession = () => useEditorStore.getState().planetSession !== null;
 const ROUTING: ImportRouting = { map: 'read', planet: 'hand', video: 'hand', unknown: 'read' };
 
 // A content-box card: the padding adds to `IMPORT_CARD_WIDTH` exactly as on the Import window's card.
-const cardStyle: CSSProperties = { ...windowFrame, width: IMPORT_CARD_WIDTH, position: 'relative', overflow: 'hidden' };
+// The width goes to `ModalShell`, which replaces it with the upright preset's.
+const cardStyle: CSSProperties = { ...windowFrame, position: 'relative', overflow: 'hidden' };
 
 export function DropImportOverlay() {
   // Import planet's window takes its own drops, a video's among them.
@@ -106,15 +107,16 @@ export function DropImportOverlay() {
       onClose={flow.dismiss}
       cardStyle={cardStyle}
       size="panel"
+      width={IMPORT_CARD_WIDTH}
       // Click-through during hover and decoding: the window listeners still own the drag.
       backdropStyle={{ pointerEvents: asking ? 'auto' : 'none' }}
       lockOverlay={asking}
       passive={!asking}
    >
-      <div ref={body.ref} style={{ position: 'relative', ...(body.gliding ? { overflow: 'hidden' } : null) }}>
+      <div ref={body.ref} style={{ ...windowColumn, position: 'relative', ...(body.gliding ? { overflow: 'hidden' } : null) }}>
         <AnimatePresence mode="popLayout" initial={false}>
           {flow.pending ? (
-            <WindowStep key="confirm" view="confirm">
+            <WindowStep key="confirm" view="confirm" style={windowColumn}>
               <ImportConfirm
                 preview={flow.pending.inspection.preview}
                 name={flow.pending.name}

@@ -1,6 +1,6 @@
 /**
  * The visibility view: the 3D mesher renders hidden layers with the same peel
- * semantics as 2D by meshing a clamped copy of the state — a truncated stack
+ * semantics as 2D by meshing a clamped copy of the state: a truncated stack
  * becomes a full block at its visible tier, a Γ patch drops to its base, a
  * fully hidden cell vanishes. With nothing hidden the live state passes
  * through untouched (identity, zero cost).

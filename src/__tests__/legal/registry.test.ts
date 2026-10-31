@@ -120,14 +120,7 @@ const REQUIRED_HEADINGS: Record<DocId, { en: string[]; zh: string[] }> = {
   changelog: { en: ['Changelog'], zh: ['更新日志'] },
 };
 
-// Doc registry and required headings. `src/legal/content/*` carry the authored
-// prose; this test locks in the structural contract they must preserve:
-// every DocId resolves a source, each language keeps its required headings,
-// and `docBody` substitutes tokens without ever leaking an unresolved `{...}`
-// placeholder.
-
-// '{providers}' and '{team}' are both wired, and the deployment facts are written directly into the
-// privacy body, so no token is deferred: every doc/lang pair must resolve fully.
+// Every doc and language resolves fully: no `{...}` token is left for a later substitution.
 const DEFERRED_TOKENS: string[] = [];
 
 function unresolvedTokens(body: string): string[] {
@@ -172,11 +165,9 @@ describe('DOCS registry', () => {
     }
   });
 
-  // Systemic guard: a link the sanitizer strips renders as dead
-  // plain text (e.g. a dot-relative `./SECURITY.md`). No doc body, in any
-  // language, may carry one. Mirrors the parser's own link pattern.
+  // A link the sanitizer strips renders as dead plain text (e.g. a dot-relative `./SECURITY.md`).
   it('no doc body (any language) carries a link the parser strips', () => {
-    // Same link grammar the inline tokenizer uses (one level of balanced parens).
+    // The inline tokenizer's link grammar (one level of balanced parens).
     const LINK_RE = /\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g;
     const offenders: string[] = [];
     for (const id of DOC_IDS) {
@@ -221,11 +212,8 @@ describe('DOCS registry', () => {
     const enBody = docBody('terms', 'en', LEGAL);
     const zhBody = docBody('terms', 'zh', LEGAL);
 
-    // Match each section marker at its heading line, not as a bare substring:
-    // a section name legitimately recurs in prose (e.g. a Definitions entry or
-    // a cross-reference), and in zh a heading slug is the section name verbatim,
-    // so a bare `indexOf` would find an out-of-order prose occurrence. "Found
-    // in order" means the twenty-one section headings appear in order.
+    // Matched at heading lines only: a section name recurs in prose (a Definitions entry, a
+    // cross-reference), so a bare `indexOf` could find an out-of-order occurrence.
     const headingIdx = (body: string, token: string): number => {
       let offset = 0;
       for (const line of body.split('\n')) {
@@ -302,13 +290,8 @@ describe('docBody — token substitution', () => {
     }
   });
 
-  // The effective-date/version stamp is emitted once, programmatically — the
-  // static page's `updatedLineHtml` and the in-app footer (`legal.updated`) —
-  // Not authored into the doc body (that would duplicate it). So the raw
-  // `{effectiveDate}`/`{policyVersion}` tokens must not survive in any body, and
-  // no unsubstituted token may leak either. The programmatic surface carrying
-  // the date is proven by build-pages.test.ts ("shows effective date + policy
-  // version for privacy/terms").
+  // The static page's `updatedLineHtml` and the in-app footer (`legal.updated`) emit the date stamp,
+  // so a body that authored it would show it twice (build-pages.test.ts covers the emitted stamp).
   it('does not author {effectiveDate}/{policyVersion} into the body (emitted programmatically instead)', () => {
     for (const id of ['privacy', 'terms'] as DocId[]) {
       for (const lang of ['en', 'zh'] as const) {
@@ -320,7 +303,6 @@ describe('docBody — token substitution', () => {
   });
 
   it('substitutes {operator} from the operator name in each language, and {origin}', () => {
-    // The reader sees the plain team label, with no "pending" qualifier on it.
     const { en: enName, zh: zhName } = LEGAL.operatorName;
 
     const en = docBody('about', 'en', LEGAL);
@@ -344,7 +326,6 @@ describe('docBody — token substitution', () => {
     for (const lang of ['en', 'zh'] as const) {
       const about = docBody('about', lang, LEGAL);
       expect(about, `about.${lang} left {team} unresolved`).not.toContain('{team}');
-      // the roster renders as a table carrying every member's pseudonym
       for (const member of LEGAL.team) {
         expect(about, `about.${lang} missing team member ${member.name}`).toContain(member.name);
       }
@@ -362,8 +343,6 @@ describe('docBody — token substitution', () => {
       for (const lang of ['en', 'zh'] as const) {
         const body = docBody(id, lang, LEGAL);
         const unresolved = unresolvedTokens(body).filter((t) => !DEFERRED_TOKENS.includes(t));
-        // No token is deferred, so every doc/lang pair must be fully resolved
-        // (providers/team included).
         expect(unresolved, `${id}/${lang} left unresolved tokens`).toEqual([]);
       }
     }
@@ -379,9 +358,8 @@ describe('docBody — token substitution', () => {
   });
 });
 
-// Render-time zh slug localization. A zh reader must stay in
-// Chinese across cross-doc references: an internal link to a slug that has a zh
-// page routes to /zh/<slug>; en-only-doc links and en rendering stay untouched.
+// A zh reader stays in Chinese across cross-doc links: a slug with a zh page routes to /zh/<slug>;
+// links to en-only docs and en rendering stay untouched.
 describe('zh slug localization (docNodes / localizeZhSlug)', () => {
   function linkHrefs(nodes: MdNode[]): string[] {
     const out: string[] = [];
@@ -416,9 +394,7 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
     expect(localizeZhSlug('/terms#changes')).toBe('/zh/terms#changes');
     expect(localizeZhSlug('/asset-licenses')).toBe('/zh/asset-licenses');
     expect(localizeZhSlug('/changelog')).toBe('/zh/changelog');
-    // en-only docs have no zh page → untouched
     expect(localizeZhSlug('/license')).toBe('/license');
-    // pure fragment / already-localized left alone
     expect(localizeZhSlug('#section')).toBe('#section');
     expect(localizeZhSlug('/zh/privacy')).toBe('/zh/privacy');
   });
@@ -428,14 +404,12 @@ describe('zh slug localization (docNodes / localizeZhSlug)', () => {
       const nodes = docNodes(id, 'zh', LEGAL, 'T');
       const hrefs = linkHrefs(nodes);
       const rootRelative = hrefs.filter((h) => h.startsWith('/') && !h.startsWith('/zh/'));
-      // Any remaining root-relative link must be to an en-only doc (no zh page).
       for (const h of rootRelative) {
         expect(
           ['/license', '/third-party-notices'].some((p) => h.startsWith(p)),
           `${id}.zh link ${h} should have been localized to /zh/`,
         ).toBe(true);
       }
-      // and there is at least one localized cross-doc link
       expect(hrefs.some((h) => h.startsWith('/zh/')), `${id}.zh should carry a /zh/ cross-doc link`).toBe(true);
     }
   });
@@ -605,7 +579,6 @@ describe('terms — required substance tokens', () => {
   });
 
   it('names no specific AI-provider brand (that disclosure lives in the privacy policy)', () => {
-    // BYOK stays generic here; provider brands only in the privacy registry.
     for (const lang of ['en', 'zh'] as const) {
       const body = docBody('terms', lang, LEGAL);
       for (const id of PROVIDER_IDS) {
@@ -667,11 +640,8 @@ describe('about — required substance tokens', () => {
   });
 });
 
-// The Contact document's binding substance:
-// a purpose-routed set of channels — general & bugs (GitHub
-// issues + email), security ([security] → SECURITY.md), IP/takedown ([IP]),
-// community (the four Bilibili spaces) — plus the "aim to respond within 14
-// days" expectation. Parity across en+zh.
+// Contact routes by purpose (GitHub and email, [SECURITY], [IP], the Bilibili spaces) and states the
+// 14-day response aim, in both languages.
 describe('contact — required substance tokens', () => {
   const CONTACT_TOKENS_EN = [
     '[SECURITY]',
@@ -771,10 +741,8 @@ describe('provider disclosure lists', () => {
   });
 });
 
-// The authored docs use GitHub-style in-doc anchors ([Share Images](#share-images)), so both
-// emitters must emit a heading `id` — without one, every such link is dead (clicking it does
-// nothing). This probes all doc-id × language pairs generically, so it also catches a future doc
-// that adds an internal link with no matching heading.
+// The docs use GitHub-style in-doc anchors ([Share Images](#share-images)), which are dead unless the
+// emitter gives the heading an `id`.
 function internalFragmentHrefs(html: string): string[] {
   const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
   return Array.from(doc.querySelectorAll('a[href^="#"]')).map((a) => (a.getAttribute('href') ?? '').slice(1));
@@ -819,21 +787,13 @@ describe('internal anchor links resolve to a real heading id (every doc x langua
   }
 });
 
-// Every web link must be clickable and every email address must carry a mailto: link wherever it
-// appears in a rendered doc. Scans the plain-text content of every doc x language for a bare
-// `http(s)://` URL or a bare email address — one that survives outside any `<a>` element, and so
-// renders as dead, unclickable text. A URL or email that is itself a link's visible label (the
-// Bilibili "space.bilibili.com/…" links in contact.*.md, or an `{email}`/`{securityEmail}` token,
-// substituted as `[addr](mailto:addr)` by registry.ts `tokensFor`) is not bare: its whole subtree
-// is excluded by skipping `<a>` nodes entirely (their label and href).
+// A URL or email address outside any `<a>` renders as dead text. One that is a link's own label (a
+// Bilibili space link, an `{email}` token substituted as `[addr](mailto:addr)`) is skipped with its `<a>`.
 describe('link hygiene: no bare URL or bare email outside a link (every doc x language)', () => {
   const BARE_URL_RE = /https?:\/\/[^\s<>]+/g;
-  // A conservative bare-email matcher (local@domain.tld) — good enough to
-  // catch a real address left unlinked without false-positiving on version
-  // strings or file paths, which never contain '@'.
+  // local@domain.tld; version strings and file paths never contain '@'.
   const BARE_EMAIL_RE = /[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 
-  // Concatenates every text node's content except text inside an <a>.
   function nonLinkText(html: string): string {
     const doc = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
     const parts: string[] = [];
@@ -849,18 +809,9 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
     return parts.join('\n');
   }
 
-  // Two exceptions, neither of them prose this project authors:
-  //   - 'license': License is the Apache-2.0 text reproduced byte-exact
-  //     (pinned by license-files.test.ts — 201 lines / 11,357 bytes), so its two
-  //     `http://www.apache.org/licenses/...` occurrences are the official
-  //     license text and markdown link syntax would break the byte-exact pin.
-  //   - 'third-party': the npm-dependency audit table (one big markdown
-  //     `<table>`, ~100 rows) is machine-generated from package-lock.json +
-  //     each package's own package.json metadata by
-  //     scripts/license-audit-core.mts (`npm run legal:licenses`), so only the
-  //     `<table>` is excised. The hand-authored Fonts section below it (the
-  //     part scripts/license-audit-core.mts hand-codes as `FONT_ENTRIES`) is
-  //     linkified and still scanned.
+  // Two exceptions this project does not author: the license is the Apache-2.0 text byte-exact
+  // (license-files.test.ts), and the third-party dependency table is generated by
+  // scripts/license-audit-core.mts; the hand-written Fonts section below that table is still scanned.
   function scannableText(id: DocId, lang: 'en' | 'zh'): string {
     const html = renderHtml(parseLegalMarkdown(docBody(id, lang, LEGAL)));
     if (id === 'license') return '';
@@ -883,11 +834,8 @@ describe('link hygiene: no bare URL or bare email outside a link (every doc x la
   }
 });
 
-// IP-elements sync guard. The contact.en.md document
-// mirrors the Terms' "Intellectual-Property Complaints" section's four required
-// elements (identify material, right you hold, contact info, good-faith belief).
-// This test ensures both docs carry the same element tokens so a human edit
-// cannot accidentally sync-break them (e.g. shortening one without the other).
+// Contact restates the four required elements of the Terms' IP complaints section; an edit to one
+// must carry to the other.
 describe('IP-elements sync guard: contact mirrors terms required elements', () => {
   const IP_ELEMENTS_EN = [
       "location",

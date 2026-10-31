@@ -7,8 +7,7 @@ import { languageCue } from '../../../agent/core/language-cue';
 /** The cue every Latin-script user message ends with. */
 const CUE = '\n(language) Think and reply in the language of this message.';
 
-/** Mirrors the template `deriveMessages` builds for an `order`, so budget-math tests can predict
- *  exact message text without hardcoding the wire format twice. */
+/** Mirrors the text `deriveMessages` builds for an `order`. */
 function orderText(mapContext: string, text: string): string {
   const cue = languageCue(text);
   return `<map_context>${quotePromptData(mapContext)}</map_context>\n${text}${cue ? `\n${cue}` : ''}`;
@@ -245,8 +244,7 @@ describe('deriveMessages', () => {
     const COZY = 'COZY VILLAGE PLAYBOOK\n1. site the well\n2. ring it with houses\n3. plant the edges';
     const ZEN = 'ZEN GARDEN PLAYBOOK\n1. rake the gravel\n2. set three stones';
 
-    /** One `load_skill` exchange: the assistant calls it, the result carries the body plus the
-     *  `detail.skill` identity the result records. Returns the seq of the assistant that opened it. */
+    /** Appends one `load_skill` call and its result with `detail.skill`; returns the call's seq. */
     function loadSkill(log: ReturnType<typeof createLog>, callId: string, skill: { name: string; kind: 'method' | 'style'; title: string }, body: string): number {
       const a = append(log, {
         kind: 'assistant',
@@ -280,9 +278,8 @@ describe('deriveMessages', () => {
 
       expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
       expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
-      // The steer that opened the retained group still speaks: its own `steer` event necessarily
-      // sits before the cut (a steer is logged when typed, delivered later), so reading the text
-      // from the retained window alone would drop the user's words at exactly this boundary.
+      // The steer's own event sits before the cut (logged when typed, delivered later), yet its
+      // words still open the retained group.
       expect(out[2]).toEqual({ role: 'user', text: `make it smaller${CUE}` });
       expect(JSON.stringify(out).split('ring it with houses')).toHaveLength(2);
     });
@@ -396,8 +393,7 @@ describe('deriveMessages', () => {
 
   it('drops the oldest whole exchanges atomically to fit the budget, always starting the window on a user message, and never drops the newest exchange even over budget', () => {
     const log = createLog(() => 0);
-    // Group A is a multi-message exchange (user + assistant + tool result): dropping it must be
-    // all-or-nothing, never leaving its assistant or tool message behind without its opener.
+    // Group A is user + assistant + tool result, so dropping it must take all three.
     append(log, { kind: 'order', text: 'one', mapContext: '' });
     append(log, {
       kind: 'assistant',
@@ -419,8 +415,7 @@ describe('deriveMessages', () => {
     const fitAll = deriveMessages(log, { budgetTokens: 10_000, estimate: (s) => s.length });
     expect(fitAll).toEqual([...groupA, groupB, groupC]);
 
-    // A budget that fits exactly B+C, but not A: A must vanish whole, with none of its three
-    // messages leaking into the surviving window (no partial "user only, tool dropped" shape).
+    // A budget that fits exactly B and C drops A whole.
     const estimate = (s: string) => s.length;
     const costOf = (m: ProviderMessage): number =>
       estimate(m.role === 'user' ? m.text : m.role === 'assistant' ? m.text : m.results.map((r) => r.content).join(''));
@@ -429,8 +424,7 @@ describe('deriveMessages', () => {
     expect(droppedOldest).toEqual([groupB, groupC]);
     expect(droppedOldest[0]?.role).toBe('user');
 
-    // A budget too small even for the single newest exchange alone: it still ships whole, over
-    // budget, rather than being dropped down to nothing.
+    // The newest exchange ships whole even when it alone exceeds the budget.
     const tooSmallForC = deriveMessages(log, { budgetTokens: 1, estimate });
     expect(tooSmallForC).toEqual([groupC]);
   });
@@ -446,8 +440,7 @@ describe('deriveMessages', () => {
     append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 'paint a mountain' });
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'make it smaller' });
 
-    // A second exchange where the gated call did get a real recorded toolResult: the words
-    // message must still follow immediately, now after that real result rather than a synthesized one.
+    // In the second exchange the gated call has a real result, and the words message follows that.
     append(log, { kind: 'order', text: 'go again', mapContext: '' });
     append(log, {
       kind: 'assistant',
@@ -460,9 +453,8 @@ describe('deriveMessages', () => {
 
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
-    // No toolResult was ever recorded for the first gated call, but it carries a 'words' answer,
-    // so it gets the synthesized skip result rather than the generic orphan message (which is for
-    // calls with no gate pair at all); the trailing words-message still follows it.
+    // The first gated call has no result but a 'words' answer, so it gets the synthesized skip
+    // result rather than the generic orphan message.
     expect(out[2]).toEqual({
       role: 'tool',
       results: [{
@@ -474,8 +466,6 @@ describe('deriveMessages', () => {
     });
     expect(out[3]).toEqual({ role: 'user', text: '(about your request) make it smaller' });
 
-    // The second call's tool message carries its real recorded result, and the words-message
-    // still lands immediately after it.
     expect(out[6]).toEqual({
       role: 'tool',
       results: [{ callId: 'c2', name: 'paint_terrain', content: 'painted a mountain', isError: false }],
@@ -519,8 +509,7 @@ describe('deriveMessages', () => {
     });
     append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 'paint a mountain' });
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'skip' });
-    // A real result landed for this call anyway (a resumed run that finished it before the skip
-    // answer's own effect took hold): the recorded result must win, not the synthesized skip text.
+    // A resumed run can finish the call before the skip answer takes hold.
     append(log, { kind: 'toolResult', callId: 'c1', name: 'paint_terrain', content: 'painted anyway', isError: false });
 
     const out = deriveMessages(log, { budgetTokens: 10_000 });
@@ -541,8 +530,7 @@ describe('deriveMessages', () => {
     });
     append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'c1', summary: 'paint a mountain' });
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'allow-always' });
-    // Allowed (even always-allowed) should have run and produced a real result; one missing here
-    // is an anomaly, not a denial, so it must read as the generic orphan rather than the skip text.
+    // An allowed call missing its result is an anomaly, not a denial.
 
     const out = deriveMessages(log, { budgetTokens: 10_000 });
 
@@ -584,8 +572,7 @@ describe('deriveMessages', () => {
       { role: 'user', text: '(system) 5 turns remain.' },
     ]);
 
-    // Even a budget too small for the order itself still ships the note: it rides outside the
-    // budget-trimmed window entirely, never counted against it and never dropped by it.
+    // The note is never counted against the budget, so even a budget too small for the order keeps it.
     const tight = deriveMessages(log, { budgetTokens: 1, estimate: (s) => s.length, appendSystemNote: '(system) wrap up' });
     expect(tight).toEqual([
       { role: 'user', text: orderText('', 'go') },
@@ -649,7 +636,6 @@ describe('deriveMessages', () => {
     });
     append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', callId: 'call-0-0', summary: 'paint' });
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'skip' });
-    // No toolResult for the first occurrence: it was skipped, never executed.
 
     append(log, { kind: 'order', text: 'again', mapContext: '' });
     append(log, {
@@ -688,7 +674,7 @@ describe('rawIsAllFrom', () => {
     expect(rawIsAllFrom(log, 'model-b')).toBe(false);
 
     append(log, { kind: 'assistant', stop: 'stop', parts: [], raw: ['b'], rawModel: 'model-b' });
-    // A model switch does not remove what is already logged, so neither model owns all of it now.
+    // After a model switch neither model owns all the raw.
     expect(rawIsAllFrom(log, 'model-a')).toBe(false);
     expect(rawIsAllFrom(log, 'model-b')).toBe(false);
   });

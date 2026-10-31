@@ -44,7 +44,7 @@ describe('Waterfall detection: a water row in a mountain block', () => {
   // Top-view at elev 2:
   // M M M M M M
   // M M M M M M
-  // M W W W W M  ← water should have south-flowing waterfall face
+  // M W W W W M  ← south-flowing waterfall face
   it('detects south-flowing waterfall after painting water row', () => {
     const state = makeState(10, 10);
     for (let y = 2; y <= 4; y++)

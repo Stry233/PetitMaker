@@ -1,17 +1,7 @@
-// The cascade stair, read on ground the test itself shapes.
-//
-// The claims are all about the band geometry, and the only proof that matters for it is a commit: a
-// band's caps (V-WTR-02) and its uniform landing (V-WTR-03) are claims about a finished map, so the
-// terraced fixture is committed through the live rules and the violation list has to be empty.
-//
-// The rest is what makes a stair a stair rather than a pool on a lip: it descends several steps, the
-// bands stand on one strip and join into one connected body so the whole of it reads as one figure, it
-// crosses more tiers than any single body the accent pass could cut, and its foot is a cell the
-// map's water story can carry on from.
-//
-// The ground is the input, not a seed. The pass is a pure function of the plan — nothing in it is
-// seeded — so the fixture varies what actually varies between maps: how deep a terrace runs before
-// it steps. A test that ran six seeds over one staircase would be running one case six times.
+// The cascade stair on ground the test shapes. Its caps (V-WTR-02) and uniform landings (V-WTR-03)
+// are checked by committing the plan through the live rules. It descends several steps, its bands
+// stand on one strip as one connected body, and its foot is water the map's story can carry on from.
+// The pass is a pure function of the plan, so the fixture varies terrace depth rather than a seed.
 import { describe, it, expect } from 'vitest';
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { flatIndex } from '../../../../../core/grid/rect';
@@ -26,21 +16,14 @@ const HEXIA = MAP_TEMPLATES['hexia']!;
 /** Terrace depths, in rows per tier: the shallowest a band and its landing fit in, the deepest a
  *  designed plate runs to, and the awkward ones between. */
 const STEPS = [4, 5, 6, 8, 10, 14];
-/** The floors `cascade-stair.ts` holds a band to: how deep its tread runs and how wide it may narrow to. */
+/** `cascade-stair.ts`'s floors: `BAND_DEPTH.min` and `STAIR_WIDTH.min`. */
 const BAND_DEPTH_MIN = 2;
 const WIDTH_MIN = 5;
 
 /**
- * A staircase map: the buildable land terraced from `peak` down to 0 along y, `step` rows per
- * tier, which is the shape the composition's plates make on a flank and the one a stair has to
- * descend.
- *
- * Three tiers rather than eight because V-MTN-03 auto-passes at and below layer 3: a synthetic
- * plateau at layer 4 running to the coast has no 3x3 support at its rim and would fail the rule on
- * ground the test drew rather than on anything the stair cut. Three tiers is also exactly `STEPS_MIN`
- * steps, so the fixture is the smallest map a stair may be cut on at all. The rows per tier are
- * the terrace depth: eight is what a designed plate runs to, and a stair that only worked on a flank
- * with no floor on it would never be cut on a real map.
+ * The buildable land terraced from `peak` down to 0 along y, `step` rows per tier, as composition
+ * plates make a flank. The default peak is three because V-MTN-03 auto-passes at and below layer 3,
+ * and a synthetic layer-4 plateau running to the coast would lack 3x3 support at its rim.
  */
 function staircase(
   template: MapTemplate, peak = 3, step = 8,
@@ -48,8 +31,7 @@ function staircase(
   const W = template.width, H = template.height;
   const grass = paintableMask(template);
   const t: TerrainPlan = { width: W, height: H, tier: new Int8Array(W * H), water: new Int8Array(W * H).fill(-1) };
-  // The staircase starts at the map's own northern shore, not at row 0: the template's top rows
-  // are sea, and a fixture that spent its high tiers there would offer a stair no land to stand on.
+  // The staircase starts at the northern shore, not row 0: the template's top rows are sea.
   let top = H;
   for (let i = 0; i < grass.length; i++) if (grass[i]) { top = Math.min(top, (i / W) | 0); }
   for (let y = 0; y < H; y++) {
@@ -70,8 +52,7 @@ function carve(step: number, richness = 1): {
   return { stairs, t, grass, flat };
 }
 
-/** How many 4-connected bodies the stair's own cells fall into on the plan it cut: one, or it is not
- *  one figure. */
+/** How many 4-connected bodies the stair's own cells fall into on the plan it cut. */
 function bodies(stair: CascadeStair, t: TerrainPlan): number {
   const own = new Set(stair.cells.map((c) => flatIndex(c.x, c.y, t.width)));
   const seen = new Set<number>();
@@ -101,10 +82,8 @@ describe('the cascade stair, on a staircase map', () => {
       const { stairs } = carve(step);
       expect(stairs.length, `step ${step}`).toBeGreaterThanOrEqual(1);
       for (const stair of stairs) {
-        // Two steps is the smallest stair, and the shallowest fixture is where the pass falls back to
-        // it: on 4 rows per tier this map's top terrace is two rows of land above its own shore, so
-        // the top band would pour backwards off the coast and is not cut. Every deeper terrace carries
-        // the three the pass asks for first.
+        // At 4 rows per tier the top terrace is two rows above its shore, so its band would pour off
+        // the coast and is not cut; deeper terraces carry three steps.
         expect(stair.bands.length, `step ${step}`).toBeGreaterThanOrEqual(step > 4 ? 3 : 2);
         expect(stair.width, `step ${step}`).toBeGreaterThanOrEqual(WIDTH_MIN);
       }
@@ -118,7 +97,6 @@ describe('the cascade stair, on a staircase map', () => {
           expect(band.landsAt, `step ${step} band at ${band.rect.x},${band.rect.y}`)
             .toBeLessThan(band.tier);
         }
-        // The bands are met top down, so the sequence of tiers is strictly falling.
         const tiers = stair.bands.map((b) => b.tier);
         for (let k = 1; k < tiers.length; k++) expect(tiers[k]!).toBeLessThan(tiers[k - 1]!);
         // One tier per band, plus the level the last one lands on.
@@ -130,9 +108,7 @@ describe('the cascade stair, on a staircase map', () => {
   it('stacks its bands on ONE strip, each inside the one above it', () => {
     for (const step of STEPS) {
       for (const stair of carve(step).stairs) {
-        // The strip keeps one axis and only ever narrows, so each band's span across the fall line
-        // stands inside its predecessor's. That is what makes the whole of it read as one figure while
-        // still letting a band give up the cells a street or a doorstep reaches into.
+        // The strip keeps one axis and only narrows, so each band's span stands inside the one above.
         const acrossX = stair.bands.every((b) => b.rect.w <= stair.width);
         const acrossY = stair.bands.every((b) => b.rect.h <= stair.width);
         const spans = stair.bands.map((b) => (acrossX ? { lo: b.rect.x, hi: b.rect.x + b.rect.w - 1 }
@@ -148,10 +124,7 @@ describe('the cascade stair, on a staircase map', () => {
   });
 
   it('lands as ONE connected body, bands and landings and crossings together', () => {
-    // A stair cut as two pools is not a stair. On the finished map the reading that says a cascade
-    // stands there is a body spanning three surface levels with a capped face, so bands that stand
-    // apart with a dry terrace between them are two ordinary ponds however neatly they line up on the
-    // strip. Measured without the crossing requirement: 0 of 16 stairs on `hexia` arrive as one body.
+    // Bands with a dry terrace between them would read as separate ponds, not one cascade.
     for (const step of STEPS) {
       const { stairs, t } = carve(step);
       for (const stair of stairs) {
@@ -196,8 +169,7 @@ describe('the cascade stair, on a staircase map', () => {
 
   it('a cascade stair never floods a cell the ground kept for something else', () => {
     const { t, grass, flat } = staircase(HEXIA);
-    // A reserved band across half the map, the shape a trunk street leaves: a strip that would
-    // cross it is refused and another flank is tried.
+    // A reserved band across half the map, as a trunk street leaves.
     for (let y = Math.floor(HEXIA.height / 2); y < Math.floor(HEXIA.height / 2) + 3; y++) {
       for (let x = 0; x < Math.floor(HEXIA.width / 2); x++) flat[flatIndex(x, y, HEXIA.width)] = 1;
     }
@@ -209,8 +181,7 @@ describe('the cascade stair, on a staircase map', () => {
   });
 
   it('puts back everything a refused attempt cut', () => {
-    // A one-tier map offers no stair at all, and the ground has to come back untouched: an
-    // attempt that floods and fails is the whole reason the pass is transactional.
+    // A one-tier map offers no stair.
     const { t, grass, flat } = staircase(HEXIA, 1);
     const before = [...t.water];
     const stairs = carveCascadeStairs({ t, grass, flat, richness: 1 });

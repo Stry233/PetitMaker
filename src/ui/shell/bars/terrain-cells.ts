@@ -1,12 +1,15 @@
 /*
- * The tool-row data for the mountain, water and road surfaces, in the shell's design coordinates.
+ * The tool-row data for the mountain, water and road surfaces, in the shell's design coordinates, and
+ * the depth of each tool bar standing on such a row.
  * Composite glyphs keep their source layers; line and curve handles are drawn, their source ellipses
  * being unpainted. Measured ink keeps unlike glyphs balanced (`apparentSize`, `opticalCentre`).
  */
 import type { BuildMode, BuildShape, BuildTool, ContentType } from '../../../state/editing/edit-mode';
 import type { Glyph, GlyphInk } from '../frame';
 import { INK, MASK_CUT, MASK_KEEP } from '../../design/tokens';
-import { SCALE } from '../units';
+import { QUAD, SCALE } from '../units';
+import { META_BY_ID, type CommandId } from '../../../state/keymap/registry';
+import type { I18nKey } from '../../../i18n/keys';
 
 import badgePlate from '../../../assets/shell/shelf-mountain/tools/roundrect-3.svg';
 
@@ -28,7 +31,6 @@ import curveArc from '../../../assets/shell/shelf-mountain/tools/curve/rect.svg'
 import rectShape from '../../../assets/shell/shelf-mountain/tools/rect-tool/roundrect-2.svg';
 import circleShape from '../../../assets/shell/shelf-mountain/tools/circle-tool/ellipse.svg';
 import { BRUSH_SIZE, isContentMode } from '../../../state/editing/edit-mode';
-import type { I18nKey } from '../../../i18n/keys';
 
 /** The mode's terrain surface, which shares the terrain tool row, or null for the modes whose bars
  *  are their own shape. */
@@ -99,13 +101,10 @@ export interface ArtPart {
 
 export interface ToolCell {
   id: string;
-  /** Accessible name, and the name shown under the cell while it is the active one. */
-  labelKey: I18nKey;
-  /** The keyboard command that does the same thing. Its live binding is the cell's badge, so a
-   *  rebind shows on the bar without the bar knowing what the keys are. */
-  commandId: string;
   /** The toolbar tool and figure this cell stands for: what the row shows active when it is posed. */
   shows: { tool: BuildTool; shape?: BuildShape };
+  /** The command that arms this cell; `commandLabel` names the cell after it. */
+  commandId: CommandId;
   glyph: Record<ContentType, Glyph>;
 }
 
@@ -170,7 +169,6 @@ export const BRUSH = {
   first: 3261,
   last: 3613,
   centreY: 1804,
-  readoutRight: 3197,
   ...BRUSH_SIZE,
 } as const;
 
@@ -180,14 +178,46 @@ export const BRUSH = {
  */
 export const ROAD_STYLE = { size: 151, pitch: 172, inset: 10, radius: 22 } as const;
 
+/** The air between a row stacked over the tool row and the row under it, in css px. */
+export const SWATCH_ROW_GAP = 20;
+/** The foot of the first row stacked over the tool row, above the window's foot, in css px. */
+export const SWATCH_ROW_BOTTOM = QUAD.bottom + CELL_BOX.h + SWATCH_ROW_GAP;
+/** A swatch tile's side as it lands on screen, in css px. */
+export const SWATCH_TILE = ROAD_STYLE.size * SCALE;
+/** A notes tag pill's height: a line of lettering, so it stands lower than a swatch tile. */
+export const TAG_H = SWATCH_TILE * 0.6;
+
+/**
+ * How far each tool bar's resting ink reaches above the window's foot on a wide window, in css px: the
+ * tool row to its shortcut badges' tops, a material strip over it, and the notes bar's colour strip and
+ * tag row. An active plate's growth and a removal badge stay inside the air a surface over the bar keeps.
+ */
+export const BAR_DEPTH = {
+  tools: QUAD.bottom + CELL_BOX.h + BADGE.rise * SCALE,
+  strip: SWATCH_ROW_BOTTOM + SWATCH_TILE,
+  notes: SWATCH_ROW_BOTTOM + SWATCH_TILE + SWATCH_ROW_GAP + TAG_H,
+} as const;
+
+/** Whether a surface's bar in the map editor stands a material strip over its tool row: road lays a
+ *  chosen paving, terrain lays its own. */
+const MATERIAL_STRIP: Readonly<Record<ContentType, boolean>> = { mountain: false, water: false, road: true };
+
+/** The tool bar `mode` stands up, or null for a mode whose bar is a shelf and for rest, which has none. */
+export function toolBarOf(mode: BuildMode): keyof typeof BAR_DEPTH | null {
+  const surface = terrainSurface(mode);
+  if (surface) return MATERIAL_STRIP[surface] ? 'strip' : 'tools';
+  return mode === 'annotate' ? 'notes' : null;
+}
+
 /** The one plate that is still a drawing: a rounded square, where the cell plates are pills the
  *  bar fills itself (so an active one takes the shared active yellow rather than the drawing's). */
 export const PLATE_ART = { badge: badgePlate };
 
 export const TOOL_CELLS: readonly ToolCell[] = [
   {
-    id: 'draw', labelKey: 'design.free_brush', commandId: 'tool.brush',
+    id: 'draw',
     shows: { tool: 'brush' },
+    commandId: 'tool.brush',
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 5, w: 103, h: 75, gx: 59.31, gy: 52.79, area: 4216.4 },
@@ -209,8 +239,9 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     },
   },
   {
-    id: 'erase', labelKey: 'design.eraser', commandId: 'tool.erase',
+    id: 'erase',
     shows: { tool: 'erase' },
+    commandId: 'tool.erase',
     glyph: {
       mountain: toGlyph(
         { x: 2, y: 7.88, w: 103, h: 72.13, gx: 58.38, gy: 54.27, area: 4062.4 },
@@ -232,16 +263,18 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     },
   },
   {
-    id: 'trim', labelKey: 'design.edge_cut', commandId: 'tool.trim',
+    id: 'trim',
     shows: { tool: 'trim' },
+    commandId: 'tool.trim',
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 54, h: 53, gx: 30.02, gy: 28.97, area: 1222.8 },
       [{ src: trimShape, x: 569, y: 1756, w: 57, h: 59 }],
     )),
   },
   {
-    id: 'line', labelKey: 'design.line_brush', commandId: 'tool.line',
+    id: 'line',
     shows: { tool: 'shape', shape: 'line' },
+    commandId: 'tool.line',
     glyph: shared(toGlyph(
       { x: 2.88, y: 3, w: 65.5, h: 43.13, gx: 36, gy: 24.25, area: 794.5 },
       [
@@ -252,8 +285,9 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     )),
   },
   {
-    id: 'curve', labelKey: 'design.curve_brush', commandId: 'tool.curve',
+    id: 'curve',
     shows: { tool: 'shape', shape: 'curve' },
+    commandId: 'tool.curve',
     glyph: shared(toGlyph(
       { x: 2.88, y: 2, w: 80.38, h: 42.75, gx: 43.13, gy: 24.13, area: 1202.2 },
       [
@@ -264,19 +298,38 @@ export const TOOL_CELLS: readonly ToolCell[] = [
     )),
   },
   {
-    id: 'rect', labelKey: 'design.rect_brush', commandId: 'tool.rect',
+    id: 'rect',
     shows: { tool: 'shape', shape: 'rect' },
+    commandId: 'tool.rect',
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 61, h: 61, gx: 32.5, gy: 32.5, area: 1806.4 },
       [{ src: rectShape, x: 1143, y: 1755, w: 64, h: 64 }],
     )),
   },
   {
-    id: 'circle', labelKey: 'design.circle_brush', commandId: 'tool.circle',
+    id: 'circle',
     shows: { tool: 'shape', shape: 'circle' },
+    commandId: 'tool.circle',
     glyph: shared(toGlyph(
       { x: 2, y: 2, w: 67, h: 67, gx: 35.05, gy: 35.05, area: 1861.5 },
       [{ src: circleShape, x: 1323, y: 1750, w: 70, h: 70 }],
     )),
   },
 ];
+
+/** The tool cell `id` names; a missing id is a programming error. */
+export function toolCell(id: string): ToolCell {
+  const cell = TOOL_CELLS.find((c) => c.id === id);
+  if (!cell) throw new Error(`No tool cell ${id}`);
+  return cell;
+}
+
+/** The command of the free figure, which has no cell: its option is drawn as a loose stroke. */
+export const FREE_SHAPE_COMMAND: CommandId = 'tool.free';
+
+/** What a cell or option arming `command` is called: the keymap registry's name for that command. */
+export function commandLabel(command: CommandId): I18nKey {
+  const meta = META_BY_ID.get(command);
+  if (!meta) throw new Error(`No command ${command}`);
+  return meta.labelKey;
+}

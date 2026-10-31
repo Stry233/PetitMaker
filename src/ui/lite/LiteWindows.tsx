@@ -1,6 +1,7 @@
-import { lazy, Suspense, useCallback, useRef } from 'react';
+import { lazy, Suspense, useCallback } from 'react';
 import { useT } from '../../i18n/context';
 import { RenderBoundary } from '../primitives/RenderBoundary';
+import { useLatch } from '../primitives/use-latch';
 import { ChunkNotice } from '../chrome/guards/FailureNotice';
 import { showToast } from '../../platform/channels/toast-bus';
 import { useEditorStore } from '../../state/store';
@@ -13,8 +14,7 @@ const ImportModal = lazy(() => import('../chrome/modals/import/ImportModal').the
 export function LiteWindows() {
   const t = useT();
   const importOpen = useEditorStore(s => s.modals.import);
-  const importSeen = useRef(false);
-  if (importOpen) importSeen.current = true;
+  const importMounted = useLatch(importOpen);
   // The edition has no arrival card, so a toast says what the carry left behind.
   const reportPlanetChange = useCallback((outcome: PlanetChange) => {
     const loss = outcome ? transferLoss(outcome) : null;
@@ -23,7 +23,7 @@ export function LiteWindows() {
   return <>
     <EditorWindows onPlanetChanged={reportPlanetChange} />
     {/* Preserve the import card through its closing animation. */}
-    {importSeen.current && <RenderBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
+    {importMounted && <RenderBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
       <Suspense fallback={null}><ImportModal /></Suspense>
     </RenderBoundary>}
     <LiteShareWindow />

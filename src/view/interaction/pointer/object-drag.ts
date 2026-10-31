@@ -7,36 +7,43 @@ import type { MacroCoord } from '../../../core/model/types';
 import { useEditorStore } from '../../../state/store';
 import { getActiveView } from '../../active-view';
 import { ObjectDragSession } from '../../../tools/pointer/objects';
-import { DRAG_THRESHOLD, travelledPast } from '../press/travel';
+import { travelledPast } from '../../../platform/input/gesture-timing';
 import { reportRefusal } from '../../../core/commands/refusal';
 import { setCursorDrag } from '../cursor-controller';
+import { showToast } from '../../../platform/channels/toast-bus';
+import { translate } from '../../../i18n/context';
 
 export class ObjectDrag {
   /** True once the armed press has travelled past the drag threshold. */
   dragging = false;
   private startX = 0;
   private startY = 0;
+  private threshold = 0;
   private readonly session = new ObjectDragSession({
     state: () => useEditorStore.getState().gridState,
     executor: () => useEditorStore.getState().commandExecutor,
     selection: () => useEditorStore.getState().selection,
-    setSelection: (blocks) => useEditorStore.getState().setSelection(blocks),
+    setSelection: (blocks) => useEditorStore.getState().setSelection(blocks, { record: false }),
     report: (refusal) => reportRefusal(useEditorStore.getState().eventBus, refusal),
+    notify: (text, tone) => showToast(text, tone),
+    t: translate,
   });
 
   /** The object the press armed, until the release or a cancel. */
   get objectId(): string | null { return this.session.objectId; }
 
-  /** Arms a move of the selection anchored on `anchorId`, pressed at (x, y); `fallback` is the
-   *  pressed cell, the anchor when no view can read the pointer. */
-  arm(anchorId: string, x: number, y: number, fallback: MacroCoord): void {
+  /** Arms a move of the selection anchored on `anchorId`, or with `copy` a copy of it, pressed at
+   *  (x, y); `fallback` is the pressed cell, the anchor when no view can read the pointer, and
+   *  `dragThreshold` the pressing pointer's (`gesture-timing.ts:timingFor`). */
+  arm(anchorId: string, x: number, y: number, fallback: MacroCoord, { dragThreshold, copy = false }: { dragThreshold: number; copy?: boolean }): void {
     const grab = getActiveView()?.projection.screenToPoint(x, y) ?? null;
-    if (!this.session.begin(anchorId, grab, fallback)) return;
+    if (!this.session.begin(anchorId, grab, fallback, copy)) return;
     // Reported like a pan or an orbit is: the drag is a first-class cursor state, so the press has
     // feedback whichever tool armed it.
     setCursorDrag('object');
     this.startX = x;
     this.startY = y;
+    this.threshold = dragThreshold;
   }
 
   /** Drops the armed drag without committing anything. */
@@ -48,7 +55,7 @@ export class ObjectDrag {
   /** Arm past the threshold, then preview the drop. Returns whether the drag owns this move. */
   move(x: number, y: number): boolean {
     if (this.session.objectId && !this.dragging
-      && travelledPast(x - this.startX, y - this.startY, DRAG_THRESHOLD)) {
+      && travelledPast(x - this.startX, y - this.startY, this.threshold)) {
       this.dragging = true;
     }
     const view = getActiveView();

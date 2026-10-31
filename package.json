@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "1.8.35",
+  "version": "2.0.673",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -61,7 +61,7 @@
     "opencc-js": "1.4.2",
     "pixi.js-legacy": "^7.4.3",
     "qrcode-generator": "^2.0.4",
-    "re2js": "2.8.6",
+    "re2js": "2.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tesseract.js": "6.0.1",
@@ -92,6 +92,6 @@
     "vitest": "^5.0.0"
   },
   "overrides": {
-    "qs": "^6.16.0"
+    "qs": "6.16.1"
   }
 }

@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The layer count and the assistant's panel where they reach the same pixels. The count grows
- * leftward from the right edge and the column rightward with the frame's zoom, so on a narrow window
- * at a high UI zoom the word, a rung higher (`z.column` over `z.panel`), can cover the panel's gear.
- *
- * The rule: the count keeps the part of itself clear of the column, and the part over the panel is
- * the panel's to answer. Nothing changes without a collision, which is every window at uiZoom 1.
- *
- * The boxes are the live app's at 1280x800 and uiZoom 1.8, carried into frame px (÷ `ZOOM` 1.25 x
- * uiZoom 1.8 = 2.25).
+ * On a narrow window at a high UI zoom the layer count, a rung higher (`z.column` over `z.panel`), can
+ * cover the assistant panel's gear. The count keeps only the part of itself clear of the column, and
+ * the part over the panel is the panel's to answer. The boxes are the live app's at 1280x800 and
+ * uiZoom 1.8, in frame px (divided by `ZOOM` 1.25 times uiZoom 1.8, so 2.25).
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -20,12 +15,11 @@ import { PANEL_RIGHT } from '../../../../ui/shell/panel-frame';
 
 afterEach(() => { cleanup(); useEditorStore.setState({ assistantOpen: false }); });
 
-/** css px at uiZoom 1.8 on the reference window, in the frame's own px. */
+/** CSS px per frame px at uiZoom 1.8. */
 const F = 2.25;
-/** The three boxes the live app answered with, in frame px. */
 const READOUT_18 = { left: 862 / F, width: 187 / F };
 const GEAR_18 = { left: 903 / F, width: 63 / F };
-/** The same count at uiZoom 1: the column is far to its left, so there is no collision to settle. */
+/** The same count at uiZoom 1, far right of the column. */
 const READOUT_10 = { left: 1048 / 1.25, width: 104 / 1.25 };
 
 describe('the press the layer count takes while the assistant panel stands under it', () => {
@@ -37,8 +31,7 @@ describe('the press the layer count takes while the assistant panel stands under
   it('is only the part clear of the column where the panel reaches it', () => {
     const lane = readoutPressLane(READOUT_18, PANEL_RIGHT);
     expect(lane).not.toBeNull();
-    // The panel's right edge is the mode row's, and the word crosses it: what is left is the word's
-    // own right end.
+    // What is left is the word's own right end, past the panel's right edge.
     expect(lane!).toBeCloseTo(READOUT_18.left + READOUT_18.width - PANEL_RIGHT, 1);
     expect(lane!).toBeGreaterThan(0);
     expect(lane!).toBeLessThan(READOUT_18.width);
@@ -46,11 +39,9 @@ describe('the press the layer count takes while the assistant panel stands under
 
   it('leaves the gear its own box, centre included', () => {
     const lane = readoutPressLane(READOUT_18, PANEL_RIGHT)!;
-    // Where the count still answers: its rightmost `lane` px.
     const pressFrom = READOUT_18.left + READOUT_18.width - lane;
     const gearCentre = GEAR_18.left + GEAR_18.width / 2;
     expect(gearCentre).toBeLessThan(pressFrom);
-    // The whole gear, not merely its middle.
     expect(GEAR_18.left + GEAR_18.width).toBeLessThanOrEqual(pressFrom);
   });
 

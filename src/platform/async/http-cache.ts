@@ -8,41 +8,79 @@ import { loadImage } from './load-image';
 
 /**
  * Fetch one file into the browser's HTTP cache without keeping it: the body is read to its end
- * (headers alone do not mean the body is cached) and dropped chunk by chunk. Resolves whether the
- * file arrived; never rejects.
+ * (headers alone do not mean the body is cached) and dropped chunk by chunk, `onBytes` hearing each
+ * chunk's decoded length. Resolves whether the file arrived; never rejects.
  */
-export async function fetchIntoCache(url: string, signal?: AbortSignal): Promise<boolean> {
+export async function fetchIntoCache(url: string, signal?: AbortSignal, onBytes?: (bytes: number) => void): Promise<boolean> {
   try {
     const response = await fetch(url, { cache: 'force-cache', signal });
     if (response.body) {
       const reader = response.body.getReader();
-      try { while (!(await reader.read()).done) { /* drain without retaining the bytes */ } }
-      finally { reader.releaseLock(); }
-    } else { await response.blob(); }
+      try {
+        for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) onBytes?.(chunk.value.byteLength);
+      } finally { reader.releaseLock(); }
+    } else { onBytes?.((await response.blob()).size); }
     return response.ok;
   } catch {
     return false;
   }
 }
 
+/** How long a page's first prefetch links may stay silent before the page reads prefetch as switched
+ *  off: Gecko with `network.prefetch-next` false (uBlock Origin's default) still reports the token as
+ *  supported but never requests the file nor fires load or error. */
+const PREFETCH_SILENCE_MS = 4000;
+/** Whether this page's prefetch links answer: true once any fired load or error, false once one stayed
+ *  silent past `PREFETCH_SILENCE_MS`, null until either. */
+let prefetchAnswers: boolean | null = null;
+/** The links still waiting for the page's first answer, each falling back to a fetch when told. */
+const unanswered = new Set<() => void>();
+
 /**
  * Fetch one file into the HTTP cache through `<link rel="prefetch">` where the browser supports it:
  * the browser downloads and stores the file without handing its bytes to the page, so a large file
- * leaves no trace in the page's memory. Elsewhere it falls back to `fetchIntoCache`. Resolves whether
- * the file arrived; never rejects.
+ * leaves no trace in the page's memory. Elsewhere, and on a page whose prefetch links never answer,
+ * it falls back to `fetchIntoCache`. Resolves whether the file arrived; never rejects, and always
+ * settles.
  */
 export function prefetchIntoCache(url: string): Promise<boolean> {
-  if (typeof document === 'undefined') return fetchIntoCache(url);
+  if (typeof document === 'undefined' || prefetchAnswers === false) return fetchIntoCache(url);
   const link = document.createElement('link');
   if (!link.relList?.supports?.('prefetch')) return fetchIntoCache(url);
   return new Promise((resolve) => {
-    const settle = (ok: boolean) => { link.remove(); resolve(ok); };
+    let settled = false;
+    const finish = (result: boolean | Promise<boolean>): void => {
+      if (settled) return;
+      settled = true;
+      unanswered.delete(fallBack);
+      link.remove();
+      resolve(result);
+    };
+    const answered = (ok: boolean) => (): void => {
+      prefetchAnswers = true;
+      unanswered.clear();
+      finish(ok);
+    };
+    const fallBack = (): void => finish(fetchIntoCache(url));
     link.rel = 'prefetch';
     link.href = url;
-    link.onload = () => settle(true);
-    link.onerror = () => settle(false);
+    link.onload = answered(true);
+    link.onerror = answered(false);
     document.head.appendChild(link);
+    if (prefetchAnswers === true) return;
+    unanswered.add(fallBack);
+    setTimeout(() => {
+      if (settled || prefetchAnswers === true) return;
+      prefetchAnswers = false;
+      for (const waiting of [...unanswered]) waiting();
+    }, PREFETCH_SILENCE_MS);
   });
+}
+
+/** Test hook: forget whether this page's prefetch links answer. */
+export function __resetPrefetch(): void {
+  prefetchAnswers = null;
+  unanswered.clear();
 }
 
 const decoded = new Map<string, Promise<boolean>>();
@@ -81,10 +119,11 @@ export function __resetDecodes(): void {
 }
 
 /**
- * Whether the browser's HTTP cache actually holds `url`: one fetch, then its resource-timing entry.
- * `transferSize` 0 is a pure cache hit, a few hundred bytes is a revalidation answered from cache,
- * and a full body means the cache is cold. No entry (a browser not recording timings) and any
- * failure read as warm, so the probe only ever catches a cold cache.
+ * Whether the browser's HTTP cache held `url` when this page loaded: one fetch, then every
+ * resource-timing entry for it. `transferSize` 0 is a pure cache hit and a few hundred bytes a
+ * revalidation answered from cache; any entry carrying a full body means the cache was cold, since
+ * a file the page already loaded once answers the probe's own fetch from cache. No entry (a browser
+ * not recording timings) and any failure read as warm, so the probe only ever catches a cold cache.
  */
 export async function cacheHolds(url: string): Promise<boolean> {
   if (!url || url.startsWith('data:') || typeof performance === 'undefined' || !performance.getEntriesByName) return true;
@@ -94,9 +133,7 @@ export async function cacheHolds(url: string): Promise<boolean> {
     try { await (await fetch(url, { cache: 'force-cache', signal: controller.signal })).blob(); }
     finally { clearTimeout(timer); }
     const entries = performance.getEntriesByName(new URL(url, location.href).href) as PerformanceResourceTiming[];
-    const entry = entries[entries.length - 1];
-    if (!entry || typeof entry.transferSize !== 'number') return true;
-    return entry.transferSize < 1024;
+    return !entries.some((entry) => typeof entry.transferSize === 'number' && entry.transferSize >= 1024);
   } catch {
     return true;
   }

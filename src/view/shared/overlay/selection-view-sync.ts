@@ -2,7 +2,8 @@
  * The selection ring follows the store and the active view, in one place, so every path that
  * changes a selection (click, marquee, Ctrl+A, the delete popover, an agent tool, undo) draws the
  * same ring. Signals:
- *  - the selection changing repaints the active view (an empty list clears);
+ *  - the selection or the picked block changing repaints the active view (an empty list with no
+ *    pick clears);
  *  - the layer-number toggle, since a single selection labels its elevation only while the global
  *    numbers are off;
  *  - the active view changing, on `onActiveViewChange` rather than `viewMode` because the store flip
@@ -23,7 +24,7 @@ function repaint(): void {
   const view = getActiveView();
   const store = useEditorStore.getState();
   if (!view || !store.gridState) return;
-  paintSelection(view.overlay, store.gridState, store.selection, layerNumbersShown(store));
+  paintSelection(view.overlay, store.gridState, store.selection, layerNumbersShown(store), store.pickedCell);
 }
 
 /** The active-view signal's handler. */
@@ -46,7 +47,8 @@ export function installSelectionViewSync(): () => void {
   const bus = useEditorStore.getState().eventBus;
   bus.on('objects-changed', repaintObjects);
   const offStore = useEditorStore.subscribe((state, prev) => {
-    if (state.selection !== prev.selection || layerNumbersShown(state) !== layerNumbersShown(prev)) repaint();
+    if (state.selection !== prev.selection || state.pickedCell !== prev.pickedCell
+      || layerNumbersShown(state) !== layerNumbersShown(prev)) repaint();
   });
   return () => { offView(); offStore(); bus.off('objects-changed', repaintObjects); };
 }

@@ -21,7 +21,7 @@ const FIXTURE = 'src/__tests__/fixtures/road-maps/hand-terraced-hexia.json'; // 
 interface Kit extends EditContext { executor: CommandExecutor }
 
 function loadMap(): Kit {
-  // The map was built around the plaza where the planet laid it then.
+  // The map was built around the plaza where the earlier layout put it.
   const template = earlierLayout('hexia');
   const state = deserialize(readFileSync(FIXTURE, 'utf8'), template) as unknown as GridState;
   const executor = makeExecutor(state);
@@ -64,8 +64,7 @@ function pavedNear(state: GridState, o: PlacedObject, pad: number): boolean {
 }
 
 /** The walk a finished network offers, as a component id per cell: pavement, decks, and each deck's
- *  one-cell apron (the `flat` trait refuses a tile at a transition often enough that a bare cell
- *  there is the design's documented neck, not a break). */
+ *  one-cell apron, since the `flat` trait often leaves a bare cell at a transition. */
 function pavementComponents(state: GridState, W: number, H: number): Map<number, number> {
   const walk = new Set<number>();
   const inB = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H;
@@ -129,11 +128,7 @@ function expectGoodCandidate(kit: Kit, label: string): void {
 }
 
 describe('one press, more than one way to pave it', () => {
-  /**
-   * The measurement that is the acceptance criterion. Held at a threshold well clear of both ends:
-   * 1.000 was the defect, and a matrix that drifted back toward it would mean the seed had stopped
-   * reaching the decisions that shape a layout. The observed spread is 0.26 to 0.47.
-   */
+  /** Pairwise Jaccard similarity reads 0.26 to 0.47; 1 would mean the seed shapes nothing. */
   it('five seeds lay five different networks, and every one of them is a good one', () => {
     const shots: Set<string>[] = [];
     for (const seed of [1, 2, 3, 4, 5]) {
@@ -196,17 +191,13 @@ describe('a re-press replaces its own last answer', () => {
       sizes.push(networkCells(kit.state).size);
     }
 
-    // The previous candidate is gone, not buried: the map holds one candidate's worth of pavement
-    // however many times it was pressed. A press that added would grow this without bound.
+    // The previous candidate is gone, not buried: the map holds one candidate's worth of pavement.
     expect(Math.max(...sizes), `network sizes across three presses: ${sizes.join(', ')}`)
       .toBeLessThan(sizes[0]! * 1.5);
-    // And it is another candidate rather than the same one relaid.
     expect(jaccard(firstCells, networkCells(kit.state))).toBeLessThan(0.75);
 
-    // Nothing a hand placed is taken away by any of them.
     for (const id of standing) expect(kit.state.objects.has(id), `${id} did not survive three presses`).toBe(true);
 
-    // Three presses, three undos, back to the map as it stood.
     for (let n = 0; n < 3; n++) expect(kit.executor.undo(), `undo ${n + 1}`).toBe(true);
     expect(kit.executor.historyDepth()).toBe(depth);
     expect(networkCells(kit.state).size, 'undo left pavement standing').toBe(0);
@@ -215,9 +206,8 @@ describe('a re-press replaces its own last answer', () => {
 
   it('a road the user painted is not the press\'s to take back', () => {
     const kit = loadMap();
-    // Far from every house, so it joins nothing and the router has no reason to pave over it: what
-    // is measured is whether the take-back can reach an object it never created. Found at runtime
-    // rather than written down, since a spot on this planet is the fixture's to choose.
+    // Far from every house, so the router has no reason to pave over it; found at runtime so the
+    // fixture can change.
     const far = houses(kit.state).map((h) => h.position);
     let hand: PlacedObject | null = null;
     for (let y = 2; y < kit.state.template.height - 2 && !hand; y += 1) {
@@ -243,8 +233,7 @@ describe('a re-press replaces its own last answer', () => {
   }, 180000);
 
   it('with no memory of its own work, a press behaves exactly as a first press does', () => {
-    // The state after a reload: the roads stand, and their ids are gone. `applyMacro` with no
-    // `replace` is that caller, and `already-connected` remains the honest answer for it.
+    // After a reload the roads stand and their ids are gone, as with no `replace`.
     const kit = loadMap();
     expect(applyMacro(kit, 'roads', { seed: 1 }).changes).toBeGreaterThan(0);
     const again = applyMacro(kit, 'roads', { seed: 2 });
@@ -258,8 +247,7 @@ describe('a re-press replaces its own last answer', () => {
     expect(first.changes).toBeGreaterThan(0);
     const before = networkCells(kit.state);
 
-    // A small region in one corner of the planet. Whatever the run makes of it, the streets on the
-    // far side of the map are not this press's to strip.
+    // A small region in one corner of the planet.
     const region = [];
     for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) region.push({ x, y });
     applyMacro(kit, 'roads', { seed: 2, region, replace: first.ownedIds });

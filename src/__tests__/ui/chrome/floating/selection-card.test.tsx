@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 /** The selection card offers the selection's actions and details and follows its projected bounds. */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { SelectionCard } from '../../../../ui/chrome/floating/SelectionCard';
 import { useEditorStore } from '../../../../state/store';
+import { __resetUiZoomAnim } from '../../../../ui/design/ui-zoom-anim';
 import { activeToolOf, armedItemOf, contentTypeOf } from '../../../../state/editing/edit-mode';
-import { I18nProvider } from '../../../../i18n/context';
+import { I18nProvider, translate } from '../../../../i18n/context';
+import { InputModeProvider } from '../../../../ui/design/input-mode';
+import { GESTURE_TIMING } from '../../../../platform/input/gesture-timing';
+import { spec } from '../../../_support/spec';
+import type { InputMode } from '../../../../platform/device/input-mode';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../../../rules';
 import { __setCatalogItem } from '../../../../state/catalog';
@@ -28,12 +33,17 @@ import { ItemCategory } from '../../../../config/catalog/categories';
 import { headlessViewVerbs } from '../../../_support/tool-manager';
 import { HEADLESS_OVERLAY } from '../../../../tools/pointer/runtime/host';
 
-// The chrome scale is normally derived from the viewport + the animated uiZoom; here it is a value the
-// test owns, so a scale change can be driven deterministically (the tracking has to survive one).
-let mockChrome = 1;
-vi.mock('../../../../ui/design/scale', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../ui/design/scale')>();
-  return { ...actual, useChromeScale: () => mockChrome, useTouchPrimary: () => false };
+// The reference window at 100%, where the chrome draws at 1, so the pixel arithmetic below is exact.
+const WINDOW = { w: window.innerWidth, h: window.innerHeight };
+beforeAll(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  useEditorStore.getState().setUiZoom(1);
+  __resetUiZoomAnim();
+});
+afterAll(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: WINDOW.w });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: WINDOW.h });
 });
 
 __setCatalogItem({
@@ -76,7 +86,7 @@ function placeAll(specs: Spec[]): { gs: GridState; exec: CommandExecutor } {
   return { gs, exec };
 }
 
-function renderWithSelection(specs: Spec[]) {
+function renderWithSelection(specs: Spec[], inputMode: InputMode = 'pc') {
   const { gs, exec } = placeAll(specs);
   useEditorStore.setState({
     gridState: gs,
@@ -84,7 +94,8 @@ function renderWithSelection(specs: Spec[]) {
     selection: specs.map((s) => ({ kind: 'object', id: s.id }) as const),
     locale: 'en',
   });
-  return { gs, exec, ...render(<SelectionCard />, { wrapper: Wrapper }) };
+  const wrapper = ({ children }: { children: React.ReactNode }) => <InputModeProvider inputMode={inputMode}><Wrapper>{children}</Wrapper></InputModeProvider>;
+  return { gs, exec, ...render(<SelectionCard />, { wrapper }) };
 }
 
 /** A linear ViewProjection double offset by (dx, dy) and scaled, standing in for whatever framing a
@@ -119,7 +130,6 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   setActiveView(null);
-  mockChrome = 1;
   useEditorStore.setState({ gridState: null, commandExecutor: null, selection: [], deletePopover: null, viewMode: '2d' });
 });
 
@@ -129,6 +139,15 @@ describe('SelectionCard: actions', () => {
     expect(screen.getByTestId('handle-delete')).toBeTruthy();
     expect(screen.getByTestId('handle-pick')).toBeTruthy();
     expect(screen.queryByTestId('handle-rotate')).toBeNull();
+  });
+
+  spec('EDIT-53', 'offers Copy for two or more objects and none for one, which Pick arms again', () => {
+    renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
+    expect(screen.getByTestId('handle-pick')).toBeTruthy();
+    expect(screen.queryByTestId('handle-copy')).toBeNull();
+    cleanup();
+    renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }, { id: 'b', catalogId: 'sel-hut', x: 8, y: 4 }]);
+    expect(screen.getByTestId('handle-copy')).toBeTruthy();
   });
 
   it('names the selected item', () => {
@@ -192,6 +211,26 @@ describe('SelectionCard: actions', () => {
   it('offers rotation for a rotatable object', () => {
     renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }]);
     expect(screen.getByTestId('handle-rotate')).toBeTruthy();
+  });
+
+  spec('UI-29', 'in touch mode a held glyph button names itself, and the release that ends the hold turns nothing', () => {
+    vi.useFakeTimers();
+    const { gs } = renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }], 'touch');
+    const rotate = screen.getByTestId('handle-rotate');
+    expect(rotate.getAttribute('title'), 'no hover title stands in for the name').toBeNull();
+    expect(screen.queryByText(translate('a11y.rotate'))).toBeNull();
+    fireEvent.pointerDown(rotate, { pointerType: 'touch' });
+    act(() => { vi.advanceTimersByTime(GESTURE_TIMING.touch.holdMs); });
+    expect(screen.getByText(translate('a11y.rotate'))).toBeTruthy();
+    fireEvent.pointerUp(rotate, { pointerType: 'touch' });
+    fireEvent.click(rotate, { detail: 1 });
+    expect(gs.objects.get('a')?.rotation).toBe(0);
+  });
+
+  it('names a glyph button by its hover title in PC mode', () => {
+    renderWithSelection([{ id: 'a', catalogId: 'sel-rot-hut', x: 4, y: 4 }], 'pc');
+    expect(screen.getByTestId('handle-rotate').getAttribute('title')).toBe(translate('a11y.rotate'));
+    expect(screen.getByTestId('handle-delete').getAttribute('title')).toBe(translate('a11y.delete'));
   });
 
   it('offers neither delete nor rotation for a locked object', () => {
@@ -409,9 +448,10 @@ describe('SelectionCard: what triggers a re-track', () => {
     setActiveView(makeView(300, 300, 10));
     const { rerender } = renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
     expect(parseFloat(card().style.left)).toBeCloseTo(345, 5);
-    mockChrome = 2;
+    act(() => { useEditorStore.getState().setUiZoom(1.5); __resetUiZoomAnim(); });
     rerender(<SelectionCard />);
-    expect(parseFloat(card().style.left) * mockChrome).toBeCloseTo(345, 5);
+    expect(parseFloat(card().style.left) * 1.5).toBeCloseTo(345, 5);
+    act(() => { useEditorStore.getState().setUiZoom(1); __resetUiZoomAnim(); });
   });
 
   it('a 2D↔3D view swap repositions against the NEW projection', () => {

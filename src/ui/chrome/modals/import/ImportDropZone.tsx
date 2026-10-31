@@ -23,12 +23,10 @@ export interface ImportDropZoneProps {
   label?: string;
 }
 
-// Three lines of prose about what will and will not import, so it is set to be read rather than
-// noticed: the smallest type in the window was a size below what the rest of the chrome uses.
+// Three lines of prose about what will and will not import, set at caption size to be read rather than noticed.
 const noteStyle: CSSProperties = { ...roleFont('caption'), color: skin.muted, marginTop: 14, lineHeight: 1.55 };
 
-/** The Import surface's card geometry, the SSOT both `ImportModal` and `DropImportOverlay` render
- *  their `ModalShell` at. */
+/** The Import surface's card width, at which both `ImportModal` and `DropImportOverlay` render their `ModalShell`. */
 export const IMPORT_CARD_WIDTH = 520;
 
 /**

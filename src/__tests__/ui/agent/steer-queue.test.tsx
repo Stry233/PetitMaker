@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The notes queued for the next step, all of them: three stand at a time and the rest read as a
- * count that expands. The chips scroll in their own strip and the "+N more" line stands below it in
- * flow, so a squeezed stack shrinks the strip and the count never leaves the screen. jsdom lays
- * nothing out, so this asserts which box scrolls and which may not shrink.
+ * The notes queued for the next step: three stand at a time and the rest read as an expandable count.
+ * A squeezed stack shrinks the scrolling chip strip, never the count line; jsdom lays nothing out, so
+ * the flex and overflow declarations are asserted.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, waitFor } from '@testing-library/react';
@@ -47,7 +46,6 @@ describe('SteerQueue: every note stands', () => {
     }
   });
 
-  /** Five queued notes are three chips and a count, never one chip. */
   it('renders three of five and says the rest as a count', () => {
     const { getAllByTestId, getByTestId } = renderWithI18n(
       <SteerQueue steers={steers(5)} onRecall={() => {}} />,
@@ -61,7 +59,6 @@ describe('SteerQueue: every note stands', () => {
     expect(queryByTestId('steer-more')).toBeNull();
   });
 
-  /** The count line expands: pressing it stands the rest up, and the line becomes the way back. */
   it('expands to the whole queue and offers the way back', async () => {
     const { getAllByTestId, getByTestId } = renderWithI18n(
       <SteerQueue steers={steers(5)} onRecall={() => {}} />,
@@ -71,8 +68,7 @@ describe('SteerQueue: every note stands', () => {
     expect(getByTestId('steer-more').textContent).toBe(t('agent.steer_fewer'));
     fireEvent.click(getByTestId('steer-more'));
     expect(getByTestId('steer-more').textContent).toBe(t('agent.steer_more', { n: 2 }));
-    // The two that collapse leave rather than vanishing (`AnimatePresence`), so the count settles a
-    // beat after the press.
+    // The collapsing two animate out (`AnimatePresence`), so the count settles a beat later.
     await waitFor(() => expect(getAllByTestId('panel-steer-chip').length).toBe(3));
   });
 
@@ -83,10 +79,7 @@ describe('SteerQueue: every note stands', () => {
     expect(onRecall.mock.calls).toEqual([[11]]);
   });
 
-  /**
-   * The zone stands empty rather than appearing. A row that arrived here would shorten the record
-   * under the pointer that is reading it, which is the house's layout-stability rule.
-   */
+  /** An empty zone still stands, so a first note does not shift the record under the pointer. */
   it('stands its zone with nothing queued, and draws no chips in it', () => {
     const { getByTestId, queryAllByTestId } = renderWithI18n(
       <SteerQueue steers={[]} onRecall={() => {}} />,
@@ -97,11 +90,6 @@ describe('SteerQueue: every note stands', () => {
 });
 
 describe('SteerQueue: the squeeze', () => {
-  /**
-   * Which box gives way. The chips box is the one that scrolls and the one that may shrink
-   * (`flex: 0 1 auto` + `overflow-y: auto`); the count line may not (`flex: 0 0 auto`), so a stack
-   * squeezed to less than the queue's own height loses chip rows and keeps the affordance.
-   */
   it('scrolls the chips and pins the count line', () => {
     const { getByTestId } = renderWithI18n(<SteerQueue steers={steers(5)} onRecall={() => {}} />);
     const chips = getByTestId('steer-chips');
@@ -111,7 +99,6 @@ describe('SteerQueue: the squeeze', () => {
     expect(getByTestId('steer-more').style.flex).toBe('0 0 auto');
   });
 
-  /** And the stack itself yields before the record does: it is the shrinkable one of the two. */
   it('yields as a whole, capped at the three-chip height', () => {
     const { getByTestId } = renderWithI18n(<SteerQueue steers={steers(5)} onRecall={() => {}} />);
     const zone = getByTestId('panel-steer-zone');

@@ -20,9 +20,7 @@ import { makeState } from '../../../_support/map-state';
 import type { GridState } from '../../../../core/model/types';
 import { panelProps } from '../../../_support/agent-panel';
 
-// The card's ground is a real capture off the live 2D renderer, which no jsdom run has. `MapShot`
-// already answers "no renderer yet" with its placeholder, so this only keeps the async capture out
-// of the way of the facts under test.
+// jsdom has no 2D renderer; `MapShot` shows its placeholder, and this keeps the async capture out of the way.
 vi.mock('../../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../../view/map2d/capture/thumbnail')>(),
   renderThumbnail: async () => null,
@@ -94,8 +92,6 @@ afterEach(() => {
 });
 
 describe('the card only stands where there is something to say', () => {
-  /** Zero ideas is the honest rest, not an empty state to dress: a map with nothing to propose gets
-   *  no card at all, and the panel's rest stands without it. */
   it('renders nothing at all for a map that offers nothing', () => {
     const { queryByTestId } = mount([]);
     expect(queryByTestId('sketchbook')).toBeNull();
@@ -108,8 +104,6 @@ describe('the card only stands where there is something to say', () => {
     expect(getByTestId('sketch-caption').textContent).toBe(said(LANE, 'capKey'));
   });
 
-  /** The ground is the map's own photograph, and until the renderer answers the card waits: no drawn
-   *  stand-in island, which would be a picture of a map nobody has. */
   it('waits on the real capture rather than drawing a stand-in island', () => {
     const { getByTestId } = mount([LANE]);
     const shot = within(getByTestId('sketch-thumb')).getByTestId('map-shot');
@@ -138,15 +132,13 @@ describe('a press hands the order over', () => {
     fireEvent.click(getByTestId('sketch-card'));
     expect(onOrder).toHaveBeenCalledTimes(1);
     expect(onOrder).toHaveBeenCalledWith(said(LANE, 'orderKey'));
-    // The words are the order, not the caption: one says what she sees, the other is what the user
-    // would type.
+    // The order, not the caption: the caption says what she sees, the order is what the user would type.
     expect(onOrder.mock.calls[0]![0]).not.toBe(said(LANE, 'capKey'));
   });
 });
 
 describe('the figure', () => {
-  /** Each family draws its own shape, and every one of them is drawn through the mask that reveals
-   *  it tip-first: a figure with no mask is a dashed line that simply appears. */
+  /** Each family's figure is drawn through a mask that reveals it tip-first. */
   it('draws each family, every stroke behind a reveal mask', () => {
     for (const idea of [LANE, POND, GROVE]) {
       const view = mount([idea]);
@@ -156,13 +148,12 @@ describe('the figure', () => {
       const drawn = [...figure.querySelectorAll('path[mask]')];
       expect(masks.length, idea.kind).toBeGreaterThan(0);
       expect(drawn.length, idea.kind).toBe(masks.length);
-      // And every drawn stroke is dashed: the pencil never lays a solid line.
+      // The pencil never lays a solid line.
       for (const path of drawn) expect(path.getAttribute('stroke-dasharray'), idea.kind).toBeTruthy();
       view.unmount();
     }
   });
 
-  /** A grove pips the trees that stand there and the ground beside them, one path each. */
   it('gives a grove one pip per tree, standing or offered', () => {
     const { getByTestId } = mount([GROVE]);
     expect(getByTestId('sketch-figure').querySelectorAll('path[mask]')).toHaveLength(3);
@@ -170,9 +161,8 @@ describe('the figure', () => {
 });
 
 describe('the pencil', () => {
-  /** The mask's dashoffset is what runs. Animating the dashed shape's own offset slides the pattern
-   *  along and reads as a solid line arriving; the mask lets the dashes appear tip-first and stay
-   *  dashes, which is the whole of why the draw-in reads as drawing. */
+  /** Animating the dashed path's own offset would slide the pattern and read as a solid line arriving;
+   *  animating the mask lets the dashes appear tip-first. */
   it('draws in by retreating the reveal mask, not by moving the dashes', () => {
     mount([LANE, POND]);
     const frames = animate.mock.calls.map((call) => call[0] as Keyframe[]);
@@ -182,8 +172,7 @@ describe('the pencil', () => {
       expect(Number(kf[0]!.strokeDashoffset)).toBeGreaterThan(0);
       expect(Number(kf[kf.length - 1]!.strokeDashoffset)).toBe(0);
     }
-    // And it is the mask's own copy that carries them, never the drawn path: the reveal stroke is
-    // the white one inside the mask, and it wears no mask of its own.
+    // The animated stroke is the white one inside the mask, never the drawn path.
     const runners = (animate.mock.contexts as Element[])
       .filter((_el, i) => (animate.mock.calls[i]![0] as Keyframe[]).some((f) => 'strokeDashoffset' in f));
     expect(runners.length).toBe(drawn.length);
@@ -194,12 +183,8 @@ describe('the pencil', () => {
   });
 });
 
-/**
- * The caption swap (`sketchEngine.swapCap`): out, then the words underneath change, then in. jsdom
- * has no real frame clock to wait a 7.6s cycle out on, so the one rAF loop is stepped by hand —
- * `performance.now` pinned to the moment wanted, the loop's own last-registered callback invoked
- * directly. That is a fact about how this file drives the engine, not about the engine itself.
- */
+/** The caption swap (`sketchEngine.swapCap`). jsdom has no frame clock, so the rAF loop is stepped by
+ *  pinning `performance.now` and invoking its last-registered callback. */
 describe('the caption', () => {
   function stepEngineTo(
     raf: MockInstance<(callback: FrameRequestCallback) => number>,
@@ -220,7 +205,7 @@ describe('the caption', () => {
       expect(capEl.textContent).toBe(said(LANE, 'capKey'));
 
       animate.mockClear();
-      stepEngineTo(raf, now, SKETCH.cycle); // the next cycle: `LANE` gives way to `POND`
+      stepEngineTo(raf, now, SKETCH.cycle); // `LANE` gives way to `POND`
 
       const onCap = (calls: unknown[][]) => calls
         .map((call, i) => ({ call, el: animate.mock.contexts[i] as Element }))
@@ -230,7 +215,7 @@ describe('the caption', () => {
       expect(capCalls[0]!.call[0]).toEqual([{ opacity: 1 }, { opacity: 0 }]);
       expect(capCalls[0]!.call[1]).toMatchObject({ duration: SKETCH.capOut.dur, easing: SKETCH.capOut.easing });
 
-      // The out beat has not finished: the words have not moved yet.
+      // The words change only once the out beat finishes.
       expect(capEl.textContent).toBe(said(LANE, 'capKey'));
 
       const outIndex = animate.mock.calls.indexOf(capCalls[0]!.call as unknown as unknown[]);
@@ -238,7 +223,7 @@ describe('the caption', () => {
       animate.mockClear();
       act(() => { outAnim.onfinish?.(); });
 
-      // The swap landed, and the in beat played on the same element, risen from below.
+      // The in beat rises from below on the same element.
       expect(capEl.textContent).toBe(said(POND, 'capKey'));
       capCalls = onCap(animate.mock.calls);
       expect(capCalls).toHaveLength(1);
@@ -259,7 +244,7 @@ describe('reduced motion is the complete still', () => {
     const { getByTestId } = mount([LANE, POND, GROVE], () => {}, true);
 
     expect(getByTestId('sketch-caption').textContent).toBe(said(LANE, 'capKey'));
-    // Every reveal mask is fully retreated: the figure is drawn, not mid-draw.
+    // Every reveal mask is fully retreated.
     const reveals = [...getByTestId('sketch-figure').querySelectorAll('mask path')];
     expect(reveals.length).toBeGreaterThan(0);
     for (const path of reveals) expect(path.getAttribute('stroke-dashoffset')).toBe('0');
@@ -276,8 +261,7 @@ describe('reduced motion is the complete still', () => {
 });
 
 describe('the engine is gated by the card', () => {
-  /** The rotation is one rAF loop and the card owns it: unmounting (a job starting, the panel
-   *  folding) has to end it, or a session leaves a loop running for the app's life. */
+  /** The card owns the rotation's rAF loop, so unmounting must end it. */
   it('cancels its loop when the card goes away', () => {
     const cancel = vi.spyOn(window, 'cancelAnimationFrame');
     const raf = vi.spyOn(window, 'requestAnimationFrame');
@@ -292,8 +276,7 @@ describe('the engine is gated by the card', () => {
     raf.mockRestore();
   });
 
-  /** One idea is a still by construction: there is nothing to rotate to, and a wipe with nothing
-   *  behind it would blank the card every few seconds. */
+  /** With one idea a wipe would blank the card every cycle with nothing behind it. */
   it('starts no loop for a map that offers exactly one idea', () => {
     const raf = vi.spyOn(window, 'requestAnimationFrame');
     const { getByTestId, unmount } = mount([LANE]);
@@ -304,14 +287,8 @@ describe('the engine is gated by the card', () => {
   });
 });
 
-/**
- * Where the card may stand, which is the panel's decision rather than the card's.
- *
- * The rest states carry it and nothing else does: a job in flight, a settled record still to be
- * read, a question, a screen over the zone — each of those is the panel having something to say, and
- * the dressing would be talking over it. Wherever it does stand it stands last, nearest the
- * composer, so the region under the user's hand reads the same in every rest.
- */
+/** The panel seats the card only at rest (not behind a job, an unread record, a question or a
+ *  screen), and always last, nearest the composer. */
 describe('the panel seats the card', () => {
   const marker = <div data-testid="sketch-marker" />;
 
@@ -345,8 +322,7 @@ describe('the panel seats the card', () => {
     const zone = getByTestId('panel-job-zone');
     const card = getByTestId('sketch-marker');
     expect(zone.contains(card)).toBe(true);
-    // The card rides its seat (the box the docked layout pushes to the zone's foot), and the seat
-    // is what stands last.
+    // The card sits in its seat, the box the docked layout pushes to the zone's foot.
     const seat = getByTestId('sketch-seat');
     expect(seat.contains(card)).toBe(true);
     expect(zone.querySelector('[data-scroll-content]')!.lastElementChild, 'nearest the composer').toBe(seat);
@@ -357,8 +333,7 @@ describe('the panel seats the card', () => {
       orderSeq: 1, orderText: 'lay the boardwalk', orderAt: 0, outcome: 'done' as const,
       asks: [], ops: [], steerNotes: [], checkpoints: [], stamps: [], celebrate: false, skills: [],
     };
-    // Filed, so the record is a row in the strip rather than a card still standing: a card is the
-    // panel having something to say, and the dressing waits for it to be put away.
+    // Filed, so the record is a strip row rather than a standing card, which would withhold the sketch.
     const { getByTestId } = stand({ jobs: [past] }, { filed: new Set([1]) });
     const zone = getByTestId('panel-job-zone');
     expect(zone.contains(getByTestId('history-strip')), 'the news reads first').toBe(true);
@@ -366,10 +341,6 @@ describe('the panel seats the card', () => {
     expect(getByTestId('sketch-seat').contains(getByTestId('sketch-marker'))).toBe(true);
   });
 
-  /**
-   * The press reaches the field, end to end: the card hands its order up, the caller keys it, and
-   * the composer takes the words and focuses. Nothing is sent — the send button is still the user's.
-   */
   it('fills the composer with the pressed order and sends nothing', () => {
     const onSend = vi.fn();
     function Wired() {
@@ -426,12 +397,7 @@ describe('the panel seats the card', () => {
     expect(queryByTestId('sketch-marker')).toBeNull();
   });
 
-  /**
-   * The resume offer, the one rest `dressed` excludes by construction rather than by name
-   * (`view.current` is "the running/paused job", set here too): this is that exclusion's own case,
-   * standing beside the in-flight one above rather than assumed from it. A paused job still holds
-   * the desk, and the card is not what stands there instead.
-   */
+  /** A paused job is excluded through `view.current`, not by name, so it gets its own case. */
   it('withholds it behind a paused job, the resume offer', () => {
     const paused = {
       orderSeq: 1, orderText: 'build a village', orderAt: 0,
@@ -442,14 +408,9 @@ describe('the panel seats the card', () => {
   });
 });
 
-/**
- * The dreaming office. The board is a queue of inert pictures and the one press on the screen is
- * Connect; the plume is the character's, published to her rather than drawn here, and it is put away
- * when the screen goes however it goes.
- */
+/** The keyless rest: inert pictures, one Connect press, and a plume published to the character. */
 describe('the dreaming office', () => {
-  /** The character stands beside the screen, exactly as she does in the app: she is one layer
-   *  outside the panel, and the plume travels to her rather than being drawn on the screen. */
+  /** The character stands beside the screen, outside the panel, as in the app. */
   function dream(reduced = false, onConnect = () => {}) {
     return render(
       <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
@@ -461,15 +422,14 @@ describe('the dreaming office', () => {
     );
   }
 
-  /** What the character is wearing at her shoulder: the plume's own state, or `off` where she wears
-   *  no plume at all. */
+  /** The plume's state at the character's shoulder, or `off`. */
   const plume = (): string =>
     document.querySelector('[data-part="dream-badge"]')?.getAttribute('data-dream') ?? 'off';
 
   it('stands three inert order slips and one verb', () => {
     const { getByTestId, getAllByTestId } = dream();
     expect(getAllByTestId('dream-row')).toHaveLength(3);
-    // Inert: a dream is not a menu. Nothing on the board is pressable.
+    // Nothing on the board is pressable.
     for (const row of getAllByTestId('dream-row')) {
       expect(row.querySelector('button')).toBeNull();
       expect(row.tagName).not.toBe('BUTTON');
@@ -484,8 +444,6 @@ describe('the dreaming office', () => {
     expect(onConnect).toHaveBeenCalledTimes(1);
   });
 
-  /** The plume is the character's own, and it goes away with the screen: a panel that connected
-   *  would otherwise wear the zzz over a working desk. */
   it('takes the plume up while it stands and puts it down when it goes', () => {
     const { unmount } = dream();
     expect(plume()).not.toBe('off');
@@ -510,11 +468,7 @@ describe('the dreaming office', () => {
     cancel.mockRestore();
   });
 
-  /**
-   * The row that just left (`dreamEngine.rotateOnce`'s ghost). jsdom has no real frame clock to wait
-   * a 3.8s cycle out on, so the loop is stepped by hand — `performance.now` pinned to the next
-   * cycle, the loop's own last-registered callback invoked directly.
-   */
+  /** `dreamEngine.rotateOnce`'s ghost row, with the loop stepped by hand as in the caption test. */
   it('fades the departed row over the board rather than dropping it outright', async () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(0);
     const raf = vi.spyOn(window, 'requestAnimationFrame');
@@ -525,11 +479,10 @@ describe('the dreaming office', () => {
       now.mockReturnValue(DREAM.cycle);
       const cb = raf.mock.calls[raf.mock.calls.length - 1]![0] as FrameRequestCallback;
       animate.mockClear();
-      // Async: the new row's `MapShot` fires off a (mocked) capture whose promise settles on the
-      // next microtask, which is what this flushes before the test's own assertions run.
+      // Async: flushes the new row's mocked `MapShot` capture.
       await act(async () => { cb(DREAM.cycle); });
 
-      // The row that stood first (dreams[0], top of the beat-0 window) is the one that left.
+      // The first row (dreams[0]) is the one that left.
       const leaving = getByTestId('dream-row-leaving');
       expect(leaving.dataset.order).toBe('village');
 

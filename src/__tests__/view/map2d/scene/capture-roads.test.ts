@@ -1,13 +1,8 @@
 // @vitest-environment jsdom
 /**
- * A captured map has its roads on it — the candidate cards and the restore offer are photographs of
- * a map nobody is looking at, taken in one synchronous pass with no next frame.
- *
- * Two things a live view gets for free and a capture cannot. A road surface is drawn on a queued
- * frame (`scheduleRoadRefresh`), which for a capture never comes: the world is rasterized and thrown
- * away first, so the picture had no roads on it at all. And a path material's tile art is cropped
- * from its icon asynchronously, so a surface drawn before it lands fills with the material's colour
- * instead of the art the map itself shows.
+ * A captured map (candidate cards, the restore offer) has its roads on it. A live view draws road
+ * surfaces on a queued frame (`scheduleRoadRefresh`) that a capture never reaches, and a material's
+ * tile art is cropped from its icon asynchronously; a surface drawn before it lands is a flat colour.
  */
 import '../../../_support/pixi-env';
 import * as PIXI from 'pixi.js-legacy';
@@ -18,8 +13,7 @@ import { makeState } from '../../../_support/map-state';
 import { MapRenderer } from '../../../../view/map2d/scene/map-renderer';
 import { EventBus } from '../../../../core/commands/event-bus';
 
-// jsdom decodes no image, so the real crop can never land. Stand in for it: the art arrives only
-// when `deliver` is called, which is what `roadTileReady` must be waiting for.
+// jsdom decodes no image, so the tile art arrives only when `deliver` is called.
 const art = vi.hoisted(() => {
   const state = {
     canvas: null as HTMLCanvasElement | null,
@@ -51,7 +45,7 @@ vi.mock('../../../../view/shared/road/tile-texture', async (importOriginal) => {
   };
 });
 
-/** The tile art, once it has "loaded", handed to everyone waiting on it. */
+/** Loads the tile art and hands it to everyone waiting on it. */
 function deliver(): void {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 128;
@@ -70,21 +64,15 @@ function mapWith(objs: PlacedObject[]): GridState {
 }
 
 /**
- * Take the picture, handing back the fill textures of the road surfaces as they stood at the
- * instant the world was rasterized. jsdom has no GL, so the rasterization itself is stubbed — what
- * the capture handed it is the whole question here, and it has to be read then: the capture destroys
- * its world on the way out, so an inspection afterwards finds an empty container either way.
- *
- * `Texture.WHITE` is what a plain `beginFill(colour)` records, so it reads as "no art here".
+ * Takes the picture and returns the road surfaces' fill textures as the stubbed rasterization saw
+ * them; the capture destroys its world afterwards. A plain `beginFill(colour)` records `Texture.WHITE`.
  */
 async function captureRoadFills(state: GridState): Promise<PIXI.Texture[]> {
   const renderer = new MapRenderer(new EventBus<EditorEvents>(), document.createElement('div'), 64, 64);
   const gl = (renderer as unknown as { app: { renderer: Record<string, unknown> } }).app.renderer;
   let fills: PIXI.Texture[] | null = null;
   gl.generateTexture = (world: PIXI.Container) => {
-    // The road surfaces are the object layer's own Graphics — one per surface, at index 0 of its
-    // elevation container. Every other Graphics on the map hangs off base/terrain, which are this
-    // world's other two children.
+    // Road surfaces are Graphics in the object layer; base and terrain are the world's other children.
     const objects = world.children[2] as PIXI.Container;
     const out: PIXI.Texture[] = [];
     const walk = (node: PIXI.Container): void => {
@@ -111,7 +99,7 @@ beforeEach(() => { art.canvas = null; art.waiting = []; art.asked = []; });
 
 describe('capturing a map that has roads on it', () => {
   it('draws the road surfaces into the picture rather than queueing them for a frame it never has', async () => {
-    // The art is already in hand, so what is at stake here is only whether the surfaces were drawn.
+    // The art is already in hand, so only the drawing is under test.
     deliver();
     const drawn = await captureRoadFills(mapWith([road('path-overgrown-dirt', 3), road('path-overgrown-dirt', 4)]));
     expect(drawn.length, 'a road surface was drawn').toBeGreaterThan(0);
@@ -119,7 +107,7 @@ describe('capturing a map that has roads on it', () => {
 
   it('waits for each path material\'s tile art, so a road is photographed in its art', async () => {
     const shot = captureRoadFills(mapWith([road('path-cobblestone', 3), road('path-cobblestone', 4)]));
-    // The capture is held on the art: it lands only now, after the call is already in flight.
+    // The art lands after the capture is in flight.
     await Promise.resolve();
     expect(art.asked.some((u) => u.includes('path-cobblestone')), 'asked for the tile of the material on the map').toBe(true);
     deliver();

@@ -22,24 +22,28 @@ import { radii } from '../../../design/styles';
 import { OVERLAY_DIM_WORKING } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
 import { skin, windowChip } from '../../../design/window-skin';
-import { useViewportSize } from '../../../design/scale';
 import { useSizeGlide } from '../../../primitives/use-size-glide';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ImportFileIcon, VideoIcon } from '../../../primitives/line-glyphs';
-import { ModalShell } from '../../../primitives/ModalShell';
-import { WindowFooter, WindowHeader, windowFrame } from '../../../primitives/Window';
+import { ModalShell, PANEL_CAP_W, cappedRoom } from '../../../primitives/ModalShell';
+import { WINDOW_PADDING_X, WindowBody, WindowFooter, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
+import { FIT_FLOOR, MIN_UI_ROOM } from '../../../design/scale';
 import { PlanetStep } from './PlanetStep';
 import { VideoImportGuide } from './VideoImportGuide';
 import { VideoImportProgress } from './VideoImportProgress';
+import { useRoomColumns } from '../use-window-columns';
 
 type Step = 'choose' | 'guide' | 'scanning' | 'read';
 
 const ROUTING: ImportRouting = { map: 'card', planet: 'hand', video: 'read', unknown: 'refuse' };
 
-/** Below this window width the guide stands its protocol above the example. */
-const STACK_BELOW = 700;
+/** The room, in card px, below which the guide stands its protocol above the example: what the least
+ *  workspace at the chrome fit's floor gives this window's card less its padding, the frame ModalShell
+ *  measures for a card with no border. The least workspace and every wider window keep two columns; a
+ *  narrower one stacks. */
+const STACK_BELOW_ROOM = cappedRoom(PANEL_CAP_W, MIN_UI_ROOM.w, FIT_FLOOR, 2 * WINDOW_PADDING_X);
 
-const cardStyle: CSSProperties = { ...windowFrame, overflowY: 'auto', overflowX: 'hidden' };
+const cardStyle: CSSProperties = windowFrame;
 const choiceStyle: CSSProperties = {
   position: 'relative', flex: '1 1 0', minWidth: 0, minHeight: 132, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
   padding: '20px 16px', border: 'none', borderRadius: radii.lg, background: skin.inset, color: skin.ink, ...roleFont('head'),
@@ -82,7 +86,8 @@ export function PlanetImportWindow(
   const t = useT();
   const { open, close: closeWindow } = useWindow('planetImport', { open: openProp, onClose });
   const locale = useLocale();
-  const viewport = useViewportSize();
+  // The guide and the progress stand their two parts one above the other in one column.
+  const stacked = useRoomColumns(STACK_BELOW_ROOM) === 1;
   const [step, setStep] = useState<Step>('choose');
   const [failure, setFailure] = useState<ImportFailure | null>(null);
   const [progress, setProgress] = useState<ScanProgress>({ stage: 'reading', share: 0 });
@@ -107,7 +112,7 @@ export function PlanetImportWindow(
   }, [open]);
   useEffect(() => () => { running.current?.abort(); if (finishing.current !== null) clearTimeout(finishing.current); }, []);
 
-  const body = useSizeGlide<HTMLDivElement>(`${open}|${step}|${failure}|${locale}|${viewport.w < STACK_BELOW}`, { axis: 'height', motionId: 'modal.resize' });
+  const body = useSizeGlide<HTMLDivElement>(`${open}|${step}|${failure}|${locale}|${stacked}`, { axis: 'height', motionId: 'modal.resize' });
 
   const read = async (file: File) => {
     if (running.current) return;
@@ -195,8 +200,8 @@ export function PlanetImportWindow(
   return (
     <>
     <ModalShell helpTarget={{ page: 'planet' }} open={open} onClose={close} size="panel" width={width} cardStyle={cardStyle} backdropStyle={backdropStyle} ariaLabel={title}>
-      <div ref={body.ref} data-testid="planet-import" style={body.gliding ? { overflow: 'hidden' } : undefined} onDragOver={dragOver} onDrop={drop}>
-        <div style={{ position: 'relative' }}>
+      <div ref={body.ref} data-testid="planet-import" style={body.gliding ? { ...windowColumn, overflow: 'hidden' } : windowColumn} onDragOver={dragOver} onDrop={drop}>
+        <div style={{ ...windowColumn, position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             <PlanetStep key={step}>
               <WindowHeader reserve title={title}
@@ -204,21 +209,23 @@ export function PlanetImportWindow(
                 close={{ label: t('hint.close'), onPress: close }}>
                 {step !== 'choose' && step !== 'scanning' && <span data-testid="planet-import-beta" style={titleTag}>{t('app.beta')}</span>}
               </WindowHeader>
-              {step === 'choose' && (
-                <div style={{ display: 'flex', gap: 14 }}>
-                  {SUPPORTS_JSON_FILES && onPickFile && (
-                    <Choice testId="planet-import-file" icon={<ImportFileIcon />} label={t('planet.import_file')} onClick={() => { closeWindow(); onPickFile(); }} />
-                  )}
-                  <Choice testId="planet-import-video" icon={<VideoIcon />} label={t('planet.import_video')} tag={t('app.beta')} disabled={!canEdit} onClick={() => setStep('guide')} />
-                </div>
-              )}
-              {step === 'guide' && <VideoImportGuide failure={failure} stacked={viewport.w < STACK_BELOW} onFile={(f) => { void route(f); }} />}
-              {step === 'scanning' && <VideoImportProgress progress={progress} finished={finished?.template ?? null} stacked={viewport.w < STACK_BELOW} />}
-              {step === 'read' && (
-                <div role="alert" data-testid="scan-open-failed" style={{ ...roleFont('label'), color: skin.plateInk, textAlign: 'center', lineHeight: 1.45 }}>
-                  {t('planet.scan_open_failed')}
-                </div>
-              )}
+              <WindowBody>
+                {step === 'choose' && (
+                  <div style={{ display: 'flex', gap: 14 }}>
+                    {SUPPORTS_JSON_FILES && onPickFile && (
+                      <Choice testId="planet-import-file" icon={<ImportFileIcon />} label={t('planet.import_file')} onClick={() => { closeWindow(); onPickFile(); }} />
+                    )}
+                    <Choice testId="planet-import-video" icon={<VideoIcon />} label={t('planet.import_video')} tag={t('app.beta')} disabled={!canEdit} onClick={() => setStep('guide')} />
+                  </div>
+                )}
+                {step === 'guide' && <VideoImportGuide failure={failure} stacked={stacked} onFile={(f) => { void route(f); }} />}
+                {step === 'scanning' && <VideoImportProgress progress={progress} finished={finished?.template ?? null} stacked={stacked} />}
+                {step === 'read' && (
+                  <div role="alert" data-testid="scan-open-failed" style={{ ...roleFont('label'), color: skin.plateInk, textAlign: 'center', lineHeight: 1.45 }}>
+                    {t('planet.scan_open_failed')}
+                  </div>
+                )}
+              </WindowBody>
             </PlanetStep>
           </AnimatePresence>
         </div>

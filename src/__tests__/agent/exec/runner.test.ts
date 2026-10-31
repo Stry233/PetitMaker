@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Hoisted above every import (including the `openai` import inside agent/providers/openai.ts, which
-// the runner's adapter loads on its first request) so the region test can inspect exactly what base
-// URL the SDK constructor received, the same technique providers/openai.test.ts uses.
+// Hoisted above every import so the region and endpoint tests can read the base URL the OpenAI SDK
+// constructor receives when the adapter loads it on its first request.
 const { openAiCtorMock } = vi.hoisted(() => ({ openAiCtorMock: vi.fn() }));
 vi.mock('openai', () => {
   class MockOpenAI {
@@ -69,9 +68,8 @@ vi.mock('../../../pipelines/moderation/text/reviewer', async (importOriginal) =>
   },
 }));
 
-/** Drains the microtask queue: every scripted turn here resolves through promise chains alone (no
- *  real timers), so a fixed, generous number of `await`s is enough to run a job up to its next
- *  genuinely blocking wait (an open gate, or a `runner.active()` false settle). */
+/** Drains the microtask queue. Scripted turns resolve through promise chains alone, so a fixed
+ *  number of `await`s runs a job up to its next blocking wait (an open gate, or its settle). */
 async function flush(): Promise<void> {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
@@ -93,8 +91,7 @@ function toolTurn(calls: { callId: string; name: string; args?: Record<string, u
   return { events: [{ t: 'done', stop: 'tool-calls', final: calls.map((c) => ({ callId: c.callId, name: c.name, args: c.args, rawArgs: JSON.stringify(c.args ?? {}) })) }] };
 }
 
-/** A fresh state+executor pair on every call, so a spy wrapping this exposes exactly how many
- *  times the runner asked for one. */
+/** A fresh state and executor on every call, so a spy can count how often the runner asks. */
 function makeToolDepsFactory(): () => AgentToolDeps {
   return () => {
     const state = makeState(20, 20);
@@ -363,9 +360,8 @@ describe('exec/runner', () => {
   });
 
   it('send while idle appends an order and drives a scripted text-only turn to done', async () => {
-    // Question-ending closes throughout this file: a zero-write close that hands back to the user
-    // settles at once, while a plain one is answered by the loop's delivery nudge first — these
-    // tests are about the runner's mechanics, so their scripts close on the settled shape.
+    // Scripts in this file close on a question: a zero-write close that hands back to the user
+    // settles at once, where a plain one first draws the loop's delivery nudge.
     const adapter = createScriptedAdapter([textTurn('All set. Want anything changed?')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
@@ -412,12 +408,8 @@ describe('exec/runner', () => {
     expect(eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'incident')).toMatchObject({ error: { cls: 'overflow' } });
   });
 
-  /**
-   * The turn as it arrives reaches the store. The loop appends nothing until a turn closes, so the
-   * live parts are the panel's only evidence that anything is happening: without this wire the
-   * phase never leaves `thinking`, a sentence appears only once it is finished, and a tool call
-   * shows no row until its result lands. `LoopDeps.onLive` is that wire.
-   */
+  /** The loop appends nothing until a turn closes, so `LoopDeps.onLive` is the panel's only view
+   *  of a turn in flight. */
   it('publishes the streaming parts to the session store, and clears them at the settle', async () => {
     const adapter = createScriptedAdapter([{
       events: [{ t: 'text', delta: 'Levelling ' }, { t: 'text', delta: 'the shore.' }, { t: 'done', stop: 'stop' }],
@@ -433,7 +425,7 @@ describe('exec/runner', () => {
     const streamed = seen.filter((parts): parts is readonly Part[] => parts !== null);
     expect(streamed.length, 'nothing was published while the turn streamed').toBeGreaterThan(0);
     expect(streamed.some((parts) => parts.some((p) => p.kind === 'text' && p.text.includes('Levelling')))).toBe(true);
-    // A turn that has landed as an event must not also stand as a half-written one.
+    // A turn that has landed as an event no longer stands as a half-written one.
     expect(useAgentSession.getState().live).toBeNull();
   });
 
@@ -445,13 +437,13 @@ describe('exec/runner', () => {
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
     runner.send('go');
-    runner.send('go faster'); // fired while the first job is still mid-flight
+    runner.send('go faster'); // the first job is still in flight
     await flush();
 
     const log = useAgentSession.getState().log;
     expect(eventsOf(log).filter((e) => e.kind === 'order')).toHaveLength(1);
     expect(eventsOf(log).some((e) => e.kind === 'steer' && e.text === 'go faster')).toBe(true);
-    expect(adapter.requests).toHaveLength(2); // both turns of the one job, never a second job's turn
+    expect(adapter.requests).toHaveLength(2); // both turns of the one job
     expect(deriveView(log).phase).toBe('idle');
   });
 
@@ -497,7 +489,7 @@ describe('exec/runner', () => {
     const events = eventsOf(log);
     expect(events.filter((e) => e.kind === 'resumed')).toHaveLength(1);
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
-    expect(adapter.requests).toHaveLength(2); // the second runJob replayed both scripted turns
+    expect(adapter.requests).toHaveLength(2);
     expect(JSON.stringify(adapter.requests[adapter.requests.length - 1])).toContain('continue please');
     expect(deriveView(log).phase).toBe('idle');
   });
@@ -514,9 +506,8 @@ describe('exec/runner', () => {
     expect(deriveView(log).phase).toBe('paused');
     expect(eventsOf(log).filter((e) => e.kind === 'pauseRequested')).toHaveLength(1);
 
-    // pause() again on an already-settled 'paused' log (no job in flight) must not append a second
-    // pauseRequested: that sticks the projected phase at 'pausing' forever, and from there a
-    // further send only queues a steer nobody delivers while resume() no-ops.
+    // A second pauseRequested on a settled log would stick the phase at 'pausing', where a send only
+    // queues a steer nobody delivers and resume() does nothing.
     runner.pause();
     expect(eventsOf(log).filter((e) => e.kind === 'pauseRequested')).toHaveLength(1);
     expect(deriveView(log).phase).toBe('paused');
@@ -529,13 +520,8 @@ describe('exec/runner', () => {
     expect(deriveView(log).phase).toBe('idle');
   });
 
-  /**
-   * Set-aside is the other answer to a hold, and it has to settle the job rather than hide it.
-   *
-   * A paused job owns the composer's resume route and the session's current seat, so a panel that
-   * only put its card away would be one with no way to a fresh order and a dock still reporting a
-   * hold nothing is showing. `aborted` is what the outcome already means — a run the user stopped.
-   */
+  /** Set-aside settles the job rather than hiding it: a paused job owns the composer's resume route,
+   *  so a card merely put away would leave no way to a fresh order. */
   it('setAside settles a held job as aborted, and leaves a live one to stop()', async () => {
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
@@ -555,18 +541,12 @@ describe('exec/runner', () => {
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
     expect(deriveView(log).phase).toBe('aborted');
 
-    // A second press answers nothing: the job has already settled, so there is no hold to put away.
     runner.setAside();
     expect(eventsOf(log).filter((e) => e.kind === 'jobEnd')).toHaveLength(1);
   });
 
-  /**
-   * A key going away calls `stop()`, and an abort reaches nothing on a held job. `settings.ts`'s
-   * `forgetKey` aborts first so the record survives the disconnection, but a paused job has no loop
-   * to abort: `inflight` is undefined, `abortController?.abort()` settles nothing, and the job stood
-   * at `paused` forever with its partial edits on the map and no `jobEnd` on the log — no phase the
-   * panel could read as news, and no rewind reachable.
-   */
+  /** Forgetting a key calls `stop()`. A paused job has no loop to abort, so `stop()` has to append
+   *  its `jobEnd` itself or the job would stay paused with its partial edits and no rewind. */
   it('stop() settles a HELD job, since there is no loop to abort', async () => {
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
@@ -585,7 +565,6 @@ describe('exec/runner', () => {
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
     expect(deriveView(log).phase).toBe('aborted');
 
-    // And it stays idempotent: a second stop has nothing left to settle.
     runner.stop();
     expect(eventsOf(log).filter((e) => e.kind === 'jobEnd')).toHaveLength(1);
   });
@@ -594,23 +573,20 @@ describe('exec/runner', () => {
     const adapter = createScriptedAdapter([textTurn('done')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
-    runner.stop(); // never ran anything
+    runner.stop();
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(0);
 
     runner.send('go');
     await flush();
     const before = eventsOf(useAgentSession.getState().log).length;
-    runner.stop(); // a settled session
+    runner.stop();
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(before);
   });
 
   /**
-   * The invariant lives at the append site, not at the draw site. Every surface withholds Pause
-   * while a gate stands, but `askGate` appends `gateAsked` from a promise continuation — outside any
-   * React event handler — so the subscription schedules rather than commits, and for one frame the
-   * DOM shows a Pause over a log that is already gated. A `pointerdown` already travelling then
-   * lands `pauseRequested`: the phase goes `pausing`, the projection withholds the gate, and the
-   * loop's `awaitGate` is left parked with no question on screen.
+   * The runner refuses rather than the surface: `gateAsked` lands from a promise continuation, so for
+   * one frame the DOM can still show Pause over a gated log. A pause landing then would withhold the
+   * gate and leave the loop parked with no question on screen.
    */
   it('pause() refuses while a gate is standing, whatever the surface offered', async () => {
     const adapter = createScriptedAdapter([
@@ -629,21 +605,14 @@ describe('exec/runner', () => {
     expect(eventsOf(log).some((e) => e.kind === 'pauseRequested')).toBe(false);
     expect(deriveView(log).phase).toBe('gated');
 
-    // The gate still answers, and the job runs on: nothing was parked.
     answerGate(log, pendingGate(log)!.gateId, 'allow');
     await flush();
     expect(deriveView(log).phase).toBe('idle');
   });
 
   /**
-   * Oversight is read at the gate decision, not at launch.
-   *
-   * The manage card is reachable while a job runs, and its oversight row writes straight through to
-   * the runner's config object (`agent/exec/runner-host.ts` mutates it in place), so the tier a call
-   * is judged against is the one standing when that call arrives.
-   *
-   * The change lands between two calls, which is where a user makes it: the second scripted turn is
-   * a function, so it runs after the first write has settled and before the second is minted.
+   * Oversight is read at each gate decision, not at launch: `runner-host.ts` mutates the config in
+   * place. A function turn makes the change after the first write settles and before the second.
    */
   const writeCall = (callId: string, x: number): ScriptedTurn => toolTurn([{
     callId,
@@ -684,7 +653,6 @@ describe('exec/runner', () => {
     const log = useAgentSession.getState().log;
     expect(pendingGate(log)?.callId).toBe('c1');
 
-    // The one question is answered, and the user decides not to be asked the next one.
     cfg.oversight = 'yolo';
     answerGate(log, pendingGate(log)!.gateId, 'allow');
     await flush();
@@ -698,21 +666,19 @@ describe('exec/runner', () => {
     const adapter = createScriptedAdapter([textTurn('done')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
-    runner.setAside(); // an idle session
+    runner.setAside();
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(0);
 
     runner.send('go');
     await flush();
     const before = eventsOf(useAgentSession.getState().log).length;
-    runner.setAside(); // a settled one
+    runner.setAside();
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(before);
   });
 
   it('[ASST-04] a throw during the job redacts a leaked key before it reaches the incident', async () => {
     const leak = 'sk-abcdefghijklmnopqrstuvwx';
-    // A misbehaving adapter (the "should be impossible" case the runner's own catch defends
-    // against): a real adapter's `stream()` contract never throws, but a buggy one might, and its
-    // exception can quote request/response details the same way a crashed tool's message can.
+    // An adapter's `stream()` contract never throws, but a buggy one can, quoting request details.
     const throwingAdapter: Adapter = {
       async *stream() {
         throw new Error(`network failure, key=${leak} rejected`);
@@ -747,9 +713,8 @@ describe('exec/runner', () => {
     await flush();
   });
 
-  /** The editor's display language is the system prompt's `{uiLanguage}` fallback: which language to
-   *  open in before the user has typed anything readable. It rides on the config, so a runner that
-   *  is not told falls back to English — for the whole app, not one seam. */
+  /** The display language fills the system prompt's `{uiLanguage}`: the language to open in before
+   *  the user has typed anything readable. */
   it('speaks the editor\'s display language into the system prompt, and English when told none', async () => {
     const adapter = createScriptedAdapter([textTurn('好的。')]);
     const runner = createRunner(makeCfg({ scripted: adapter, uiLocale: 'zh' }));
@@ -824,9 +789,8 @@ describe('exec/runner', () => {
     expect(runner.active()).toBe(false);
   });
 
-  /** The dock's retry countdown presses `retryNow()` to end the ladder's own backoff early; this
-   *  must resolve the pending sleep without the fake clock ever advancing, since a real countdown
-   *  press does not wait out the delay it is cutting short. */
+  /** The dock's countdown calls `retryNow()` to cut the backoff short, so it resolves the pending
+   *  sleep without the clock advancing. */
   it('retryNow() during the retry backoff lets the job finish without advancing fake time', async () => {
     vi.useFakeTimers();
     const adapter = createScriptedAdapter([
@@ -840,7 +804,7 @@ describe('exec/runner', () => {
 
     let log = useAgentSession.getState().log;
     expect(eventsOf(log).some((e) => e.kind === 'retry')).toBe(true);
-    expect(deriveView(log).phase).toBe('retrying'); // still mid-job, sitting in the backoff sleep
+    expect(deriveView(log).phase).toBe('retrying');
 
     runner.retryNow();
     await flush();
@@ -884,7 +848,7 @@ describe('exec/runner', () => {
     const adapter = createScriptedAdapter([textTurn('Where should the house go?')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
-    runner.send('build a house'); // double-click: both calls fire before any await runs
+    runner.send('build a house'); // a double click: both calls fire before any await runs
     runner.send('build a house');
     await flush();
 
@@ -900,8 +864,8 @@ describe('exec/runner', () => {
     const before = exec.historyDepth();
     const args = { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 };
 
-    // The shape a page reload leaves behind: an order, an assistant turn with one unresolved
-    // write call, and the persisted layer's synthetic pause tail — nothing has executed yet.
+    // What a page reload leaves: an order, a turn with one unresolved write call, and the persisted
+    // layer's synthetic pause tail.
     append(log, { kind: 'order', text: 'build something', mapContext: '' });
     append(log, {
       kind: 'assistant',
@@ -913,22 +877,20 @@ describe('exec/runner', () => {
     const adapter = createScriptedAdapter([textTurn('continued and done')]);
     const runner = createRunner(makeCfg({ scripted: adapter, makeToolDeps: () => toolDeps }));
 
-    runner.send('continue'); // double-click: both fire before any await runs
+    runner.send('continue'); // a double click
     runner.send('continue');
     await flush();
 
     const events = eventsOf(log);
     expect(events.filter((e) => e.kind === 'resumed')).toHaveLength(1);
     expect(events.filter((e) => e.kind === 'toolResult' && e.callId === 'c1')).toHaveLength(1);
-    expect(exec.historyDepth()).toBe(before + 1); // the write ran exactly once
+    expect(exec.historyDepth()).toBe(before + 1);
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
   });
 
   it('delegate_task is really wired: the child runs on the SAME adapter, and under strict oversight its write gate mirrors onto the parent log', async () => {
-    // One scripted adapter serves both the parent job and the child job the runner spawns for it
-    // (exactly what `createRunner`'s `launch()` wires: one `buildAdapter` call, reused as both
-    // `loopDeps.adapter` and `delegateOpts.adapter`) — turns in the order each side asks for one:
-    // the parent's delegate call, then the child's own two turns, then the parent's closing turn.
+    // `launch()` hands one adapter to both the parent loop and the delegated child, so the script
+    // runs in asking order: the parent's delegate call, the child's two turns, the parent's close.
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'd1', name: 'delegate_task', args: { task: 'raise a small hill' } }]),
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
@@ -940,8 +902,7 @@ describe('exec/runner', () => {
     runner.send('get some help');
     await flush();
 
-    // Gate 1: the parent's own call to delegate_task (itself a write tool, gated like any other
-    // under strict oversight) before the runner ever reaches `delegateTask`.
+    // delegate_task is itself a write tool, so strict oversight gates it first.
     let log = useAgentSession.getState().log;
     expect(deriveView(log).phase).toBe('gated');
     const gate1 = pendingGate(log);
@@ -949,9 +910,7 @@ describe('exec/runner', () => {
     answerGate(log, gate1!.gateId, 'allow');
     await flush();
 
-    // Gate 2: the child's own paint_terrain write, gated under the same strict oversight on its
-    // own log, mirrored onto the parent log by `bridgeChildGates` (never answerable directly on
-    // a log this test, or a human, never sees).
+    // The child's write is gated on its own log and mirrored onto the parent's (`bridgeChildGates`).
     log = useAgentSession.getState().log;
     expect(deriveView(log).phase).toBe('gated');
     const gate2 = pendingGate(log);
@@ -968,7 +927,7 @@ describe('exec/runner', () => {
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
     expect(deriveView(log).phase).toBe('idle');
     expect(runner.active()).toBe(false);
-    expect(adapter.requests).toHaveLength(4); // every scripted turn consumed, parent and child alike
+    expect(adapter.requests).toHaveLength(4);
   });
 
   it('the runner wires onChildProgress so the helper lane can watch the live child', async () => {
@@ -983,26 +942,21 @@ describe('exec/runner', () => {
     runner.send('get some help');
     await flush();
 
-    // Gate 1: the parent's own delegate_task call.
     let log = useAgentSession.getState().log;
     const gate1 = pendingGate(log);
     expect(gate1).toBeDefined();
     answerGate(log, gate1!.gateId, 'allow');
     await flush();
 
-    // The child job is now running (its order + tool-call are on its own log, mirrored gate
-    // pending on the parent log); the helper lane already has a live view of it, before its
-    // first write has landed.
+    // The child is waiting on its mirrored gate; the lane sees it before its first write lands.
     expect(useAgentSession.getState().childLive).toEqual({ task: 'raise a small hill', ops: 0 });
 
-    // Gate 2: the child's own write, mirrored onto the parent log.
     log = useAgentSession.getState().log;
     const gate2 = pendingGate(log);
     expect(gate2).toBeDefined();
     answerGate(log, gate2!.gateId, 'allow');
     await flush();
 
-    // The delegate call has returned (however it ends), so the lane goes back to empty.
     expect(useAgentSession.getState().childLive).toBeNull();
     log = useAgentSession.getState().log;
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
@@ -1019,25 +973,22 @@ describe('exec/runner', () => {
     await flush();
 
     const oldLog = useAgentSession.getState().log;
-    expect(deriveView(oldLog).phase).toBe('gated'); // mid-run: waiting on the write gate, never answered
+    expect(deriveView(oldLog).phase).toBe('gated');
     expect(runner.active()).toBe(true);
 
-    useAgentSession.getState().clearSession(); // swaps the store's log out from under the live job
+    useAgentSession.getState().clearSession();
     await flush();
 
-    // The abort, and its jobEnd, land on the old log — the one the orphaned job actually held.
     const oldEvents = eventsOf(oldLog);
     expect(oldEvents[oldEvents.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
-    expect(oldEvents.some((e) => e.kind === 'toolResult')).toBe(false); // the gated call never executed
-    expect(adapter.requests).toHaveLength(1); // only the pre-gate turn; the post-gate turn never ran
+    expect(oldEvents.some((e) => e.kind === 'toolResult')).toBe(false);
+    expect(adapter.requests).toHaveLength(1);
     expect(runner.active()).toBe(false);
 
-    // The store's current log is the fresh one clearSession adopted, untouched by the orphan.
     const newLog = useAgentSession.getState().log;
     expect(newLog).not.toBe(oldLog);
     expect(eventsOf(newLog)).toHaveLength(0);
 
-    // A fresh send on it starts a clean job with no trace of the aborted run.
     const adapter2 = createScriptedAdapter([textTurn('Fresh and clean. What shall I build?')]);
     const runner2 = createRunner(makeCfg({ scripted: adapter2 }));
     runner2.send('start again');
@@ -1081,24 +1032,17 @@ describe('exec/runner', () => {
     expect(toolResult!.content).toContain('OUT OF REGION');
     expect(toolResult!.content).toContain('(1,1)-(4,4)');
     expect(toolResult!.detail?.regionBlocked).toBe(true);
-    expect(state.cells[9]![9]!.terrain).toBeNull(); // outside the region, untouched
-    expect(state.cells[2]![2]!.terrain).toBeNull(); // all-or-nothing: even the in-region part never landed
+    expect(state.cells[9]![9]!.terrain).toBeNull();
+    expect(state.cells[2]![2]!.terrain).toBeNull(); // all or nothing: the in-region part never landed either
     expect(exec.historyDepth()).toBe(before);
     expect(deriveView(useAgentSession.getState().log).phase).toBe('idle');
   });
 });
 
 /**
- * A running job is one contract.
- *
- * The panel mutates the runner's config in place, so every connection field can move under a job in
- * flight. The rule is that none of them reaches it: `launch()` builds the adapter and copies the
- * model out, so a job's every turn goes to one host as one author, and the change applies from the
- * next order. A mid-thought swap would change the author mid-sentence, and on the Anthropic dialect
- * it would feed one model's signed thinking blocks to another.
- *
- * Oversight is the deliberate exception, pinned by the gate tests: it is read through a getter
- * because a tier the user tightens mid-run has to reach the next write.
+ * The panel mutates the runner's config in place, but `launch()` builds the adapter and copies the
+ * model out, so a connection change applies from the next order. A mid-job swap would feed one
+ * model's signed thinking blocks to another. Oversight is the exception (see the gate tests above).
  */
 describe('exec/runner: a running job keeps the connection it launched with', () => {
   /** A three-turn job, so there are later turns for a mid-run change to reach. */
@@ -1116,7 +1060,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     const runner = createRunner(cfg);
 
     runner.send('go');
-    cfg.model = 'model-b'; // the user arms another model while the first turn is in flight
+    cfg.model = 'model-b'; // armed while the first turn is in flight
     await flush();
 
     expect(adapter.requests.map((r) => r.model)).toEqual(['model-a', 'model-a', 'model-a']);
@@ -1148,7 +1092,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     runner.send('go');
     expect(runner.connection()).toEqual({ providerId: 'custom', model: 'model-a', customBaseUrl: 'https://gw.example/v1' });
 
-    // The armed answer moves; the launched one does not, which is what lets a settings card show both.
+    // The armed connection moves and the launched one does not, so a settings card can show both.
     cfg.model = 'model-b';
     cfg.customBaseUrl = 'https://other.example/v1';
     expect(runner.connection()).toEqual({ providerId: 'custom', model: 'model-a', customBaseUrl: 'https://gw.example/v1' });
@@ -1157,8 +1101,6 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     expect(runner.connection()).toBeUndefined();
   });
 
-  /** The endpoint's own half of the same rule: the adapter is built once per launch, so a base URL
-   *  edited mid-run reaches no request of the job in flight and every request of the next one. */
   it('builds the adapter once per job, so a mid-run endpoint edit reaches only the next one', async () => {
     openAiCtorMock.mockClear();
     const cfg = makeCfg({ providerId: 'custom', customBaseUrl: 'https://first.example/v1', model: 'm' });
@@ -1175,11 +1117,8 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
       .toEqual(['https://first.example/v1', 'https://second.example/v1']);
   });
 
-  /**
-   * The display language has a foot in both camps, and this is the half that is a connection fact: it
-   * is the system prompt's opening language, built once per launch with everything else. Its other
-   * role, the words on screen, is environmental and moves the instant the user changes it.
-   */
+  /** The display language is also the system prompt's opening language, fixed per launch like the
+   *  connection; the words on screen follow it at once. */
   it('builds the system prompt once per job, so a language change reaches the next one', async () => {
     const adapter = createScriptedAdapter([...threeTurnJob(), textTurn('Second order done. Anything else?')]);
     const cfg = makeCfg({ scripted: adapter, uiLocale: 'en' });
@@ -1197,14 +1136,9 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
   });
 
   /**
-   * The replay path stays coherent across a mid-run change, which is the one way this rule could
-   * corrupt something rather than merely surprise someone.
-   *
-   * `rawModel` is stamped with the model the turn was actually sent to (`loop.ts` reads `deps.model`,
-   * the launch copy), so a change made mid-job cannot mislabel bytes the previous model minted. The
-   * next job then reads the log honestly: its own model did not produce that raw, so `sameModel` is
-   * false and the Anthropic dialect rebuilds the history from the neutral fields instead of echoing
-   * signatures the new model would reject.
+   * `rawModel` is stamped from the launch copy of the model (`turn.ts` reads `deps.model`), so the
+   * next job on another model gets `sameModel` false and the Anthropic dialect rebuilds history from
+   * the neutral fields instead of echoing signatures the new model would reject.
    */
   it('stamps raw with the model that produced it, so the next job replays nothing it should not', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-b')]);
@@ -1212,7 +1146,7 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
     const runner = createRunner(cfg);
 
     runner.send('first order');
-    cfg.model = 'model-b'; // mid-run, and the turn still goes out on model-a
+    cfg.model = 'model-b'; // mid-run; the turn still goes out on model-a
     await flush();
 
     const assistant = eventsOf(useAgentSession.getState().log).filter((e) => e.kind === 'assistant');
@@ -1228,9 +1162,8 @@ describe('exec/runner: a running job keeps the connection it launched with', () 
   });
 });
 
-/** The panel mutates the runner's config in place rather than rebuilding the runner, so one runner
- *  can launch job A on one model and job B on another over the same log — and A's raw thinking
- *  blocks (signatures included) are still in it. */
+/** One runner can launch successive jobs on different models over the same log, which still holds
+ *  the earlier jobs' raw thinking blocks and signatures. */
 describe('exec/runner: sameModel across launches', () => {
   it('replays a logged turn\'s raw to the same model, and stops replaying it the moment a different model is armed', async () => {
     const adapter = createScriptedAdapter([rawTurn('one done, more?','sig-a'), rawTurn('two done, more?','sig-a2'), rawTurn('three done, more?','sig-b')]);
@@ -1239,16 +1172,13 @@ describe('exec/runner: sameModel across launches', () => {
 
     runner.send('first order');
     await flush();
-    runner.send('second order'); // a second launch, same model still armed
+    runner.send('second order'); // same model still armed
     await flush();
 
     const second = adapter.requests[1]!;
     expect(second.sameModel).toBe(true);
-    // The first turn's raw bytes reach the model that minted them, verbatim.
     expect(await anthropicWire(second)).toContain('sig-a');
 
-    // Exactly what the panel does when the user arms another model: the config object is mutated,
-    // the runner is not rebuilt.
     cfg.model = 'model-b';
     runner.send('third order');
     await flush();
@@ -1259,9 +1189,8 @@ describe('exec/runner: sameModel across launches', () => {
     const projected = await anthropicWire(third);
     expect(projected).not.toContain('sig-a');
     expect(projected).not.toContain('sig-a2');
-    expect(projected).toContain('one'); // the turns themselves are still there, as plain text
+    expect(projected).toContain('one'); // the turns remain as plain text
 
-    // And the switched job runs to completion rather than falling over on the mixed history.
     const events = eventsOf(useAgentSession.getState().log);
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
     expect(runner.active()).toBe(false);
@@ -1279,7 +1208,7 @@ describe('exec/runner: sameModel across launches', () => {
     await flush();
     expect(adapter.requests[1]!.sameModel).toBe(false);
 
-    useAgentSession.getState().clearSession(); // a new log holds no raw at all
+    useAgentSession.getState().clearSession();
     runner.send('a new session');
     await flush();
     expect(adapter.requests[2]!.sameModel).toBe(true);
@@ -1297,19 +1226,13 @@ describe('exec/runner: sameModel across launches', () => {
 
     const second = adapter.requests[1]!;
     expect(second.sameModel).toBe(true); // the flag is about the log, not the dialect
-    // providers/openai.test.ts pins the dialect's own side of this: `raw` is dropped regardless.
+    // The dialect drops `raw` regardless (providers/openai.test.ts).
     expect(second.messages.some((m) => m.role === 'assistant' && m.raw !== undefined)).toBe(true);
   });
 });
 
-/**
- * Pause, from the press to the settle.
- *
- * The dock offers a pause in exactly the phases `RUNNING` covers (thinking, streaming, executing)
- * with a ticket standing, so those are the moments the press really arrives in. The loop honours it
- * at a boundary — before a call, and between turns — and the job must reach `paused` from every one
- * of them, with the work that had not started still not started.
- */
+/** The dock offers pause while a job is thinking, streaming or executing; the loop honours it at the
+ *  next boundary (before a call, between turns), and work not yet started stays unstarted. */
 describe('pause reaches the loop from every moment the dock offers it', () => {
   const paint = (callId: string, x: number): ScriptedTurn => toolTurn([{
     callId,
@@ -1321,7 +1244,6 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
   it('[ASST-12] lands from a press while the turn is streaming, before its calls run', async () => {
     const runner = createRunner(makeCfg({
       scripted: createScriptedAdapter([
-        // The press arrives as the turn begins, which is a phase the dock draws a pause in.
         () => { runner.pause(); return streamOf(paint('c1', 2)); },
         textTurn('carried on'),
       ]),
@@ -1348,7 +1270,7 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
     }));
 
     runner.send('look around');
-    // The first call resolves, then the press lands; the second must not run.
+    // Two microtasks let the first call resolve before the press lands.
     await Promise.resolve();
     await Promise.resolve();
     runner.pause();
@@ -1383,15 +1305,8 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
     expect(eventsOf(log).some((e) => e.kind === 'toolResult' && e.callId === 'c2')).toBe(true);
   });
 
-  /**
-   * A pause request never outlives the job it was asked of.
-   *
-   * The dock says "Pausing" the moment the request lands, and the loop answers it at the next
-   * boundary — but a turn that settles the job has no next boundary, so the request would still be
-   * the newest pause event on the log with nothing left to answer it. The next job then reads it and
-   * pauses itself before its first turn, which is a run that never starts and a panel holding a
-   * pause nobody asked for.
-   */
+  /** A turn that settles the job has no next boundary to answer a pause at; the unanswered request
+   *  would otherwise pause the next job before its first turn. */
   it('does not carry a pause request into the job after it', async () => {
     const runner = createRunner(makeCfg({
       scripted: createScriptedAdapter([
@@ -1413,14 +1328,8 @@ describe('pause reaches the loop from every moment the dock offers it', () => {
   });
 });
 
-/**
- * A job the log says is running that no loop holds.
- *
- * A reload mid-run, or a session adopted from storage, leaves an `order` with no `jobEnd` on the log:
- * every surface reads that as a running job and the dock draws the pause its phase asks for, while
- * this runner holds no promise and no controller. The request the live path makes would then wait for
- * a boundary that no loop will ever reach, so the press has to act here instead.
- */
+/** A reload mid-run, or a session adopted from storage, leaves an `order` with no `jobEnd`: every
+ *  surface reads it as running, but no loop holds it, so pause and stop act on the log directly. */
 describe('a job with no loop behind it', () => {
   /** What a reload leaves behind: an order, a checkpoint, and nothing that ends them. */
   function orphan(): void {
@@ -1438,8 +1347,7 @@ describe('a job with no loop behind it', () => {
 
     runner.pause();
 
-    // Held, not merely requested: there is no boundary coming, so a `pauseRequested` would stand for
-    // the rest of the session under a dock reading "Pausing".
+    // Held, not requested: no boundary is coming, so a `pauseRequested` would stand forever.
     expect(deriveView(log).phase).toBe('paused');
     expect(eventsOf(log).some((e) => e.kind === 'pauseRequested')).toBe(false);
   });
@@ -1474,7 +1382,7 @@ describe('a job with no loop behind it', () => {
     const runner = createRunner(makeCfg({ scripted: createScriptedAdapter([textTurn('x')]) }));
     const log = useAgentSession.getState().log;
 
-    runner.pause(); // nothing at all on the log
+    runner.pause(); // an empty log
     expect(eventsOf(log)).toHaveLength(0);
 
     orphan();

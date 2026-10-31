@@ -1,6 +1,6 @@
 /**
- * The four plain colour roads were retired (#37) because the game has no such surface. Everything a
- * map can arrive in — a JSON save, an autosave, a sectioned export's undo history, a share code —
+ * The four plain colour roads were retired because the game has no such surface. Everything a
+ * map can arrive in (a JSON save, an autosave, a sectioned export's undo history, a share code)
  * has to convert rather than lose its roads, and a share code has to keep verifying while it does.
  */
 import { describe, it, expect } from 'vitest';
@@ -64,7 +64,6 @@ describe('a JSON save paved with the plain colour roads', () => {
   it('keeps every road it arrived with, rather than dropping the unknown ids', () => {
     const { json, template } = saveWith([road('r1', 'road-dirt', 2, 2), road('r2', 'road-slate', 3, 2)]);
     const state = deserialize(json, template);
-    // The plaza is recreated from the template, so it is in there too.
     expect([...state.objects.values()].filter((o) => o.catalogId.startsWith('path-'))).toHaveLength(2);
   });
 

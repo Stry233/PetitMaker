@@ -1,11 +1,10 @@
 /**
  * The painted region lives in the store (edit slice), not in a shell's local state.
  *
- * Held as `useState` inside App.tsx it leaves four things with nothing to read: the region
- * overlay's cell count, the region panel's count, the generate scope's disabled state and the
- * agent's region guard. This pins the contract those four share — a consumer that never
- * renders inside App reads the cells and their count straight off the store, and `region.length`
- * Is the count (the brush deduplicates as it paints, so no second field and no scan).
+ * Four consumers read it without rendering inside App: the region overlay's cell count, the region
+ * panel's count, the generate scope's disabled state and the agent's region guard. This pins the
+ * contract they share: they read the cells and their count straight off the store, and
+ * `region.length` is the count (the brush deduplicates as it paints, so no second field and no scan).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act } from '@testing-library/react';

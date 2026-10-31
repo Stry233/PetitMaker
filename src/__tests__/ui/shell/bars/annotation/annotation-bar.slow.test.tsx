@@ -111,9 +111,9 @@ describe('annotation tool pills', () => {
     act(() => { state().setAnnotationDimensions(true); });
     const group = () => screen.queryByRole('group', { name: 'Dimensions' });
     expect(group()).toBeTruthy();
-    click('Hide dimensions');
+    fireEvent.click(within(group()!).getByRole('button', { name: 'Hide' }));
     expect(state().annotationDimensions).toBe(false);
-    click('Show dimensions');
+    fireEvent.click(within(group()!).getByRole('button', { name: 'Show' }));
     expect(state().annotationDimensions).toBe(true);
     click('Route');
     expect(group()).toBeNull();

@@ -62,7 +62,7 @@ function load(name: string): GridState {
   return deserialize(raw, getMapTemplate(JSON.parse(raw).templateId as string));
 }
 
-/** Bare cells with terrain all round them: the holes reported as "empty blocks". */
+/** Bare cells with terrain all round them. */
 function pits(state: GridState): MacroCoord[] {
   const out: MacroCoord[] = [];
   state.cells.forEach((row, y) => row.forEach((cell, x) => {
@@ -76,8 +76,8 @@ function pits(state: GridState): MacroCoord[] {
 
 describe('the maps that were reported broken', () => {
   it('each fixture still holds the fault it was reported for', () => {
-    // Two faults across the four: fillets that hang or sit on a pit, and pits left where a paint
-    // could not fill them. Nothing here is fixed by editing the fixtures — they are the evidence.
+    // Fillets that hang or sit on a pit, and pits a paint could not fill. The fixtures are never
+    // edited to clear them.
     const found = MAPS.map((name) => {
       const state = load(name);
       return `${name}: ${violations(state).length} bad fillets, ${pits(state).length} pits`;
@@ -94,7 +94,6 @@ describe('the maps that were reported broken', () => {
     const state = load(name);
     const bad = violations(state);
     if (bad.length === 0) return;
-    // Every corner of every violating cell: nothing on offer.
     for (const v of bad) {
       const tier = getCell(state.cells, v.x, v.y)!.terrain!.elevation;
       const offered = [0, 1, 2, 3].filter((i) => isInnerCorner(state, v.x, v.y, i, { type: TerrainType.Mountain, elevation: tier }));
@@ -112,11 +111,11 @@ describe('the maps that were reported broken', () => {
   });
 });
 
-/* ── the same invariants under random editing ─────────────────────────────── */
+/* The same invariants under random editing. */
 
 const MICRO = { x: 0, y: 0 };
 
-/** mulberry32 — the repo's seeded generator, so a failure replays exactly. */
+/** mulberry32: the repo's seeded generator, so a failure replays exactly. */
 function rng(seed: number): () => number {
   return () => {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -126,9 +125,7 @@ function rng(seed: number): () => number {
   };
 }
 
-/** The structural surface of every cell — what the map really holds, fillets discounted. A real
- *  block that gains a fillet keeps its height here, which is the point: the decoration is not mass
- *  and losing it is not a loss. */
+/** The structural surface of every cell, fillets discounted: decoration is not mass. */
 function massOf(state: GridState): Map<string, number> {
   const out = new Map<string, number>();
   state.cells.forEach((row, y) => row.forEach((cell, x) => {
@@ -143,8 +140,7 @@ describe('random painting and cutting', () => {
     const failures: string[] = [];
     for (let seed = 1; seed <= 80 && failures.length < 5; seed++) {
       const rand = rng(seed);
-      // Preserve the original draw order (mode roll, then brush-size roll) so a seed's replay is
-      // unchanged: `makeToolCtx`'s options object would otherwise be built after the size argument.
+      // The mode is drawn before the brush size, which `makeToolCtx`'s argument order would reverse.
       const autoEdgeCut = rand() < 0.5 ? 'round' : 'rect';
       const state = makeState(24, 24);
       const ex = makeExecutor(state);
@@ -175,8 +171,7 @@ describe('random painting and cutting', () => {
         const bad = violations(state);
         const lost: MacroCoord[] = [];
         const now = massOf(state);
-        // Painting only ever adds height, so a cell whose surface dropped is a block that went
-        // missing — the fault behind every "empty block" report.
+        // Painting only adds height, so a cell whose surface dropped lost a block.
         for (const [k, h] of mass) {
           if ((now.get(k) ?? 0) < h) lost.push({ x: Number(k.split(',')[0]), y: Number(k.split(',')[1]) });
         }
@@ -195,9 +190,8 @@ describe('random painting and cutting', () => {
 
 describe('a pit left in a map', () => {
   it('takes the paint that fills it, one tier at a time', () => {
-    // report-4's fault: cells the brush cannot fill, because a planner that reads a Γ fillet's cosmetic
-    // tier as support starts the ladder above the ground. The skipped rung is refused for having no base,
-    // the cell stays out of the mass, and the fillet it could not replace is dropped later — the hole.
+    // A planner reading a Γ fillet's cosmetic tier as support would start the ladder above the
+    // ground; the skipped rung is refused for having no base and the cell stays a hole.
     const state = load('report-4.json');
     const holes = pits(state);
     expect(holes.length).toBeGreaterThan(0);

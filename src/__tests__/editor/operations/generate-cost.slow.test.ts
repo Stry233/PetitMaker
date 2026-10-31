@@ -1,16 +1,8 @@
 /**
- * What a generation costs, counted rather than timed.
- *
- * A card that has already been built must not be built again, and there are two honest ways to say
- * so without a clock. An object ID is minted per placement and is never seed-derived, so a map
- * whose ids are the card's own is the card's own run arriving rather than a repeat of it. And a
- * build asks the rules about every command the generator offers, most of which it rejects by
- * design, where a landing asks only about the commands that were accepted — so the same recipe
- * costs measurably less to land than to build and land.
- *
- * The three cases this pins are the ones daily use walks through: pressing the same card twice,
- * pressing a second card while the first planet stands, and pressing a card after Clear. All three
- * clear to the same ground, which is what makes one run the answer to all of them.
+ * A built card lands without being built again, counted rather than timed. Object ids are minted
+ * per placement and never seed-derived, so a map carrying the card's ids is the card's own run. A
+ * build validates every command the generator offers, a landing only the accepted ones, so landing
+ * costs measurably fewer rule calls.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createDefaultRegistry } from '../../../rules';
@@ -26,8 +18,7 @@ import type { GridState, PlacedObject } from '../../../core/model/types';
 import { defaultConfig, type GenerateConfig } from '../../../tools/generation/recipe';
 import { makeExecutor } from '../../_support/map-state';
 
-/** What a landing may cost as a share of building the same recipe and landing it. The margin is
- *  wide on purpose: what it is here to catch is a landing that silently became a build again. */
+/** A landing's rule calls as a share of a build's; wide, since it catches a landing that builds. */
 const LANDING_SHARE = 0.7;
 
 interface Counted extends EditContext { counts: { pre: number; post: number } }
@@ -63,8 +54,7 @@ describe('what a generation costs', () => {
     const landing = kit.counts.pre;
     expect(ids(kit.state)).toEqual(ids(card!.state));
 
-    // The same recipe on the same ground with nothing built for it: the generator runs, and every
-    // command it offers is validated whether or not it is accepted.
+    // Same recipe and ground with no card: the generator runs and every offered command is validated.
     __resetCandidateCache();
     const cold = hexiaKit();
     await generateMap(cold, { config: config(2718), region: null });
@@ -93,10 +83,8 @@ describe('what a generation costs', () => {
   }, 120_000);
 
   /**
-   * Clear leaves no crumbs. An erase is refused outside the buildable zone, so the cosmetic Γ
-   * patches an auto edge-cut writes along the planet's rim are the ones at risk of surviving every
-   * clear and every regeneration — leaving a blank map that still remembers the planet before it,
-   * and a card built for plain ground that can never be landed as itself again.
+   * An erase is refused outside the buildable zone, so the Γ patches auto edge-cut writes along the
+   * rim are the cells most likely to survive a clear.
    */
   it('clears a generated planet back to the map it opened on', async () => {
     const kit = hexiaKit();

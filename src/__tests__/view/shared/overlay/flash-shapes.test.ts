@@ -2,8 +2,8 @@
  * What the commit flash draws over.
  *
  * The flash lands right after the trim pass, so the map already holds the shape it is announcing:
- * flat squares would advertise a result the stroke did not leave (the finetuned curve's flash was
- * square while the curve itself came out rounded).
+ * flat squares would advertise a result the stroke did not leave, such as a square flash over a
+ * curve that came out rounded.
  */
 import { describe, it, expect } from 'vitest';
 import { splitFlashShapes } from '../../../../view/shared/overlay/ghost-geometry';

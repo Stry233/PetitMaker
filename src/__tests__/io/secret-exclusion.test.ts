@@ -3,9 +3,8 @@
 // preferences, and session-only command history never enter saves or share payloads.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// autosave's camera read touches the live 2D/3D view registries; this suite mounts neither, so it
-// gets the same "no view opened this session" answer a real cold session would (mirrors
-// src/__tests__/io/storage/autosave.test.ts's own mock).
+// Autosave's camera read touches the live view registries; with no view mounted it gets the answer a
+// cold session would.
 vi.mock('../../editor/host/host', () => ({
   host: { camera: { get2d: () => undefined, get3d: () => undefined } },
 }));
@@ -28,8 +27,7 @@ import { CommandType, TerrainType, type GridState, type MapTemplate, type PlaceO
 import { exportable } from '../_support/exportable';
 import { ItemCategory } from '../../config/catalog/categories';
 
-// jsdom's built-in localStorage is unreliable under this node version (see
-// src/__tests__/agent/security/key-storage.test.ts) — back it with a real Map-based stub.
+// jsdom's built-in localStorage is unreliable under this Node version, so a Map backs it.
 const backing = new Map<string, string>();
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => backing.get(k) ?? null,
@@ -49,8 +47,7 @@ function obfuscate(s: string): string {
   return btoa(unescape(encodeURIComponent(s)));
 }
 
-/** Seed every real localStorage key the app writes, each carrying either the fake secret
- *  (agent settings) or a distinctive canary (ordinary prefs). */
+/** Seeds every localStorage key the app writes with the fake secret (agent settings) or a canary. */
 function seedLocalStorage(): void {
   backing.clear();
   localStorage.setItem(
@@ -67,19 +64,15 @@ function seedLocalStorage(): void {
   localStorage.setItem('petit-planet-autosave', JSON.stringify({ marker: AUTOSAVE_CANARY }));
 }
 
-/** `makeState`'s default template id ('test') is not registered in the shared MAP_TEMPLATES
- *  registry, so `encodeMapPayload`'s self-verify round-trip (which resolves the template by id
- *  via `getMapTemplate`) would silently fall back to the default map and fail to decode a
- *  differently-sized grid. Register a dedicated id up front — same fix as
- *  src/__tests__/io/share/corpus.ts:namedState. */
+/** `encodeMapPayload`'s self-verify resolves the template by id, and `makeState`'s 'test' id is not
+ *  registered, so it would fall back to the default map and fail to decode a differently sized grid. */
 function registeredTemplate(id: string, width: number, height: number): MapTemplate {
   const template: MapTemplate = { ...makeTemplate(width, height), id };
   MAP_TEMPLATES[id] = template;
   return template;
 }
 
-/** A real GridState with terrain + a handful of real-catalog objects (pattern from
- *  src/__tests__/io/share/corpus.ts:handEditSmall). */
+/** A GridState with terrain and a handful of real-catalog objects. */
 function buildStateWithObjects(): GridState {
   const template = registeredTemplate('secret-exclusion-test', 24, 24);
   const state: GridState = { ...makeState(24, 24), template, cells: createGrid(template) };
@@ -116,14 +109,12 @@ describe('secret exclusion — codecs never touch storage', () => {
   it('buildShareCode payload bytes (decoded as latin1) contain neither the fake key nor any pref value', async () => {
     const state = buildStateWithObjects();
 
-    // The raw pre-glyph payload (what actually gets range-coded/compressed) — the most direct
-    // thing to inspect for byte-level leakage.
+    // The raw pre-glyph payload is the most direct place to look for byte-level leakage.
     const payload = await encodeMapPayload(state, null, { appVersion: '1.0-test', saveVersion: 3 });
     const latin1 = Array.from(payload, (b) => String.fromCharCode(b)).join('');
     for (const c of CANARIES) expect(latin1).not.toContain(c);
 
-    // Exercise the full public entry point too (rendered glyph image) — confirms it doesn't
-    // crash and stays consistent with the payload above.
+    // The full public entry point (rendered glyph image) too.
     const code = await buildShareCode(exportable(state), null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
     expect(code).not.toBeNull();
   });
@@ -163,9 +154,9 @@ describe('secret exclusion — codecs never touch storage', () => {
 // identical for equal live states regardless of undo depth, and decoding must recover only live values.
 describe('history/undo state never enters share payloads', () => {
   const SHARED_TEMPLATE_ID = 'secret-exclusion-history-shared';
-  // Elevations kept at 1-3 so layers auto-pass the 3x3 base rule (V-MTN-03) — no support
-  // scaffolding needed to keep every intermediate stroke post-stroke-valid.
-  const MARKER_ELEV = 3; // painted, then overwritten — survives only inside undo entries
+  // Elevations stay at 1 to 3 so every intermediate stroke passes the 3x3 base rule (V-MTN-03)
+  // without support scaffolding.
+  const MARKER_ELEV = 3; // painted, then overwritten: survives only inside undo entries
   const FINAL_ELEV = 1; // the live value at that same cell after the overwrite
 
   function freshState(): GridState {
@@ -173,8 +164,8 @@ describe('history/undo state never enters share payloads', () => {
     return { ...makeState(24, 24), template, cells: createGrid(template) };
   }
 
-  /** Builds a state via real CommandExecutor edits, accumulating undo depth ≥3, with a marker
-   *  value that exists only in history (never in the final live state). */
+  /** Builds a state through CommandExecutor edits (undo depth ≥3) with a marker value that exists
+   *  only in history. */
   function buildStateWithHistory(): { state: GridState; executor: CommandExecutor } {
     const state = freshState();
     const executor = newExecutor(state);
@@ -188,11 +179,9 @@ describe('history/undo state never enters share payloads', () => {
       start.commit();
     };
 
-    // V-MTN-02 (no floating blocks) requires each raise to build on the elevation already at that
-    // cell — you can't jump straight to elevation 3 on empty ground — so ramp 1→2→3 (three
-    // entries), then drop straight back down to FINAL_ELEV in one more entry (a decrease always
-    // passes the floating check). MARKER_ELEV now exists in entry snapshots (the ramp's last
-    // entry.after and the drop's entry.before) but never in the live final state.
+    // No floating blocks (V-MTN-02) means each raise builds on the elevation below, so ramp 1, 2, 3,
+    // then drop to FINAL_ELEV in one entry (a decrease always passes). MARKER_ELEV is left in entry
+    // snapshots only.
     paint(3, 3, 1);
     paint(3, 3, 2);
     paint(3, 3, MARKER_ELEV);
@@ -211,16 +200,14 @@ describe('history/undo state never enters share payloads', () => {
     } as PlaceObjectCommand);
     placeStart.commit(); // undo depth is well past the ≥3 requirement by this point
 
-    // Paint-then-undo: this cell's Water value exists only in the redo stack afterward — not in
-    // getUndoEntries() (the undo stack) and not in the live state, which reverts to fully empty.
+    // Paint then undo: this Water value exists only in the redo stack; the live cell reverts to empty.
     paint(18, 18, 0, TerrainType.Water);
     executor.undo();
 
     return { state, executor };
   }
 
-  /** The same final content as buildStateWithHistory()'s end state, built with plain cell/object
-   *  writes and no CommandExecutor at all — so it carries zero history. */
+  /** `buildStateWithHistory`'s end state, written directly with no executor and so no history. */
   function buildStateDirectEquivalent(): GridState {
     const state = freshState();
     setTerrain(state, 3, 3, TerrainType.Mountain, FINAL_ELEV);
@@ -238,20 +225,17 @@ describe('history/undo state never enters share payloads', () => {
 
     expect(executor.historyDepth()).toBeGreaterThanOrEqual(3);
 
-    // The marker is genuinely in history (not a vacuous check) — keyed by (coord, value) so it
-    // can't accidentally match an unrelated cell that legitimately carries the same elevation.
+    // Keyed by coordinate and value, so an unrelated cell at the same elevation cannot match.
     const entries = executor.getUndoEntries();
     const at = (e: (typeof entries)[number], x: number, y: number) =>
       [...e.before, ...e.after].filter((s) => s.coord.x === x && s.coord.y === y);
 
     const historyHasMarker = entries.some((e) => at(e, 3, 3).some((s) => s.cell.terrain?.elevation === MARKER_ELEV));
     expect(historyHasMarker).toBe(true);
-    // The redo-only marker never appears in the undo stack at all (it's one entry further back,
-    // in the redo stack — getUndoEntries() only exposes the undo stack).
+    // getUndoEntries() exposes only the undo stack, so the redo-only marker is absent.
     const historyHasRedoOnlyMarker = entries.some((e) => at(e, 18, 18).some((s) => s.cell.terrain?.type === TerrainType.Water));
     expect(historyHasRedoOnlyMarker).toBe(false);
 
-    // ...but is absent from the live state, which only ever shows the final values.
     expect(state.cells[3]![3]!.terrain?.elevation).toBe(FINAL_ELEV);
     expect(state.cells[18]![18]!.terrain).toBeNull();
   });
@@ -261,7 +245,6 @@ describe('history/undo state never enters share payloads', () => {
     expect(executor.historyDepth()).toBeGreaterThanOrEqual(3);
 
     const directState = buildStateDirectEquivalent();
-    // Sanity: these are genuinely two independent constructions, not the same object compared to itself.
     expect(execState).not.toBe(directState);
     expect(execState.cells).not.toBe(directState.cells);
 
@@ -270,8 +253,7 @@ describe('history/undo state never enters share payloads', () => {
     const directPayload = await encodeMapPayload(directState, null, meta);
     expect(Array.from(execPayload)).toEqual(Array.from(directPayload));
 
-    // Same pin at the full public entry point (rendered glyph): identical payload length and
-    // identical rendered pixels either way.
+    // The full public entry point renders identical pixels either way.
     const execCode = await buildShareCode(exportable(execState), null, meta, 1600);
     const directCode = await buildShareCode(exportable(directState), null, meta, 1600);
     expect(execCode).not.toBeNull();
@@ -286,15 +268,14 @@ describe('history/undo state never enters share payloads', () => {
     const payload = await encodeMapPayload(state, null, meta);
     const decoded = await decodeMapPayload(payload);
 
-    // decoded.canonical.cells is RLE-encoded (same shape as a save file's `cells` field) —
-    // round-trip it through the real save codec to inspect actual per-cell terrain.
+    // decoded.canonical.cells is RLE-encoded like a save file's, so the save codec expands it.
     const rebuilt = deserialize(toSaveJSON(decoded.canonical), state.template);
 
     expect(rebuilt.cells[3]![3]!.terrain?.type).toBe(TerrainType.Mountain);
     expect(rebuilt.cells[3]![3]!.terrain?.elevation).toBe(FINAL_ELEV);
     expect(rebuilt.cells[3]![3]!.terrain?.elevation).not.toBe(MARKER_ELEV);
 
-    // (18,18) was painted then undone — the live state (and thus the payload) never saw it.
+    // (18,18) was painted then undone.
     expect(rebuilt.cells[18]![18]!.terrain).toBeNull();
   });
 });
@@ -305,10 +286,8 @@ describe('stylize secrets never enter a payload', () => {
   const STYLIZE_KEY_CANARY = 'CANARY-STYLIZE-SEALED-KEY-1a2b3c4d5e6f';
   const STYLIZE_BITMAP_CANARY = 'CANARY-STYLIZE-BITMAP-9f8e7d6c5b4a3f2e';
 
-  /** The real on-disk shape (`StoredRecord` in settings.ts): the canary rides in the fields a real
-   *  key/prompt would occupy, including `keySealed`, which is where an encrypted key ciphertext
-   *  lives on a real machine — planting it in plain here proves the codecs never read this record
-   *  at all, encrypted or not. */
+  /** The on-disk `StoredRecord` shape with the canary in plain in every key and prompt field,
+   *  `keySealed` included, so a pass proves the codecs never read the record, encrypted or not. */
   function seedStylizeSettings(): void {
     localStorage.setItem(
       PREFS.stylize.key,
@@ -337,7 +316,7 @@ describe('stylize secrets never enter a payload', () => {
     const img = new Image();
     img.src = `data:image/png;base64,${btoa(STYLIZE_BITMAP_CANARY)}`;
     versionStore.mint({ kind: 'model', direction: 'watercolor', image: img, mapEdit: versionStore.currentMapEdit() });
-    expect(versionStore.getState().versions).toHaveLength(1); // the mint actually happened
+    expect(versionStore.getState().versions).toHaveLength(1);
 
     const state = buildStateWithObjects();
 

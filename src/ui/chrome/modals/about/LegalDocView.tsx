@@ -16,11 +16,11 @@ import attribution from '../../../../../NOTICE?raw';
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useLocale, useT } from '../../../../i18n/context';
-import { font, radii, interactionProfiles } from '../../../design/styles';
+import { font, radii } from '../../../design/styles';
 import { MUTED } from '../../../design/tokens';
 import { skin, windowIconButton } from '../../../design/window-skin';
 import { BackIcon } from '../../../primitives/line-glyphs';
-import { useChromeScale, useDevicePixelRatio, useReadableWeight } from '../../../design/scale';
+import { useSurfaceZoom, useDevicePixelRatio, useReadableWeight } from '../../../design/scale';
 import { isDenseScript, roleFont, TEXT_ROLES, weightVars } from '../../../design/text-weight';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { useScrollFade } from '../../../primitives/scroll-fade';
@@ -28,6 +28,7 @@ import { DOCS, docNodes, type DocId } from '../../../../legal/registry';
 import { LEGAL } from '../../../../legal/config';
 import { LegalMarkdown } from '../../../primitives/LegalMarkdown';
 import { LOCALE_INFO, localeTag } from '../../../../i18n/locale-info';
+import { useInteractionProfiles } from '../../../design/input-mode';
 
 const bundledLicenses = BUNDLES_LICENSE_TEXTS ? import.meta.glob<string>('../../licenses/**/*', { query: '?raw', import: 'default', eager: true }) : {};
 
@@ -112,8 +113,9 @@ const footerBar: CSSProperties = {
 
 export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink }: LegalDocViewProps) {
   const t = useT();
+  const profiles = useInteractionProfiles();
   const weightAt = useReadableWeight();
-  const zoom = useChromeScale();
+  const zoom = useSurfaceZoom();
   const dpr = useDevicePixelRatio();
   const uiLocale = useLocale();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -149,7 +151,7 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
           onClick={onBack}
           aria-label={t('legal.back')}
           style={windowIconButton}
-          {...interactionProfiles.tile}
+          {...profiles.tile}
         >
           <BackIcon size={18} />
         </motion.button>
@@ -186,7 +188,7 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
             {t('legal.zh_only_note')}
           </div>
         )}
-        <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} dense={isDenseScript(effLang)} />
+        <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} dense={isDenseScript(effLang)} zoom={zoom} />
         {BUNDLES_LICENSE_TEXTS && id === 'license' && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: 'inherit' }}>{attribution}</pre>}
         {BUNDLES_LICENSE_TEXTS && id === 'third-party' && Object.entries(bundledLicenses).map(([path, body]) => <section key={path}>
           <h3>{path.replace('../../licenses/', '')}</h3>

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The eraser's batch shapes: a rectangle or a circle dragged out and taken on release, beside the
- * dab it has always had. They are the drawing tool's own figures (`core/grid/shapes.ts:dragShapeCells`), so
- * the eraser takes back exactly what the brush lays.
+ * dab. They are the drawing tool's own figures (`core/grid/shapes.ts:dragShapeCells`), so the eraser
+ * takes back exactly what the brush lays.
  */
 import { describe, it, expect } from 'vitest';
 import { EraserTool } from '../../../../tools/pointer/paint/eraser';

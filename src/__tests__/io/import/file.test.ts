@@ -2,7 +2,7 @@
 import { prepareOwnImageReceipt } from '../../../io/export/own-image-receipts';
 import { captureImageAttribution } from '../../../io/save/image-attribution';
 // Routing + outcome-shape coverage for the shared file-import routine (ImportModal's
-// picker/drop-zone and the window-level drag-drop overlay both call this — see
+// picker/drop-zone and the window-level drag-drop overlay both call this; see
 // src/io/import/file.ts). Drives the JSON path with a real serialize()/deserialize() round
 // trip and stubs the raster path (createImageBitmap has no jsdom implementation, and a
 // synthetic image carries no real share code), matching the pattern in
@@ -21,7 +21,7 @@ import { getMapTemplate } from '../../../config/maps';
 import type { ImportResult as RasterImportResult } from '../../../io/share';
 
 // deserialize() resolves the save's templateId against the real catalog (config/maps), so a
-// round-trippable fixture must use a real template — the shared `_helpers.makeState()` template
+// round-trippable fixture must use a real template: the shared `_helpers.makeState()` template
 // (id 'test') would silently fall back to the default map and mismatch on cell count.
 function makeState(): GridState {
   const template = getMapTemplate(undefined);

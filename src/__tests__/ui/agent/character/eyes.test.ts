@@ -1,11 +1,11 @@
 /**
  * The closed-eye lid covers the eye it is drawn over.
  *
- * A geometry test, and it has to be: jsdom has no layout, so the only checkable statement about a lid
- * is the relationship between the two boxes. The lid is an ellipse inscribed in its box and the dot is
- * an ellipse inscribed in its own, so "covers" means every point of the dot's boundary lies inside the
- * lid's — which is what is sampled below, rather than the weaker claim that one box contains the other
- * (two ellipses in nested boxes still cross where their aspects differ).
+ * A geometry test: jsdom has no layout, so the only checkable statement about a lid is the
+ * relationship between the two boxes. The lid is an ellipse inscribed in its box and the dot is an
+ * ellipse inscribed in its own, so "covers" means every point of the dot's boundary lies inside the
+ * lid's. That is what is sampled below, rather than the weaker claim that one box contains the
+ * other (two ellipses in nested boxes still cross where their aspects differ).
  */
 import { describe, it, expect } from 'vitest';
 import { EYE_DOTS, lashWidth, lidBox } from '../../../../ui/agent/character/eyes';
@@ -51,7 +51,7 @@ describe('the closed-eye lid', () => {
     });
   }
 
-  /** The whole reason the box is stated as a border box: the lash must not push the oval down. */
+  /** The box is stated as a border box so the lash does not push the oval down. */
   it('scales its lash with the drawing rather than holding a flat px', () => {
     const big = lashWidth(240);
     const small = lashWidth(56);

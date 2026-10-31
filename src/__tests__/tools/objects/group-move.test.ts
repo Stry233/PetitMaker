@@ -1,7 +1,7 @@
 /**
  * Group move: one delta applied to every member, all-or-nothing.
  *
- * There is no MoveObject command — a move is RemoveObject then a validated PlaceObject — so the
+ * A move is RemoveObject then a validated PlaceObject (there is no MoveObject command), so the
  * ordering is the feature: a group that still sits on the map while its own destinations are
  * validated collides with itself. And a removal can be refused (V-LOCK-02), so a placement that
  * follows an unchecked removal relocates an object the map still holds.

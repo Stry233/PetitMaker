@@ -25,7 +25,7 @@ function kitOf(state: GridState): Kit {
 /**
  * A map split top to bottom by a 4-wide channel: bridgeable at every row, so the candidate scan
  * finds far more sites along the one seam than a small per-pair cap can hold, and the ones it keeps
- * are the first it meets — the northern ones. The taps sit in the far south, which is what makes
+ * are the first it meets: the northern ones. The taps sit in the far south, which is what makes
  * "which candidates were kept" visible in the road that gets laid.
  */
 function channelKit(): Kit {
@@ -39,7 +39,7 @@ function channelKit(): Kit {
   return kitOf(state);
 }
 
-/** A generated planet, terrain only — cached per seed and handed out as a clone. */
+/** A generated planet, terrain only, cached per seed and handed out as a clone. */
 const islands = new Map<number, GridState>();
 function islandKit(seed: number): Kit {
   let base = islands.get(seed);

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * A shell surface that throws while rendering stays inside its own slot. The bar is the case that
- * once blanked the whole page: its band stands in for it, the map, the mode row and the rail go on
- * working, a retry or another mode brings a bar back, and the console hears the failure once by name.
- * The windows host shows the notice instead, and the bar slot keeps working beside it.
+ * A shell surface that throws while rendering stays inside its own slot. A throwing bar leaves its
+ * band in its place; the map, the mode row and the rail go on working; a retry or another mode brings
+ * a bar back; and the console hears the failure once by name. The windows host shows the notice
+ * instead, and the bar slot keeps working beside it.
  */
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -12,6 +12,8 @@ import { I18nProvider, translateFor } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { Shell } from '../../../ui/shell/Shell';
 import { setStoreState } from '../../_support/store';
+import { spec } from '../../_support/spec';
+import { InputModeProvider } from '../../../ui/design/input-mode';
 
 const broken = vi.hoisted(() => ({ toolbar: null as string | null, windows: false }));
 
@@ -83,6 +85,22 @@ describe('a bar that throws', () => {
     expect(screen.getByTestId('shell-rail-history')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Water' })).toBeTruthy();
     expect(screen.getByTestId('windows')).toBeTruthy();
+  });
+
+  spec('UI-28', 'on an upright window the failure stands on the dark surface the bar raises', () => {
+    broken.toolbar = 'mountain';
+    render(
+      <MotionConfig reducedMotion="always">
+        <InputModeProvider inputMode="touch" shape="portrait">
+          <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+        </InputModeProvider>
+      </MotionConfig>,
+    );
+    choose('mountain');
+    const fallback = screen.getByTestId('bar-failed');
+    expect(fallback.closest('[data-bar-panel="dark"]')).toBeTruthy();
+    // Upright, the bar's own band stands behind it rather than the shelves' landscape band.
+    expect(screen.queryByTestId('bar-plate')).toBeNull();
   });
 
   it('comes back on retry once it renders again', () => {

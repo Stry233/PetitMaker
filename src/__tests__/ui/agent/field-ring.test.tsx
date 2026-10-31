@@ -1,14 +1,10 @@
 // @vitest-environment jsdom
 /**
  * Every text field is ringed as the shape it is drawn as, and the composer's text never leaves its
- * pill. An outline follows its own element's radius, so the ring moves from the bare input to the
- * rounded wrapper through `design/focus-source.ts`'s pair (`FIELD_WRAP_CLASS` on the box with the
- * radius, `FIELD_INPUT_CLASS` on the focused input); a wrapper without its input rings twice, an
- * input without its wrapper not at all. jsdom resolves no `:has()`, so this checks the classes and
- * the radius; the pixels are the fidelity rig's.
- *
- * The composer's corner is held at half the resting height rather than half the live height, so the
- * inset its lead-in must clear stays constant as the well grows past two lines.
+ * pill. An outline follows its own element's radius, so the ring moves to the rounded wrapper through
+ * `design/focus-source.ts`'s pair (`FIELD_WRAP_CLASS` on the box, `FIELD_INPUT_CLASS` on the input);
+ * either half alone rings twice or not at all. jsdom resolves no `:has()`, so the classes and radius
+ * are checked, not pixels.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -48,7 +44,7 @@ function reset(): void {
   backing.clear();
 }
 
-/** The element the ring is supposed to land on: the nearest ancestor carrying the wrapper class. */
+/** The nearest ancestor carrying the wrapper class, where the ring lands. */
 function ringBox(input: HTMLElement): HTMLElement {
   const box = input.closest(`.${FIELD_WRAP_CLASS}`);
   if (!(box instanceof HTMLElement)) throw new Error('no ring box above this field');
@@ -109,20 +105,15 @@ describe('every text field is ringed as its own rounded box', () => {
   });
 });
 
-/**
- * The corner the text has to clear.
- *
- * A rounded corner of radius `r` cuts inward at every height above `r`: at `y` px from the top edge
- * the shape's own left boundary stands at `r - sqrt(r² - (r - y)²)`. The topmost text pixel in the
- * well is `WELL_PAD` down, so that is the height the lead-in has to cover.
- */
+/** How far a corner of radius `r` cuts in at `y` px below the top edge: `r - sqrt(r² - (r - y)²)`. */
 function cornerInsetAt(radius: number, y: number): number {
   if (y >= radius) return 0;
   return radius - Math.sqrt(radius * radius - (radius - y) * (radius - y));
 }
 
 describe('the composer\'s text stays inside the pill it is written in', () => {
-  /** jsdom lays nothing out, so the field's measured height is supplied through `scrollHeight`. */
+  /** The corner stays at half the resting height, so the inset the lead-in clears is constant. jsdom
+   *  lays nothing out, so the field's height is supplied through `scrollHeight`. */
   it('holds the corner at half the resting height while the field grows', () => {
     reset();
     mount(
@@ -147,6 +138,7 @@ describe('the composer\'s text stays inside the pill it is written in', () => {
     expect(screen.getByTestId('composer-well').style.borderRadius).toBe(`${resting / 2}px`);
   });
 
+  // The topmost text pixel is `WELL_PAD` below the top edge.
   it('covers the corner with the field\'s lead-in, at every height the well reaches', () => {
     expect(cornerInsetAt(PILL_RADIUS, WELL_PAD)).toBeLessThanOrEqual(WELL_LEAD_IN);
   });

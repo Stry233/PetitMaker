@@ -1,6 +1,6 @@
 /** The cards a Help demo stands beside its map: the load disc and the built-pieces list. */
+import { useReducedMotionConfig } from 'framer-motion';
 import { easingCss, seconds } from '../../design/motion';
-import { isMotionReduced } from '../../../platform/channels/motion-state';
 import { getCatalogItem } from '../../../state/catalog';
 import { localizedName, useLocale } from '../../../i18n/context';
 import { INK, PLATE } from '../../design/tokens';
@@ -17,11 +17,12 @@ export function LoadDisc({ fill }: { fill: number }) {
 /** The built-pieces card: real localized names, real icons, real counts from the demo world. */
 export function BuiltCard({ rows, title }: { rows: Array<{ catalogId: string; count: number }>; title: string }) {
   const locale = useLocale();
+  const reduced = useReducedMotionConfig() === true;
   // Imperative entrance (the press pulse's own idiom): the demo box sits under nested presence
   // gates that can hold a framer child at its initial frame, and a card that never reaches
   // opacity 1 is a card that does not exist.
   const enter = (el: HTMLDivElement | null) => {
-    if (!el || typeof el.animate !== 'function' || isMotionReduced()) return;
+    if (!el || typeof el.animate !== 'function' || reduced) return;
     el.animate(
       [
         { opacity: 0, transform: 'translateY(10px) scale(0.95)' },

@@ -3,7 +3,7 @@ import type { LegalConfig } from '../../legal/config';
 import { LEGAL } from '../../legal/config';
 import { validateLegalConfig } from '../../legal/validate-config';
 
-// A fully-resolved fixture — every validated field filled with a plausible real
+// A fully-resolved fixture: every validated field filled with a plausible real
 // value, so it passes cleanly in both modes.
 function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
   return {

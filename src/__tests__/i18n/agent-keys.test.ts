@@ -1,19 +1,8 @@
 /**
- * Every string the assistant says, in every locale.
- *
- * `parity.test.ts` already holds each locale's key set equal to en's (and each key's `{token}` set
- * equal to en's), which catches a key added to one file and forgotten in six. The questions here are
- * the ones set-equality cannot answer:
- *
- *  - the panel and the table name the same keys. A key nobody added is missing from en too, so
- *    parity passes while the panel renders the raw key; a key nothing reads is a string that will be
- *    translated seven times, reviewed, measured and never seen. Both directions are asserted, so the
- *    two sets are held identical rather than one merely covering the other.
- *  - nothing is blank, and no value carries the two punctuation marks the house style forbids.
- *  - every           is actually filled. A placeholder no caller passes reaches the user as literal
- *    braces, and parity cannot see it: all seven locales carry the same unfilled token.
- *
- * Shaped after `parity.test.ts`: en is the source of truth and the other six are read against it.
+ * Every string the assistant says, in every locale: what `parity.test.ts` set-equality cannot see.
+ * The panel and the en table name exactly the same keys (a key missing from en passes parity while
+ * the panel renders it raw), nothing is blank or left in English, and every `{token}` is filled by a
+ * caller (an unfilled one reaches the user as literal braces in all seven locales).
  */
 import { describe, it, expect } from 'vitest';
 import { translations } from '../_support/locale-tables';
@@ -28,8 +17,7 @@ const EN: Locale = 'en';
 const locales = Object.keys(translations) as Locale[];
 const agentKeys = Object.keys(translations[EN]).filter((k) => k.startsWith('agent.') && countedBase(k) === null).sort();
 
-/** The panel's zones, as key prefixes. A zone that lost every key it had would still pass a
- *  set-equality check, so each one is asserted to be populated. */
+/** The panel's zones as key prefixes; each must stay populated, which set-equality cannot check. */
 const ZONES = [
   'agent.action_', 'agent.answer_', 'agent.banner_', 'agent.composer_', 'agent.dock_', 'agent.dream_',
   'agent.gate_', 'agent.history_', 'agent.lane_', 'agent.op_', 'agent.oversight_', 'agent.setup_',
@@ -41,9 +29,8 @@ function sourceFiles(): { path: string; text: string }[] {
   return walkFiles(SRC, { skip: ['__tests__', 'locales'] }).map((path) => ({ path: posix(path), text: sourceText(path) }));
 }
 
-/** Every `agent.*` key named as a literal anywhere in the app. Three quote styles, because a key
- *  reaches `t()` as an argument, a JSX attribute (`approveKey="agent.gate_approve"`) and a table
- *  value alike. */
+/** Every `agent.*` key named as a literal in the app, in any quote style: a key reaches `t()` as an
+ *  argument, a JSX attribute and a table value alike. */
 function referencedKeys(): Map<string, string[]> {
   const refs = new Map<string, string[]>();
   for (const { path, text } of sourceFiles()) {
@@ -56,11 +43,8 @@ function referencedKeys(): Map<string, string[]> {
   return refs;
 }
 
-/**
- * The argument text of every `t(...)` / `translate(...)` / `translateFor(...)` call in a file, cut by
- * a balanced-paren scan rather than a regex: the second argument is an object literal, so a
- * non-greedy match ends at the first `}` inside it and a greedy one swallows the rest of the line.
- */
+/** The argument text of every `t`, `translate` and `translateFor` call, cut by a balanced-paren scan
+ *  because the params object defeats a regex. */
 function callArgs(text: string): string[] {
   const out: string[] = [];
   const re = /\b(?:t|translate|translateFor)\(/g;
@@ -127,12 +111,10 @@ const tokensOf = (s: string): string[] =>
   [...new Set([...s.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]!))].filter((t) => !(t in RESOLVED_TOKENS)).sort();
 
 /**
- * Keys whose tokens are filled without a call naming them, exempt from the coverage assertion
- * above; a new param-bearing key needs a call site or a line here.
- *
- * `node`: the caller splits the template on the placeholder and renders the value as its own DOM
- * leaf, so a ticking number does not re-render the sentence (`DeskHeader.splitOnToken`,
- * `OpRow.withFragment`). `table`: the key is a lookup-table value reaching `t()` as a variable.
+ * Keys whose tokens are filled without a call naming them; a new param-bearing key needs a call site
+ * or a line here. `node`: the caller splits the template on the placeholder and renders the value as
+ * its own DOM leaf (`desk-face.ts:splitOnToken`, `OpRow.withFragment`). `table`: the key is a
+ * lookup-table value reaching `t()` as a variable.
  */
 const INDIRECT: Record<string, 'node' | 'table'> = {
   'agent.dock_retrying': 'node',
@@ -163,9 +145,8 @@ describe('the assistant panel speaks every locale', () => {
 
   it('names the same keys in the table and in the panel, both ways', () => {
     const refs = referencedKeys();
-    // Operation names are composed per tool by `toolVerbKey`, so each tool reads its own key.
+    // Tool verb and skill title keys are composed at runtime, so they are named here.
     for (const name of TOOL_NAMES) refs.set(toolVerbKey(name), ['toolVerbKey']);
-    // Skill titles are composed per skill by `skillTitleKey` the same way.
     for (const name of Object.keys(SKILLS)) refs.set(skillTitleKey(name) ?? `missing title key: ${name}`, ['skillTitleKey']);
     const undefinedKeys = [...refs.keys()].filter((k) => translations[EN][k] === undefined).sort();
     const unread = agentKeys.filter((k) => !refs.has(k));
@@ -180,11 +161,8 @@ describe('the assistant panel speaks every locale', () => {
     }
   });
 
-  /** A translation identical to the English is a key that was copied rather than translated. Not an
-   *  error in itself — a brand, a protocol name or a bare number is the same word everywhere — so
-   *  this only holds the ones that are prose, taken as anything with a space in the English that
-   *  holds a letter outside its placeholders (`{phase} {clock}` and `{helper}: {summary}` have no
-   *  words to translate). */
+  /** Only prose is held: English with a space and a letter outside its placeholders. A brand or a
+   *  bare number may stay the same word everywhere. */
   it('translates the sentences rather than carrying the English through', () => {
     const prose = agentKeys.filter((k) => {
       const english = translations[EN][k] ?? '';
@@ -210,8 +188,7 @@ describe('the assistant panel speaks every locale', () => {
     expect(gaps).toEqual([]);
   });
 
-  /** The declared blind spot stays honest: an entry whose key is gone, or whose tokens are passed by
-   *  a call site now, is a line that has stopped saying anything true. */
+  /** An entry whose key is gone, or whose tokens a call site passes, is stale. */
   it('keeps the indirect list to keys that are really indirect', () => {
     const passed = passedParams();
     const stale = Object.keys(INDIRECT).filter((k) => {

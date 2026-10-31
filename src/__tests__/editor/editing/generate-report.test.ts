@@ -36,8 +36,8 @@ const none: Landing = { base: 0, offBase: 0, unsupported: 0, atCeiling: 0 };
 
 describe('a run that laid nothing', () => {
   it('names the kind it was building, since a picture is not a word', () => {
-    // The buckets the note reads are a letter's — the ground's answer to a glyph standing one
-    // layer on it — and a picture's run never reports them, so a picture only ever reaches the
+    // The buckets the note reads are a letter's (the ground's answer to a glyph standing one
+    // layer on it) and a picture's run never reports them, so a picture only ever reaches the
     // nothing-laid line. Sharing the letter's copy would tell someone building a picture that none
     // of their word fit.
     expect(says('text', undefined, 0)).toEqual([translate('generate.text_nothing_laid', { n: 0 })]);

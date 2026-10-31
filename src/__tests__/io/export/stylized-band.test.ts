@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// stylized-band: the stylized band is one flat picture — generation, then the editor's grid, then
-// the user's ink, then the disclosure watermark baked into the pixels' own bottom-right corner. The watermark lives here
-// and never in the footer band, which is the user's own line — and it belongs to model pixels
+// The stylized band is one flat picture: generation, then the editor's grid, then the user's ink,
+// then the disclosure watermark baked into the pixels' own bottom-right corner. The watermark lives
+// here and never in the footer band, which is the user's own line, and it belongs to model pixels
 // alone: the callers pass an empty label for a procedurally drawn version, whose pixels carry no
 // disclosure duty, and the empty label draws nothing.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

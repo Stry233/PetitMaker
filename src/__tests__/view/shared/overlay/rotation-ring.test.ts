@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The selection ring must ride the same per-tick progress a rotation's sprites/instances get,
- * instead of computing its own interpolation of the same turn (see `view/shared/motion/group-arc.ts`'s file
- * header for why a second interpolation of one motion is exactly the bug class this guards against).
+ * instead of computing its own interpolation of the same turn (see the file header of
+ * `view/shared/motion/group-arc.ts` for why a second interpolation of one motion drifts).
  * Two halves: the pure "given this eased progress, what does the ring look like" logic
  * (`paintSpinRing`/`paintGroupRotationArc`), and the onFrame plumbing through the PIXI tweens
  * themselves (`animateRotation`/`animateGroupRotation`), asserted against the exact eased value
@@ -49,7 +49,7 @@ function place(gs: GridState, id: string, catalogId: string, at: { x: number; y:
   gs.objects.set(id, obj);
 }
 
-/** A recording ToolOverlay stub — only the calls this feature touches. */
+/** A recording ToolOverlay stub covering only the calls this feature touches. */
 function fakeOverlay(): ToolOverlay & {
   selections: Array<{ x: number; y: number; w: number; h: number; elevation?: number; grid: GridId; append?: boolean }>;
   clears: number;
@@ -75,7 +75,7 @@ describe('paintSpinRing (single-object onFrame)', () => {
     const overlay = fakeOverlay();
     paintSpinRing(overlay, gs, 'a', 0.3, false);
     expect(overlay.clears).toBe(1);
-    // getRotatedSize(3x1, rotation=90) = {w:1, h:3} — the ALREADY-final shape, held throughout.
+    // getRotatedSize(3x1, rotation=90) = {w:1, h:3}: the final shape, held throughout.
     // A single (non-append) ring keeps its elevation label mid-tween too, matching the static case.
     expect(overlay.selections).toEqual([{ x: 4, y: 4, w: 1, h: 3, elevation: 0, grid: 'object', append: false }]);
   });
@@ -123,7 +123,7 @@ describe('paintGroupRotationArc (group onFrame)', () => {
 
   it('a non-square SPUN member holds its FINAL (already-swapped) shape for the whole tween: no morph, no rotated draw', () => {
     const gs = makeState(20, 20);
-    place(gs, 'wide', 'ring-wide', { x: 5, y: 3 }, 90); // already 1x3 — the command committed before any tween frame
+    place(gs, 'wide', 'ring-wide', { x: 5, y: 3 }, 90); // already 1x3: the command commits before any tween frame
     const turn = turnOf([{ id: 'wide', from: { x: 5.5, y: 4.5 }, spun: true }]);
     const overlay = fakeOverlay();
     for (const eased of [0, 0.25, 0.6, 0.99]) {
@@ -141,7 +141,7 @@ describe('paintGroupRotationArc (group onFrame)', () => {
     const overlay = fakeOverlay();
     paintGroupRotationArc(overlay, gs, turn, 0.5, false);
     const obj = gs.objects.get('flower')!;
-    expect(overlay.selections[0]!.x).not.toBeCloseTo(obj.position.x, 6); // it did move mid-tween
+    expect(overlay.selections[0]!.x).not.toBeCloseTo(obj.position.x, 6);
   });
 
   it('at eased=1, every ring lands exactly on the plain (already-committed) selection', () => {

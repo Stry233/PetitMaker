@@ -4,6 +4,7 @@
  * rollback button, so ancestors must not establish a transformed containing block.
  */
 import { useState, type CSSProperties } from 'react';
+import { useReveal } from '../../primitives/use-reveal';
 import { motion } from 'framer-motion';
 import { Icon, type IconId } from '../parts/sprite';
 import { editCount } from '../derive/job-stats';
@@ -14,7 +15,6 @@ import { rollbackCost, rollbackReaches } from '../derive/rollback';
 import { RewindSquare } from '../parts/RewindSquare';
 import { ActionButton } from '../../primitives/ActionButton';
 import { FloatMenu } from '../../primitives/FloatMenu';
-import { useFrameZoom } from '../../shell/use-frame-zoom';
 import { DANGER_SURFACE, INK, MUTED, PLATE, PLATE_INK } from '../../design/tokens';
 import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
@@ -114,7 +114,11 @@ function HistoryRow({
   onRollBack?: (job: JobView) => void;
 }) {
   const t = useT();
-  const [revealed, setRevealed] = useState(false);
+  // Touch mode shows the actions without a hold, so a hold only lights the row and its tap still
+  // opens the ticket.
+  const { shown: revealed, bind: revealBind, touch } = useReveal({ keepsClick: true });
+  /** Nothing hovers in touch mode, so the row's actions stand beside its count rather than over it. */
+  const standing = touch;
   /** The roll back's question stands, so the row previews what it would take; a running job closes it. */
   const [questioned, setAsking] = useState(false);
   const asking = questioned && !busy;
@@ -135,12 +139,7 @@ function HistoryRow({
       data-other-map={blocked === 'other-map'}
       data-unknown-map={blocked === 'unknown-map'}
       data-preview={asking}
-      onPointerEnter={() => setRevealed(true)}
-      onPointerLeave={() => setRevealed(false)}
-      onFocus={() => setRevealed(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setRevealed(false);
-      }}
+      {...revealBind}
       style={{
         position: 'relative',
         display: 'flex',
@@ -190,9 +189,10 @@ function HistoryRow({
         style={{
           position: 'relative',
           flex: '0 0 auto',
-          display: 'grid',
+          display: standing ? 'flex' : 'grid',
           justifyItems: 'end',
           alignItems: 'center',
+          gap: standing ? 8 : undefined,
           pointerEvents: 'none',
         }}
       >
@@ -205,7 +205,7 @@ function HistoryRow({
             color: MUTED,
             fontVariantNumeric: 'tabular-nums',
             whiteSpace: 'nowrap',
-            opacity: asking || (revealed && actions > 0) ? 0 : 1,
+            opacity: !standing && (asking || (revealed && actions > 0)) ? 0 : 1,
           }}
         >
           {rolledBack
@@ -221,8 +221,8 @@ function HistoryRow({
               gridArea: '1 / 1',
               display: 'flex',
               gap: 4,
-              opacity: revealed || asking ? 1 : 0,
-              pointerEvents: revealed || asking ? 'auto' : 'none',
+              opacity: standing || revealed || asking ? 1 : 0,
+              pointerEvents: standing || revealed || asking ? 'auto' : 'none',
             }}
           >
             {rollable && (
@@ -286,7 +286,6 @@ export function HistoryStrip({
   onRollBack?: (job: JobView) => void;
 }) {
   const t = useT();
-  const zoom = useFrameZoom();
   const setOpen = (next: boolean) => onOpenChange(next);
   if (jobs.length === 0) return null;
 
@@ -341,7 +340,6 @@ export function HistoryStrip({
         open={open}
         onOpen={() => setOpen(true)}
         onClose={() => setOpen(false)}
-        zoom={zoom}
         row={(
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>

@@ -1,13 +1,9 @@
 // @vitest-environment jsdom
 /**
- * A brush (or the idle hover/placement ghost) reads the cell under the pointer from the viewport's
- * projection at the moment it acts — but nothing about a stationary pointer changes when the camera
- * moves under it (WASD pan is the motivating case), so without a re-sample the brush freezes and the
- * hover/ghost sit on a cell a click would no longer land on. `usePointerInteraction` re-samples the
- * last known screen position on every 'viewport-changed' emission; these tests drive that resampler
- * directly through the real handlers, a real ToolManager + executor, and a fake projection whose
- * point is deliberately made to depend on a mutable "camera" offset — mimicking a
- * real pan without needing the actual 2D/3D renderers.
+ * A stationary pointer fires no events when the camera moves under it (a WASD pan), so
+ * `usePointerInteraction` re-samples the last screen position on every 'viewport-changed'; otherwise
+ * the brush freezes and the ghost sits on a cell a click would miss. Driven through the real handlers
+ * and `ToolManager` over a fake projection that reads a mutable camera offset.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -30,9 +26,7 @@ import { editorToolWiring } from '../../../editor/session/tool-wiring';
 
 const ARMED = 'tree-apple';
 
-/** Whole macro cells the fake camera has slid right by — mutated by `panCamera` to fake a WASD pan
- *  without a real renderer. `screenToPoint` reads it live, exactly like a real viewport answers
- *  differently for the same screen point once its offset changes. */
+/** Whole cells the fake camera has slid right by, read live by `screenToPoint`. */
 let panOffsetCells = 0;
 
 function makeView() {
@@ -65,7 +59,7 @@ function pointer(type: string, init: MouseEventInit): MouseEvent {
   return new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
 }
 
-/** Slide the fake camera and emit the same signal a real pan does — the resampler's only trigger. */
+/** Slides the fake camera and emits 'viewport-changed', the resampler's only trigger. */
 function panCamera(dCells: number): void {
   panOffsetCells += dCells;
   useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
@@ -78,7 +72,7 @@ let tm: ToolManager;
 let overlay: ReturnType<typeof makeView>['overlay'];
 let camera: ReturnType<typeof makeView>['camera'];
 
-/** The app's own wiring: a real ToolManager over a fresh grid, pointed at the test view. */
+/** A real `ToolManager` over a fresh grid, pointed at the test view. */
 function activate(tool: ToolType, itemId: string | null = null): void {
   gs = makeState(20, 20);
   executor = createExecutor(gs, createDefaultRegistry(), useEditorStore.getState().eventBus);
@@ -114,7 +108,7 @@ describe('a camera pan under a stationary pointer', () => {
     expect(getCell(gs.cells, 5, 5)?.terrain?.type).toBe(TerrainType.Mountain);
     expect(getCell(gs.cells, 6, 5)?.terrain).toBeFalsy();
 
-    panCamera(1); // same screen point now resolves one cell further right — the pointer never moved
+    panCamera(1); // same screen point now resolves one cell further right; the pointer never moved
 
     expect(getCell(gs.cells, 6, 5)?.terrain?.type).toBe(TerrainType.Mountain);
 
@@ -150,9 +144,7 @@ describe('a camera pan under a stationary pointer', () => {
   it('does not feed the tool during a right-drag pan even though panning itself emits viewport-changed', () => {
     activate(ToolType.TerrainBrush);
     const moveSpy = vi.spyOn(tm, 'handlePointerMove');
-    // Mirrors the real 2D renderer: camera.pan synchronously re-emits viewport-changed on every
-    // frame of the drag — a right-drag pan already "covers" the camera move through its own live
-    // pointermove, so the resampler must not sneak a duplicate tool feed in on the same tick.
+    // As in the real 2D renderer, `camera.pan` re-emits viewport-changed synchronously during the drag.
     camera.pan.mockImplementation(() => {
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
     });
@@ -167,8 +159,7 @@ describe('a camera pan under a stationary pointer', () => {
   it('pans a Hand-tool left drag through the camera once and feeds the tool nothing mid-drag', () => {
     activate(ToolType.Hand);
     const moveSpy = vi.spyOn(tm, 'handlePointerMove');
-    // The real cameras emit viewport-changed from inside the pan; the pan flag keeps the resampler
-    // from answering it, so the drag cannot recurse.
+    // The pan emits viewport-changed; the pan flag keeps the resampler from answering, so no recursion.
     camera.pan.mockImplementation(() => {
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
     });

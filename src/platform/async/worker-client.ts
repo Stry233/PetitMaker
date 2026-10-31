@@ -49,6 +49,9 @@ export interface WorkerRequest<Req, Reply, R> {
   signal?: AbortSignal;
   /** Fail with `timeout` after this many ms without the answer. */
   timeoutMs?: number;
+  /** Fail with `timeout` after this many ms without any message for this request, so a worker that
+   *  keeps reporting progress may take as long as `timeoutMs` allows. */
+  quietMs?: number;
   /** Reads one message from the worker: the answer, or `undefined` for a message that is not one
    *  (progress, say). Without it, the first message is the answer. */
   read?: (data: Reply) => R | undefined;
@@ -73,6 +76,8 @@ export interface WorkerClient<Req, Reply> {
 
 interface Pending {
   heard: boolean;
+  /** Called on every message for this request, before it is read. */
+  hear(): void;
   read: (data: unknown) => unknown;
   resolve(value: unknown): void;
   fail(failure: WorkerFailure): void;
@@ -126,6 +131,7 @@ export function createWorkerClient<Req, Reply>(opts: WorkerClientOptions): Worke
       const p = pending.get(id);
       if (!p) return;
       p.heard = true;
+      p.hear();
       let answer: unknown;
       try { answer = p.read(data); } catch (err) {
         pending.delete(id);
@@ -156,8 +162,13 @@ export function createWorkerClient<Req, Reply>(opts: WorkerClientOptions): Worke
       clearIdle();
       const id = nextId++;
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let quiet: ReturnType<typeof setTimeout> | undefined;
+      const listen = () => {
+        clearTimeout(quiet);
+        if (req.quietMs !== undefined) quiet = setTimeout(() => crash('timeout'), req.quietMs);
+      };
       const done = () => {
-        clearTimeout(timer);
+        clearTimeout(timer); clearTimeout(quiet);
         req.signal?.removeEventListener('abort', onAbort);
       };
       const onAbort = () => {
@@ -169,12 +180,14 @@ export function createWorkerClient<Req, Reply>(opts: WorkerClientOptions): Worke
       };
       pending.set(id, {
         heard: false,
+        hear: listen,
         // The worker module's protocol types what it posts.
         read: (data) => (req.read ? req.read(data as Reply) : data as R),
         resolve: (value) => { done(); resolve(value as R); },
         fail: (failure) => { done(); fail(failure); },
       });
       if (req.timeoutMs !== undefined) timer = setTimeout(() => crash('timeout'), req.timeoutMs);
+      listen();
       req.signal?.addEventListener('abort', onAbort, { once: true });
       const message = opts.keyed ? { ...(req.message as object), id } : req.message;
       try {

@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 /**
- * The closed panel. With it folded the character is all that is left of the assistant, and while a
- * job runs a chip at her shoulder carries the dock's own word and clock. The chip arrives and leaves
- * rather than switching on with the fold's timer. jsdom lays nothing out, so this tests when the chip
- * shows, what it says, and that the layer around it stays pointer-deaf.
+ * With the panel folded, a chip at the character's shoulder carries the dock's word and clock while a
+ * job runs. jsdom lays nothing out, so this covers when the chip shows, what it says, and that the
+ * layer around it stays pointer-deaf.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
+import { Profiler } from 'react';
 
 import { append } from '../../../agent/core/log';
 import { panelView, useAgentSession } from '../../../agent/session/store';
@@ -15,7 +15,7 @@ import { I18nProvider } from '../../../i18n/context';
 import { translations } from '../../../i18n/translations';
 import { useEditorStore } from '../../../state/store';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
-import { setIntentPose } from '../../../ui/agent/character/intent';
+import { useCharacterChannel, type CharacterChannel } from '../../../ui/agent/character/intent';
 import { heroChipFace } from '../../../ui/agent/derive/clock';
 import { PHASE } from '../../../ui/agent/derive/phase';
 
@@ -44,10 +44,8 @@ function mount(open: boolean, onOpen?: () => void) {
   );
 }
 
-/** A job under way: an order and a turn that asked for a tool. The fold reads a running job off the
- *  Log as `thinking` (only a live stream promotes it to streaming/executing, which is a coalesced
- *  frame this test does not need), and the chip's business is the running family as a whole.
- *  Appended through the log's own clock so the elapsed reading is real — the seam `states.ts` uses. */
+/** A job under way, an order and a tool-call turn, which reads as `thinking` without a live stream.
+ *  Appended through the log's own clock, set `agoMs` back, so the elapsed reading is real. */
 function runningJob(agoMs: number): void {
   const log = useAgentSession.getState().log as { now: () => number };
   const real = log.now;
@@ -84,7 +82,7 @@ describe('the chip at the parked character\'s shoulder', () => {
     expect(shut.getByTestId('hero-chip')).toBeTruthy();
     shut.unmount();
 
-    // Open, the dock says all of this in full, and a chip beside it would be the same fact twice.
+    // Open, the dock says it in full.
     const openPanel = mount(true);
     expect(openPanel.queryByTestId('hero-chip')).toBeNull();
     openPanel.unmount();
@@ -98,11 +96,10 @@ describe('the chip at the parked character\'s shoulder', () => {
     expect(text).toMatch(/\d+:\d\d/);
   });
 
-  /** The word is the dock's table, not a second wording: the panel open and the panel shut must not
-   *  describe one job two ways. */
+  /** Open and shut, one job is described one way. */
   it('reads its word out of the one phase table', () => {
     const face = heroChipFace(panelView(useAgentSession.getState()), Date.now());
-    expect(face).toBeNull(); // nothing running yet
+    expect(face).toBeNull();
 
     act(() => { runningJob(1_000); });
     const live = panelView(useAgentSession.getState());
@@ -125,8 +122,6 @@ describe('the chip at the parked character\'s shoulder', () => {
     }
   });
 
-  /** It is a control: the one thing in a pointer-deaf layer that takes a press, and what it does is
-   *  put the panel back up. */
   it('opens the panel on a press, in a layer that takes no press of its own', () => {
     act(() => { runningJob(1_000); });
     const opened: number[] = [];
@@ -142,22 +137,55 @@ describe('the chip at the parked character\'s shoulder', () => {
 });
 
 /**
- * The pose a surface owns. Three of the character's poses portray the setup screen rather than the
- * session, and the screen is inside the panel's lazy chunk while she stands in this eager layer, so
- * the fact is published rather than passed (`character/intent.ts`). Without this the dock said
- * "Reading the key" over a character fast asleep.
+ * Some poses portray the setup screen, which lives in the panel's lazy chunk while the character
+ * stands in this eager layer, so the screen publishes the pose (`character/intent.ts`).
  */
 describe('a pose published by the surface', () => {
-  afterEach(() => setIntentPose(null));
+  let live: CharacterChannel;
+  beforeAll(() => { live = renderHook(useCharacterChannel).result.current; });
+  afterEach(() => live.setPose(null));
 
   it('outranks the phase, and hands her back when the surface goes', () => {
     const view = mount(true);
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('idle');
 
-    act(() => setIntentPose('trouble'));
+    act(() => live.setPose('trouble'));
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('trouble');
 
-    act(() => setIntentPose(null));
+    act(() => live.setPose(null));
     expect(view.getByTestId('pw-character').getAttribute('data-pose')).toBe('idle');
+  });
+});
+
+describe('her place while no chip stands at her shoulder', () => {
+  it('follows a moving seat with no render of her layer, and the chip arrives where she stands', () => {
+    const entrance = document.createElement('div');
+    let left = 100;
+    Object.defineProperty(entrance, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left, top: 40, width: 60, height: 60, right: left + 60, bottom: 100, x: left, y: 40, toJSON: () => ({}) }),
+    });
+    let commits = 0;
+    const view = render(
+      <Profiler id="host" onRender={() => { commits++; }}>
+        <MotionConfig reducedMotion="always">
+          <I18nProvider>
+            <CharacterHost entranceRef={{ current: entrance }} open={false} connected size={60} />
+          </I18nProvider>
+        </MotionConfig>
+      </Profiler>,
+    );
+    const before = commits;
+    for (const at of [120, 140, 160]) {
+      left = at;
+      act(() => { window.dispatchEvent(new Event('resize')); });
+    }
+    expect(commits - before, 'a seat that moves re-places her past React').toBe(0);
+    expect(view.queryByTestId('hero-chip')).toBeNull();
+
+    act(() => { runningJob(10_000); });
+    const chip = view.getByTestId('hero-chip');
+    // Her seat's left plus its pad, plus her width, less the chip's inset: the chip stands at her current place.
+    expect(parseFloat(chip.style.left)).toBeGreaterThan(160);
   });
 });

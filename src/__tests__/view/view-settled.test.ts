@@ -3,8 +3,8 @@
  * `whenActiveViewPainted`: the "the freshly loaded map is on screen" signal both views feed.
  *
  * The gate has to survive the view being swapped mid-wait (a 2D↔3D toggle, or the 3D scene handing
- * over to a rebuilt one) and has to be cancellable, since the caller that waits on it — the restore
- * fade — can be unmounted before the frame ever lands.
+ * over to a rebuilt one) and has to be cancellable, since the caller that waits on it (the restore
+ * fade) can be unmounted before the frame ever lands.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { whenActiveViewPainted } from '../../view/view-settled';

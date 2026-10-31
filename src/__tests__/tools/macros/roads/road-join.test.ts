@@ -1,20 +1,11 @@
 /**
- * Did the route actually connect the two taps?
+ * A two-tap route either joins its taps in one walkable piece or lays nothing and says so; never
+ * pavement in pieces reported as success. The risk: `route.ts` plans against crossing sites, the
+ * `waterSpan`/`heightDrop` traits then snap the deck elsewhere, and the approach cells land under the
+ * deck or a cell short of its entrance.
  *
- * The two-tap gesture exists to put a road between two points, and a road in three pieces can report
- * Success: `route.ts` plans against crossing sites, the `waterSpan`/`heightDrop` traits snap the deck
- * somewhere else during validation, and the plan's approach cells then land under the deck or one cell
- * short of its entrance. One hole at an entrance and the deck plus its aprons are a pocket of pavement
- * neither leg reaches. Measured over three generated planets, that left the taps in different
- * components on 21% of laid routes, every one of them reported as a success.
- *
- * Both outcomes are pinned: a route that can be joined comes out as one walkable piece, and one that
- * cannot lays nothing and says so. The middle case — pavement on the map plus a success report — is
- * what this file exists to keep unreachable.
- *
- * Two cases run on a generated planet, because the failure is real terrain's: it takes a route over
- * more than one region, with a crossing the traits snap several cells along its own axis, and every
- * hand-built fixture of that shape happened to join by luck. Both pairs are ones the sweep measured.
+ * Two cases run on a generated planet: the snap that breaks a route takes real terrain spanning
+ * several regions, and hand-built fixtures of that shape join by luck.
  */
 import { placeObjectCommand } from '../../../../core/model/command-build';
 import { describe, expect, it, vi } from 'vitest';
@@ -48,7 +39,7 @@ function kitOf(state: GridState): Kit {
   return { state, executor, registry: executor.getRegistry() };
 }
 
-/** An open, flat, buildable map with a sea border — `road-contract.test.ts`'s own fixture. */
+/** An open, flat, buildable map with a sea border, `road-contract.test.ts`'s own fixture. */
 function makeKit(size = SIZE): Kit {
   const state = makeState(size, size);
   for (let y = 0; y < size; y++) {
@@ -71,8 +62,7 @@ function islandKit(seed: number): Kit {
     const state = base;
     exec.transaction({ silent: true }, () => {
       generateWith(state, exec, config);
-      // Terrain only: the planet generator furnishes what it builds, and this fixture is
-      // about relief. What stands on it is the case's own subject, planted or laid below.
+      // Relief only; each case places its own objects.
       clearAllObjects({ state, execute: (c: Command) => exec.execute(c) });
     });
     exec.beginStroke().commit();
@@ -81,19 +71,15 @@ function islandKit(seed: number): Kit {
   return kitOf(cloneGridState(base));
 }
 
-/** Two taps on the generated planet whose route has to take a crossing, searched for on the fixture
- *  rather than remembered: a coarse lattice of standable cells, paired east-west at link range and
- *  across a tier step, and the first pair a link joins over a bridge or a ramp wins. A written-down
- *  pair goes stale the next time the terrain moves. It throws rather than skipping if the planet offers
- *  none — a fixture with
- *  no step in it cannot ask this question. */
+/** The first tap pair whose link lands with a bridge or ramp. Searched rather than written down,
+ *  since a fixed pair goes stale whenever the generator's terrain moves. */
 function pairOverACrossing(seed: number): { from: MacroCoord; to: MacroCoord } {
   return pairWhere(seed, (outcome, state) => outcome.changes > 0 && crossings(state).length > 0);
 }
 
-/** The lattice both searches walk: standable cells paired east-west at link range, each pair tried on
- *  its own copy of the planet until `want` is satisfied. It throws rather than skipping when nothing
- *  qualifies — a fixture that cannot pose the question must say so, not pass quietly. */
+/** Standable cells on a coarse lattice, paired east-west at link range, each pair tried on its own
+ *  copy of the planet until `want` holds. Throws when none does, so a fixture that cannot pose the
+ *  question fails rather than passing quietly. */
 function pairWhere(
   seed: number,
   want: (outcome: ReturnType<typeof applyMacro>, state: GridState) => boolean,
@@ -119,9 +105,7 @@ function pairWhere(
   throw new Error('the fixture no longer offers a pair this case can be asked about');
 }
 
-/** Two taps on the generated planet whose link comes back `unjoined`: the router found a line and
- *  laying it came apart, which is the clause under test. Searched on the same lattice and for the
- *  same reason as `pairOverACrossing`. */
+/** The first tap pair whose link comes back `unjoined`: the router found a line and laying it came apart. */
 function pairThatCannotJoin(seed: number): { from: MacroCoord; to: MacroCoord } {
   return pairWhere(seed, (outcome) => outcome.changes === 0 && outcome.code === 'unjoined');
 }
@@ -140,11 +124,9 @@ function roadObjects(state: GridState): PlacedObject[] {
 }
 
 /**
- * Every cell a walk along the map's roads may use: pavement, plus each crossing deck and the ring of
- * cells around it. The apron is not slack — the `flat` trait refuses a road tile at a deck's own
- * transition on its own (the cell beside the water a bridge spans has that water as its own +1-right
- * neighbour), so a bare doorstep at a crossing is the design's documented neck and a walk crosses it.
- * A gap wider than that is a break, which is what these tests measure.
+ * Every cell a walk along the roads may use: pavement, each crossing deck, and the ring around it. The
+ * `flat` trait refuses a road tile at a deck's own transition, so one bare doorstep is expected; a
+ * wider gap is a break.
  */
 function roadWalk(state: GridState): Set<string> {
   const cells = new Set<string>();
@@ -203,8 +185,8 @@ function crossings(state: GridState): PlacedObject[] {
     .filter((o) => categoryOf(o) === ItemCategory.Bridge || categoryOf(o) === ItemCategory.Ramp);
 }
 
-/** A 4-wide water strip capped top and bottom by mountain at elev 1, so it has no exposed face:
- *  the ford `road-contract.test.ts` uses, with its two banks 23 cells apart. */
+/** A 4-wide water strip capped top and bottom by mountain at 1, so no face is exposed and nothing
+ *  walks round it: `road-contract.test.ts`'s ford. */
 function ford(kit: Kit): void {
   for (let y = 0; y < SIZE; y++) {
     for (let x = 20; x <= 23; x++) {
@@ -214,15 +196,13 @@ function ford(kit: Kit): void {
   }
 }
 
-/** A lake that reaches neither map edge: 4 wide, 21 tall, so the two banks are 23 cells apart and a
- *  route can still walk round either end of it — twice as far as crossing. */
+/** A 4x21 lake reaching neither map edge, so a route could walk round either end instead of crossing. */
 function lake(kit: Kit): void {
   for (let y = 10; y <= 30; y++) for (let x = 20; x <= 23; x++) setTerrain(kit.state, x, y, TerrainType.Water, 0);
 }
 
-/** Pavement stands at both of a deck's entrances, or touching one: the `flat` trait refuses a road
- *  tile at the transition itself often enough that a bare doorstep is the design's documented neck,
- *  but a road that never comes within a cell of a bridge is a road that does not use it. */
+/** Pavement stands at or beside both of a deck's entrances; the `flat` trait may leave one bare
+ *  doorstep, but a road never within a cell of the deck does not use it. */
 function expectPavementAtDeck(state: GridState, deck: PlacedObject): void {
   const paved = new Set(roadObjects(state).map((o) => key(o.position)));
   const at = (c: MacroCoord): boolean => paved.has(key(c))
@@ -320,9 +300,7 @@ describe('a two-tap route joins the two taps', () => {
   });
 
   it('a route that cannot be joined lays nothing and names where it stopped', () => {
-    // `unjoined` is the accident this clause exists for: the router did find a line, and laying it
-    // came apart on the way — a crossing the traits would not seat where the plan wanted it. Which
-    // pairs those are belongs to the terrain, so the pair is searched for rather than remembered.
+    // The router found a line, but the traits would not seat a crossing where the plan wanted it.
     const { from, to } = pairThatCannotJoin(7);
     const kit = islandKit(7);
     const before = roadObjects(kit.state).length;
@@ -336,9 +314,8 @@ describe('a two-tap route joins the two taps', () => {
 
   it('a planting on the only line through is the refusal, and it is still standing', () => {
     const kit = makeKit();
-    // A one-cell-wide land bridge at x=22 across a band far wider than any catalog bridge can span:
-    // every route north to south crosses exactly that column (`road-contract.test.ts`'s bottleneck),
-    // so a flower parked there cannot be detoured around.
+    // `road-contract.test.ts`'s bottleneck: x=22 is the one passable column across a band no catalog
+    // bridge spans, so the flower cannot be detoured around.
     for (let y = 12; y <= 33; y++) {
       for (let x = SHORE; x <= SIZE - 1 - SHORE; x++) {
         if (x >= 21 && x <= 23) continue;

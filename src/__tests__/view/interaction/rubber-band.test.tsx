@@ -2,8 +2,8 @@
 /**
  * The pointer-machine half of the Ctrl+drag rubber band: a drag that begins
  * under the multi-select modifier bands instead of panning, moving, or
- * starting a tool stroke, even when it starts on the already-selected object: Ctrl never arms a
- * move.
+ * starting a tool stroke. A Ctrl+drag from a selected object copies instead (EDIT-60, proven in
+ * `spec/editing/copy-paste.test.tsx`).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
@@ -88,38 +88,6 @@ afterEach(() => {
   setHeld(false); // a stuck modifier would leak into the next test's clicks
 });
 
-describe('Ctrl+drag over an already-selected object', () => {
-  it('bands instead of arming a move: the object never relocates', () => {
-    const gs = mapWithOneObject();
-    const executor = createExecutor(gs, createDefaultRegistry(), useEditorStore.getState().eventBus);
-    setStoreState({ gridState: gs, commandExecutor: executor });
-    const { view, overlay } = makeView();
-    setActiveView(view);
-
-    // Select 'a' first with a plain click, matching the ordinary path to "already selected".
-    setHeld(false);
-    const ox = 5 * 10 + 5, oy = 5 * 10 + 5;
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: ox, clientY: oy }));
-    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: ox, clientY: oy }));
-    expect(selectedObjectIds(useEditorStore.getState().selection)).toEqual(['a']);
-
-    const undoSizeBefore = executor.historyDepth();
-
-    // Ctrl-held press on the same (already-selected) object, then a real drag.
-    setHeld(true);
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: ox, clientY: oy }));
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: ox + 40, clientY: oy + 40 }));
-    window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: ox + 40, clientY: oy + 40 }));
-
-    expect(executor.historyDepth()).toBe(undoSizeBefore);
-    expect(gs.objects.get('a')!.position).toEqual({ x: 5, y: 5 });
-    expect(overlay.showObjectMove).not.toHaveBeenCalled();
-
-    expect(overlay.showBand).toHaveBeenCalled();
-    expect(overlay.clearBand).toHaveBeenCalled();
-  });
-});
-
 describe('Ctrl pressed mid-drag of an unmodified move', () => {
   it('still moves the object AND leaves it selected (does not toggle it off)', () => {
     const gs = mapWithOneObject();
@@ -134,7 +102,7 @@ describe('Ctrl pressed mid-drag of an unmodified move', () => {
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: ox, clientY: oy }));
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: ox, clientY: oy }));
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: ox, clientY: oy }));
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 70, clientY: 70 })); // clears DRAG_THRESHOLD, arms dragging
+    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 70, clientY: 70 })); // clears the mouse drag threshold, arms dragging
 
     // Ctrl gets pressed while the move is already in flight.
     setHeld(true);

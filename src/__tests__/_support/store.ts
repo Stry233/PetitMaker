@@ -1,16 +1,11 @@
 /*
- * The typed way for a test to seed the editor store.
+ * The typed way for a test to seed the editor store: a `Partial<EditorStore>` parameter keeps
+ * TypeScript's excess-property check, so a renamed or removed field is a compile error rather than a
+ * seed that silently asserts nothing (`__tests__/repo/store-seed-typing.test.ts` bans the cast).
  *
- * The store's own `setState`, cast to `never`, compiles whatever it is given, so a store field that
- * is renamed or removed leaves every seed of it passing while asserting nothing. Going through a
- * `Partial<EditorStore>` parameter restores TypeScript's excess-property check at the call site,
- * making a stale field name a compile error. `__tests__/repo/store-seed-typing.test.ts` keeps the
- * cast from coming back.
- *
- * Not for a test that calls `vi.resetModules()` and re-imports the store: that makes a second store
- * instance, and this helper closes over the outer graph's. Seed the fresh graph's own
- * `useEditorStore` there, or the component under test subscribes to a store nothing wrote to (see
- * `__tests__/ui/chrome/guards/dev-build-notice.test.tsx`).
+ * Not for a test that calls `vi.resetModules()` and re-imports the store: this helper closes over the
+ * outer graph's store, so seed the fresh graph's own `useEditorStore` there (as
+ * `__tests__/ui/chrome/guards/dev-build-notice.test.tsx` does).
  */
 import { useEditorStore, type EditorStore, type ModalId } from '../../state/store';
 import { nextEditMode, REST_INPUTS, type BuildShape, type ContentType, type EditModeChange } from '../../state/editing/edit-mode';

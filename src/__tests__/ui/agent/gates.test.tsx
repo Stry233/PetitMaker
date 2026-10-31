@@ -1,13 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The gate family (the ask card, the plan gate, the question's quick row, the option pick) and one
- * banner for every trouble class. Only the dock wears the ask paper, so each card stands on the
- * plate with a 5px `ACTIVE` spine that retires to the hairline once answered; the answered card
- * keeps its verdict; the verdict chip is inset-filled with plate ink (7.20 contrast against
- * muted-on-inset's 4.57); and the quick row's box is reserved whether or not it holds answers.
- *
- * `BANNER_CLASSES` is enumerated rather than hand-listed; `Banner.tsx`'s `satisfies` guard makes a
- * forgotten `ErrorClass` fail `tsc`. Copy assertions run over every locale's raw string.
+ * banner for every trouble class. `BANNER_CLASSES` is read off `Banner.tsx`'s table, which is typed
+ * over every class, so a forgotten one fails `tsc`. Copy assertions run over every locale.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { fireEvent } from '@testing-library/react';
@@ -47,8 +42,7 @@ beforeEach(() => {
   });
 });
 
-/** jsdom re-serializes every colour as `rgb(...)`, so a token compared as a hex never matches. One
- *  conversion here keeps the assertions naming the token rather than a literal triple. */
+/** jsdom re-serializes every colour as `rgb(...)`, so a hex token never matches as written. */
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   return `rgb(${r}, ${g}, ${b})`;
@@ -57,8 +51,6 @@ function rgb(hex: string): string {
 function makeAsk(over: Partial<AskRecord> = {}): AskRecord {
   return { gateId: 'gate-1', scope: 'tool', summary: 'Pave a stone road from the plaza to the mill', ...over };
 }
-
-/* ── the ask card's spine ─────────────────────────────────────────────────── */
 
 describe('the ask card stands on the plate under a retiring spine', () => {
   it('renders nothing when the ask is undefined (a settled job leaves no stale gate)', () => {
@@ -124,8 +116,7 @@ describe('the ask card stands on the plate under a retiring spine', () => {
     expect(settled.queryByTestId('gate-skip')).toBeNull();
   });
 
-  /** A held ask keeps its question and offers no button: the loop that would receive the answer is
-   *  not waiting, so a press there would land nowhere. */
+  /** The loop that would receive the answer is not waiting, so a button would land nowhere. */
   it('shows no controls on an open ask that cannot be answered', () => {
     const { queryByTestId, getByTestId } = renderWithI18n(
       <GateBlock ask={makeAsk()} answerable={false} onAnswer={() => {}} />,
@@ -135,8 +126,6 @@ describe('the ask card stands on the plate under a retiring spine', () => {
     expect(queryByTestId('gate-quick-row')).toBeNull();
   });
 });
-
-/* ── the verdict chip ─────────────────────────────────────────────────────── */
 
 describe('the verdict chip', () => {
   it('carries the inset fill and the plate ink (the contrast ruling)', () => {
@@ -165,16 +154,14 @@ describe('the verdict chip', () => {
     expect(getByTestId('gate-verdict').textContent).toBe('answered: Yes');
   });
 
-  /** A tapped pill and a typed sentence both reach the loop as `words`; the card is the only place
-   *  that can tell them apart, by matching what it offered. */
+  /** A tapped pill and a typed sentence both reach the loop as `words`; only the card can tell them
+   *  apart, by matching what it offered. */
   it('reads a words answer that is one of its own quick pills as a quick answer', () => {
     expect(markFor(makeAsk({ verdict: 'words', words: 'Yes' }), ['Yes', 'No'])).toBe('quick');
     expect(markFor(makeAsk({ verdict: 'words', words: 'stop at the meadow' }), ['Yes', 'No'])).toBe('words');
     expect(markFor(makeAsk())).toBeUndefined();
   });
 });
-
-/* ── the quick row's reserved box ─────────────────────────────────────────── */
 
 describe('the quick row keeps its box', () => {
   it('stands at the same height empty as filled', () => {
@@ -216,8 +203,6 @@ describe('the quick row keeps its box', () => {
     expect(getByTestId('gate-quick-row')).toBeDefined();
   });
 });
-
-/* ── the plan gate ────────────────────────────────────────────────────────── */
 
 const HILL_STAGES = [
   { label: 'Shape the ridge' },
@@ -266,8 +251,7 @@ describe('the plan gate lists what it is asking about', () => {
     expect(settled.getByTestId('plan-gate').getAttribute('data-settled')).toBe('true');
     expect(settled.getByTestId('gate-verdict').textContent).toBe('you said no');
     expect(settled.queryByTestId('gate-approve')).toBeNull();
-    // A declined plan keeps its list: no rail exists, so the card is the one record of what was
-    // turned down. The ask-voice notes never survive the answer.
+    // A declined plan keeps its list as the one record of what was turned down; the notes go.
     expect(settled.getAllByTestId('plan-stage')).toHaveLength(4);
     expect(settled.queryAllByTestId('plan-note')).toHaveLength(0);
   });
@@ -283,8 +267,6 @@ describe('the plan gate lists what it is asking about', () => {
     expect(queryAllByTestId('plan-note')).toHaveLength(0);
   });
 });
-
-/* ── the option pick ──────────────────────────────────────────────────────── */
 
 function makeOptions(over: Partial<OptionAsk> = {}): OptionAsk {
   return {
@@ -317,7 +299,6 @@ describe('the option pick', () => {
     const pick = cards[1]!;
     expect(pick.getAttribute('data-picked')).toBe('true');
     expect(pick.style.boxShadow).toContain(INK);
-    // The mark is its own, never the hover paint a pointer can also produce.
     expect(pick.style.background).toBe(rgb(PLATE));
     expect(getByTestId('option-mark').textContent).toBe('picked');
     expect(cards[0]!.style.opacity).toBe(String(recede.apart));
@@ -341,8 +322,6 @@ describe('the option pick', () => {
   });
 });
 
-/* ── the answered card stays in the log ───────────────────────────────────── */
-
 function makeJob(over: Partial<JobView> = {}): JobView {
   return {
     orderSeq: 1, orderText: 'Connect the plaza to the old mill', orderAt: 0,
@@ -354,8 +333,7 @@ function makeJob(over: Partial<JobView> = {}): JobView {
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
 describe('an answered gate goes on standing in the record', () => {
-  /** The projection is the carrier. `PanelView.gate` is the question that can still be answered; the
-   *  ask record outlives it, which is what keeps the card mounted after the answer. */
+  /** `PanelView.gate` is the question that can still be answered; the ask record outlives it. */
   it('folds each ask with the verdict its answer implies, and marks an unanswered one at settle', () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'Connect the plaza to the old mill', mapContext: '' });
@@ -391,7 +369,6 @@ describe('an answered gate goes on standing in the record', () => {
     const ask = view.current!.asks[0]!;
     expect(ask.scope).toBe('plan');
     expect(ask.stages).toEqual([{ label: 'Shape the ridge' }, { label: 'Carve the stream', checkpoint: true }]);
-    // The `plan` event lands only on approval, so the job carries no plan yet.
     expect(view.current!.plan).toBeUndefined();
   });
 
@@ -412,18 +389,13 @@ describe('an answered gate goes on standing in the record', () => {
     const card = getByTestId('gate-block');
     const ticket = getByTestId('job-ticket');
     expect(getByTestId('gate-verdict').textContent).toBe('approved');
-    // The job continues after the answered ask: the record reads ticket, then the settled card.
     expect(ticket.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   /**
-   * The gate is suppressed while paused, so an ask that is neither answered nor the published
-   * question offers no controls — a button there would reach no waiting loop.
-   *
-   * But the card stands. Rendering nothing at all leaves a reload mid-approval on a paused job with
-   * no trace that a question was waiting, what it asked, or that Resume is what brings it back. The
-   * ask is held, not lost (`loop.ts:existingGateId` re-enters the same one rather than asking
-   * twice), and the card says exactly that.
+   * The gate is suppressed while paused, but the card stands, so a reload mid-approval still shows
+   * what was asked and that Resume brings it back (`job-reads.ts:existingGateId` re-enters the same
+   * ask rather than asking twice).
    */
   it('holds an unanswered ask visibly, with no controls, when the projection publishes no gate', () => {
     const view = makeView({
@@ -441,8 +413,6 @@ describe('an answered gate goes on standing in the record', () => {
     expect(queryByTestId('gate-verdict')).toBeNull();
   });
 
-  /** And the dock, which is the first thing a reload lands on, says a question is waiting rather
-   *  than reporting a step count as if the job were merely mid-stride. */
   it('says on the status card that a question is waiting, over a paused job holding one', () => {
     const view = makeView({
       phase: 'paused',
@@ -456,11 +426,8 @@ describe('an answered gate goes on standing in the record', () => {
   });
 
   /**
-   * Once answered, the plan line returns — but a hold has no step in progress, so it reads the
-   * banked count rather than the mid-stride "step 2 of 2". It reads the bare figure (`dock_try_of`),
-   * not the ticket's own long sentence (`pausedWhere`): the pausemark chip two rows below already
-   * says "paused after step 1 of 2" in full, and the dock repeating it verbatim is the same fact
-   * said twice in one card (see `DeskHeader.tsx:buildFace`).
+   * A hold has no step in progress, so the dock reads the banked count, and only the bare figure: the
+   * pausemark chip below already says "paused after step 1 of 2" in full.
    */
   it('says the step count again once the held ask has been answered, tersely', () => {
     const view = makeView({
@@ -475,11 +442,8 @@ describe('an answered gate goes on standing in the record', () => {
   });
 });
 
-/* ── the two things an ask can offer, live from the log ───────────────────── */
-
 describe('an ask carrying quick answers is a question, not an approval', () => {
-  /** The offer is the carrier. Nothing else on the log distinguishes "Two lanes or one?" from
-   *  "may I pave this road?": both are one `gateAsked`. */
+  /** Only the offer distinguishes "Two lanes or one?" from "may I pave this road?" on the log. */
   function questionLog() {
     const log = createLog();
     append(log, { kind: 'order', text: 'Lay a road to the mill', mapContext: '' });
@@ -501,7 +465,6 @@ describe('an ask carrying quick answers is a question, not an approval', () => {
       .toEqual(['Two lanes', 'One lane', 'You decide']);
   });
 
-  /** A tapped pill is the user's sentence, sent for them, so it takes the gate's words route. */
   it('answers in words with the pill\'s own text', () => {
     const view = deriveView(questionLog());
     const calls: [string, string, string | undefined][] = [];
@@ -519,8 +482,6 @@ describe('an ask carrying quick answers is a question, not an approval', () => {
     expect(calls).toEqual([['g1', 'words', 'One lane']]);
   });
 
-  /** The answered card reads back the pill, not "answered in words": `markFor` matches the sentence
-   *  against what the ask offered, and the offer is now on the record. */
   it('reads a matching answer back as the quick answer it was', () => {
     const log = questionLog();
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'One lane' });
@@ -577,7 +538,7 @@ describe('an ask carrying options is a pick', () => {
     expect(calls).toEqual([['g1', 'words', 'The north shore'], ['g1', 'skip', undefined]]);
   });
 
-  /** The index is recovered from the sentence, since the sentence is all the log holds. */
+  /** The log holds only the sentence, so the index is recovered from it. */
   it('reads the settled card back as the pick it was, and a typed answer as none of these', () => {
     const picked = pickLog();
     append(picked, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'The bay' });
@@ -602,8 +563,6 @@ describe('an ask carrying options is a pick', () => {
     expect(optionAskFrom(makeAsk())).toBeUndefined();
   });
 
-  /** The hover paint is the one mark the pick may not be confused with, so a card hovered and then
-   *  picked carries the ink ring and the plate fill. */
   it('clears the hover fill from the card the user just picked', () => {
     const { getAllByTestId, rerender } = renderWithI18n(
       <OptionPick ask={makeOptions()} onPick={() => {}} onDecline={() => {}} />,
@@ -612,9 +571,8 @@ describe('an ask carrying options is a pick', () => {
     fireEvent.pointerEnter(card);
     expect(card.style.background).toBe(rgb(ACTIVE));
 
-    // Re-rendered, not remounted: the residue only exists on a node React keeps, which is exactly
-    // the node a real pick leaves standing. (`rerender` re-applies the wrapper itself; wrapping the
-    // element again here would change the tree's shape and quietly remount the card.)
+    // Re-rendered, not remounted: hover residue survives only on a node React keeps. `rerender`
+    // re-applies the wrapper itself; wrapping again would remount the card.
     rerender(<OptionPick ask={makeOptions({ picked: 1 })} onPick={() => {}} onDecline={() => {}} />);
     const settled = (getAllByTestId('option-card') as HTMLButtonElement[])[1]!;
     expect(settled.getAttribute('data-picked')).toBe('true');
@@ -622,8 +580,6 @@ describe('an ask carrying options is a pick', () => {
     expect(settled.style.background).toBe(rgb(PLATE));
   });
 });
-
-/* ── the composer at a gate ───────────────────────────────────────────────── */
 
 describe('typed words at a gate', () => {
   it('demotes the ask card primary once the field holds words, and restores it when it empties', () => {
@@ -645,13 +601,7 @@ describe('typed words at a gate', () => {
     expect(approve.getAttribute('data-demoted')).toBe('false');
   });
 
-  /**
-   * The demotion contract covers the question card too. A question card draws no Approve pair, so
-   * the mechanism that exists to stop two controls claiming one press covered every card except the
-   * one where the collision actually happens: tapping a quick pill answers the gate, the phase
-   * leaves `gated`, and the sentence the user had already typed is silently re-aimed from an answer
-   * into a steer. The pills step down instead, and the words are never destroyed for it.
-   */
+  /** A tapped pill would leave `gated` and re-aim the typed sentence from an answer into a steer. */
   it('demotes the quick pills once the field holds words, and keeps the typed sentence', () => {
     const view = makeView({
       phase: 'gated',
@@ -674,8 +624,7 @@ describe('typed words at a gate', () => {
       .toEqual(['false', 'false']);
   });
 
-  /** The route is `composer-routing`'s, not the card's: a sentence typed at a gate cancels the call
-   *  and becomes guidance, which is one `gateAnswered` with the words on it. */
+  /** A sentence typed at a gate cancels the call and becomes one `gateAnswered` with the words on it. */
   it('routes the submission as the gate words answer', () => {
     const log = createLog();
     append(log, { kind: 'order', text: 'Connect the plaza to the old mill', mapContext: '' });
@@ -692,17 +641,11 @@ describe('typed words at a gate', () => {
     expect(ask.verdict).toBe('words');
     expect(ask.words).toBe('take the north lane instead');
     expect(after.gate).toBeUndefined();
-    // The card stays, wearing the verdict its answer implies.
     expect(markFor(ask)).toBe('words');
   });
 });
 
-/* ── the banner family ────────────────────────────────────────────────────── */
-
 describe('Banner: one banner for every trouble class', () => {
-  // Guards against a table that silently drops a class: every entry BANNER_CLASSES lists must
-  // actually render (icon + paper + at least one action), independent of Banner.tsx's own
-  // internal `satisfies` guard.
   it('BANNER_CLASSES is non-empty and every listed class renders an icon, a paper and at most 2 actions', () => {
     expect(BANNER_CLASSES.length).toBeGreaterThan(0);
     for (const cls of BANNER_CLASSES) {
@@ -710,11 +653,8 @@ describe('Banner: one banner for every trouble class', () => {
       const root = getByTestId('banner');
       expect(root.getAttribute('data-paper')).toMatch(/^(danger|wait)$/);
       expect(getByTestId('banner-icon')).toBeDefined();
-      // Every trouble offers at least one answer, and a notice offers none: the two rollback
-      // notices are standing facts about the record rather than something to fix, and dismissing
-      // one would put the same sentence back the next time the list is read. The two key-gone
-      // sentences join them for the opposite reason — their answers are on the held job's own card
-      // right under them, and the same two verbs twice would be one trouble asked twice.
+      // A notice offers no answer: the rollback notices are standing facts, and the key-gone ones
+      // leave their answers to the held job's card right under them.
       const notice = cls === 'other-map' || cls === 'unknown-map'
         || cls === 'key-cleared' || cls === 'key-clearing';
       const actions = queryAllByTestId('banner-action');
@@ -724,8 +664,6 @@ describe('Banner: one banner for every trouble class', () => {
     }
   });
 
-  /** The one class with no answers draws no action row at all: a reserved empty band under the
-   *  sentence would be a seat kept for a control that does not exist. */
   it('gives each rollback notice no action row, on the wait paper, under the frame glyph', () => {
     for (const cls of ['other-map', 'unknown-map'] as const) {
       const { getByTestId, queryAllByTestId, unmount } = renderWithI18n(<Banner cls={cls} onAction={() => {}} />);
@@ -775,8 +713,6 @@ describe('Banner: one banner for every trouble class', () => {
     expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-cloud-off');
   });
 
-  /** Three readings, three sentences. One key carrying the middle one for all three would have a
-   *  pruned save claim the session was lost and a corrupt one blame a full disk. */
   it('gives each storage reading the warning icon and a sentence of its own', () => {
     const said = new Set<string>();
     for (const cls of ['storage-pruned', 'storage-full', 'storage-corrupt'] as const) {
@@ -802,11 +738,8 @@ describe('Banner: one banner for every trouble class', () => {
   });
 });
 
-/* ── copy ─────────────────────────────────────────────────────────────────── */
-
 describe('Gate + banner copy: forbidden characters, in every locale', () => {
-  /** Every key the gate family renders. `_quick` carries the one `{word}` slot in the set, which is
-   *  why the brace check names it rather than sweeping the list. */
+  /** Every key the gate family renders. */
   const NEW_KEYS = [
     'agent.gate_approve',
     'agent.gate_skip',

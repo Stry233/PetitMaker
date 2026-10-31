@@ -7,7 +7,8 @@ import { clientPoint } from '../../../../platform/device/viewport-space';
 import { useCallback, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { isDenseScript, readableWeight } from '../../../design/text-weight';
+import { readableWeight } from '../../../design/text-weight';
+import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { getActiveView, onProjectionChange } from '../../../../view/active-view';
 import type { MacroCoord } from '../../../../core/model/types';
 import { useT } from '../../../../i18n/context';
@@ -58,6 +59,8 @@ function Marker({ end, text, testId, onMove }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const eventBus = useEditorStore((s) => s.eventBus);
+  const dpr = useDevicePixelRatio();
+  const dense = useDenseScript();
 
   const place = useCallback(() => {
     const el = ref.current;
@@ -72,12 +75,12 @@ function Marker({ end, text, testId, onMove }: {
     el.style.display = 'flex';
     el.style.top = `${tl.y + (br.y - tl.y) / 2 - size / 2}px`;
     // A pill sized to the cell's height and the word's width, so a longer language reads whole.
-    Object.assign(el.style, gateMarkStyle(size, window.devicePixelRatio || 1, isDenseScript(useEditorStore.getState().locale)));
+    Object.assign(el.style, gateMarkStyle(size, dpr, dense));
     el.style.width = 'auto';
     // Measured after the text has its size, so the pill is centred on its cell by its own width.
     const w = el.offsetWidth;
     el.style.left = `${tl.x + (br.x - tl.x) / 2 - w / 2}px`;
-  }, [end.cell.x, end.cell.y]);
+  }, [end.cell.x, end.cell.y, dpr, dense]);
 
   useEffect(() => {
     place();

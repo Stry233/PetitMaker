@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * A card carried from the shelf onto the map: the map under the pointer shows the placer's own
- * preview, a release over it is the placer's click (its rules, its refusal, one undo step), and
- * every other ending changes nothing. Whatever was armed before comes back however the carry ends.
+ * preview, a release over it is the placer's click (its rules, its refusal, one undo step) and leaves
+ * the card armed, and every other ending changes nothing, putting back whatever was armed before.
  *
  * Driven through the real pointer machine, ToolManager, executor and the shelf's carry verb; the
  * list entry holding the pointer is a plain element, and hit testing is the one stub.
@@ -29,10 +29,24 @@ import { setStoreState, armedEditMode } from '../../../_support/store';
 import { createExecutor } from '../../../../state/executor';
 import { armedItemOf } from '../../../../state/editing/edit-mode';
 import { editorToolWiring } from '../../../../editor/session/tool-wiring';
-import { carryItem } from '../../../../editor/editing/object-shelf';
+import { carryItem, watchCappedArming } from '../../../../editor/editing/object-shelf';
 import { RUN } from '../../../../editor/commands/commands';
+import { __setCatalogItem } from '../../../../state/catalog';
+import { ItemCategory } from '../../../../config/catalog/categories';
 
 const CARRIED = 'tree-apple';
+/** A 3x3 item, which no catalog entry is. */
+const SQUARE = 'carry-test-square';
+__setCatalogItem({
+  id: SQUARE, category: ItemCategory.Facility, name: { en: 'Square' },
+  width: 3, height: 3, loadValue: 0, rotatable: false, placementMode: 'point', traits: [],
+});
+/** An item the map may hold once. */
+const ONE_OFF = 'carry-test-one-off';
+__setCatalogItem({
+  id: ONE_OFF, category: ItemCategory.Facility, name: { en: 'One-off' },
+  width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [], maxCount: 1,
+});
 const OTHER = 'tree-pine';
 const POINTER = 7;
 
@@ -97,8 +111,8 @@ function setUp(armed: string | null, ...objects: PlacedObject[]): void {
   });
 }
 
-const carry = () => {
-  const c = carryItem(CARRIED, { pointerId: POINTER, surface: card, onEnd: () => { ended++; } });
+const carry = (item = CARRIED) => {
+  const c = carryItem(item, { pointerId: POINTER, surface: card, onEnd: () => { ended++; } });
   if (!c) throw new Error('the card could not be carried');
   return c;
 };
@@ -123,7 +137,7 @@ afterEach(() => {
 });
 
 describe('a card carried onto the map', () => {
-  it('previews the placement over the map and places where it is released, as one undo step', () => {
+  it('[EDIT-50] previews the placement over the map and places where it is released, as one undo step', () => {
     setUp(null);
     const c = carry();
     expect(armedItem()).toBe(CARRIED); // the placer's own preview reads the armed item
@@ -137,7 +151,7 @@ describe('a card carried onto the map', () => {
     c.release(overMap({ x: 12, y: 12 }));
     expect(placedAt(12, 12)).toBe(true);
     expect(executor.historyDepth()).toBe(1);
-    expect(armedItem()).toBeNull(); // nothing was armed before the carry
+    expect(armedItem()).toBe(CARRIED); // the dropped card stays armed, as a click on it leaves it
     expect(ended).toBe(1);
     expect(isCarried(POINTER)).toBe(false);
 
@@ -145,7 +159,7 @@ describe('a card carried onto the map', () => {
     expect(placedAt(12, 12)).toBe(false);
   });
 
-  it('says why a refused drop is refused, places nothing and selects nothing', () => {
+  it('[EDIT-50] says why a refused drop is refused, places nothing, selects nothing and keeps the card armed', () => {
     setUp(null, tree('a', 5, 5));
     const failures: unknown[] = [];
     const onFail = (e: unknown): void => { failures.push(e); };
@@ -163,10 +177,10 @@ describe('a card carried onto the map', () => {
     expect(executor.historyDepth()).toBe(0);
     // A click with the item armed would select the tree it was refused over; a drop reaches the placer.
     expect(useEditorStore.getState().selection).toEqual([]);
-    expect(armedItem()).toBeNull();
+    expect(armedItem()).toBe(CARRIED);
   });
 
-  it('puts back the item that was armed, with its pending rotation', () => {
+  it('[EDIT-50] keeps the dropped card armed rather than the item armed before it', () => {
     setUp(OTHER);
     useEditorStore.getState().setPlacementRotation(90);
 
@@ -175,8 +189,8 @@ describe('a card carried onto the map', () => {
     c.release(overMap({ x: 12, y: 12 }));
 
     expect([...gs.objects.values()].find((o) => o.position.x === 12)?.catalogId).toBe(CARRIED);
-    expect(armedItem()).toBe(OTHER);
-    expect(useEditorStore.getState().placementRotation).toBe(90);
+    expect(armedItem()).toBe(CARRIED);
+    expect(useEditorStore.getState().placementRotation).toBe(0);
   });
 
   it('keeps the carried item armed when it was the armed one', () => {
@@ -187,6 +201,18 @@ describe('a card carried onto the map', () => {
     expect(placedAt(12, 12)).toBe(true);
     expect(armedItem()).toBe(CARRIED);
     expect(useEditorStore.getState().placementRotation).toBe(90);
+  });
+});
+
+describe('where a carried item stands under the pointer', () => {
+  it('[EDIT-51] holds a 3x3 item by its centre: the preview and the drop stand one cell up and left of the pointer', () => {
+    setUp(null);
+    const c = carry(SQUARE);
+    c.move(overMap({ x: 12, y: 12 }));
+    expect(overlay.showPlacementGhost).toHaveBeenLastCalledWith(expect.objectContaining({ catalogId: SQUARE, x: 11, y: 11 }), true);
+    c.release(overMap({ x: 12, y: 12 }));
+    const placed = [...gs.objects.values()].find((o) => o.catalogId === SQUARE);
+    expect(placed?.position).toEqual({ x: 11, y: 11 });
   });
 });
 
@@ -205,7 +231,7 @@ describe('the cursor a carry shows', () => {
 });
 
 describe('a carry that does not land on the map', () => {
-  it('changes nothing when released back over the shelf, and takes its preview down', () => {
+  it('[EDIT-50] changes nothing when released back over the shelf, and takes its preview down', () => {
     setUp(null);
     const c = carry();
     c.move(overMap({ x: 12, y: 12 }));
@@ -220,7 +246,7 @@ describe('a carry that does not land on the map', () => {
     expect(ended).toBe(1);
   });
 
-  it('changes nothing when Escape is pressed mid-carry, and the release after it is no drop', () => {
+  it('[EDIT-50] changes nothing when Escape is pressed mid-carry, and the release after it is no drop', () => {
     setUp(null);
     const c = carry();
     c.move(overMap({ x: 12, y: 12 }));
@@ -236,14 +262,25 @@ describe('a carry that does not land on the map', () => {
     expect(ended).toBe(1);
   });
 
-  it('changes nothing when the browser takes the pointer', () => {
+  it('[EDIT-50] puts back the item that was armed, with its pending rotation, when the browser takes the pointer', () => {
     setUp(OTHER);
+    useEditorStore.getState().setPlacementRotation(90);
     const c = carry();
     c.move(overMap({ x: 12, y: 12 }));
     c.cancel();
     expect(gs.objects.size).toBe(0);
     expect(armedItem()).toBe(OTHER);
+    expect(useEditorStore.getState().placementRotation).toBe(90);
     expect(ended).toBe(1);
+  });
+
+  it('[EDIT-50] puts back the item that was armed when released off the map', () => {
+    setUp(OTHER);
+    const c = carry();
+    c.move(overMap({ x: 12, y: 12 }));
+    c.release(overList);
+    expect(gs.objects.size).toBe(0);
+    expect(armedItem()).toBe(OTHER);
   });
 
   it('leaves the map machine deaf to the carried pointer, so its window release runs no press', () => {
@@ -256,5 +293,30 @@ describe('a carry that does not land on the map', () => {
     expect(gs.objects.size).toBe(0);
     expect(isCarried(POINTER)).toBe(true);
     c.cancel();
+  });
+});
+
+describe('a card whose cap a placement fills', () => {
+  let unwatch: () => void;
+  beforeEach(() => { unwatch = watchCappedArming(); });
+  afterEach(() => unwatch());
+
+  it('[EDIT-52] is put down when its drop places the last the map may hold', () => {
+    setUp(null);
+    const c = carry(ONE_OFF);
+    c.release(overMap({ x: 12, y: 12 }));
+    expect(placedAt(12, 12)).toBe(true);
+    expect(armedItem()).toBeNull();
+  });
+
+  it('[EDIT-52] stays armed while it has no cap, and is put down once a capped one fills its cap', () => {
+    setUp(CARRIED);
+    const c = carry();
+    c.release(overMap({ x: 12, y: 12 }));
+    expect(armedItem()).toBe(CARRIED); // an item without a cap stays armed for the next one
+    useEditorStore.getState().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: ONE_OFF } });
+    carry(ONE_OFF).release(overMap({ x: 4, y: 4 }));
+    expect(placedAt(4, 4)).toBe(true);
+    expect(armedItem()).toBeNull();
   });
 });

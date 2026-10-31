@@ -69,9 +69,8 @@ describe('tile-coating helper', () => {
    * A tile fill places one object per cell, and every consumer between cells asks the
    * object index. If a cell's mutation loses its objectsDelta (or a coating lookup goes
    * back to scanning state.objects) the index rebuilds per cell and the fill turns
-   * quadratic in the map's object count: a 40x40 fill over ~4k objects took 1.2s that
-   * way, against ~30ms here. Rebuilds allocate a fresh entries array, so array identity
-   * is the check that does not depend on machine speed.
+   * quadratic in the map's object count. Rebuilds allocate a fresh entries array, so array
+   * identity is the check that does not depend on machine speed.
    */
   it('fills a large area without rebuilding the object index per cell', () => {
     const state = makeState(60, 60);

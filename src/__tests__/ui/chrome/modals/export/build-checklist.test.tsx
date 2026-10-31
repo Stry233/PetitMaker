@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /*
- * BuildChecklist — the "supply shelves" layout: full-width category cards with a multi-column
+ * BuildChecklist, the "supply shelves" layout: full-width category cards with a multi-column
  * item grid inside, a roads card, a compact terrain-chip card, and a copy-as-text button.
  *
  * Assertions use plain DOM checks (getAttribute / toBeTruthy / textContent), matching the sibling
@@ -20,7 +20,7 @@ import { setStoreState } from '../../../../_support/store';
 import { ItemCategory } from '../../../../../config/catalog/categories';
 
 /** A small hand-built map: a couple of buildings/trees/flora, some road tiles, two terrain
- *  layers with water — enough to exercise every card without paying for a full generation run. */
+ *  layers with water; enough to exercise every card without paying for a full generation run. */
 function fixtureState(): GridState {
   const template = JSON.parse(readFileSync('src/config/maps/hexia.json', 'utf8')) as MapTemplate;
   const cells = createGrid(template);
@@ -89,14 +89,14 @@ describe('BuildChecklist — supply shelves', () => {
     expect(within(treeCard).getByText('Trees')).toBeTruthy();
     expect(within(treeCard).getByText('3')).toBeTruthy();
 
-    // An empty category never gets a card — no collapse, but nothing to show either.
+    // An empty category gets no card at all.
     expect(screen.queryByTestId(`checklist-card-${ItemCategory.Facility}`)).toBeNull();
   });
 
   it('shows the real catalog sprite for a normal item and the tile art for a road', () => {
     renderChecklist();
     const stallRow = screen.getByTestId('checklist-item-building-stall');
-    // An icon's alt="" (decorative) reads as ARIA role "presentation", not "img" — query the
+    // An icon's alt="" (decorative) reads as ARIA role "presentation", not "img"; query the
     // element directly rather than by role, same as the sibling AboutModal avatar test does.
     const img = stallRow.querySelector('img') as HTMLImageElement;
     expect(img).toBeTruthy();

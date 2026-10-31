@@ -71,7 +71,7 @@ describe('security & robustness', () => {
     const code = await buildShareCode(exportable(state), null, { appVersion: '1.0-test', saveVersion: 3 }, 1600);
     expect(code).not.toBeNull();
     const rgba = new Uint8Array(code!.rgba);
-    // Flip every 37th byte hard — gross corruption, not a scattered-noise robustness probe.
+    // Flip every 37th byte hard: gross corruption, not a scattered-noise robustness probe.
     for (let i = 0; i < rgba.length; i += 37) rgba[i] = rgba[i]! ^ 0xff;
     const r = await importFromRaster(rgba, code!.width, code!.height);
     expect(typeof r.ok).toBe('boolean');

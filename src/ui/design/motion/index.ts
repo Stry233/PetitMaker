@@ -14,6 +14,23 @@ export function seconds(id: MotionId): number {
   return m.duration;
 }
 
+/** A first frame (no previous timestamp) counts as this many ms. */
+const NOMINAL_FRAME_MS = 1000 / 60;
+/** The longest frame a follow counts, in ms, so a stalled or background tab resumes with one bounded step. */
+const MAX_FRAME_MS = 100;
+
+/** The ms a per-frame follow advances between the frame timestamps `last` and `now`. Floored at 0: a
+ *  frame's timestamp can precede the `performance.now()` its loop was armed with. */
+export function frameDt(last: number | undefined, now: number): number {
+  return last === undefined ? NOMINAL_FRAME_MS : Math.min(Math.max(now - last, 0), MAX_FRAME_MS);
+}
+
+/** One step of an exponential follow from `cur` toward `target` over `dtMs`, with `id`'s duration as
+ *  its time constant, so it moves at one speed at any refresh rate. */
+export function followToward(cur: number, target: number, dtMs: number, id: MotionId): number {
+  return cur + (target - cur) * (1 - Math.exp(-dtMs / (seconds(id) * 1000)));
+}
+
 /** Declared travel in the unit documented by the registry entry. */
 export function amplitude(id: MotionId): number {
   const m = MOTIONS[id];
@@ -112,6 +129,12 @@ export function easingCss(id: MotionId): string {
 export function outEasingCss(id: MotionId): string {
   const m = MOTIONS[id];
   return CSS_CURVES['outCurve' in m && m.outCurve !== undefined ? m.outCurve : m.curve];
+}
+
+/** Bare CSS easing for a re-arrangement's fades, falling back to the travel curve. */
+export function fadeEasingCss(id: MotionId): string {
+  const m = MOTIONS[id];
+  return CSS_CURVES['fadeCurve' in m && m.fadeCurve !== undefined ? m.fadeCurve : m.curve];
 }
 
 /** Bare CSS easing for an overshoot settle, falling back to the entry curve. */

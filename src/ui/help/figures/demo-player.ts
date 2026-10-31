@@ -1,6 +1,6 @@
 /** The demo timeline: steps a scene through the real renderer and world, moving the pictured pointer and posing the figure's furniture. */
 import { loadMapRenderer } from '../../chrome/loaders';
-import { viewportRect } from '../../../platform/device/viewport-space';
+import { visualRect } from '../../design/visual-rect';
 import { glQuality } from '../../../platform/device/device-quality';
 import { useEditorStore } from '../../../state/store';
 import { helpFacts } from '../facts';
@@ -410,8 +410,8 @@ export function standUpDemo(opts: DemoStandup): () => void {
     if (!strip) return null;
     const card = strip.querySelectorAll('[data-strip-card]')[i];
     if (!card) return null;
-    const cardRect = viewportRect(card);
-    const outerRect = viewportRect(outer);
+    const cardRect = visualRect(card);
+    const outerRect = visualRect(outer);
     // Rect deltas are screen px; the cursor is positioned in the column's layout px. Any
     // ancestor zoom (the chrome scale the help window rides, the user's UI zoom) scales the
     // two apart, so divide it back out the way `measureBox` does.

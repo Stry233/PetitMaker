@@ -1,12 +1,7 @@
 /**
- * The object index is memoized per GridState and patched from `state.objectsDelta`
- * rather than rebuilt, because rebuilding costs one catalog lookup + rect + chunk
- * bucketing per object and a stroke mutates objects once per cell (a road fill on a
- * decorated map spent ~85% of its time rebuilding).
- *
- * Patching is only safe while it is indistinguishable from a rebuild, so these tests
- * compare a patched index against one built from scratch over the same objects, and
- * pin the fallbacks that must give up and rebuild rather than serve a stale answer.
+ * The object index is memoized per GridState and patched from `state.objectsDelta`, since a stroke
+ * changes objects once per cell and a rebuild costs a catalog lookup and bucketing per object. A
+ * patched index must equal one built from scratch, and a delta it cannot trust forces a rebuild.
  */
 import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../core/model/grid-model';
@@ -56,18 +51,13 @@ function shape(index: ObjectIndex, state: GridState): unknown {
     counts: [...index.countByCatalog].sort(),
     chunks: [...index.byChunk].map(([k, b]) => `${k}:${b.map(e => e.obj.id).sort().join(',')}`).sort(),
     cells: [...index.byCell].map(([k, b]) => `${k}:${b.map(e => e.obj.id).sort().join(',')}`).sort(),
-    // the actual query surface, over a rect spanning the whole populated area
     near: entriesNear(index, { x: 0, y: 0, w: state.template.width, h: state.template.height }).map(e => e.obj.id),
-    // And the fine one, cell by cell. `byCell` has consumers of its own (`entriesCovering`,
-    // `objectAt`), so a patch that maintained every other structure and forgot this one would leave
-    // the suite green while a placement was judged against an object that had been removed. Swept
-    // rather than sampled: the bug it guards is exactly a cell nobody thought to ask about.
+    // `byCell` serves `entriesCovering` and `objectAt`; every cell is swept, not sampled.
     covering: sweep(index, state),
   };
 }
 
-/** Every cell of the map, and what claims to cover it. The whole query surface `entriesCovering`
- *  offers, in consumer-visible form. */
+/** What `entriesCovering` reports for every cell of the map. */
 function sweep(index: ObjectIndex, state: GridState): string[] {
   const out: string[] = [];
   for (let y = 0; y < state.template.height; y++) {
@@ -180,11 +170,9 @@ describe('object-index: falls back to a rebuild rather than serving a stale inde
     expect(getObjectIndex(state).entries).toEqual([]);
   });
 
-  it('rebuilds when a version was skipped, even where the delta looks applicable', () => {
-    // A delta only describes its own step. Two size-neutral swaps with no read
-    // between them leave a delta that a one-behind cache could apply cleanly —
-    // right object count, every removal present — and still be wrong about the
-    // step it never saw. Only the version check separates the two.
+  it('folds every step since it was read, not only the last', () => {
+    // A delta describes only its own step: after two unread size-neutral swaps, the last delta
+    // alone applies cleanly to a one-behind cache and is still wrong.
     const state = makeState(30, 30);
     const a = tree('a', 1, 1), b = tree('b', 4, 4);
     add(state, a, b);
@@ -203,6 +191,22 @@ describe('object-index: falls back to a rebuild rather than serving a stale inde
     expect(getObjectIndex(state).entries.map(e => e.obj.id)).toEqual(['c', 'd']);
     expectMatchesRebuild(state);
   });
+
+  it('rebuilds when a step since it was read left no delta, though the last one did', () => {
+    const state = makeState(30, 30);
+    const a = tree('a', 1, 1);
+    add(state, a);
+    getObjectIndex(state);
+
+    const b = tree('b', 4, 4);
+    state.objects.set(b.id, b);
+    bumpObjectsVersion(state); // a mutation site that does not say what changed
+    const c = tree('c', 6, 6);
+    add(state, c);
+
+    expect(getObjectIndex(state).entries.map(e => e.obj.id)).toEqual(['a', 'b', 'c']);
+    expectMatchesRebuild(state);
+  });
 });
 
 describe('objectAt', () => {
@@ -214,8 +218,7 @@ describe('objectAt', () => {
   });
 
   it('selects the solid above a coating regardless of insertion order', () => {
-    // A coating is coated over, so a road and the object above it legally share a cell; hit-testing
-    // must not depend on chunk-bucket order.
+    // A road and the object above it legally share a cell.
     const state = makeState(30, 30);
     add(state, road('r', 7, 7));
     add(state, tree('t', 7, 7));
@@ -223,9 +226,7 @@ describe('objectAt', () => {
   });
 
   it('finds a locked object, because locked governs modification and not hit-testing', () => {
-    // The 3D view picks by mesh id and never consulted a locked filter, so the plaza was
-    // selectable there and not in 2D: the same click answered two ways per view. A fractional
-    // footprint (the plaza's) is covered here too — it carries its own width/height.
+    // The plaza's fractional footprint carries its own width and height.
     const state = makeState(20, 20);
     const plaza: PlacedObject = {
       id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 4.5, y: 4.5 }, width: 3, height: 3,
@@ -242,11 +243,8 @@ describe('objectAt', () => {
   });
 
   it('hit-tests a half-anchored deck by CELL OVERLAP, not by whether the cell origin sits inside it', () => {
-    // A 1-wide deck anchored at x=10.5 spans [10.5, 11.5): it partially covers both macro
-    // columns 10 and 11 (`footprintCells`' floor/ceil expansion agrees), so a click on either
-    // must hit it. An origin-inside-rect test finds column 11 alone (origin 11 lands inside the
-    // span; 10 does not, and 12 is past its end), so it disagrees with what is drawn on column 10
-    // and agrees with the 3D mesh raycast on 11 only by accident.
+    // A 1-wide deck at x=10.5 spans [10.5, 11.5), touching columns 10 and 11 as `footprintCells`
+    // expands it; a test of the cell origin alone would find column 11 only.
     const state = makeState(30, 30);
     add(state, { id: 'd', catalogId: 'hs-hit-test-deck', position: { x: 10.5, y: 5 }, rotation: 0, elevation: 0 });
     expect(objectAt(getObjectIndex(state), { x: 10, y: 5 })?.id).toBe('d');
@@ -264,14 +262,9 @@ describe('objectAt', () => {
   });
 
   /**
-   * A removal has to reach every structure, and this asks the finest one directly.
-   *
-   * `objectAt` reads the per-CELL bucket, so a patch that dropped an entry from the entries list,
-   * the chunk buckets and the road map but left the cell bucket alone would report an object that
-   * is not on the map any more — and a placement, which asks the same question through
-   * `entriesCovering`, would be refused for overlapping something that had been deleted. Every
-   * footprint shape is covered, since each maintains a different number of cell buckets: one cell,
-   * a fractional multi-cell body, and a half-anchored deck straddling two columns.
+   * `objectAt` and `entriesCovering` read the per-cell bucket, so a removal that missed it would
+   * refuse placements over a deleted object. Each footprint shape keeps a different number of
+   * cell buckets: one cell, a fractional body, a half-anchored deck across two columns.
    */
   it('forgets an object the moment it is removed, at every cell it covered', () => {
     const state = makeState(30, 30);

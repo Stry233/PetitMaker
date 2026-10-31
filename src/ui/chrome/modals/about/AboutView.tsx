@@ -14,7 +14,7 @@ import { DOCS, qqChannelPageUrl, teamInReadingOrder, type DocId } from '../../..
 import { DocIcon } from './doc-icons';
 import { LEGAL, memberUrl } from '../../../../legal/config';
 import { teamAvatarUrl } from '../../../../legal/team-avatars';
-import { cursors, interactionProfiles } from '../../../design/styles';
+import { cursors } from '../../../design/styles';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { CopiedBubble, useCopyFeedback } from '../../../primitives/CopiedBubble';
 import { BrandLockup } from '../../BrandLockup';
@@ -23,6 +23,7 @@ import {
   filingRow, footerRow, gridIcon, gridLabel, gridRow, gridStyle, hairline, memberCard, memberName, pane, paneDivider, panes,
   repositoryLink, sectionLabel, teamGrid, teamNote, versionButton, versionButtonWrap, wideCard, wideGrid,
 } from './about-styles';
+import { useInteractionProfiles } from '../../../design/input-mode';
 
 /** The documents About drills into, in reading order; the offline edition carries the licences only. */
 const DOC_ROWS: readonly { id: DocId; lite?: false }[] = [
@@ -38,8 +39,6 @@ const DOC_ROWS: readonly { id: DocId; lite?: false }[] = [
 const GRID_DOCS: DocId[] = DOC_ROWS.filter(inEdition).map((row) => row.id);
 /** Whether About may drill into `id`: in the offline edition, only a document it carries. */
 export const opensDoc = (id: DocId): boolean => inEdition(DOC_ROWS.find((row) => row.id === id) ?? { lite: false });
-
-const press = interactionProfiles.action;
 
 export interface AboutViewProps {
   wide: boolean;
@@ -108,6 +107,7 @@ export function AboutView({ wide, onOpenDoc, rowRefs }: AboutViewProps) {
 /** The version line, which copies the build and the browser for a report, and the source link. */
 function VersionRow({ wide }: { wide: boolean }) {
   const t = useT();
+  const press = useInteractionProfiles().action;
   const { copied, copy } = useCopyFeedback<'build'>();
   const locale = useLocale();
   const versionText = joinList(locale, [
@@ -140,6 +140,7 @@ function VersionRow({ wide }: { wide: boolean }) {
 
 function Roster({ members, wide, gridTestId, cardTestId }: { members: typeof LEGAL.team; wide: boolean; gridTestId: string; cardTestId: string }) {
   const t = useT();
+  const press = useInteractionProfiles().action;
   const Member = SUPPORTS_EXTERNAL_LINKS ? motion.a : motion.div;
   return (
     <div style={wide ? wideGrid : teamGrid} data-testid={gridTestId}>
@@ -184,6 +185,7 @@ function LegalGrid({ onOpenDoc, rowRefs }: Pick<AboutViewProps, 'onOpenDoc' | 'r
 
 function Feedback() {
   const t = useT();
+  const press = useInteractionProfiles().action;
   if (!SUPPORTS_EXTERNAL_LINKS) {
     return (
       <div data-testid="feedback-links">
@@ -222,6 +224,7 @@ function Feedback() {
 
 function Support() {
   const t = useT();
+  const press = useInteractionProfiles().action;
   if (!SUPPORTS_EXTERNAL_LINKS) return null;
   return (
     <div>

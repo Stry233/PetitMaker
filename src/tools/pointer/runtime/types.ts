@@ -68,6 +68,12 @@ export interface ToolContext extends ToolHost {
   /** The timestamp (`Event.timeStamp`, on the `performance.now()` clock) of the pointer event the
    *  call answers; undefined where no event carries one, and readers then take the current time. */
   eventTime?: number;
+  /** The double-click window of the pointer whose release the call answers, in ms; undefined where
+   *  no pointer event reaches the call, and readers then take the mouse window. */
+  doubleTapMs?: number;
+  /** The drag threshold of the pointer whose press the call follows, in screen px
+   *  (`platform/input/gesture-timing.ts`); undefined where no pointer event reaches the press. */
+  dragThreshold?: number;
 
   /** What the bar has armed (`state/editing/arming.ts:armingOf`), replaced with a fresh snapshot
    *  before each tool call. A curve's adjust phase keeps the snapshot it was drawn with. */
@@ -126,6 +132,12 @@ export interface Tool<G extends GridId = GridId, C extends ToolContext = ToolCon
   /** Whether the press here is a click that uses no drag, so a hand that then pulls is asking to
    *  move the map rather than the tool. */
   clickOnly?(coord: MacroCoord, ctx: C): boolean;
+  /** Whether an armed placement under this arming draws a stroke rather than placing once: its press
+   *  acts on the way down, as a brush's does, and its drag is the stroke, even from over an object. */
+  strokes?(ctx: Pick<C, 'arming'>): boolean;
+  /** Whether a stroke under this arming acts on the exact cells under the pointer, so a finger,
+   *  which hides them, has them magnified beside it while the stroke is down. */
+  magnifies?(ctx: C): boolean;
   /** `cell` lies on `grid(ctx)`; `point` is the map point it was resolved from. */
   onPointerDown(cell: GridCell<G>, point: MapPoint, ctx: C): void;
   onPointerMove(cell: GridCell<G>, point: MapPoint, ctx: C): void;

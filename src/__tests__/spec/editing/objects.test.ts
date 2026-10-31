@@ -5,10 +5,13 @@ import { spec } from '../../_support/spec';
 import { world, type SpecWorld } from '../_world';
 import { dragObject, objectsOf, picture, placeItem, plateau, pointAt } from './_editing';
 import { clearAllObjects } from '../../../tools/generation';
-import { groupBounds } from '../../../tools/objects';
-import type { MacroCoord, PlacedObject } from '../../../core/model/types';
+import { candidateObject, groupBounds } from '../../../tools/objects';
+import { placeObjectCommand } from '../../../core/model/command-build';
+import { getCatalogItem } from '../../../state/catalog';
+import type { Corners, MacroCoord, PlacedObject } from '../../../core/model/types';
 
 const TREE = 'tree-apple';
+const ROAD = 'path-overgrown-dirt';
 const CABIN = 'building-bamboo-cabin';
 const shift = (c: MacroCoord, dx: number, dy: number): MacroCoord => ({ x: c.x + dx, y: c.y + dy });
 /** The centre of the cell an object's anchor stands in, where a press grabs it. */
@@ -90,6 +93,22 @@ describe('rotating objects', () => {
       for (let i = 0; i < 3; i++) expect(w.sandbox.rotateGroup(ids, turn).moved).toBe(2);
       expect(where(w, ids)).toEqual(home);
     }
+  });
+
+  spec('EDIT-28', 'a road tile turned with its selection turns its corner cuts with it', () => {
+    const w = world();
+    const at = w.openGround(8, 6);
+    const cut: Corners = ['fan', 'square', 'square', 'square'];
+    const road: PlacedObject = { ...candidateObject(getCatalogItem(ROAD)!, at, 0, w.state, { id: 'cut-road' }), corners: cut };
+    expect(w.sandbox.execute(placeObjectCommand(road)).success).toBe(true);
+    const flower = place(w, 'flower-rose', shift(at, 1, 0));
+    const ids = [road.id, flower.id];
+    expect(w.sandbox.rotateGroup(ids, 1).moved).toBe(2);
+    // A quarter clockwise carries the top-left corner to the top-right.
+    expect(w.object(road.id)!.corners).toEqual(['square', 'fan', 'square', 'square']);
+    for (let i = 0; i < 3; i++) w.sandbox.rotateGroup(ids, 1);
+    expect(w.object(road.id)!.position).toEqual(at);
+    expect(w.object(road.id)!.corners, 'four turns bring the cuts home').toEqual(cut);
   });
 
   spec('EDIT-29', 'a turn is refused whole when a member is locked', () => {

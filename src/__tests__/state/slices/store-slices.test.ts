@@ -1,7 +1,7 @@
 /**
  * The store is seven slice factories composed at one `create()` call (`state/store.ts`). This
  * pins the shape of that split: the composed store carries every field the seven slices declare,
- * and — the one that matters — `shell.ts` imports nothing from `engine.ts`. A shell field reaching
+ * and, above all, `shell.ts` imports nothing from `engine.ts`. A shell field reaching
  * for an engine handle (`gridState`/`commandExecutor`) is exactly the coupling this split exists to
  * prevent.
  */
@@ -25,12 +25,12 @@ beforeEach(resetStore);
 describe('the store composes seven slices', () => {
   it('the composed store carries every field the seven slices declare', () => {
     // Each factory is called on its own bare vanilla store, so this is the slice's own field
-    // list — not whatever the full EditorStore's `get()` would let it reach.
+    // list, not whatever the full EditorStore's `get()` would let it reach.
     const bare = () => createStore<any>(() => ({}));
     const engineFields = Object.keys(createEngineSlice(bare().setState, bare().getState, bare()));
     const editFields = Object.keys(createEditSlice(bare().setState, bare().getState, bare()));
-    const prefsFields = Object.keys(createPrefsSlice(bare().setState, bare().getState, bare()));
-    const shellFields = Object.keys(createShellSlice(bare().setState, bare().getState, bare()));
+    const prefsFields = Object.keys(createPrefsSlice('pc')(bare().setState, bare().getState, bare()));
+    const shellFields = Object.keys(createShellSlice('pc')(bare().setState, bare().getState, bare()));
     const annotationFields = Object.keys(createAnnotationsSlice(bare().setState, bare().getState, bare()));
     const planetFields = Object.keys(createPlanetSessionSlice(bare().setState, bare().getState, bare()));
     const repairFields = Object.keys(createRepairSessionSlice(bare().setState, bare().getState, bare()));

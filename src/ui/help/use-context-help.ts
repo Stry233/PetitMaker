@@ -16,7 +16,7 @@ export function useContextHelp(): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const state = useEditorStore.getState();
-      if (state.tourRunning || state.portraitBlocked || event.isComposing) return;
+      if (state.tourRunning || event.isComposing) return;
       if (useKeybinds.getState().recording) return;
       const combo = effectiveCombo(useKeybinds.getState().overrides, 'app.whats_this');
       const target = event.target instanceof HTMLElement ? event.target : null;

@@ -1,13 +1,6 @@
 /**
- * Perplexity'S router, through the OpenAI-dialect adapter it is a drop-in for.
- *
- * The Router speaks the OpenAI Chat Completions schema at `https://api.perplexity.ai/router/v1`, so
- * the provider is an entry in the registry rather than an adapter of its own, and this file is what
- * says so: the entry's own facts, the key shape the setup row reads, the catalog that doubles as the
- * allowlist, the usage object's spelling, and what each documented status means to the ladder.
- *
- * Every payload here is copied from the published reference (the chat-completions and models
- * schemas), including the invalid-model message and the usage object's `prompt_tokens_details`.
+ * Perplexity's Router speaks OpenAI Chat Completions, so it is a registry entry on the OpenAI-dialect
+ * adapter. Payloads are copied from the published chat-completions and models schemas.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,8 +82,7 @@ describe('providers/perplexity: the registry entry', () => {
 
   it('stands in the roster as its own platform', () => {
     expect(PROVIDER_IDS).toContain('perplexity');
-    // Both connection screens build their chooser from this list, so the entry is the whole of what
-    // makes the platform selectable.
+    // Both connection screens build their chooser from this list.
     expect(PROVIDER_ROSTER).toContain('perplexity');
     expect(PROVIDER_META.perplexity.id).toBe('perplexity');
     expect(PROVIDER_META.perplexity.name).toBe('Perplexity');
@@ -99,10 +91,9 @@ describe('providers/perplexity: the registry entry', () => {
   });
 
   it('resolves the Router base URL the OpenAI SDK is configured with', () => {
-    // The Anthropic-schema twin of this endpoint lives at `https://api.perplexity.ai/router`
-    // (that SDK appends `/v1/messages` itself); the OpenAI SDK appends `/chat/completions`.
+    // The OpenAI SDK appends `/chat/completions`.
     expect(baseUrlFor('perplexity', {})).toBe('https://api.perplexity.ai/router/v1');
-    // One host: the Router is not a region-split platform, so region 1 resolves to the same URL.
+    // The Router has one host for every region.
     expect(baseUrlFor('perplexity', { region: 1 })).toBe('https://api.perplexity.ai/router/v1');
   });
 
@@ -208,8 +199,6 @@ describe('providers/perplexity: what a refusal means', () => {
         + 'documentation at https://docs.perplexity.ai/docs/getting-started/models.',
     });
 
-    // Nothing about the request would differ on a second attempt, and the message names the model,
-    // so the incident notice carries what to change.
     expect(isRetryable(error.cls)).toBe(false);
     expect(error.status).toBe(400);
     expect(error.detail).toContain("Invalid model 'example/does-not-exist'");
@@ -228,8 +217,7 @@ describe('providers/perplexity: what a refusal means', () => {
   });
 
   it('reads a payment refusal as the wallet class', async () => {
-    // The Router's reference documents 400, 429 and 5xx; 402 is the platform-wide payment status,
-    // and the wallet banner is the face that offers a change of provider.
+    // The Router documents 400, 429 and 5xx; 402 is the platform-wide payment status.
     expect((await failureOf({ status: 402, message: 'Payment required.' })).cls).toBe('quota');
   });
 

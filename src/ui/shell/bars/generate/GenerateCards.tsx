@@ -1,4 +1,5 @@
 /** The generate shelf's candidate row: one card per dealt recipe, then the visitor's own. */
+import { tourTargetAttr } from '../../../chrome/tour/steps';
 import { forwardRef, type CSSProperties } from 'react';
 import { useLocale, useT } from '../../../../i18n/context';
 import { helpTargetAttr } from '../../../session/help-targets';
@@ -47,7 +48,7 @@ export const GenerateCards = forwardRef<HTMLDivElement, {
       {(stencil ? view.hand : recipe.seeds).map((entry, i) => {
         const note = view.noteFor(stencil ? (entry as StencilSample) : null);
         return (
-          <div key={stencil ? (entry as StencilSample).id : (entry as number)} style={slot(i)}>
+          <div key={stencil ? (entry as StencilSample).id : (entry as number)} {...tourTargetAttr('recipe')} style={slot(i)}>
             <CandidateCard
               seed={stencil ? base + i : (entry as number)}
               {...(stencil ? { name: sampleName(entry as StencilSample, locale) } : {})}

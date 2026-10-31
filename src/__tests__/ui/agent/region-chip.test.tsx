@@ -1,15 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The region attachment, and the one fact it is a view of.
- *
- * The panel owns no region. Everything here is driven through the editor's own store — paint the
- * region and the chip docks, empty it and the chip leaves, arm the brush and the panel wears the
- * marking state, switch build mode and the store puts the brush away and the panel folds back with
- * it. A panel-local copy of any of those would pass a test that set it directly and fail every one
- * of these.
- *
- * The whole column is mounted (no `PanelShell` stub) because what is under test is the round trip:
- * the store, the derivation, the composer's own seat, and the verbs coming back the other way.
+ * The region chip and marking state are views of the editor store's one region, driven here through
+ * the store with the whole column mounted, so a panel-local copy of the region would fail.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
@@ -45,24 +37,21 @@ const backing = new Map<string, string>();
   clear: () => backing.clear(),
 };
 
-// The chip's picture is a real capture off the live 2D renderer, which no jsdom run has. `MapShot`
-// already answers "no renderer yet" with an empty box, so this only keeps the async capture out of
-// the way of the facts under test.
+// jsdom has no 2D renderer; this keeps the async capture out of the way (`MapShot` draws an empty box).
 vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../view/map2d/capture/thumbnail')>(),
   renderThumbnail: async () => null,
 }));
 
-/** A rect of macro cells, as the region brush would have collected them. */
+/** A rect of macro cells. */
 function rect(x1: number, y1: number, x2: number, y2: number): MacroCoord[] {
   const out: MacroCoord[] = [];
   for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) out.push({ x, y });
   return out;
 }
 
-/** A key held for Claude and a model armed: the one difference between a panel showing the setup
- *  screen and a panel showing the record. Filed through the real door, since `keyed` is a projection
- *  of a keyring only `connectKey` writes. */
+/** Connects Claude with a model, so the panel shows the record rather than setup. `connectKey` is the
+ *  only writer of the keyring `keyed` projects. */
 function connect(): void {
   const model = Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>;
   model.claude = 'claude-sonnet-4-5';
@@ -82,8 +71,7 @@ function installMap(): GridState {
   return gs;
 }
 
-/** The column in a tree, with a re-render that can put the panel away: a fold is a prop change here,
- *  the same one the shell makes when the assistant block is pressed a second time. */
+/** Mounts the column; `fold` re-renders it closed, as the shell does. */
 async function mountColumn(withShell = false): Promise<ReturnType<typeof render> & { fold(): Promise<void> }> {
   const { default: PanelColumn } = await import('../../../ui/agent/PanelColumn');
   if (withShell) useEditorStore.getState().setAssistantOpen(true);
@@ -114,7 +102,7 @@ const paint = async (cells: MacroCoord[]) => {
   await act(async () => { useEditorStore.getState().setRegion(cells); });
 };
 
-/** A job in flight, so the job zone holds a ticket the marking state can be seen to fold. */
+/** A job in flight, so the job zone holds a ticket for the marking state to fold. */
 function orderInFlight(): void {
   const l = useAgentSession.getState().log;
   append(l, { kind: 'order', text: 'Build a fishing village on the south shore', mapContext: 'Hexia' });
@@ -144,10 +132,8 @@ describe('the chip is a view of the store\'s painted region', () => {
     const { queryByTestId, getByTestId } = await mountColumn();
     expect(queryByTestId('composer-region-chip')).toBeNull();
 
-    // 3x2 = six cells, painted by anything at all: the panel is not told, it is subscribed.
     await paint(rect(4, 7, 6, 8));
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 6 cells');
-    // The frame button reads the same fact rather than a second one.
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
 
     await paint([]);
@@ -155,11 +141,6 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('false');
   });
 
-  /**
-   * A region painted before the panel ever opened still docks, which is the case that proves the
-   * chip is a subscription rather than a prop handed down at open time. The scope tools can paint
-   * one at any point; the panel arriving afterwards has to find it already there.
-   */
   it('docks for a region the store was already holding when the panel opened', async () => {
     await act(async () => { useEditorStore.getState().setRegion(rect(4, 7, 6, 8)); });
     const { getByTestId } = await mountColumn();
@@ -167,19 +148,10 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
   });
 
-  /**
-   * The mark is drawn on the cells                names, and nothing else observed that.
-   *
-   * The chip's count is `region.length` whichever way the box is derived, so it survives any bounds
-   * bug; the box reaches the screen only as four percentages inside the vignette. A local min/max at
-   * the derivation site with `x2`/`y2` off by one therefore passed the whole agent suite. This reads
-   * the rendered percentages back and compares them with the shared derivation plus the same
-   * sea-framing the capture is composed with, so the chip's box and the refusal's box are pinned to
-   * one reading of one list.
-   */
+  /** The count cannot show a bounds error, so the vignette mark's percentages are compared with
+   *  `regionBounds` plus the capture's sea framing. */
   it('draws the mark on the box the shared derivation names', async () => {
-    // A scatter, not a rect: three cells whose bounding box is much larger than the paint, so an
-    // off-by-one or a swapped axis moves the mark by a visible share of the picture.
+    // A scatter whose box is much larger than the paint, so an off-by-one or swapped axis shows.
     const scatter: MacroCoord[] = [{ x: 3, y: 2 }, { x: 11, y: 4 }, { x: 7, y: 9 }];
     const { getByTestId } = await mountColumn();
     await paint(scatter);
@@ -201,9 +173,7 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 1 cell');
   });
 
-  /** The cross clears the paint, through the brush's own channel: the region carries an undo stack
-   *  the brush owns, and a store write behind its back leaves that stack holding a region the map
-   *  no longer has. */
+  /** The brush owns the region's undo stack, so the cross clears through it. */
   it('detaches through the region brush\'s own clear, so the stroke stays undoable', async () => {
     const clear = vi.fn();
     setRegionBrushHandler({ paint: () => {}, done: () => {}, clear });
@@ -214,8 +184,6 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(clear).toHaveBeenCalledTimes(1);
   });
 
-  /** And with no brush mounted the store write is the fallback, so the cross is never a dead press
-   *  on a shell that armed no handler. */
   it('falls back to emptying the store where no brush handler is mounted', async () => {
     const { getByTestId, queryByTestId } = await mountColumn();
     await paint(rect(2, 2, 5, 5));
@@ -226,15 +194,8 @@ describe('the chip is a view of the store\'s painted region', () => {
   });
 });
 
-/**
- * There is one region-selection UI in the app, and the panel's frame button is a caller of it.
- *
- * The screen is the generate shelf's own (`ui/shell/bars/generate/ScopeScreen`): the figure cells, the brush
- * slider, Clear and Done. Arming the brush alone left the user a live pencil with no figure to choose
- * and no verb to finish with, so what is asserted here is the entry — the press opens that screen, its
- * Done comes back to the panel with the region standing, and the panel never stands a second one over
- * a marking the shelf armed.
- */
+/** The panel's frame button opens the app's one region screen, the generate shelf's `ScopeScreen`
+ *  (figures, brush size, Clear, Done), and never a second one over a marking the shelf armed. */
 describe('the marking state', () => {
   it('opens the map\'s own region screen, folds the job zone and hands the field over', async () => {
     orderInFlight();
@@ -245,7 +206,6 @@ describe('the marking state', () => {
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
 
     expect(useEditorStore.getState().selectingRegion).toBe(true);
-    // The screen the generator uses, with its own figures and its own way to finish.
     const scope = getByTestId('shell-scope-screen');
     expect(scope.querySelectorAll('[data-testid^="tool-cell"], button').length).toBeGreaterThan(1);
     expect(scope.textContent).toContain('Done');
@@ -254,12 +214,10 @@ describe('the marking state', () => {
     expect(field.placeholder).toBe('The map has the pencil');
     expect(queryByTestId('job-ticket')).toBeNull();
     expect(getByTestId('panel-job-zone').querySelector('[data-scroll-content]')!.childElementCount).toBe(0);
-    // The way out has to stay pressable, or the state can only be left with a key.
+    // The way out stays pressable.
     expect((getByTestId('composer-region-mark') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  /** Done comes back to the panel with the region standing, which is the whole contract of the entry:
-   *  the screen edits the store's one region fact and the chip is a view of it. */
   it('returns to the panel on the screen\'s own Done, with what was painted attached', async () => {
     const { getByTestId, queryByTestId } = await mountColumn(true);
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
@@ -285,8 +243,7 @@ describe('the marking state', () => {
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(false);
   });
 
-  /** And only for a marking this panel armed. The shelf mounts its own screen for the ones it arms,
-   *  so a second here would be two sets of the same controls on one bottom bar. */
+  /** The shelf mounts its own screen for markings it arms. */
   it('stands no screen over a marking the map\'s own tools armed', async () => {
     const { queryByTestId } = await mountColumn();
     await act(async () => { useEditorStore.getState().setSelectingRegion(true); });
@@ -303,12 +260,7 @@ describe('the marking state', () => {
     expect(useEditorStore.getState().assistantOpen).toBe(true);
   });
 
-  /**
-   * The               gotcha. Choosing what to build puts the region brush away (`edit.ts`'s own
-   * rule: the region outranks the tool, so leaving it armed would hand every press to a scope brush
-   * while the bar showed a terrain one). A panel holding its own marking flag would then stand with
-   * the composer disabled and the record folded over a brush that is no longer listening.
-   */
+  /** Choosing a build mode puts the region brush away (`edit.ts`), and the panel follows the store. */
   it('folds back when a mode switch puts the brush away under it', async () => {
     orderInFlight();
     const { getByTestId, queryByTestId } = await mountColumn();
@@ -325,14 +277,8 @@ describe('the marking state', () => {
     expect(queryByTestId('job-ticket')).not.toBeNull();
   });
 
-  /**
-   * A fold ends a marking the panel armed.
-   *
-   * `selectingRegion` outranks every tool in `resolvePress`, so a marking left standing behind a
-   * closed panel hands every press on the map to the region brush under whatever mode is showing,
-   * with the outline up and nothing on screen saying why. Nothing is destroyed by it, but the pencil
-   * is somewhere the user cannot see they put it.
-   */
+  /** `selectingRegion` outranks every tool in `resolvePress`, so a marking left behind a closed panel
+   *  would capture every press on the map. */
   it('peels the marking it armed when the panel folds, and takes the outline with it', async () => {
     const clearOutline = vi.spyOn(host.buildableRegion, 'clear');
     const { getByTestId, fold } = await mountColumn();
@@ -347,9 +293,7 @@ describe('the marking state', () => {
     clearOutline.mockRestore();
   });
 
-  /** And only the one it armed. The store's flag cannot say who holds the pencil, and the map's own
-   *  scope screen sets the same one: a fold that peeled it unconditionally would put away a brush
-   *  the panel never picked up. */
+  /** The map's scope screen sets the same store flag, so the panel tracks which marking it armed. */
   it('leaves a marking the map\'s own tools armed exactly where it is', async () => {
     const { fold } = await mountColumn();
     await act(async () => { useEditorStore.getState().setSelectingRegion(true); });
@@ -359,8 +303,6 @@ describe('the marking state', () => {
     expect(useEditorStore.getState().selectingRegion).toBe(true);
   });
 
-  /** And the chip comes back with whatever the marking left behind, which is the store's own list
-   *  and not a remembered one. */
   it('re-docks the chip with what the marking painted', async () => {
     const { getByTestId, queryByTestId } = await mountColumn();
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
@@ -376,7 +318,7 @@ describe('the marking state', () => {
 describe('the placeholder shortens while the chip is docked', () => {
   it('swaps the long steer placeholder for its short form, and only while the chip stands', async () => {
     const { getByTestId } = await mountColumn();
-    // A job in flight puts the composer on the steer route, whose placeholder is the long one.
+    // A job in flight puts the composer on the steer route, with the long placeholder.
     await act(async () => {
       const l = useAgentSession.getState().log;
       append(l, { kind: 'order', text: 'Build a fishing village on the south shore', mapContext: 'Hexia' });
@@ -393,11 +335,8 @@ describe('the placeholder shortens while the chip is docked', () => {
   });
 });
 
-/**
- * The ticket head is the filed copy, and the chip is the live one. The order stamps the region it
- * was filed under at push time; repainting the store afterwards moves the chip and must not move
- * the record, because the record's whole job is to say which region held.
- */
+/** The order stamps its region when filed, so repainting the store moves the chip and not the ticket
+ *  head. */
 describe('the ticket head reads the region as filed', () => {
   it('keeps the filed bounds while the live region is repainted underneath it', async () => {
     const filed = { count: 1128, x1: 2, y1: 3, x2: 48, y2: 44 };
@@ -430,12 +369,10 @@ describe('the ticket head reads the region as filed', () => {
     );
 
     expect(getByTestId('ticket-region').textContent).toContain('in the marked region');
-    // The head's picture is of the filed box; the chip's is of the live one. Two calls, two boxes.
     const counts = shot.mock.calls.map((c) => c[0].count);
     expect(counts).toContain(1128);
     expect(counts).toContain(6);
 
-    // Repaint the live region: the chip follows, the head does not.
     shot.mockClear();
     rerender(
       <MotionConfig reducedMotion="always">
@@ -463,15 +400,8 @@ describe('the ticket head reads the region as filed', () => {
   });
 });
 
-/**
- * The same mark, one rung down: the gate family's own pictures.
- *
- * A gate thumb and an option thumb draw the region vignette's own reading — the island entire with
- * the option's own rect marked on it. A crop framed on the rect (`MapShot box=…`) fills its frame
- * edge to edge with whatever ground happens to be there, so three option cards come back as three
- * near-identical crops of the same green field and the picture that exists to distinguish the
- * choices distinguishes none of them.
- */
+/** Gate and option thumbs show the whole island with the option's rect marked, since crops of
+ *  similar ground would look alike. */
 describe('the gate family\'s pictures mark their place rather than cropping to it', () => {
   const OPTIONS = [
     { cap: 'A cove on the west shore, sheltered', rect: { x1: 2, y1: 3, x2: 6, y2: 8 } },
@@ -493,7 +423,6 @@ describe('the gate family\'s pictures mark their place rather than cropping to i
     const sea = seaFrame(24, 24, OPTION_THUMB.width / OPTION_THUMB.height);
     const placed = marks.map((m) => `${m.style.left}|${m.style.top}|${m.style.width}`);
     expect(new Set(placed).size, 'three options, three different pictures').toBe(3);
-    // And each is placed by the option's own rect, through the shared sea-framing math.
     const first = OPTIONS[0]!.rect;
     expect(Number.parseFloat(marks[0]!.style.left))
       .toBeCloseTo(((sea.dx + first.x1) / sea.width) * 100, 4);

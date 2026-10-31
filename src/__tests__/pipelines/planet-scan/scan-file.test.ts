@@ -1,10 +1,10 @@
 // @vitest-environment node
 /**
- * A file scan across its two workers, on a real MP4, a Matroska file built here and a scripted decoder: the decode side sends
- * every frame prepared and in order, waiting while its credits are used up, stops when the scan
- * says so, then sends exactly the distinct frames pass 1 named; a file or codec the decoder cannot
- * read, or a decoder failing in pass 1, answers unsupported so the page can read it through
- * playback, and a failure in pass 2 is a decode error.
+ * A file scan across its two workers, on a real MP4, a Matroska file built here and a scripted
+ * decoder: the decode side sends every frame prepared and in order, waiting while its credits are
+ * used up, stops when the scan says so, then sends exactly the distinct frames pass 1 named; a file
+ * or codec the decoder cannot read, or a decoder failing in pass 1, answers unsupported so the page
+ * can read it through playback, and a failure in pass 2 is a decode error.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';

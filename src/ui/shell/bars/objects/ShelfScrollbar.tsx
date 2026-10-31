@@ -10,6 +10,7 @@ import { usePx } from '../../../design/scale';
 import { cursors } from '../../../design/styles';
 import { SCROLL } from './object-shelf';
 import { visualRect } from '../../../design/visual-rect';
+import { useMorphPresence } from '../../../primitives/morph';
 
 interface Props {
   /** Where the row is scrolled to, and how much of it there is — all in design px. */
@@ -37,6 +38,9 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
     : trackW;
   const travel = trackW - thumbW;
   const left = room > 0 ? (scrollLeft / room) * travel : 0;
+  // Named by the share of the row it stands for: a re-arrangement that changes the share crossfades
+  // the old thumb into the new one.
+  const thumb = useMorphPresence(`shelf-thumb-${Math.round((thumbW / trackW) * 100)}`);
 
   /** A thumb position (design px from the track's left) back to a scroll offset. */
   const scrollFor = (thumbLeft: number): number => {
@@ -92,6 +96,7 @@ export function ShelfScrollbar({ scrollLeft, viewportW, contentW, onScrollTo }: 
       />
       <span
         data-testid="shell-shelf-thumb"
+        {...thumb}
         onPointerDown={(e) => { e.stopPropagation(); down(e, true); }}
         style={{
           position: 'absolute', left: `${(left / trackW) * 100}%`, top: 0,

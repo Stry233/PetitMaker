@@ -214,14 +214,18 @@ describe('plaza in the planet session', () => {
 
   it('the placer lays the armed plaza with its own footprint on the half-cell grid', () => {
     const s = store();
-    const ctx = { ...makeToolCtx(s.gridState, s.commandExecutor!, 1, 1, { armedItem: ANCHOR_LANDMARK.id }), point: point({ x: 20.5, y: 20 }) };
-    const ghost = placementHover(ANCHOR_LANDMARK.id, { x: 20, y: 20 }, ctx)!;
+    // The pointer holds the plaza by its centre (EDIT-51): its top-left lands half its size back.
+    const held = (x: number, y: number) => ({ x: x + ANCHOR_LANDMARK.width / 2, y: y + ANCHOR_LANDMARK.height / 2 });
+    const at = held(20.5, 20);
+    const ctx = { ...makeToolCtx(s.gridState, s.commandExecutor!, 1, 1, { armedItem: ANCHOR_LANDMARK.id }), point: point(at) };
+    const ghost = placementHover(ANCHOR_LANDMARK.id, { x: Math.floor(at.x), y: Math.floor(at.y) }, ctx)!;
     expect(ghost.valid).toBe(true);
     expect(ghost.cells).toHaveLength(ANCHOR_LANDMARK.width * ANCHOR_LANDMARK.height);
     expect(ghost.bodyElevation).toBeNull();
-    new ObjectPlacerTool().onPointerDown(cell({ x: 20, y: 20 }), point({ x: 40, y: 40 }), ctx);
+    new ObjectPlacerTool().onPointerDown(cell({ x: Math.floor(at.x), y: Math.floor(at.y) }), point({ x: 40, y: 40 }), ctx);
     expect(plaza()).toMatchObject({ position: { x: 20.5, y: 20 }, width: ANCHOR_LANDMARK.width, height: ANCHOR_LANDMARK.height, locked: false });
-    expect(placementHover(ANCHOR_LANDMARK.id, { x: 45, y: 20 }, { ...ctx, point: point({ x: 45, y: 20 }) })!.valid).toBe(false);
+    const off = held(45, 20);
+    expect(placementHover(ANCHOR_LANDMARK.id, { x: Math.floor(off.x), y: Math.floor(off.y) }, { ...ctx, point: point(off) })!.valid).toBe(false);
   });
 
   it('finishes with the rotated plaza, locked on the finished map', () => {

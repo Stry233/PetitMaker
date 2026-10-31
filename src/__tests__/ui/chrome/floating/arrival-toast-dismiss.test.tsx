@@ -12,7 +12,7 @@ import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-libra
 import { MotionConfig } from 'framer-motion';
 import { ArrivalToast } from '../../../../ui/chrome/floating/ArrivalToast';
 import { __resetArrivals, announceArrival } from '../../../../ui/session/arrival-bus';
-import { TOUR_SEEN_KEY } from '../../../../ui/chrome/tour/use-tour';
+import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../../_support/tour';
 import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { getMapTemplate } from '../../../../config/maps';
@@ -34,14 +34,14 @@ const gone = () => waitFor(() => expect(screen.queryByTestId('arrival-toast')).t
 
 beforeEach(() => {
   __resetArrivals();
-  localStorage.setItem(TOUR_SEEN_KEY, '1');
+  localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   const st = useEditorStore.getState();
   useEditorStore.setState({
     gridState: { template: HEXIA, cells: createGrid(HEXIA), objects: new Map(), objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() },
     locale: 'en',
     tourRunning: false,
-    portraitBlocked: false,
-    modals: { ...st.modals, tourDone: false, newProject: false },
+
+    modals: { ...st.modals, newProject: false },
   });
 });
 

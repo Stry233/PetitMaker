@@ -10,10 +10,10 @@ import { loadLocale } from '../../i18n/translations';
 import { useEditorStore } from '../../state/store';
 
 /** Readies the editor (`editor/session/install.ts:prepareEditor`), then renders `app` into `root`
- *  once the saved locale's strings have arrived; a failed load renders in English, the fallback of
- *  every string. */
-export function mountApp(root: HTMLElement, app: ReactNode): void {
+ *  once the saved locale's strings have arrived and `ready` has settled; a failed load renders in
+ *  English, the fallback of every string. */
+export function mountApp(root: HTMLElement, app: ReactNode, ready?: Promise<unknown>): void {
   prepareEditor();
   const render = () => { createRoot(root).render(<StrictMode>{app}</StrictMode>); };
-  loadLocale(useEditorStore.getState().locale).then(render, render);
+  void Promise.allSettled([loadLocale(useEditorStore.getState().locale), ready]).then(render);
 }

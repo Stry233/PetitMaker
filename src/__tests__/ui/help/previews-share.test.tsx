@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, waitFor, act } from '@testing-library/react';
 import { I18nProvider, localizedName } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
-import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';
+import { MotionConfig } from 'framer-motion';
 import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
 import { translateFor } from '../../../i18n/context';
@@ -108,18 +108,13 @@ describe('save/share/search Help figures mount the real components', () => {
     }
   });
 
-  it('SearchPreview stands frozen on the typo step under reduced motion', () => {
-    setReducedMotion(true);
-    try {
-      const { container } = mount(SearchPreview);
-      const input = container.querySelector<HTMLInputElement>('input.pw-search-field');
-      expect(input!.value).toBe(searchExamples('en').enTypo);
-      // The frozen query still flows through the shelf's own ranking: the subsequence match
-      // stands as a card, under the real category tabs and search field around it.
-      const apple = localizedName(getCatalogItem(SEARCH_EXAMPLE_IDS.name)!.name, 'en');
-      expect(screen.getByRole('button', { name: apple, hidden: true })).toBeTruthy();
-    } finally {
-      __resetMotionState();
-    }
+  it('[UI-08] SearchPreview stands frozen on the typo step under reduced motion', () => {
+    const { container } = render(<MotionConfig reducedMotion="always"><I18nProvider><SearchPreview /></I18nProvider></MotionConfig>);
+    const input = container.querySelector<HTMLInputElement>('input.pw-search-field');
+    expect(input!.value).toBe(searchExamples('en').enTypo);
+    // The frozen query still flows through the shelf's own ranking: the subsequence match
+    // stands as a card, under the real category tabs and search field around it.
+    const apple = localizedName(getCatalogItem(SEARCH_EXAMPLE_IDS.name)!.name, 'en');
+    expect(screen.getByRole('button', { name: apple, hidden: true })).toBeTruthy();
   });
 });

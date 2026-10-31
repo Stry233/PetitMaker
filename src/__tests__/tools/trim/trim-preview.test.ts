@@ -1,9 +1,6 @@
 /**
- * The auto-trim preview: what the ghost promises has to be what the click produces.
- *
- * The one property worth testing is equality with the real thing — the preview runs the same trim
- * pass over a scratch grid, so every case is checked by painting the stroke for real and comparing
- * the map it leaves against the shapes the preview reported.
+ * The auto-trim preview runs the trim pass over a scratch grid; each case paints the stroke for real
+ * and compares the map with the shapes the preview reported.
  */
 import { describe, it, expect } from 'vitest';
 import { previewAutoTrim, shapeOfCells, shapeOfSpans, TRIM_PREVIEW_MAX_RIM } from '../../../tools/trim/trim-preview';
@@ -74,8 +71,6 @@ for (const mode of ['round', 'rect'] as const) {
     }
 
     it('matches when the stroke lands against terrain that is already there', () => {
-      // The corners of a stroke depend on what it meets, so a preview that only looked at the
-      // stroke would be right on bare ground and wrong everywhere else.
       const wall = rectCells({ x: 12, y: 4 }, { x: 13, y: 20 });
       const stroke = circleCells({ x: 10, y: 12 }, 3, 3);
       const a = world(); paintForReal(a, wall, 'off');
@@ -88,9 +83,7 @@ for (const mode of ['round', 'rect'] as const) {
 
 describe('what it reports', () => {
   it('leaves trim shapes that were already on the map out of it', () => {
-    // A map is full of cut corners and Γ patches from earlier strokes. Reporting those as if this
-    // preview had made them had the ghost drawing detached wedges, squares and whole circles over
-    // terrain it is not touching.
+    // Earlier cuts reported as this preview's would draw detached wedges over terrain it does not touch.
     const w = world();
     paintForReal(w, rectCells({ x: 4, y: 4 }, { x: 14, y: 12 }), 'round');
     const standing = shapesOf(w.state);
@@ -108,8 +101,7 @@ describe('what it reports', () => {
   it('but keeps a cut the stroke is about to make on ground that already has one', () => {
     const w = world();
     paintForReal(w, rectCells({ x: 4, y: 4 }, { x: 14, y: 12 }), 'round');
-    // A stroke landing on the existing mass: its own cells report their finished shape whether or
-    // not the trim changed them, because the ghost draws the result, not the difference.
+    // The ghost draws the result, not the difference, so the stroke's cells report even unchanged cuts.
     const on = rectCells({ x: 6, y: 6 }, { x: 9, y: 9 });
     const reported = previewShapes(w, on, 'round', 2);
     expect(reported.length, 'the raised block rounds its own corners').toBeGreaterThan(0);
@@ -131,10 +123,8 @@ describe('the preview leaves the map alone', () => {
   });
 
   it('even where the commands it runs reach outside the cells it was asked about', () => {
-    // A curve tweak previews the baseline restore first, and that restore covers every cell the
-    // curve has ever touched — far more than the scratch owns. Applied unclipped it edited the real
-    // map behind the executor's back: no history, no redraw, and a stroke that then skipped those
-    // cells because they already held what it was about to write.
+    // A curve tweak's baseline restore covers every cell the curve ever touched, beyond the scratch;
+    // unclipped it would edit the real map with no history or redraw.
     const w = world();
     const far = rectCells({ x: 2, y: 2 }, { x: 6, y: 6 });
     paintForReal(w, far, 'off');
@@ -147,8 +137,6 @@ describe('the preview leaves the map alone', () => {
   });
 
   it('and does not hand out cells that share state with the live grid', () => {
-    // A scratch that aliased the real cells would let a preview corrupt the map through a stray
-    // write, which is the failure mode a copy-on-write slice exists to prevent.
     const w = world();
     paintForReal(w, rectCells({ x: 10, y: 10 }, { x: 12, y: 12 }), 'off');
     const live = w.state.cells[11]![11]!.terrain;
@@ -165,8 +153,7 @@ describe('when there is nothing to show', () => {
   });
 
   it('but a big shape is previewed like a small one — only its rim can be trimmed', () => {
-    // The cost tracks the outline, not the area, so there is no size at which the ghost quietly
-    // stops telling the truth.
+    // The cost tracks the outline, not the area, so no size is too big to preview.
     const w = world();
     const huge = rectCells({ x: 1, y: 1 }, { x: 28, y: 28 });
     expect(huge.length).toBeGreaterThan(400);
@@ -178,7 +165,7 @@ describe('when there is nothing to show', () => {
   });
 
   it('and a span-form shape previews the same as its cells', () => {
-    // rect / circle ghosts never build a cell list; the rim comes straight off the spans.
+    // Rect and circle ghosts never build a cell list; the rim comes off the spans.
     const cells = rectCells({ x: 4, y: 4 }, { x: 20, y: 16 });
     const spans = [];
     for (let y = 4; y <= 16; y++) spans.push({ x: 4, y, w: 17 });

@@ -5,15 +5,18 @@ import { load } from 'nsfwjs/core';
 import { explicitImage } from './evidence';
 import { crop } from './raster';
 
-export async function checkImage(views: OffscreenCanvas[], assetBase: string): Promise<boolean> {
+/** `progress` is called after each step, so the caller can tell a slow check from a stalled one. */
+export async function checkImage(views: OffscreenCanvas[], assetBase: string, progress: () => void = () => {}): Promise<boolean> {
   setWasmPaths({ ...TF_WASM_PATHS });
   tf.enableProdMode();
   await tf.setBackend('wasm'); await tf.ready();
+  progress();
   const model = await load(new URL(NSFW_MODEL, assetBase).href);
+  progress();
   const predict = async (canvas: OffscreenCanvas) => {
     const image = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
     const tensor = tf.browser.fromPixels(image);
-    try { return explicitImage(await model.classify(tensor)); } finally { tensor.dispose(); }
+    try { return explicitImage(await model.classify(tensor)); } finally { tensor.dispose(); progress(); }
   };
   try {
     for (const view of views) {

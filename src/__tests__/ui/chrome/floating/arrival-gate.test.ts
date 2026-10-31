@@ -16,10 +16,8 @@ import type { ArrivalLine } from '../../../../ui/session/arrival-bus';
 /** A browser with nothing in the way: the notice may go up. */
 const clear: ArrivalFacts = {
   splashActive: false,
-  blocked: false,
   tourRunning: false,
   tourSettled: true,
-  tourDoneOpen: false,
   whatsNewOpen: false,
   repairOpen: false,
 };
@@ -33,15 +31,10 @@ describe('the arrival gate', () => {
     expect(arrivalOpens({ ...clear, splashActive: true })).toBe(false);
   });
 
-  it('waits behind the portrait guard', () => {
-    expect(arrivalOpens({ ...clear, blocked: true })).toBe(false);
-  });
-
-  it('waits for the tour, its offer and its send-off', () => {
+  it('waits for the tour and its offer', () => {
     expect(arrivalOpens({ ...clear, tourRunning: true })).toBe(false);
     // The first-launch offer has not been answered yet: the tour may still be a frame away.
     expect(arrivalOpens({ ...clear, tourSettled: false })).toBe(false);
-    expect(arrivalOpens({ ...clear, tourDoneOpen: true })).toBe(false);
   });
 
   it('waits for the What\'s new window, which speaks first', () => {

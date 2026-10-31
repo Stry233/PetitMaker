@@ -25,7 +25,10 @@ export const EditIcon = ({ size }: { size?: number }) => <Glyph size={size}><pat
 export const RenameIcon = () => <Glyph><path d="M4 6.5h10M9 6.5v12M14.5 12.5h5.5M14.5 17.5h5.5" /></Glyph>;
 
 /** Two overlapping sheets: make a copy. */
-export const DuplicateIcon = () => <Glyph><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M4.5 15.5V5.6c0-.6.5-1.1 1.1-1.1h9.9" /></Glyph>;
+export const DuplicateIcon = ({ size }: { size?: number }) => <Glyph size={size}><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M4.5 15.5V5.6c0-.6.5-1.1 1.1-1.1h9.9" /></Glyph>;
+
+/** A clipboard with a sheet on it: paste. */
+export const PasteIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M9 4.5H6.6c-.6 0-1.1.5-1.1 1.1v13.8c0 .6.5 1.1 1.1 1.1h10.8c.6 0 1.1-.5 1.1-1.1V5.6c0-.6-.5-1.1-1.1-1.1H15" /><rect x="9" y="3" width="6" height="3.2" rx="1.2" /><path d="M9 11h6M9 15h4" /></Glyph>;
 
 /** An arrow leaving a tray: save a file out of the app. */
 export const ExportFileIcon = () => <Glyph><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M4.5 14v5.5h15V14" /></Glyph>;
@@ -37,12 +40,18 @@ export const VideoIcon = () => <Glyph><rect x="3.5" y="6.5" width="12" height="1
 
 export const PlayIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M8 5.5v13l10.5-6.5z" /></Glyph>;
 
-export const PlusIcon = () => <Glyph><path d="M12 5v14M5 12h14" /></Glyph>;
+export const PlusIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M12 5v14M5 12h14" /></Glyph>;
+
+/** The plus's crossbar alone: take away. */
+export const MinusIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M5 12h14" /></Glyph>;
 
 /** A cross: close the window. */
 export const CloseIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M6 6l12 12M18 6 6 18" /></Glyph>;
 
 export const BackIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M14.5 5 7.5 12l7 7" /></Glyph>;
+
+/** A monitor on a short stand: the device decides. */
+export const DeviceIcon = ({ size }: { size?: number }) => <Glyph size={size}><rect x="3" y="4.5" width="18" height="12" rx="2.5" /><path d="M12 16.5v3.4M8 19.9h8" /></Glyph>;
 
 /** A tick: finish and keep what was made. */
 export const CheckIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="M5 12.5l4.5 4.5L19 7.5" /></Glyph>;
@@ -65,4 +74,52 @@ export const FitIcon = ({ size }: { size?: number }) => (
     <path d="M4 15v4a1 1 0 0 0 1 1h4" />
     <path d="M20 15v4a1 1 0 0 1-1 1h-4" />
   </Glyph>
+);
+
+/** Four corner brackets turned inward: bring something enlarged back to its place. */
+export const ShrinkIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}>
+    <path d="M4 9h4a1 1 0 0 0 1-1V4" />
+    <path d="M20 9h-4a1 1 0 0 1-1-1V4" />
+    <path d="M4 15h4a1 1 0 0 1 1 1v4" />
+    <path d="M20 15h-4a1 1 0 0 0-1 1v4" />
+  </Glyph>
+);
+
+/** A lens with its handle: look for something by name. */
+export const SearchIcon = ({ size }: { size?: number }) => <Glyph size={size}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 20 20" /></Glyph>;
+
+/** A block with a quarter-turn arrow over it: this item turns 90 degrees clockwise. */
+export const RotateIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}>
+    <rect x="3.5" y="9.5" width="10.5" height="10.5" rx="2.5" />
+    <path d="M8 5A10.5 10.5 0 0 1 18.6 14.6" />
+    <path d="M15.7 12.5l2.9 2.3 2.1-3" />
+  </Glyph>
+);
+
+/** An arrow turning back on itself: return a setting to its default. */
+export const ResetIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}>
+    <path d="M4.5 12a7.5 7.5 0 1 0 7.5-7.5c-2.1 0-4 .9-5.4 2.3L4.5 8.6" />
+    <path d="M4.5 4.5v4.1h4.1" />
+  </Glyph>
+);
+
+/** A dropper: arm what the selection is made of. */
+export const PickIcon = ({ size }: { size?: number }) => <Glyph size={size}><path d="m14 6 2.5-2.5a3 3 0 0 1 4 4L18 10" /><path d="m12 5 7 7M14 7l-9 9-1 4 4-1 9-9" /></Glyph>;
+
+/** Four arrows out of a cross: move the thing. */
+export const MoveIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}><path d="M12 3v18M3 12h18M12 3 9 6M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" /></Glyph>
+);
+
+/** Two blocks and a plus: add more things to the selection. */
+export const MultiSelectIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}><rect x="3" y="3" width="8" height="8" rx="2" /><rect x="13" y="13" width="8" height="8" rx="2" /><path d="M13 7h8M17 3v8" /></Glyph>
+);
+
+/** A dashed frame: everything in reach. */
+export const SelectAllIcon = ({ size }: { size?: number }) => (
+  <Glyph size={size}><rect x="3" y="3" width="18" height="18" rx="3" strokeDasharray="4 3" /></Glyph>
 );

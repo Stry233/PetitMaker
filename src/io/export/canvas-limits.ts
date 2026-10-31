@@ -56,6 +56,21 @@ export function deviceCanvasLimits(): CanvasLimits {
   return measured;
 }
 
+/** The least any measured ceiling is: the ladders' bottom rungs, which a device that confirms
+ *  nothing still answers with (or with `CANVAS_LIMITS` where it has no 2D canvas at all). */
+const CANVAS_FLOOR: CanvasLimits = { maxDim: DIM_RUNGS[DIM_RUNGS.length - 1]!, maxArea: AREA_SIDE_RUNGS[AREA_SIDE_RUNGS.length - 1]! ** 2 };
+
+/** `layout` against this device's ceiling, probing only where the answer depends on it. Every
+ *  measured ceiling lies between `CANVAS_FLOOR` and `CANVAS_LIMITS` and a layout only shrinks as its
+ *  ceiling falls, so one that comes out the same size under both is the same under the device's
+ *  own; a preview sized for the screen never pays the probe's full-size canvases. */
+export function layoutWithinDevice<T extends { width: number; height: number }>(layout: (limits: CanvasLimits) => T): T {
+  if (measured) return layout(measured);
+  const roomy = layout(CANVAS_LIMITS);
+  const least = layout(CANVAS_FLOOR);
+  return roomy.width === least.width && roomy.height === least.height ? roomy : layout(deviceCanvasLimits());
+}
+
 /** Forgets the measured ceiling, so the next read probes again. */
 export function __resetCanvasLimits(): void {
   measured = null;

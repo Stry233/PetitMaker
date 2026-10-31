@@ -26,24 +26,35 @@ import { pickSelection } from '../../../editor/editing/pick-selection';
 import {
   deleteSelection, faceSelected, rotateSelection, selectionTarget, type SelectionTarget as Target,
 } from '../../../editor/editing/group-edit';
-import { touchFloorZoom, useChromeScale, useDenseScript, useDevicePixelRatio, useTouchPrimary } from '../../design/scale';
-import { cursors, font, interactionProfiles, radii, z } from '../../design/styles';
+import { useGlidingChromeLift } from '../../primitives/chrome-layer';
+import { useInteractionProfiles, useTouchMode } from '../../design/input-mode';
+import { cursors, font, radii, z } from '../../design/styles';
 import { INK, INSET, LINE, PLATE, PLATE_INK, ERROR } from '../../design/tokens';
 import { ShapeEdge, isWebKitEngine } from '../../design/shape-edge';
 import { skin } from '../../design/window-skin';
-import { roleFont, weightVars } from '../../design/text-weight';
+import { roleFont } from '../../design/text-weight';
 import { amplitude, framerMotion } from '../../design/motion';
 import { SegmentedControl } from '../../primitives/SegmentedControl';
-import { Glyph, TrashIcon, ChevronIcon } from '../../primitives/line-glyphs';
+import { ChevronIcon, DuplicateIcon, PickIcon, RotateIcon, TrashIcon } from '../../primitives/line-glyphs';
+import { copyObjects } from '../../../editor/editing/clipboard';
+import { copyAllowed } from '../../../state/clipboard';
 import { MODE_ICONS } from '../../design/mode-icons';
 import { layerName } from '../../../i18n/terms/layer-name';
 import { helpTargetAttr } from '../../session/help-targets';
-import { facingAngle, useSelectionCardPlace } from './use-selection-card-place';
+import { facingAngle, TITLE_MAX, useSelectionCardPlace } from './use-selection-card-place';
 import { useObservedSize } from '../../primitives/use-observed-size';
+import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useMapRevision } from '../../session/use-map-revision';
 
 /** Header row height in css px; its ends are half-circles. */
 const ROW = 48;
+/** The name on one line, cut with an ellipsis (its full text then rides a hover title). */
+const NAME: CSSProperties = { whiteSpace: 'nowrap', textOverflow: 'ellipsis' };
+/** In touch mode, where nothing is read by hovering, a long name wraps onto a second line inside the
+ *  button's height before it is cut. */
+const TOUCH_NAME: CSSProperties = {
+  display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, lineHeight: 1.15, overflowWrap: 'break-word', textAlign: 'left',
+};
 const BUTTON = 40;
 const THUMB = 36;
 /** Side of the rotated square whose outer half is the pointer, in css px. */
@@ -54,19 +65,10 @@ type Facing = typeof FACINGS[number];
 const btnReset: CSSProperties = { border: 'none', padding: 0, margin: 0, background: 'transparent', fontFamily: font.family, cursor: cursors.clickable, WebkitTapHighlightColor: 'transparent' };
 
 const iconButton: CSSProperties = {
-  ...btnReset, width: BUTTON, height: BUTTON, flex: 'none', borderRadius: '50%',
+  ...btnReset, position: 'relative', width: BUTTON, height: BUTTON, flex: 'none', borderRadius: '50%',
   display: 'flex', alignItems: 'center', justifyContent: 'center', color: INK,
 };
 
-/** A block with a quarter-turn arrow over it: this item turns 90 degrees clockwise. */
-const RotateIcon = () => (
-  <Glyph>
-    <rect x="3.5" y="11" width="9" height="9" rx="2" />
-    <path d="M7.5 6.6A9.5 9.5 0 0 1 19.4 15" />
-    <path d="M16.4 13.2l3 2.3 2.2-3" />
-  </Glyph>
-);
-const PickIcon = () => <Glyph><path d="m14 6 2.5-2.5a3 3 0 0 1 4 4L18 10" /><path d="m12 5 7 7M14 7l-9 9-1 4 4-1 9-9" /></Glyph>;
 /** An arrow pointing where the item's front looks on screen for one facing (`data-facing`); the card
  *  turns it with the camera. */
 const FacingArrow = ({ facing, deg }: { facing: string; deg: number }) => (
@@ -75,7 +77,8 @@ const FacingArrow = ({ facing, deg }: { facing: string; deg: number }) => (
   </svg>
 );
 
-function Thumb({ src, color, count }: { src?: string; color?: string; count?: number }) {
+/** The round picture a selection is named by: its item's icon or colour, a count for a group. */
+export function Thumb({ src, color, count }: { src?: string; color?: string; count?: number }) {
   return (
     <span style={{ position: 'relative', width: THUMB, height: THUMB, flex: 'none', borderRadius: '50%', background: INSET, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {src ? <img src={src} alt="" draggable={false} style={{ width: '80%', height: '80%', objectFit: 'contain', pointerEvents: 'none' }} />
@@ -103,37 +106,42 @@ export function SelectionCard() {
   const locale = useLocale();
   useMapRevision(selection.length > 0, 'frame');
   const inSession = useEditorStore((s) => !!s.planetSession);
-  const target = selectionTarget(selection, gridState, inSession);
-  const chrome = useChromeScale();
-  const touch = useTouchPrimary();
-  const zoom = touchFloorZoom(chrome, touch, BUTTON);
-  // Weights resolve for the size the card is drawn at, which the touch floor can raise above the chrome's.
-  const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
+  // Multi-select carries its actions on its own bar (`shell/bars/selection/MultiSelectBar.tsx`).
+  const latched = useEditorStore((s) => s.multiSelectLatched);
+  const target = latched ? null : selectionTarget(selection, gridState, inSession);
 
   return (
     <AnimatePresence>
       {target && gridState && (
-        <CardBody key={target.key} target={target} gs={gridState} zoom={zoom} weights={weights} t={t} locale={locale} />
+        <CardBody key={target.key} target={target} gs={gridState} t={t} locale={locale} />
       )}
     </AnimatePresence>
   );
 }
 
-function CardBody({ target, gs, zoom, weights, t, locale }: {
+function CardBody({ target, gs, t, locale }: {
   target: Target;
   gs: GridState;
-  zoom: number;
-  weights: CSSProperties;
   t: ReturnType<typeof useT>;
   locale: ReturnType<typeof useEditorStore.getState>['locale'];
 }) {
-  const { refs, growUp } = useSelectionCardPlace(zoom, locale, ROW, TAIL);
+  const { zoom, weights } = useGlidingChromeLift(BUTTON);
+  const { refs, growUp, nameCut } = useSelectionCardPlace(zoom, locale, ROW, TAIL);
+  const profiles = useInteractionProfiles();
+  const touch = useTouchMode();
   const [open, setOpen] = useState(false);
   // The unfold animates to the body's layout height. A height of 'auto' is measured on screen, so under
   // a chrome zoom below 1 it stops short and then snaps to the real height.
   const [bodyHeight, setBodyHeight] = useState(0);
   const reduced = useReducedMotionConfig() === true;
   useObservedSize(() => refs.body.current, ([body]) => setBodyHeight(body!.offsetHeight), []);
+  // The glyph buttons' names hang toward the card's body, away from the selection.
+  const nameSide = growUp ? 'above' : 'below';
+  const rotateName = useNameReveal(t('a11y.rotate'), nameSide);
+  const pickName = useNameReveal(t('a11y.pick_material'), nameSide);
+  const copyName = useNameReveal(t('context.copy'), nameSide);
+  const copyOffered = useEditorStore(copyAllowed) && target.copyable;
+  const deleteName = useNameReveal(t('a11y.delete'), nameSide);
 
   const exec = () => useEditorStore.getState();
   const rotate = () => rotateSelection(90);
@@ -227,31 +235,40 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
             <motion.button
               type="button"
               data-testid="selection-details"
-              {...interactionProfiles.pill}
+              {...profiles.pill}
               aria-expanded={open}
               aria-label={t('selection.details_for', { name: title })}
               onClick={() => setOpen((v) => !v)}
               style={{ ...btnReset, display: 'flex', alignItems: 'center', gap: 4, height: BUTTON, padding: '0 8px 0 6px', borderRadius: radii.pill, color: PLATE_INK }}
             >
-              <span style={{ ...roleFont('head'), maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+              <span data-card-title style={{ ...roleFont('head'), maxWidth: `var(--title-max, ${TITLE_MAX}px)`, overflow: 'hidden', ...(touch ? TOUCH_NAME : NAME) }}>{title}</span>
               <motion.span aria-hidden animate={{ rotate: open !== growUp ? 180 : 0 }} transition={framerMotion('surface.arrive')} style={{ display: 'flex', color: skin.muted, flex: 'none' }}>
                 <ChevronIcon size={13} />
               </motion.span>
             </motion.button>
             <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '12px 4px', background: LINE, flex: 'none' }} />
             {target.rotatable && (
-              <motion.button type="button" data-testid="handle-rotate" {...interactionProfiles.tile} style={iconButton} onClick={rotate} aria-label={t('a11y.rotate')} title={t('a11y.rotate')}>
+              <motion.button type="button" data-testid="handle-rotate" {...profiles.tile} style={iconButton} onClick={rotate} aria-label={t('a11y.rotate')} {...rotateName.bind}>
                 <RotateIcon />
+                {rotateName.bubble}
               </motion.button>
             )}
             {target.pickable && (
-              <motion.button type="button" data-testid="handle-pick" {...interactionProfiles.tile} style={iconButton} onClick={pickSelection} aria-label={t('a11y.pick_material')} title={t('a11y.pick_material')}>
+              <motion.button type="button" data-testid="handle-pick" {...profiles.tile} style={iconButton} onClick={pickSelection} aria-label={t('a11y.pick_material')} {...pickName.bind}>
                 <PickIcon />
+                {pickName.bubble}
+              </motion.button>
+            )}
+            {copyOffered && (
+              <motion.button type="button" data-testid="handle-copy" {...profiles.tile} style={iconButton} onClick={() => copyObjects()} aria-label={t('context.copy')} {...copyName.bind}>
+                <DuplicateIcon />
+                {copyName.bubble}
               </motion.button>
             )}
             {target.deletable && (
-              <motion.button type="button" data-testid="handle-delete" data-selection-delete {...interactionProfiles.tile} style={{ ...iconButton, color: ERROR }} onClick={remove} aria-label={t('a11y.delete')} title={t('a11y.delete')}>
+              <motion.button type="button" data-testid="handle-delete" data-selection-delete {...profiles.tile} style={{ ...iconButton, color: ERROR }} onClick={remove} aria-label={t('a11y.delete')} {...deleteName.bind}>
                 <TrashIcon />
+                {deleteName.bubble}
               </motion.button>
             )}
           </div>
@@ -268,6 +285,10 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
             >
               <div ref={refs.body} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: growUp ? '12px 12px 4px' : '4px 12px 12px' }}>
                 <div aria-hidden style={{ height: 1, background: LINE, margin: '0 4px', order: growUp ? 9 : 0 }} />
+                {/* Touch has no hover title, so a name the header cuts short reads in full here. */}
+                {touch && nameCut && (
+                  <div data-testid="selection-full-name" style={{ ...roleFont('head'), color: PLATE_INK, padding: '0 4px', overflowWrap: 'break-word' }}>{title}</div>
+                )}
                 {facts.length > 0 && (
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${facts.length > 1 ? 2 : 1}, minmax(0, 1fr))`, gap: 8 }}>
                     {facts.map(([label, value]) => <Fact key={label} label={label} value={value} />)}
@@ -276,7 +297,7 @@ function CardBody({ target, gs, zoom, weights, t, locale }: {
                 {kinds.length > 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {kinds.slice(0, 5).map((k) => (
-                      <motion.button key={k.catalogId} type="button" {...interactionProfiles.row} onClick={() => narrow(k.catalogId)}
+                      <motion.button key={k.catalogId} type="button" {...profiles.row} onClick={() => narrow(k.catalogId)}
                         aria-label={t('selection.only_kind', { name: k.name })}
                         style={{ ...btnReset, display: 'flex', alignItems: 'center', gap: 10, height: 40, padding: '0 12px 0 4px', borderRadius: radii.md, background: INSET, color: PLATE_INK, ...roleFont('label') }}>
                         <Thumb src={k.icon} />

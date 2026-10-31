@@ -12,7 +12,7 @@ const m = (x: number, y: number): MacroCoord => ({ x, y });
 describe('EraserTool: tile surface', () => {
   it('removes a tile under the brush and leaves terrain', () => {
     const state = makeState(10, 10);
-    // flat trait checks pos+1 in both axes — set all 4 cells to same elevation
+    // The flat trait checks pos+1 on both axes, so all four cells share one elevation.
     setTerrain(state, 5, 5, TerrainType.Mountain, 2);
     setTerrain(state, 6, 5, TerrainType.Mountain, 2);
     setTerrain(state, 5, 6, TerrainType.Mountain, 2);

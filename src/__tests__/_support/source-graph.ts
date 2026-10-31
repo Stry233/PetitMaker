@@ -2,13 +2,11 @@
  * The repository's files and import graph as every guard reads them: one directory walker, one
  * syntax-tree parse per file and one definition of an import edge.
  *
- * An edge is a module specifier a file names in an `import` or `export ... from` statement, a bare
- * side-effect `import '…'`, a dynamic `import('…')` or an `import('…')` type. It is type-only when the
- * compiler erases it: an `import type`/`export type` statement, a named clause whose every binding is
- * marked `type`, or an `import('…')` type. Type-only edges express a contract rather than runtime
- * coupling: the layer guard lists the upward ones instead of refusing them, and inside core they
- * count as edges. A dynamic import is runtime coupling (it is how lazy chunks load) but is not
- * evaluated with the module, so a static-graph walk stops at it.
+ * An edge is a specifier named in an `import` or `export ... from` statement, a side-effect
+ * `import '…'`, a dynamic `import('…')` or an `import('…')` type. It is type-only when the compiler
+ * erases it: `import type`/`export type`, a named clause whose every binding is marked `type`, or an
+ * `import('…')` type. A dynamic import is runtime coupling but is not evaluated with the module, so a
+ * static-graph walk stops at it.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname } from 'node:path';
@@ -81,7 +79,6 @@ export const srcRelative = (file: string): string => posix(relative(SRC, file));
 /** `file` relative to the repository root, with forward slashes. */
 export const repoRelative = (file: string): string => posix(relative(REPO, file));
 
-/** The contents of `file`. */
 export const sourceText = (file: string): string => readFileSync(file, 'utf8');
 
 /** Syntax trees keyed by path, kept while the text they were parsed from stays the same. */
@@ -227,7 +224,7 @@ export function resolvesIn(path: string, has: (path: string) => boolean, extensi
   return pathCandidates(path, extensions, indexes).some(has);
 }
 
-/** Source extensions an app import tries, and the index files it reads a folder by. */
+/** Extensions an app import tries, and the index files it reads a folder by. */
 const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
 const SOURCE_INDEXES = SOURCE_EXTENSIONS.map((ext) => `/index${ext}`);
 
@@ -349,7 +346,7 @@ export function moduleBindings(path: string, text?: string): { uses: ModuleUse[]
       const spec = literalText(node.moduleSpecifier);
       const clause = node.exportClause;
       if (spec === null) {
-        // Not a literal specifier.
+        // A non-literal specifier names no module.
       } else if (!clause) {
         reexports.push({ spec, name: '*', as: '*' });
       } else if (ts.isNamespaceExport(clause)) {

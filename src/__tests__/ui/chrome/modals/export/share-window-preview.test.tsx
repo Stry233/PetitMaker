@@ -9,6 +9,8 @@ import { useEditorStore } from '../../../../../state/store';
 import { createDefaultRegistry } from '../../../../../rules';
 import { makeState } from '../../../../_support/map-state';
 import { ShareWindow } from '../../../../../ui/chrome/modals/export/ShareWindow';
+import { InputModeProvider } from '../../../../../ui/design/input-mode';
+import { spec } from '../../../../_support/spec';
 
 vi.mock('../../../../../ui/chrome/modals/export/review/ExportNotice', () => ({
   useExportNotice: () => ({ request: vi.fn(async () => true), notice: null }),
@@ -104,5 +106,21 @@ describe('the share picture across sections', () => {
     fireEvent.click(tab('For a friend'));
     await settled();
     await tripAway('Into the game');
+  });
+
+  spec('UI-31', 'on an upright screen the picture stands after the reader turns from Keep working to For a friend', async () => {
+    const size = { innerWidth: window.innerWidth, innerHeight: window.innerHeight };
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+    try {
+      render(<I18nProvider><InputModeProvider inputMode="touch" shape="portrait"><ShareWindow /></InputModeProvider></I18nProvider>);
+      act(() => { useEditorStore.getState().setModal('share', true); });
+      await screen.findByRole('dialog', { name: 'Save and share' });
+      fireEvent.click(tab('For a friend'));
+      await settled();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: size.innerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: size.innerHeight });
+    }
   });
 });

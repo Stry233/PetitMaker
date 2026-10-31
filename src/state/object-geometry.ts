@@ -74,6 +74,13 @@ export function snapsOwnPlacement(item: CatalogItem | undefined | null): boolean
   return !!item && item.traits.some((t) => isSelfSnappingTrait(t.type));
 }
 
+/** Whether `item` is placed one at a time (EDIT-69): an item the map may hold only so many of, one
+ *  that aims at a gap or cliff, or one that stands on half cells. Paint and several picked cards
+ *  never take it. */
+export function placesOneAtATime(item: CatalogItem | undefined | null): boolean {
+  return !item || item.placementMode !== 'point' || item.maxCount !== undefined || snapsOwnPlacement(item) || hasHalfStep(item);
+}
+
 /**
  * The standable surface under a (possibly half) macro coordinate: the highest surface among the
  * cells it straddles, 0 where none of them is on the map.
@@ -120,7 +127,7 @@ function snapAnchor(item: CatalogItem, x: number, y: number): MacroCoord {
  * both grid resolutions — `whole` (the tool's placement cell, always a floored int) and `half`
  * (`core/grid/pointer.ts:halfPoint` of the map point, undefined without one). Picks the item's own
  * granularity (half for a halfStep item, whole otherwise), adds `offset` in that same unit, and
- * snaps once through `snapAnchor`. `offset` is {0,0} for a fresh placement; a drag captures its
+ * snaps once through `snapAnchor`. A fresh placement's `offset` is `placementGrab`; a drag captures its
  * grab offset through this same function (`view/interaction/pointer/object-drag.ts`), so the
  * press, the live ghost and the drop resolve one anchor for one pointer read.
  *
@@ -131,6 +138,20 @@ export function resolveAnchor(
 ): MacroCoord {
   const raw = hasHalfStep(item) ? (half ?? whole) : whole;
   return snapAnchor(item, raw.x + offset.x, raw.y + offset.y);
+}
+
+/**
+ * The offset from the pointer to a fresh placement's anchor that holds `item`, laid at `rotation`,
+ * by its footprint's centre: the centre cell for a whole-cell item (left of and above the middle on
+ * an even side), the centre point for a halfStep one. {0,0} for a bridge or ramp, which probes the gap
+ * or cliff under the pointer. `resolveAnchor`'s `offset`, so the ghost, the badge and the press agree.
+ */
+export function placementGrab(item: CatalogItem, rotation: Rotation): MacroCoord {
+  if (snapsOwnPlacement(item)) return { x: 0, y: 0 };
+  const { w, h } = getRotatedSize(item, rotation);
+  return hasHalfStep(item)
+    ? { x: -w / 2, y: -h / 2 }
+    : { x: Math.ceil((1 - w) / 2), y: Math.ceil((1 - h) / 2) };
 }
 
 /** The placement-grid cells `obj`'s drawn footprint names (`getFootprint` at its placed size). */

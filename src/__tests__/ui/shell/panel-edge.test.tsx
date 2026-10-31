@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 /**
  * What separates a panel from the map. `frame-margins.test.ts` bans shadows under `ui/shell`; this
- * extends the rule to the panels in `ui/chrome` that stand over the map (the five windows and the
- * dev-build notice), since the design source has no shadow, gradient or stroke.
- *
- * The edge is the third of a family: a word on the map wears a stroke (`MAP_LABEL`), a drawing a
- * dilation (`SHAPE_EDGE_FILTER`), a panel a border, all in the same ink, `MAP_EDGE_ALPHA` and weight.
+ * extends the rule to chrome panels standing over the map (the modal card and the dev-build notice).
+ * A word on the map wears a stroke (`MAP_LABEL`), a drawing a dilation (`SHAPE_EDGE_FILTER`) and a
+ * panel a border, all in the same ink, `MAP_EDGE_ALPHA` and weight.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -45,27 +43,19 @@ function contrast(a: readonly [number, number, number], b: readonly [number, num
 afterEach(cleanup);
 
 describe('the edge a panel wears', () => {
-  /**
-   * The two weights are the same weight, in the only sense each can express.
-   *
-   * A dilation grows an alpha, so its boundary lands wherever the ramp crosses its threshold and
-   * the ink there is the full 62%. A border is a drawn line: at half a pixel it rasterizes to one
-   * row of half coverage, so the panel would read at 31% beside every word and drawing at 62%.
-   * 1 px is the thinnest a border carries the family's ink at the family's strength, and 3 px reads
-   * as a keyline rather than a shading.
-   */
+  /** A dilation's boundary carries the full `MAP_EDGE_ALPHA`, but a half-pixel border rasterizes at
+   *  half coverage, so 1 px is the thinnest border at the same strength; wider reads as a keyline. */
   it('is thin: one drawn pixel, where the dilation reaches half of one', () => {
     expect(PANEL_EDGE_WIDTH).toBe(1);
-    // The map edge filter grows a drawing by half a css px.
+    // The map edge filter grows a drawing by half a CSS px.
     expect(PANEL_EDGE_WIDTH).toBeGreaterThanOrEqual(2 * 0.5);
     expect(PANEL_EDGE_WIDTH).toBeLessThan(2);
   });
 
   it('reads as a line on the plate it is drawn on, which is where it is faintest', () => {
-    // 3:1, the ratio a graphical indicator is read at, same as the focus ring's.
+    // 3:1, the WCAG ratio for a graphical indicator.
     expect(contrast(composite(INK, MAP_EDGE_ALPHA, PLATE), rgb(PLATE))).toBeGreaterThanOrEqual(3);
-    // And it is a boundary against the background that gave the plate none: an empty sea, where
-    // cream on pale blue is the case a shadow would otherwise answer.
+    // Against an empty sea, where cream on pale blue alone gives no boundary, the edge adds one.
     expect(contrast(composite(INK, MAP_EDGE_ALPHA, PLATE), rgb(ZONE_COLORS[0]!)))
       .toBeGreaterThan(contrast(rgb(PLATE), rgb(ZONE_COLORS[0]!)));
   });
@@ -82,7 +72,6 @@ describe('a chrome panel standing on the map wears it too', () => {
   });
 
   it('and so does the dev-build notice, which is not a window but stands on the map like one', () => {
-    // The dev-build notice is drawn on the shared notice card.
     render(<NoticeBar data-testid="notice" edge="bottom" offset={16}><span>words</span></NoticeBar>);
     const card = screen.getByTestId('notice');
     const edge = document.createElement('div');
@@ -94,8 +83,7 @@ describe('a chrome panel standing on the map wears it too', () => {
 });
 
 describe('the panels that belong to the game frame alone wear the edge outright', () => {
-  /** The token as the DOM gives it back: jsdom re-serializes an 8-digit hex to `rgba()`, so the
-   *  string cannot be compared to the token's own spelling. */
+  /** jsdom re-serializes an 8-digit hex as `rgba()`, so the token is compared in that spelling. */
   const [r, g, b] = rgb(INK);
   const asRendered = `${PANEL_EDGE_WIDTH}px solid rgba(${r}, ${g}, ${b}, ${MAP_EDGE_ALPHA})`;
 

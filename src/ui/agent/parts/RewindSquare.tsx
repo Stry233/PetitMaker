@@ -4,6 +4,9 @@ import { useT } from '../../../i18n/context';
 import { ACTIVE, INK, PLATE } from '../../design/tokens';
 import { radii } from '../../design/styles';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useFrameZoom } from '../../shell/use-frame-zoom';
 import { Icon, type IconId } from './sprite';
 import { rewindConfirmCopy, type RollbackCost } from '../derive/rollback';
 import { PanelConfirm } from './PanelConfirm';
@@ -12,7 +15,7 @@ import { PanelConfirm } from './PanelConfirm';
 const SQUARE = 26;
 
 const STYLE: CSSProperties = {
-  width: SQUARE, height: SQUARE, borderRadius: radii.chip, flex: '0 0 auto', padding: 0,
+  position: 'relative', width: SQUARE, height: SQUARE, borderRadius: radii.chip, flex: '0 0 auto', padding: 0,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   color: INK, border: 'none', boxShadow: 'none',
 };
@@ -39,17 +42,19 @@ export function RewindSquare({
 }) {
   const t = useT();
   const ref = useRef<HTMLButtonElement>(null);
+  const zoom = useFrameZoom();
+  const busyWhy = t('agent.rollback_busy');
+  const name = useNameReveal(label, 'above', busy ? busyWhy : label);
   const [asking, setAsking] = useState(false);
   const open = asking && !busy;
   const ask = (next: boolean) => { setAsking(next); onAskChange?.(next); };
   const copy = rewindConfirmCopy(t, cost);
-  const busyWhy = t('agent.rollback_busy');
   return (
     <>
       <ActionButton
         ref={ref}
         data-testid={testId}
-        title={busy ? busyWhy : label}
+        {...name.bind}
         aria-label={busy ? `${label} (${busyWhy})` : label}
         aria-expanded={open}
         disabled={busy}
@@ -59,6 +64,8 @@ export function RewindSquare({
         style={STYLE}
       >
         <Icon id={icon} size={13} />
+        <TouchReach zoom={zoom} />
+        {name.bubble}
       </ActionButton>
       <AnimatePresence>
         {open && (

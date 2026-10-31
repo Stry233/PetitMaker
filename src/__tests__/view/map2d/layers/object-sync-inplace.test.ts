@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
  * `ObjectLayer.sync` is the reconcile every bulk caller runs after committing (Generate, Clear, a
- * macro press, via MapRenderer.resyncObjects). Comparing only which IDS exist leaves it blind to the
- * one drift most likely to happen: a road's corner cut edits its object in place — same id, new
- * corners/rotation/patchOnly (see core/commands/command-apply.ts, the `layer === 'road'` branch) — so
- * the id set matches state while the stale sprite stays on the map, making the reconcile weaker than
- * the per-object events it exists to back up.
+ * macro press, via MapRenderer.resyncObjects). Comparing only which ids exist leaves it blind to the
+ * one drift most likely to happen: a road's corner cut edits its object in place (same id, new
+ * corners/rotation/patchOnly; see core/commands/command-apply.ts, the `layer === 'road'` branch), so
+ * the id set matches state while the stale sprite stays on the map, which would make the reconcile
+ * weaker than the per-object events it exists to back up.
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect } from 'vitest';
@@ -20,7 +20,7 @@ const obj = (over: Partial<PlacedObject> = {}): PlacedObject => ({
   id: 'o1', catalogId: 'sync-item', position: { x: 4, y: 4 }, rotation: 0, elevation: 0, ...over,
 });
 
-/** The wrapper currently drawn for an id — a redraw replaces it, so identity is the observable. */
+/** The wrapper currently drawn for an id; a redraw replaces it, so identity is the observable. */
 const wrapperOf = (layer: ObjectLayer, id: string): unknown =>
   (layer as unknown as { objectMap: Map<string, unknown> }).objectMap.get(id);
 

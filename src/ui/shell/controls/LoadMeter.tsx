@@ -5,6 +5,8 @@
  * timer, a 3D pick being a ray-march.
  */
 import { ActionButton } from '../../primitives/ActionButton';
+import { TouchReach } from '../../primitives/TouchReach';
+import { useFrameZoom } from '../use-frame-zoom';
 import { tourTargetAttr } from '../../chrome/tour/steps';
 import { formatLoad } from '../../../i18n/load';
 import { cssMotion } from '../../design/motion';
@@ -50,6 +52,7 @@ export function LoadMeter({ art }: { art: FrameArt }) {
   // map that arrives after the frame is mounted has to be read once without waiting for an edit.
   const gridState = useEditorStore((s) => s.gridState);
   const setModal = useEditorStore((s) => s.setModal);
+  const zoom = useFrameZoom();
   /** The region under the pointer, held in `map-load.ts` because the window reads it too. Null
    *  until the pointer has been over the map at all. */
   const at = useSyncExternalStore(subscribePointerRegion, getPointerRegion, getPointerRegion);
@@ -97,13 +100,14 @@ export function LoadMeter({ art }: { art: FrameArt }) {
       })}
       onClick={() => setModal('regionLoad', true)}
       style={{
-        ...btnReset, width: size, height: size, flex: 'none',
+        ...btnReset, position: 'relative', width: size, height: size, flex: 'none',
         // The disc fills its box, so a round button is the shape a focus ring should follow.
         borderRadius: radii.pill,
         display: 'block', cursor: cursors.clickable,
       }}
     >
       <LoadDiscSvg fill={filled} maskId={HOLE_MASK} animated style={{ display: 'block', width: '100%', height: '100%' }} />
+      <TouchReach w={size} h={size} zoom={zoom} />
     </ActionButton>
   );
 }

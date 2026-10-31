@@ -12,11 +12,14 @@ import { useTransition } from '../../design/motion/use-motion';
 import { btnReset, cursors, radii, UNAVAILABLE } from '../../design/styles';
 import { ACTIVE, INK, INSET, PLATE_INK } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';
+import { useNameReveal } from '../../primitives/use-name-reveal';
+import { useReveal } from '../../primitives/use-reveal';
 import { ChevronLeftIcon, ChevronRightIcon } from '../../primitives/line-glyphs';
 import { stepLayerMode, type LayerMode } from '../frame';
 import { TEXT } from '../units';
-import { useFrameReadableWeight, useZoomedLayoutTransform } from '../use-frame-zoom';
+import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 import { LEAD_X, PANEL, tileOf } from './layer-plate';
+import { TouchReach } from '../../primitives/TouchReach';
 
 /**
  * One step of the size ladder. The plate grows leftward into the map, so the arrow pointing left
@@ -25,19 +28,21 @@ import { LEAD_X, PANEL, tileOf } from './layer-plate';
  */
 function SizeArrow({ dir, mode, onMode }: { dir: -1 | 1; mode: LayerMode; onMode: (mode: LayerMode) => void }) {
   const t = useT();
+  const zoom = useFrameZoom();
   const next = stepLayerMode(mode, dir);
   const spent = next === mode;
   const label = t(dir < 0 ? 'a11y.layer_smaller' : 'a11y.layer_bigger');
+  const name = useNameReveal(label);
   return (
     <ActionButton
       interaction="tile"
+      {...name.bind}
       aria-label={label}
-      title={label}
       data-testid={dir < 0 ? 'shell-layer-smaller' : 'shell-layer-bigger'}
       disabled={spent}
       onClick={() => onMode(next)}
       style={{
-        ...btnReset, display: 'flex', alignItems: 'center',
+        ...btnReset, position: 'relative', display: 'flex', alignItems: 'center',
         padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: radii.pill,
         background: ACTIVE, color: INK,
         opacity: spent ? UNAVAILABLE : 1,
@@ -47,11 +52,14 @@ function SizeArrow({ dir, mode, onMode }: { dir: -1 | 1; mode: LayerMode; onMode
       }}
     >
       {dir < 0 ? <ChevronRightIcon size={PANEL.headGlyph} /> : <ChevronLeftIcon size={PANEL.headGlyph} />}
+      {/* The pair touch, so each grows away from the other. */}
+      <TouchReach h={2 * PANEL.headPadY + TEXT.head} zoom={zoom} sides={dir > 0 ? { right: false } : { left: false }} />
+      {name.bubble}
     </ActionButton>
   );
 }
 
-/** The layer numbers switch; its name opens rightward on hover, into the row's free space, without moving the arrows. */
+/** The layer numbers switch; its name opens rightward when reached for (`useReveal`), into the row's free space, without moving the arrows. */
 function NumbersToggle({ mode }: { mode: LayerMode }) {
   const t = useT();
   const fw = useFrameReadableWeight();
@@ -61,7 +69,8 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
   const setShowLayerNumbers = useEditorStore((s) => s.setShowLayerNumbers);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
-  const [reached, setReached] = useState(false);
+  const { shown: reached, bind: reach } = useReveal();
+  const zoom = useFrameZoom();
   const [numbers, setNumbers] = useState({ box: 0, name: 0 });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- measures after every render; the setter keeps an equal reading
   useLayoutEffect(() => {
@@ -80,8 +89,7 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
       aria-pressed={showLayerNumbers}
       data-testid="shell-layer-numbers"
       onClick={() => setShowLayerNumbers(!showLayerNumbers)}
-      onPointerEnter={() => setReached(true)}
-      onPointerLeave={() => setReached(false)}
+      {...reach}
       style={{
         ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: radii.pill, minWidth: PANEL.headGlyph,
@@ -106,6 +114,7 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
           {t('a11y.toggle_layer_numbers')}
         </span>
       </motion.span>
+      <TouchReach zoom={zoom} />
     </ActionButton>
   );
 }

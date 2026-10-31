@@ -1,7 +1,5 @@
-/**
- * The four tool fields are derived. Writing them independently is what let them disagree, so
- * `setEditMode` is the only writer and `editMode` always describes what the map will do next.
- */
+/** The tool fields derive from `editMode`, whose only writer is `setEditMode`, so they always agree
+ *  on what the map will do next. */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';
 import { newMap } from '../../editor/operations';
@@ -50,13 +48,8 @@ describe('edit mode adoption', () => {
     expect(armedItemOf(s())).toBeNull();
   });
 
-  /**
-   * What this call arms outranks what was carried. The eraser survives a mode switch by design
-   * (the tool input rides along), and object mode routes it ahead of the armed item, so clicking a
-   * bridge card with the water eraser still armed leaves the eraser answering the map while the
-   * card reads as chosen. Choosing an item is choosing to place it: the arming call puts
-   * the carried eraser down.
-   */
+  /** What this call arms outranks what was carried. The eraser rides a mode switch and object mode
+   *  routes it ahead of the armed item, so the arming call puts the carried eraser down. */
   it('arms the item a card picks even when an eraser rode in from another mode', () => {
     s().setEditMode({ mode: 'water', arm: { kind: 'erase' } });
     expect(activeToolOf(s())).toBe(ToolType.Eraser);
@@ -65,15 +58,10 @@ describe('edit mode adoption', () => {
     expect(armedItemOf(s())).toBe('bridge-teak');
   });
 
-  /**
-   * Entering object mode puts a carried eraser down too: the shelf resumes its own last card, never
-   * a surface's tool, and the eraser is the tool that made this worth pinning — carried in, it kept
-   * answering the map with no cell anywhere in the object shelf to show it, and a cursor that never
-   * reset. It stays reachable in object mode by the explicit ask (the keyboard command), which is
-   * the next test.
-   */
+  /** Entering object mode puts a carried eraser down too: the shelf resumes its own last card, and a
+   *  carried eraser would answer the map with nothing on the shelf to show it. */
   it('rests the map when the eraser rides a switch into object mode', () => {
-    // Empty the shelf's own memory first, so what the return resumes is nothing.
+    // Empty the shelf's memory first, so the return resumes nothing.
     s().setEditMode({ mode: 'object', arm: { kind: 'none' } });
     s().setEditMode({ mode: 'water', arm: { kind: 'erase' } });
     s().setEditMode({ mode: 'object' });
@@ -95,8 +83,6 @@ describe('edit mode adoption', () => {
     expect(activeToolOf(s())).toBe(ToolType.Eraser);
   });
 
-  /** The same invariant covers the macro: the resolver reads the eraser ahead of an armed macro
-   *  too, so a planting armed from the shelf with an eraser carried would also keep erasing. */
   it('arms the macro a card picks even when an eraser rode in from another mode', () => {
     s().setEditMode({ mode: 'water', arm: { kind: 'erase' } });
     s().setEditMode({ mode: 'object', arm: { kind: 'macro', macro: 'patch-tree' } });
@@ -104,8 +90,8 @@ describe('edit mode adoption', () => {
     expect(armedMacroOf(s())).toBe('patch-tree');
   });
 
-  /** The mirror: reaching for the eraser with an item armed ends the placement session, and ends
-   *  it in the inputs too — a stale itemId would re-arm the item on the next tool change. */
+  /** The item is cleared from the inputs too, or a stale itemId would re-arm it on the next tool
+   *  change. */
   it('puts the armed item down when the eraser is asked for explicitly', () => {
     s().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: 'bridge-teak' } });
     s().setEditMode({ arm: { kind: 'erase' } });
@@ -116,14 +102,13 @@ describe('edit mode adoption', () => {
   });
 
   it('puts the region brush away when the build mode changes, and only then', () => {
-    // Two things arm the pointer and the region outranks the tool, so a region left painting under
-    // a terrain mode hands every press to the wrong one.
+    // The region outranks the tool, so a region left painting under a terrain mode takes every press.
     s().setEditMode({ mode: 'generate' });
     s().setSelectingRegion(true);
     s().setEditMode({ mode: 'mountain' });
     expect(s().selectingRegion).toBe(false);
 
-    // Picking a tool or an item inside the mode the region was painted for is not leaving it.
+    // Arming inside the mode the region was painted for keeps it.
     s().setEditMode({ mode: 'object' });
     s().setSelectingRegion(true);
     s().setEditMode({ arm: { kind: 'item', itemId: 'tree-apple' } });
@@ -135,7 +120,7 @@ describe('edit mode adoption', () => {
     s().setPlacementRotation(90);
     s().setEditMode({ arm: { kind: 'item', itemId: 'building-stall' } });
     expect(s().placementRotation).toBe(0);
-    // Re-resolving the same armed item is not a change: a pending turn survives a redundant call.
+    // Re-arming the same item is not a change, so the pending turn survives.
     s().setPlacementRotation(90);
     s().setEditMode({ arm: { kind: 'item', itemId: 'building-stall' } });
     expect(s().placementRotation).toBe(90);

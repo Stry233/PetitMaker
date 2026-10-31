@@ -1,16 +1,8 @@
 /**
- * What the app downloads before anyone asks for anything.
- *
- * `agent/providers/anthropic.ts` + `openai.ts` each carry one LLM SDK (the metadata in
- * `defaults.ts` stays SDK-free and reachable), and most visitors never open the assistant.
- * Keeping that weight off the first load is not a property of any one component: it holds only
- * while no module in the app's static import graph names it, and a single ordinary-looking
- * `import` anywhere in that graph puts it back. The same is true of the 3D scene, which carries
- * three.js, and of the panel's own column, which is what reaches the tool layer and the adapters.
- *
- * So this walks the graph the way a bundler does — from `main.tsx`, following static specifiers only
- * — and names what it must not reach. A `import('…')` is what a lazy chunk is, so it is where the
- * walk stops; a `import type` is erased before the bundler sees it.
+ * What the app downloads before anyone asks for anything. The LLM SDKs, the panel column, three.js
+ * and the non-English locales stay off the first load only while no static import reaches them, so
+ * this walks the static graph from `main.tsx` as a bundler does: a dynamic `import()` is a lazy chunk
+ * and stops the walk, and `import type` is erased.
  */
 import { describe, it, expect } from 'vitest';
 import { dirname, relative, resolve } from 'node:path';
@@ -28,8 +20,7 @@ const MUST_STAY_LAZY: ReadonlyArray<readonly [string, string]> = [
     [`i18n/locales/${locale}.ts`, 'a locale\'s interface table, fetched when the editor first shows that locale'] as const),
 ];
 
-/** Every source file `entry` reaches without awaiting anything, as src-relative paths. Static
- *  specifiers only: a dynamic import is the lazy boundary this test exists to protect. */
+/** Every source file `entry` reaches through static specifiers, as src-relative paths. */
 function eagerGraph(entry = 'main.tsx'): Map<string, string[]> {
   const seen = new Map<string, string[]>(); // file -> the chain that reached it
   const walk = (file: string, chain: string[]): void => {
@@ -51,7 +42,7 @@ describe('the first load', () => {
     const graph = eagerGraph();
     const found = MUST_STAY_LAZY
       .filter(([path]) => graph.has(path))
-      // The chain is the useful half of a failure: it names the import that has to become dynamic.
+      // The chain names the import that has to become dynamic.
       .map(([path, why]) => `${path} (${why}) via ${graph.get(path)!.join(' -> ')}`);
     expect(found).toEqual([]);
   });
@@ -74,11 +65,11 @@ describe('the first load', () => {
   it('walks a graph that is really there, so a rename cannot quietly pass it', () => {
     const graph = eagerGraph();
     expect(graph.has('ui/shell/Shell.tsx')).toBe(true);
-    // The character is eager: it stands on the entrance plate before anyone opens anything, so the
-    // walk reaching it is what proves the walk is really following the shell's own imports.
+    // The character is eager (it stands on the entrance plate), so reaching it proves the walk
+    // follows the shell's imports.
     expect(graph.has('ui/agent/character/CharacterHost.tsx')).toBe(true);
     expect(graph.has('ui/agent/character/Character.tsx')).toBe(true);
-    // And the panel it opens is not: one lazy import stands between the two.
+    // The panel it opens is behind a lazy import.
     expect(graph.has('ui/agent/PanelShell.tsx')).toBe(false);
   });
 });

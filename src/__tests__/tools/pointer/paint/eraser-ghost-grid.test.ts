@@ -1,7 +1,7 @@
 /**
  * The eraser's ghost preview must render on the grid that matches what a click would actually
- * erase: terrain (mountain/river) lies on the terrain grid, tiles/roads on the object grid — the
- * grid the paint brushes name to ToolOverlay.showGhost too (drawing-tool.ts). A tile-mode erase
+ * erase: terrain (mountain/river) lies on the terrain grid, tiles/roads on the object grid (the
+ * grid the paint brushes name to ToolOverlay.showGhost too, drawing-tool.ts). A tile-mode erase
  * ghost on the terrain grid would sit half a tile off from the cell the click would erase.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -43,7 +43,7 @@ describe('EraserTool: ghost grid alignment', () => {
 
   it('the erase HIT TARGET (not just the ghost) is macro-cell-accurate in tile mode: same coords in, same cell erased', () => {
     // eraseTileCells/getCell both index the cells array by the plain (x,y) the pointer machine
-    // resolves, so there is no separate hit test to get wrong — unlike the ghost's pixel offset above.
+    // resolves, so there is no separate hit test to get wrong, unlike the ghost's pixel offset above.
     const state = makeState(10, 10);
     // elevation 1 → the peel's elev-1 clears to null in one click (see terrain-peel.ts).
     state.cells[5]![5]!.terrain = { type: TerrainType.Mountain, elevation: 1, corners: ['square', 'square', 'square', 'square'] };

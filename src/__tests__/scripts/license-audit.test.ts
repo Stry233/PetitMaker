@@ -56,9 +56,8 @@ const FIXTURE_LOCK: LockJson = {
       version: '0.169.0',
       license: 'MIT',
     },
-    // Dev-only tooling: present in the lockfile (installed), reachable only via root
-    // devDependencies, never via any prod package's own `dependencies` — must not appear
-    // in the closure.
+    // Dev-only tooling: installed and in the lockfile, but reachable only via root devDependencies
+    // and never via a prod package's own `dependencies`, so it must not appear in the closure.
     'node_modules/vitest': {
       version: '2.1.8',
       license: 'MIT',
@@ -141,13 +140,9 @@ describe('renderNoticesMarkdown', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Standing drift-guard (integration): the real lockfile's closure must be fully
-// represented, at the correct version, in the committed THIRD_PARTY_NOTICES.md —
-// this is what `npm run legal:licenses:check` also verifies, but as a plain vitest
+// The real lockfile's closure must be fully represented, at the correct version, in the committed
+// THIRD_PARTY_NOTICES.md; `npm run legal:licenses:check` verifies the same, but as a plain vitest
 // assertion it runs on every `npm run test:run` with no build/CLI step required.
-// ---------------------------------------------------------------------------
-
 describe('THIRD_PARTY_NOTICES.md — standing drift guard', () => {
   const lock: LockJson = JSON.parse(readFileSync('package-lock.json', 'utf8'));
   const closure = computeClosure(lock);

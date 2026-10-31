@@ -1,31 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { fittedUiScale } from '../../../ui/design/scale';
-import { KIT_BUTTONS, MODE_ROW_INK_BOTTOM, MODES, cornerArt, cornerWidth, sessionModes, modeRowRight, planFrame, railClearanceFor, railStack, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, viewKitCell } from '../../../ui/shell/frame';
+import { NO_DOCK, fittedUiScale, uiScaleOf } from '../../../ui/design/scale';
+import { KIT_BUTTONS, MODES, cornerArt, cornerWidth, sessionModes, modeRowRight, railStack, TOP_RIGHT, TOP_RIGHT_H, TOP_RIGHT_TOP, viewKitCell } from '../../../ui/shell/frame';
+import { planFrame, railClearanceFor } from '../../../ui/shell/frame-plan';
 import { EDGE_LEFT, EDGE_RIGHT, RAIL, ZOOM } from '../../../ui/shell/units';
-import { PINNED_DOCK_REF_W, frameZoomAt } from '../../../ui/shell/panel-frame';
+import { ARRANGEMENT_ROOM, PINNED_DOCK_REF_W, frameZoomAt } from '../../../ui/shell/panel-frame';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../ui/shell/controls/layer-plate';
 import type { PlanetSession } from '../../../state/slices/planet-session';
 
-/** The touch-primary fit floor, and the least workspace the interface keeps, in chrome px. */
-const TOUCH_FLOOR = 0.5;
+/** The least workspace the interface keeps, in chrome px. */
 const MIN_ROOM = { w: 700, h: 525 };
 
 const options = { open: false, plateDepth: plateDepth('grid'), plateMinDepth: plateMinDepth('grid'), plateMinWidth: PLATE_MIN_WIDTH };
 
 describe('the shell shares the available workspace', () => {
-  it('keeps the view kit within two files on a landscape phone at the touch floor', () => {
+  it('keeps the view kit within two files on a landscape phone in touch mode at 100%', () => {
     for (const [vw, vh] of [[844, 390], [780, 360]] as const) {
-      const chrome = fittedUiScale(vw, vh, 1, 0, TOUCH_FLOOR);
-      const p = planFrame(vw / (chrome * ZOOM), vh / (chrome * ZOOM), options);
+      const chrome = uiScaleOf({ vw, vh, dock: NO_DOCK, touch: true, upright: false, uiZoom: 1, room: ARRANGEMENT_ROOM });
+      const p = planFrame(vw / (chrome * ZOOM), vh / (chrome * ZOOM), { ...options, inputMode: 'touch' });
       expect(p.rail.kitFiles, `${vw}x${vh}`).toBeLessThanOrEqual(2);
     }
   });
 
-  it('keeps top actions beside the modes when they fit and below their captions when they do not', () => {
+  it('keeps top actions beside the modes, folding the modes where the row cannot hold both', () => {
     const wide = planFrame(1200, 800, options);
     const narrow = planFrame(MIN_ROOM.w / ZOOM, 500, options);
     expect(wide.cornerTop).toBe(TOP_RIGHT_TOP);
-    expect(narrow.cornerTop).toBeGreaterThan(MODE_ROW_INK_BOTTOM);
+    expect(wide.modeRow.folded).toBeUndefined();
+    expect(narrow.cornerTop).toBe(TOP_RIGHT_TOP);
+    expect(narrow.modeRow.folded).toBe(true);
     expect(narrow.railTop).toBeGreaterThanOrEqual(narrow.cornerTop + TOP_RIGHT_H + RAIL.gap);
   });
 
@@ -40,9 +42,9 @@ describe('the shell shares the available workspace', () => {
         for (const open of [false, true]) {
           const p = planFrame(width, height, { ...options, open });
           const rail = p.rail;
-          expect(p.cornerTop === TOP_RIGHT_TOP
-            ? width - p.edgeRight - corner >= modeRight + RAIL.groupMin
-            : p.cornerTop > MODE_ROW_INK_BOTTOM).toBe(true);
+          // The corner keeps the top row; a row too long beside it folds into one stack.
+          expect(p.cornerTop).toBe(TOP_RIGHT_TOP);
+          expect(!!p.modeRow.folded).toBe(width - p.edgeRight - corner < modeRight + RAIL.groupMin);
           expect(rail.kitTop + railStack(Math.ceil(KIT_BUTTONS / rail.kitFiles))).toBeLessThan(height);
           expect(rail.kitTop).toBeGreaterThanOrEqual(p.railTop + RAIL.layer.h);
           expect(width - EDGE_LEFT - EDGE_RIGHT - railClearanceFor(p, 0, height)).toBeGreaterThan(120);
@@ -53,20 +55,20 @@ describe('the shell shares the available workspace', () => {
     }
   });
 
-  it('decides whether the corner stays beside the modes from the controls that show', () => {
+  it('decides whether the modes fold from the controls that show', () => {
     const session = { ...options, modes: sessionModes({} as PlanetSession).length, corner: cornerArt(true) };
-    let onlySessionLevel = 0;
+    let onlySessionWhole = 0;
     for (let width = 360; width <= 1400; width += 7) for (const height of [360, 600, 900]) {
       const full = planFrame(width, height, options);
       expect(planFrame(width, height, { ...options, modes: MODES.length, corner: TOP_RIGHT })).toEqual(full);
-      expect(full.cornerTop === TOP_RIGHT_TOP)
-        .toBe(width - full.edgeRight - cornerWidth(TOP_RIGHT) >= modeRowRight(MODES.length) + RAIL.groupMin);
+      expect(!!full.modeRow.folded)
+        .toBe(width - full.edgeRight - cornerWidth(TOP_RIGHT) < modeRowRight(MODES.length) + RAIL.groupMin);
       const reduced = planFrame(width, height, session);
-      expect(reduced.cornerTop === TOP_RIGHT_TOP)
-        .toBe(width - reduced.edgeRight - cornerWidth(session.corner) >= modeRowRight(session.modes) + RAIL.groupMin);
-      if (reduced.cornerTop === TOP_RIGHT_TOP && full.cornerTop !== TOP_RIGHT_TOP) onlySessionLevel++;
+      expect(!!reduced.modeRow.folded)
+        .toBe(width - reduced.edgeRight - cornerWidth(session.corner) < modeRowRight(session.modes) + RAIL.groupMin);
+      if (!reduced.modeRow.folded && full.modeRow.folded) onlySessionWhole++;
     }
-    expect(onlySessionLevel).toBeGreaterThan(0);
+    expect(onlySessionWhole).toBeGreaterThan(0);
   });
 
   it('keeps history on the right below the layer control when the panel opens or the scale changes', () => {
@@ -94,13 +96,6 @@ describe('the shell shares the available workspace', () => {
     expect(railClearanceFor(plan, 0, 4)).toBe(0);
     const roomier = planFrame(1024, 640, options);
     expect(railClearanceFor(roomier, 44, 43)).toBe(0);
-  });
-
-  it('uses the space beside lowered corner actions for the expanded panel', () => {
-    const open = planFrame(672, 420, { ...options, open: true });
-    expect(open.plateTop).toBe(open.cornerTop);
-    expect(open.plateTop).toBeLessThan(open.railTop);
-    expect(open.rail.plateMaxH).toBeGreaterThan(420 - open.railTop - 16);
   });
 
   it('uses the same fit during a dock slide as it does at either endpoint', () => {

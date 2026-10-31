@@ -1,7 +1,7 @@
 // Decoding of a save's annotation record, shared by saves and share codes. The encoder writes the
 // annotation state as it stands.
 import { clampBrushSize } from '../../state/editing/edit-mode';
-import { CUSTOM_TAG_MAX, HALVES, generateAnnotationId, isCustomTagId, isMeasureSpan, zoneCellsOnGrid, type AnnotationsState, type CustomTag, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, HALVES, ZONE_CELL_MAX, generateAnnotationId, isCustomTagId, isMeasureSpan, zoneCellsOnGrid, type AnnotationsState, type CustomTag, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
 import { HALF_GRID } from '../../core/game/profile';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { isTagId } from '../../config/annotation-tags';
@@ -13,7 +13,6 @@ import { PLANET_NAME_MAX } from './planet-codec';
  * Coordinates are in map cells, except a half-grid zone's cells, which count half cells under the
  * same area and coordinate caps. */
 const ANNOT_MAX_ITEMS = 500;
-const ANNOT_MAX_CELLS = 5000;
 const ANNOT_MAX_POINTS = 200;
 const ANNOT_MAX_COORD = 1024;
 const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
@@ -71,7 +70,7 @@ function decodeAnnotation(raw: unknown, tagOf: (v: unknown) => NoteTag | null): 
     const half = n.grid === HALF_GRID;
     const per = half ? HALVES : 1;
     const cells: MacroCoord[] = [];
-    for (const c of n.cells.slice(0, ANNOT_MAX_CELLS * per * per)) {
+    for (const c of n.cells.slice(0, ZONE_CELL_MAX * per * per)) {
       const x = finiteCoord((c as MacroCoord)?.x, per);
       const y = finiteCoord((c as MacroCoord)?.y, per);
       if (x === null || y === null || !Number.isInteger(x) || !Number.isInteger(y)) continue;

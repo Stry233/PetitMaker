@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-/** Fault and hold behavior. Repair controls render only when wired, dismissed faults remain as
- * muted notices, setting a job aside files it, and an unavailable resume action is not shown. */
+/** Faults and holds: the banner's repairs, the resume offer, and what the panel stands for a job the
+ *  key went away under. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { fireEvent, cleanup } from '@testing-library/react';
 import { translateFor } from '../../../i18n/context';
@@ -26,9 +26,7 @@ const backing = new Map<string, string>();
 
 const t = (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params);
 
-/** Pushes a colour through the same DOM round-trip on both sides of a comparison, since jsdom's
- *  cssstyle can normalize a hex differently from a var()-free literal though the two agree in
- *  meaning (matches `desk-header.test.tsx`'s own `asBackground`). */
+/** Pushes a colour through the same DOM round-trip on both sides, since jsdom normalizes a set value. */
 function asBackground(value: string): string {
   const probe = document.createElement('span');
   probe.style.background = value;
@@ -70,8 +68,6 @@ function actions(root: HTMLElement): string[] {
     .map((el) => el.getAttribute('data-action') ?? '');
 }
 
-/* ── the banner's own table ───────────────────────────────── */
-
 describe('Banner: what each trouble offers', () => {
   it('gives every actionable class a repair pill, and never more than two', () => {
     for (const cls of BANNER_CLASSES) {
@@ -82,7 +78,6 @@ describe('Banner: what each trouble offers', () => {
     }
   });
 
-  /** Each actionable fault maps to the repair id the panel routes. */
   it('names the repair for each actionable fault', () => {
     const wanted: [Parameters<typeof Banner>[0]['cls'], BannerActionId][] = [
       ['auth', 'fix-key'],
@@ -110,16 +105,13 @@ describe('Banner: what each trouble offers', () => {
     expect(onAction.mock.calls).toEqual([['change-provider']]);
   });
 
-  /** The corrupt notice's dismiss is a discard: the set-aside bytes go with it, and the word says so
-   *  rather than borrowing the storage banner's "put this away". */
+  /** The set-aside bytes go with the corrupt notice's dismiss. */
   it('words the corrupt notice\'s dismiss as a discard', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="storage-corrupt" onAction={() => {}} />);
     const dismiss = getByTestId('banner').querySelector('[data-action="dismiss"]')!;
     expect(dismiss.textContent).toBe(t('agent.banner_action_discard'));
   });
 
-  /* The third dress. Terminal is the danger paper, recover the wait paper, and a dismissed fault
-     demotes to the muted inset strip — quieter, but not gone. */
   it('demotes to the standing strip, keeping the sentence and dropping only the dismissal', () => {
     const loud = renderWithI18n(<Banner cls="auth" onAction={() => {}} />);
     expect(loud.getByTestId('banner').getAttribute('data-standing')).toBeNull();
@@ -130,13 +122,10 @@ describe('Banner: what each trouble offers', () => {
     const strip = getByTestId('banner');
     expect(strip.getAttribute('data-standing')).toBe('true');
     expect(strip.textContent).toContain(t('agent.banner_auth'));
-    // The repair survives the demotion; the answered verb does not.
     expect(actions(strip)).toEqual(['fix-key']);
   });
 
-  /** A repair-less class has nothing left once the put-down filter runs, so it must keep its one
-   *  pill standing rather than collapse the row: the banner's height may not change just because
-   *  its only action was the one that got answered. */
+  /** The banner's height may not change because its only action was the one answered. */
   it('keeps its one pill standing, for a class with no repair to fall back on', () => {
     for (const cls of ['storage-pruned', 'storage-full'] as const) {
       const { getByTestId, unmount } = renderWithI18n(<Banner cls={cls} standing onAction={() => {}} />);
@@ -146,12 +135,9 @@ describe('Banner: what each trouble offers', () => {
   });
 });
 
-/* ── the outline every card on the plate owes ─────────────── */
-
 /**
- * A card that lost its hairline. `tokens.ts:edge` is the whole border shorthand, so
- * `1px solid ${edge}` emits one invalid declaration the engine drops silently, and the card ships
- * with no outline. The resolved border is asserted, since the string is what looked right.
+ * `panel-skin.ts:edge` is a whole border shorthand, so `1px solid ${edge}` is an invalid declaration
+ * the engine drops silently; the resolved border is asserted, since the string looks right either way.
  */
 function expectOutlined(el: HTMLElement, at: string): void {
   expect(el.style.borderTopStyle, `${at}: border-style`).toBe('solid');
@@ -182,16 +168,13 @@ describe('every card on the plate draws its outline', () => {
   });
 });
 
-/* ── the resume card ──────────────────────────────────────── */
-
 describe('ResumeCard: a held job offered back', () => {
   it('stands on a plain wait-tinted paper every engine can paint', () => {
-    // `color-mix()` arrived in Chrome 111; an engine without it drops the declaration and the card
-    // loses its tint entirely, so the paper must already be a plain colour.
+    // `color-mix()` arrived in Chrome 111; an older engine would drop the declaration and the tint.
     const { getByTestId } = renderWithI18n(<ResumeCard order="Terrace the hill" onResume={() => {}} />);
     const paper = getByTestId('resume-card').style.background;
     expect(paper).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
-    // A tint of the wait paper over the plate: neither of the two it is mixed from.
+    // A tint of the wait paper over the plate, so neither of the two.
     expect(paper).not.toBe(asBackground(PLATE));
     expect(paper).not.toBe(asBackground(statePaper.wait));
   });
@@ -213,11 +196,6 @@ describe('ResumeCard: a held job offered back', () => {
     expect(getByTestId('resume-set-aside')).toBeTruthy();
   });
 
-  /**
-   * The one negative this card exists for. A hold that cannot be lifted offers no Resume: the reason
-   * line plus the repair are the whole card, and a control that would refuse the press is worse than
-   * no control at all.
-   */
   it('draws NO Resume on a blocked offer, and the reason plus the repair instead', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <ResumeCard
@@ -235,8 +213,7 @@ describe('ResumeCard: a held job offered back', () => {
     expect(getByTestId('resume-set-aside')).toBeTruthy();
   });
 
-  /** A hold surface may never offer a pause: the loop honours one only at a call boundary, and a
-   *  job that is already held has no boundary coming, so the press would deadlock the surface. */
+  /** The loop honours a pause only at a call boundary, and a held job has none coming. */
   it('offers no pause verb of any kind', () => {
     const { getByTestId } = renderWithI18n(
       <ResumeCard order="Plant a forest" onResume={() => {}} onSetAside={() => {}} />,
@@ -252,7 +229,6 @@ describe('ResumeCard: a held job offered back', () => {
     expect(queryByTestId('resume-set-aside')).toBeNull();
   });
 
-  /** Held-job actions use the standard primary and quiet fills, not the attention color for asks. */
   it('paints Resume and Fix key with the dark ink primary, never the ask colour', () => {
     const resuming = renderWithI18n(
       <ResumeCard order="Plant a forest along the ridge" onResume={() => {}} onSetAside={() => {}} />,
@@ -275,10 +251,7 @@ describe('ResumeCard: a held job offered back', () => {
   });
 });
 
-/* ── the panel's own wiring ───────────────────────────────── */
-
 describe('PanelShell: a fault names its repair and the repair acts', () => {
-  /** The incident card preserves order context and progress; repair actions belong to the banner. */
   it('stands the order the trouble is about, under the banner and without verbs of its own', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
@@ -292,11 +265,10 @@ describe('PanelShell: a fault names its repair and the repair acts', () => {
     );
     const card = getByTestId('incident-card');
     expect(card.textContent).toContain('Plant a forest along the ridge');
-    // The card retains its stalled progress, step count, and stamps.
     expect(card.querySelector('[data-testid="tape-bar"]')).not.toBeNull();
     expect(card.querySelector('[data-testid="ops-count-pill"]')!.textContent).toBe('64 steps, last 0');
     expect(card.textContent).toContain(t('agent.stamp_compaction'));
-    // And no second set of answers beside the banner's own.
+    // The repairs are the banner's alone.
     expect(card.querySelector('[data-testid="pill"]')).toBeNull();
     expect(queryByTestId('banner')).toBeTruthy();
   });
@@ -319,10 +291,6 @@ describe('PanelShell: a fault names its repair and the repair acts', () => {
     expect(getByTestId('banner').getAttribute('data-standing')).toBe('true');
   });
 
-  /**
-   * Escape invariant 2. Set-aside files the record — it never drops the job, and it never lands the
-   * panel on the disconnected rest while a key is held.
-   */
   it('files the job on set-aside, and stays on the connected rest', () => {
     const onFileAway = vi.fn();
     const onRepair = vi.fn();
@@ -340,12 +308,11 @@ describe('PanelShell: a fault names its repair and the repair acts', () => {
     fireEvent.click(getByTestId('banner').querySelector('[data-action="set-aside"]')!);
     expect(onFileAway.mock.calls, 'the record must be filed, not dropped').toEqual([[1]]);
     expect(onRepair.mock.calls).toEqual([['set-aside']]);
-    // Still the connected panel: no setup screen, no dreaming office.
     expect(queryByTestId('setup-screen')).toBeNull();
     expect(queryByTestId('dream-office')).toBeNull();
   });
 
-  /** `new-order` points at the composer this file's own child owns, so it is answered here. */
+  /** The panel owns the composer, so it answers `new-order` itself. */
   it('answers new-order itself by putting the caret in the composer', () => {
     const onRepair = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -357,12 +324,8 @@ describe('PanelShell: a fault names its repair and the repair acts', () => {
 });
 
 /**
- * The model the endpoint will not serve, which is the address's neighbour and not the address.
- *
- * The host answered, so another attempt sends the same model again and re-entering the URL changes
- * nothing: the one repair is the model row, and that row lives behind the gear. So the sentence names
- * the model (a nine-provider panel that can arm any typed id says nothing useful with "the model is
- * unavailable"), the act is the settings card, and the press travels to the caller that owns it.
+ * The host answered, so a retry sends the same model and the URL is not at fault: the one repair is
+ * the model row behind the gear, and the sentence names the model, since any typed id can be armed.
  */
 describe('Banner: the model the endpoint does not serve', () => {
   it('names the armed model in its sentence, and falls back to the bare wording with none given', () => {
@@ -380,7 +343,6 @@ describe('Banner: the model the endpoint does not serve', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="model" onAction={() => {}} />);
     const pills = [...getByTestId('banner').querySelectorAll('[data-testid="banner-action"]')];
     expect(pills.map((el) => el.getAttribute('data-action'))).toEqual(['edit-model', 'set-aside']);
-    // No retry offered at all: the next attempt would name the same model.
     expect(pills.some((el) => el.getAttribute('data-action') === 'try-again')).toBe(false);
   });
 
@@ -397,18 +359,15 @@ describe('Banner: the model the endpoint does not serve', () => {
       })}
       />,
     );
-    // The panel names the armed model in the sentence it renders, not just in an isolated Banner.
     expect(getByTestId('banner').textContent).toContain('Claude Sonnet 4.5');
     fireEvent.click(getByTestId('banner').querySelector('[data-action="edit-model"]')!);
     expect(onRepair.mock.calls).toEqual([['edit-model']]);
-    // And it does not answer the press with the connection screen, which repairs the wrong field.
+    // The connection screen would repair the wrong field.
     expect(getByTestId('panel-shell').querySelector('[data-testid="setup-screen"]')).toBeNull();
   });
 });
 
 describe('PanelShell: the OFF composer says the one instruction', () => {
-  /** A fault the user must repair first turns the field off and puts the repair in its placeholder,
-   *  so the composer is not an invitation the panel cannot honour. */
   it('names the repair in the placeholder and disables the field', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: incidentView('quota'), connected: true, now: 0, ...VERBS })} />,
@@ -427,34 +386,30 @@ describe('PanelShell: the OFF composer says the one instruction', () => {
     expect(input.placeholder).toBe(t('agent.composer_shorter'));
   });
 
-  /** A disabled composer stays fully legible because its placeholder communicates the repair. */
+  /** The placeholder carries the repair, so the composer stays fully legible. */
   it('says the refusal with the tokens, never with a fade', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: incidentView('cors'), connected: true, now: 0, ...VERBS })} />,
     );
-    // No fade anywhere in the group: not on the box, not on the field, not on the send.
     for (const id of ['composer', 'composer-send']) {
       const fade = getByTestId(id).style.opacity;
       expect(fade === '' || fade === '1', `${id} opacity ${fade}`).toBe(true);
     }
     expect(getByTestId('composer-well').style.background).toBe(asBackground(TRACK));
     expect(getByTestId('composer-send').style.background).toBe(asBackground(TRACK));
-    // And the refusal is real, per control: a fault leaves the well reachable (the region frame is a
-    // live verb here), so the two that cannot act say so themselves.
+    // The well stays reachable (the region frame is a live verb), so each control refuses itself.
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(true);
     expect((getByTestId('composer-send') as HTMLButtonElement).disabled).toBe(true);
     expect(getByTestId('composer').style.pointerEvents).toBe('');
   });
 
-  /** Dismissing the notice is the user saying they have read it, and the field comes back: a
-   *  demoted strip that kept the composer off would be a fault with no way past it. */
+  /** A demoted strip that kept the composer off would be a fault with no way past it. */
   it('gives the field back once the fault is demoted', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: incidentView('rate-limit'), connected: true, now: 0, ...VERBS, onRepair: () => {} })} />,
     );
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(true);
-    // `rate-limit` puts itself down by filing the job rather than by a bare dismissal, and both
-    // demote: this is the same press the standing strip is reached by.
+    // `rate-limit` is put down by filing the job rather than a bare dismissal; both demote.
     fireEvent.click(getByTestId('banner').querySelector('[data-action="set-aside"]')!);
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(false);
   });
@@ -463,8 +418,7 @@ describe('PanelShell: the OFF composer says the one instruction', () => {
 describe('PanelShell: the key that went away', () => {
   const keyCleared = () => incidentView('auth');
 
-  /** A keyless panel is the dreaming office — except where a job is standing that stopped because
-   *  the key went away. That job is the screen's news, and dreaming over it would lose it. */
+  /** A keyless panel is the dreaming office, except over a job the key's removal stopped. */
   it('shows the held job rather than the dreaming office', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: keyCleared(), connected: false, now: 0, ...VERBS, onRepair: () => {} })} />,
@@ -481,7 +435,7 @@ describe('PanelShell: the key that went away', () => {
     );
     expect(queryByTestId('resume-resume')).toBeNull();
     fireEvent.click(getByTestId('resume-fix-key'));
-    // No key is held, so nothing is dropped: the panel opens the field itself.
+    // No key is held, so the panel opens the field itself.
     expect(getByTestId('setup-screen')).toBeTruthy();
     expect(onRepair).not.toHaveBeenCalled();
   });
@@ -509,11 +463,8 @@ describe('PanelShell: the key that went away', () => {
   });
 
   /**
-   * The auth incident is one entrance of three, and the other two are the ones a user reaches by
-   * revoking a key themselves: a job paused when the credential went (nothing was in flight, so the
-   * abort settled nothing and the phase stands at `paused`) and a job aborted by that revoke.
-   * Unnamed, both fall through to the dreaming office — a session with partial edits on the map,
-   * its rewind unreachable, behind a screen reading "No key yet, so I sleep and dream of orders".
+   * Besides the auth incident, a user revoking a key reaches a job paused when the key went (nothing
+   * was in flight, so the phase stands at `paused`) and a job the revoke aborted.
    */
   const heldNoKey = (): PanelView => makeView({
     phase: 'paused',
@@ -531,14 +482,12 @@ describe('PanelShell: the key that went away', () => {
     expect(queryByTestId('dream-office')).toBeNull();
     expect(getByTestId('resume-card')).toBeTruthy();
     expect(getByTestId('banner').getAttribute('data-cls')).toBe('key-cleared');
-    // No Resume: it would need the key that is gone. The repair is the card's own.
+    // Resume would need the key that is gone.
     expect(queryByTestId('resume-resume')).toBeNull();
     expect(getByTestId('resume-fix-key')).toBeTruthy();
   });
 
-  /** A job still in the seat has to be settled before it is filed, which is what `onSetAside` does
-   *  and `onFileAway` cannot: filing a paused job would leave the session holding a hold nothing is
-   *  showing. (The settled entrances keep filing — see the auth case above.) */
+  /** Filing a paused job would leave the session holding a hold nothing shows, so it is settled. */
   it('settles a paused job on set-aside rather than merely filing it', () => {
     const onSetAside = vi.fn();
     const onFileAway = vi.fn();
@@ -563,10 +512,8 @@ describe('PanelShell: the key that went away', () => {
     expect(getByTestId('banner').getAttribute('data-cls')).toBe('key-cleared');
   });
 
-  /** The abort is asynchronous: the loop notices at its next await, a whole streaming response or
-   *  tool call away, so every in-flight phase is reachable with no key. There the job is not an
-   *  Offer — it is still running — so the live ticket is the record, and dreaming over it was the
-   *  worst of the three faces. */
+  /** The loop notices an abort only at its next await, so every in-flight phase is reachable with no
+   *  key; the job is still running, so the live ticket is the record. */
   it.each(['thinking', 'streaming', 'executing', 'gated', 'retrying', 'pausing'] as const)(
     'shows the live ticket rather than the dreaming office while %s with no key',
     (phase) => {
@@ -576,24 +523,18 @@ describe('PanelShell: the key that went away', () => {
       );
       expect(queryByTestId('dream-office')).toBeNull();
       expect(getByTestId('job-ticket')).toBeTruthy();
-      // Not an offer card: a job the loop still has cannot be "resumed", only stopped.
       expect(queryByTestId('resume-card')).toBeNull();
     },
   );
 
-  /**
-   * One job, one card, and this is the pair no component suite can see: `ResumeCard` and the stop
-   * card each render correctly on their own, and the zone stood both for the same order — a resume
-   * card reading "paused at the step boundary" over a stop card reading "Stopped by you", neither
-   * true of a job the key ended, with two ways to put it away and the rewind on only one.
-   */
+  /** Each card renders correctly alone; only the panel can show it does not stand both for one order. */
   it('stands exactly one card for one job, and the offer is the one that stands', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: abortedNoKey(), connected: false, now: 0, ...VERBS, onRepair: () => {} })} />,
     );
     expect(getByTestId('resume-card')).toBeTruthy();
     expect(queryByTestId('stop-card'), 'the settled card is the offer, said once').toBeNull();
-    // Control: with a key held the same view is an ordinary stopped job, and the stop card is it.
+    // With a key held the same view is an ordinary stopped job.
     cleanup();
     const withKey = renderWithI18n(
       <PanelShell {...panelProps({ view: abortedNoKey(), connected: true, now: 0, ...VERBS, onRepair: () => {} })} />,
@@ -602,11 +543,7 @@ describe('PanelShell: the key that went away', () => {
     expect(withKey.queryByTestId('resume-card')).toBeNull();
   });
 
-  /**
-   * The banner may not report a completed stop over a running job. In the in-flight window above,
-   * the abort has been requested and has not landed — the ticket is live and the dock offers Stop —
-   * so "the job stopped at the end of the step" is a completed tense over an unfinished fact.
-   */
+  /** In the in-flight window the abort is requested but has not landed, so no completed tense. */
   it('says the stop is still happening while the job is still in flight', () => {
     const live = renderWithI18n(
       <PanelShell {...panelProps({
@@ -618,14 +555,12 @@ describe('PanelShell: the key that went away', () => {
     expect(live.getByTestId('banner').getAttribute('data-cls')).toBe('key-clearing');
     expect(live.getByTestId('banner').textContent).toContain(t('agent.banner_key_clearing'));
     cleanup();
-    // And the settled reading is unchanged: there the stop has happened.
     const settled = renderWithI18n(
       <PanelShell {...panelProps({ view: abortedNoKey(), connected: false, now: 0, ...VERBS, onRepair: () => {} })} />,
     );
     expect(settled.getByTestId('banner').getAttribute('data-cls')).toBe('key-cleared');
   });
 
-  /** A job the user has already put away owes them nothing, so the rest comes back. */
   it('returns to the dreaming office once the held job has been filed', () => {
     const { queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
@@ -637,7 +572,6 @@ describe('PanelShell: the key that went away', () => {
     expect(queryByTestId('dream-office')).toBeTruthy();
   });
 
-  /** A session that never ran anything is the plain keyless rest, and must stay it. */
   it('keeps the dreaming office for a session with no job at all', () => {
     const { queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
@@ -681,9 +615,8 @@ describe('PanelShell: the storage warnings', () => {
     expect(onDismissStorage.mock.calls.length).toBe(1);
   });
 
-  /** The house rule binds the storage notice too: dismissing `lost`/`pruned` demotes rather than
-   *  unmounting, so the record does not shorten under the very press that answered it, and the
-   *  store's own fact survives the press. */
+  /** Dismissing `lost` or `pruned` demotes rather than unmounts, so the record does not shorten under
+   *  the press, and the store's fact survives it. */
   it('demotes the lost notice instead of unmounting it', () => {
     const onDismissStorage = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -703,8 +636,6 @@ describe('PanelShell: the storage warnings', () => {
     expect(getByTestId('job-ticket'), 'the record beneath is untouched').toBeTruthy();
   });
 
-  /** Nothing competes with a standing warning: the banner and its two verbs are the whole content,
-   *  so the rest state's own dressing waits until it has been answered. */
   it('stands alone, with the idle dressing withheld', () => {
     const { queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
@@ -720,7 +651,6 @@ describe('PanelShell: the storage warnings', () => {
 });
 
 describe('PanelShell: the holds keep their verbs', () => {
-  /** Hold controls follow the card that explains why the job stopped. */
   it('stands the hold\'s controls after the ask that produced it', () => {
     const gateDenied = makeView({
       phase: 'paused',
@@ -738,7 +668,6 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(getByTestId('hold-stop')).toBeTruthy();
   });
 
-  /** With no card between the ticket and the hold, the ticket's own foot is where they belong. */
   it('keeps them at the ticket\'s foot where no ask produced the hold', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
@@ -751,7 +680,6 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(queryByTestId('hold-actions')).toBeNull();
   });
 
-  /** N4, armed: neither hold surface may offer a pause. */
   it('offers no pause on either hold surface', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
@@ -764,13 +692,7 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(foot.textContent).not.toContain(t('agent.dock_pause_at_step'));
   });
 
-  /**
-   * And the guard is the verb, not the testid (mirroring `manage.test.tsx`'s own sweep). A deadlock
-   * is a class of control rather than one named button: a second pill
-   * offered under any other name, wired to the same pause, ships past an assertion that only looks
-   * for `hold-resume`/`hold-stop`. So every control the `hold-actions` row renders over a gate-denied
-   * hold is pressed, and the pause verb must never be reached from any of them.
-   */
+  /** Every control in the row is pressed, since a pill under any other name could reach the pause. */
   it('reaches no pause verb from any control in the hold-actions row', () => {
     const onPause = vi.fn();
     const gateDenied = makeView({
@@ -788,8 +710,8 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(count, 'nothing was pressed, so nothing is proven').toBeGreaterThan(0);
     first.unmount();
 
-    // One press per mount (a press can take another control away with it), and whatever a press
-    // Reveals is pressed too, in that same mount.
+    // One press per mount, since a press can take another control away; whatever it reveals is
+    // pressed too.
     for (let i = 0; i < count; i++) {
       const view = renderWithI18n(<PanelShell {...panelProps({ view: gateDenied, connected: true, now: 0, ...props })} />);
       fireEvent.click(buttons()[i]!);
@@ -800,13 +722,8 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(/\bpause\b/i.test(words), words).toBe(false);
   });
 
-  /**
-   * One verb, two sites, one paint. Resume on a hold is an action on a held job rather than the
-   * dock's "this needs you" ask, so it takes the dark ink primary and never the amber `active` pill
-   * — the ruling `JobTicket`'s `TICKET_RESUME` and `ResumeCard` already state. The hold after an ask
-   * is the commonest hold there is (a skipped gate is what produces most of them), so both sites
-   * are pinned here.
-   */
+  /** Resume on a hold acts on a held job rather than answering the dock's ask, so it takes the ink
+   *  primary, never the amber `active` pill, at both sites. */
   it.each([
     ['at the ticket\'s foot', 'ticket-resume', makeView({ phase: 'paused', current: makeJob() })],
     ['after the ask that produced the hold', 'hold-resume', makeView({
@@ -832,9 +749,7 @@ describe('PanelShell: the resume offer', () => {
     currentIndex: 1, doneCount: 2, revision: 1,
   } }) });
 
-  /** A session that came back holding a paused job is an offer, not a hold the user is standing in:
-   *  the card is compact, the two answers are "Resume" and "For later", and the ticket's live dress
-   *  (which says a run is under way) is not what a restored session should wear. */
+  /** A restored paused job is an offer: the live ticket's dress would say a run is under way. */
   it('offers the restored job as a card rather than as a live ticket', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: restored(), connected: true, now: 0, ...VERBS, restored: true, onResume: () => {}, onFileAway: () => {} })} />,
@@ -853,7 +768,6 @@ describe('PanelShell: the resume offer', () => {
     expect(onResume.mock.calls.length).toBe(1);
   });
 
-  /** “For later” files the offer without deleting its record. */
   it('files the offer away rather than dropping it', () => {
     const onSetAside = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -867,7 +781,6 @@ describe('PanelShell: the resume offer', () => {
     expect(onSetAside.mock.calls).toEqual([[1]]);
   });
 
-  /** The same phase, standing live rather than restored, is the hold — not the offer. */
   it('is not the face a live pause wears', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: restored(), connected: true, now: 0, ...VERBS, onResume: () => {} })} />,

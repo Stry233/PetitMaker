@@ -1,5 +1,5 @@
 /**
- * Publishes the four DOM cursors to CSS, as custom properties on `<html>`, at the system-cursors
+ * Publishes the DOM cursors to CSS, as custom properties on `<html>`, at the system-cursors
  * preference the store holds, and has the canvas controller re-resolve when it flips.
  *
  * The same shape as `useMotionEnabled`: One writer stamps the root element, and everything

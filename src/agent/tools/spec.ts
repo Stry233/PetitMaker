@@ -24,6 +24,8 @@ export interface ToolSpec<S extends Shape = Shape> {
   parentOnly?: boolean;
   /** A successful call is a look at the map, so it reviews the edits before it. */
   verifies?: boolean;
+  /** Draws planning annotations: a plan drawn with it is filed through the plan protocol. */
+  sketches?: boolean;
   /** A minimal valid call in the tool's flat argument shape, shown beside an argument refusal. */
   example?: string | (() => string);
   /** Absent exactly for the protocol tools in `core/protocol.ts`, which the loop or the executor answers. */

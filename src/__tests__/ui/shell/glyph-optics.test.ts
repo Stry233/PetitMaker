@@ -1,19 +1,8 @@
 /**
- * How the frame sizes the drawings that stand in a row together: the rail's glyphs, and the blocks
- * of the top-left row.
- *
- * The drawings come from the design source at whatever size and offset the artist worked at, and
- * those are not comparable: a dense ring and an open arrow of the same span do not read as the same
- * size, and a shape is rarely centred in its own box. The two functions here turn a measured ink
- * into the one number and the one point the rail uses, and what this pins is that the `FAMILY` comes
- * out even — which is the thing a reader sees, and the thing box-height sizing got wrong.
- *
- * The rule holds for solid drawings. One glyph is an outline, and it takes its own correction on
- * top; that exception is pinned here too, so it cannot quietly become a second rule.
- *
- * The block row is the same question with a better answer available: five of its six drawings share
- * a grass cube, so they are held to one width, which is what a cube's size is. The sixth has no cube
- * and falls back to the ink rule.
+ * How the frame sizes drawings that stand in a row together. The rail's glyphs are sized and centred
+ * from their measured ink, since a dense ring and an open arrow of one span do not read as one size;
+ * the one outline glyph takes its own correction. In the top-left block row, five drawings share a
+ * grass cube and are held to one width; the assistant has no cube and falls back to the ink rule.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -33,8 +22,7 @@ const DRAWN_FAMILY: Record<string, GlyphInk> = {
 /** Every glyph the rail draws, including the one icon the design source never drew. */
 const FAMILY: Record<string, GlyphInk> = { ...DRAWN_FAMILY, fit: FIT_INK };
 
-/** What each drawing's ink measures on screen once the rail has sized it. `trim` is a glyph's own
- *  correction, which only the fit icon carries. */
+/** A drawing's ink on screen once the rail has sized it; `trim` is the fit icon's own correction. */
 function drawn(ink: GlyphInk, trim = 1): { w: number; h: number; area: number } {
   const k = (RAIL.glyph * trim) / apparentSize(ink);
   return { w: ink.w * k, h: ink.h * k, area: ink.area * k * k };
@@ -51,11 +39,9 @@ describe('sizing a glyph by what it reads as', () => {
   });
 
   it('needs its own correction for the icon that is an outline', () => {
-    // The fit icon is four corner brackets: a fifth of the solid drawings' ink over the same span.
-    // The area term reads that as small and scales it up, so the rule alone hands the rail its
-    // widest glyph. What an outline is read by is its span, and `FIT_TRIM` is what puts that span
-    // back inside the family — the weight stays low, because a hollow square has no more ink to
-    // give.
+    // Four corner brackets carry a fifth of the solid drawings' ink over the same span, so the area
+    // term scales the icon up to the widest glyph; an outline reads by span, and `FIT_TRIM` brings
+    // that back inside the family.
     const sizes = Object.values(DRAWN_FAMILY).map((ink) => span(drawn(ink)));
     expect(span(drawn(FIT_INK))).toBeGreaterThan(Math.max(...sizes));
     expect(span(drawn(FIT_INK, FIT_TRIM))).toBeLessThan(Math.max(...sizes));
@@ -63,7 +49,7 @@ describe('sizing a glyph by what it reads as', () => {
   });
 
   it('is the improvement over drawing each glyph to its own box', () => {
-    // The alternative: every glyph scaled so its box is one height.
+    // The alternative scales every glyph so its box is one height.
     const byBox = (ink: GlyphInk, boxH: number) => {
       const k = RAIL.glyph / boxH;
       return Math.hypot(ink.w * k, ink.h * k);
@@ -75,8 +61,7 @@ describe('sizing a glyph by what it reads as', () => {
   });
 
   it('reads a taller-than-wide drawing as no bigger than a wide one', () => {
-    // The magnifier is 82 design px tall against the rotate arrow's 61, which is exactly why box
-    // height cannot be the measure.
+    // The magnifier is 82 design px tall against the rotate arrow's 61.
     expect(apparentSize(GLYPHS.zoomIn.ink)).toBeCloseTo(apparentSize(GLYPHS.rotate.ink), -1);
   });
 });
@@ -94,8 +79,7 @@ describe('centring a glyph on where it balances', () => {
   });
 
   it('moves the magnifier down, because its weight is all in the lens', () => {
-    // Its box centre is 41 of 82; its ink balances well above that, so centring the box leaves the
-    // lens riding high in the button.
+    // Its box centre is 41 of 82, and the lens-heavy ink balances above that.
     expect(opticalCentre(GLYPHS.zoomIn.ink).y).toBeLessThan(41);
   });
 
@@ -117,8 +101,7 @@ describe('sizing the block row by the cube its drawings share', () => {
   };
 
   it('lays every mode drawing out at one width, whatever it was exported at', () => {
-    // The generator's cube is drawn 2.3% bigger than its four neighbours', which is the one place
-    // the row was uneven: the same cube at two sizes, in a row read by that cube.
+    // The generator's cube is exported 2.3% bigger than its neighbours'.
     expect(DRAWN.generate![0]).toBeGreaterThan(DRAWN.object![0]);
     for (const art of MODES) {
       expect(art.w).toBe(BLOCK_W);
@@ -135,27 +118,23 @@ describe('sizing the block row by the cube its drawings share', () => {
   });
 
   it('falls back to the ink rule for the assistant, which has no cube to hold to', () => {
-    // A solid character at the blocks' own width carries a third more ink than a diorama does and
-    // reads correspondingly bigger, so it is drawn under that width in both states.
+    // At the blocks' width the solid character carries a third more ink than a diorama, so it is drawn narrower.
     expect(ASSISTANT_BLOCK.w).toBeLessThan(BLOCK_W);
     expect(ASSISTANT_BLOCK.selected.w).toBeLessThan(BLOCK_W_ON);
-    // By different fractions: the design's pressed blocks are airier than its resting ones, and the
-    // character is one picture in both.
+    // By different fractions: the pressed blocks are airier, and the character is one picture in both.
     expect(ASSISTANT_BLOCK.selected.w / BLOCK_W_ON).toBeLessThan(ASSISTANT_BLOCK.w / BLOCK_W);
-    // Still the design's own picture, at 153 x 150.
+    // The design's own picture is 153 x 150.
     expect(ASSISTANT_BLOCK.h / ASSISTANT_BLOCK.w).toBeCloseTo(150 / 153, 9);
     expect(ASSISTANT_BLOCK.selected.h / ASSISTANT_BLOCK.selected.w).toBeCloseTo(150 / 153, 9);
   });
 
   it('keeps the line the top of the window shares off the assistant', () => {
-    // The top-right cluster is placed to end on `MODE_ROW_BASE`, so anything that line is derived
-    // from can move a cluster in the opposite corner. It is derived from the mode row's own box:
-    // the margin, plus room for the tallest drawing that box has to hold, which is a selected mode.
-    // The character is not in it at all, so resizing that block cannot reach the other corner.
+    // The top-right cluster ends on `MODE_ROW_BASE`, derived from the tallest selected mode alone,
+    // so resizing the assistant block cannot move the opposite corner.
     const tallestSelected = Math.max(...MODES.map((art) => art.selected.h));
     expect(MODE.height).toBe(Math.round(tallestSelected * MODE_SCALE));
     expect(MODE_ROW_BASE).toBeCloseTo(EDGE_TOP + MODE.height, 9);
-    // And it still fits in that box, which is what lets the two rows share one block size.
+    // It still fits in that box.
     expect(ASSISTANT_BLOCK.selected.h * MODE_SCALE).toBeLessThanOrEqual(MODE.height);
   });
 });

@@ -28,8 +28,7 @@ describe('V-WTR-02: Water Containment', () => {
     expect(waterContainmentRule.validate(state)).toHaveLength(0);
   });
 
-  // The game's caps are the least mountain a fall needs: nothing stacks on them, so each cap sits
-  // exactly at the fall's upper level, and raising one leaves the fall uncapped.
+  // A cap sits exactly at the fall's upper level; raising one leaves the fall uncapped.
   it.each([[4, 5], [6, 5]])('refuses mountain painted onto the cap at (%i, %i) while the fall stands', (cx, cy) => {
     const state = makeState(10, 10);
     for (let x = 3; x <= 7; x++) for (let y = 3; y <= 5; y++) setTerrain(state, x, y, TerrainType.Mountain, 2);
@@ -82,7 +81,7 @@ describe('V-WTR-02: Water Containment', () => {
 describe('Water containment: an enclosed water row', () => {
   // Top-view at elev 2:
   // M M M M M M
-  // M W W W W M  ← enclosed by mountains on all sides
+  // M W W W W M
   // M M M M M M
   it('allows painting enclosed water row via full stroke pipeline', () => {
     const state = makeState(10, 10);
@@ -131,7 +130,7 @@ describe('Water containment: an enclosed water row', () => {
 describe('Water containment: a cross of water in a 3x3 mountain', () => {
   // Top-view at elev 2:
   //   M W M
-  //   W W W  ← cross pattern
+  //   W W W
   //   M W M
   it('allows cross pattern via full stroke pipeline', () => {
     const state = makeState(10, 10);
@@ -172,18 +171,14 @@ describe('Water containment: inner water between elevation-2 caps', () => {
   // ..111111111111...
   it('allows water at elev 2 between elev-2 mountain caps ', () => {
     const state = makeState(20, 20);
-    // Outer ring at elevation 1
     for (let y = 5; y <= 10; y++)
       for (let x = 5; x <= 16; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 1);
-    // Inner area at elevation 2
     for (let y = 6; y <= 9; y++)
       for (let x = 7; x <= 14; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
-    // Paint water at elev 2 on inner row, between the elev-2 mountains
     for (let x = 8; x <= 13; x++)
       setTerrain(state, x, 8, TerrainType.Water, 2);
-    // Caps at (7,8) and (14,8) are both mountain elev 2
 
     expect(waterContainmentRule.validate(state)).toHaveLength(0);
     expect(waterfallAdjacentUniformityRule.validate(state)).toHaveLength(0);
@@ -209,24 +204,20 @@ describe('Water containment: inner water between elevation-2 caps', () => {
 });
 
 describe('Water containment: elevation-2 water needs elevation-2 perpendicular caps', () => {
-  // Two-layer structure with elev-1 outer ring, elev-2 inner area.
-  // Water at elev 2 replacing bottom inner row:
+  // Elev-1 outer ring, elev-2 inner area, water at elev 2 replacing the bottom inner row:
   // ..111111111111...
   // ..112222222211...
   // ..11WWWWWWWW11...  ← water at elev 2
   // ..111111111111...
-  // The elev-1 outer ring cannot cap elev-2 water — correct rejection.
+  // The elev-1 outer ring cannot cap elev-2 water.
   it('correctly rejects water at elev 2 when perpendicular caps are only elev 1', () => {
     const state = makeState(20, 20);
-    // Outer ring at elevation 1
     for (let y = 5; y <= 10; y++)
       for (let x = 5; x <= 16; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 1);
-    // Inner area at elevation 2
     for (let y = 6; y <= 9; y++)
       for (let x = 7; x <= 14; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
-    // Replace bottom inner row with water at elev 2
     for (let x = 7; x <= 14; x++)
       setTerrain(state, x, 9, TerrainType.Water, 2);
 
@@ -236,11 +227,9 @@ describe('Water containment: elevation-2 water needs elevation-2 perpendicular c
 
   it('allows water at elev 2 when perpendicular caps ARE at elev 2', () => {
     const state = makeState(20, 20);
-    // Full block at elevation 2 — all caps at elev 2
     for (let y = 5; y <= 10; y++)
       for (let x = 5; x <= 16; x++)
         setTerrain(state, x, y, TerrainType.Mountain, 2);
-    // Replace one row with water
     for (let x = 7; x <= 14; x++)
       setTerrain(state, x, 8, TerrainType.Water, 2);
 

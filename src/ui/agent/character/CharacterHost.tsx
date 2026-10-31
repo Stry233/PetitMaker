@@ -4,7 +4,7 @@
  * hero chip and character pose both read the same memoized session projection as the panel.
  */
 import {
-  useCallback, useEffect, useRef, useState, useSyncExternalStore,
+  useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties, type RefObject,
 } from 'react';
 import { animate, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
@@ -12,7 +12,7 @@ import { animate, AnimatePresence, useReducedMotionConfig } from 'framer-motion'
 import { panelView, useAgentSession } from '../../../agent/boot';
 import { useT } from '../../../i18n/context';
 import { useChromeScale } from '../../design/scale';
-import { useDockStage } from '../../shell/use-dock';
+import { useDockDepth, useDockStage } from '../../shell/use-dock';
 import { font, z, radii } from '../../design/styles';
 import { INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
@@ -23,7 +23,7 @@ import {
 } from '../../design/motion';
 import { edge, statePaper } from '../panel-skin';
 import { Character, getCharacterHandle } from './Character';
-import { poseForPhase } from './poses';
+import { characterPose } from './poses';
 import { useCharacterIntent } from './intent';
 import { useCelebrateEdge } from './use-celebrate-edge';
 import {
@@ -32,6 +32,7 @@ import {
 } from './seat';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { ActionButton } from '../../primitives/ActionButton';
+import { onMorph, onMorphLayout, pageMorphing, type MorphRun } from '../../primitives/morph';
 
 /** Zero-size fixed layer; only the character and hero chip opt into pointer events. */
 const LAYER_STYLE: CSSProperties = {
@@ -79,16 +80,17 @@ export function CharacterHost({
   entranceRef, open, connected, hidden = false, size, onOpen, onToggle,
 }: CharacterHostProps) {
   const { place, sheetAside } = useDockStage();
+  // The bottom dock's seam moves her desk seat when the handle sets a new depth.
+  const depth = useDockDepth();
   const t = useT();
   // panelView is memoized by the store's log, epoch and live-buffer inputs.
   const view = useAgentSession(panelView);
   const celebrate = useCelebrateEdge(view);
-  // Celebration overrides surface pose, which overrides the session phase.
   const surface = useCharacterIntent().pose;
-  const pose = celebrate ?? surface ?? poseForPhase(view.phase, { connected });
+  const pose = characterPose({ celebrate, surface, phase: view.phase, connected });
   const [parked, setParked] = useState<Parked | null>(null);
 
-  // CSS zoom emits no resize event, so animated chrome scale is also a placement input.
+  // CSS zoom emits no resize event, so the settled chrome scale is also a placement input; the planes' size observer follows the glide.
   const chromeScale = useChromeScale();
   // The lazy panel registers its desk seat through an external-store seam.
   const seated = useSyncExternalStore(watchDeskSeat, deskSeat, () => null);
@@ -96,8 +98,17 @@ export function CharacterHost({
   // One motion entry drives every track in the floating open or close gesture.
   const gesture = open ? 'panel.open' : 'panel.close';
 
-  /** Measures both seats and places the character at the current shared gesture progress. */
-  const park = useCallback((along?: number) => {
+  /** The chrome's morph is drawing her from her old place: her drawn box is mid-travel, so the chip
+   *  pinned to her waits for it to settle. */
+  const morphing = useRef(false);
+  /** Whether the hero chip stands at her shoulder: only then is her drawn box read and rendered. */
+  const chipShown = useRef(false);
+  /** Measures both seats and places the character at the current shared gesture progress; `chip`
+   *  false places her without a render, for the chip pinned to her to follow later. */
+  const park = useCallback((along?: number, chip = true) => {
+    // Seats are read where the morph puts them (`seat.ts:seatBox`), so she parks at the place it ends
+    // at even while it runs, a seat that lands late included, and the morph carries her there.
+    if (morphing.current) chip = false;
     // The desk remains the seat through collapse; restingSeat removes its carriage displacement.
     const folded = seatBox(entranceRef.current);
     const seat = restingSeat(seatBox(seated)) ?? folded;
@@ -105,10 +116,12 @@ export function CharacterHost({
     if (seat && folded) setCarry(along ?? carriedAlong(), carryStep(seat, folded));
     else if (along !== undefined) setCarry(along);
     const at = parkCharacter(seat);
+    // A glide or slide re-parks her every frame; with no chip to follow her, that is a write and no render.
+    if (!chip || !chipShown.current || !at) return;
     // Height follows the rendered artwork and is measured after width placement.
     const drawn = getCharacterHandle()?.el?.getBoundingClientRect();
-    const height = drawn && drawn.height > 0 ? drawn.height : at?.width;
-    if (at && height !== undefined) setParked({ ...at, height });
+    const next = { ...at, height: drawn && drawn.height > 0 ? drawn.height : at.width };
+    setParked((was) => (was && was.left === next.left && was.top === next.top && was.width === next.width && was.height === next.height ? was : next));
   }, [entranceRef, seated]);
 
   const parkNow = useRef(park);
@@ -122,7 +135,7 @@ export function CharacterHost({
     return () => cancelAnimationFrame(frame);
   }, []);
   // A dock change can move a reused seat element without calling its ref, so the stage re-parks too.
-  useEffect(() => parkSettled(), [parkSettled, park, chromeScale, place]);
+  useEffect(() => parkSettled(), [parkSettled, park, chromeScale, place, depth]);
   // CSS zoom changes the containing plane's layout size, while each seat keeps its local size.
   useObservedSize(() => {
     const planes = new Set<HTMLElement>();
@@ -163,6 +176,9 @@ export function CharacterHost({
   // Place changes own character presence; floating open and close carry her without a separate pop.
   // Cancel a prior WAAPI animation before writing the next destination style.
   const popping = useRef<Animation | null>(null);
+  /** Whether the place she stands at now hides her, for the morph's end to apply. */
+  const awayNow = useRef(away);
+  awayNow.current = away;
   const wasPlace = useRef(place);
   useEffect(() => {
     const from = wasPlace.current;
@@ -171,7 +187,12 @@ export function CharacterHost({
     popping.current?.cancel();
     popping.current = null;
     const to = away ? 0 : 1;
-    // The folded stage is fully covered by the sheet, so it settles without an animation.
+    // The folded stage is fully covered by the sheet, so it settles without an animation; a place the
+    // chrome's morph changes (a turned screen docking the panel elsewhere) is the morph's to draw, her
+    // box travelling and resizing from the old seat to the new rather than leaving and arriving.
+    // While the chrome's morph carries her, a place the re-arrangement passes through on its way (the
+    // panel leaving its free place to dock) neither hides nor pops her; the place it settles at does.
+    if (pageMorphing() || morphing.current) { if (to === 1) showCharacter(1); return; }
     if (reduced || place === 'folded') { showCharacter(to); return; }
     popping.current = popCharacter(to, {
       // Departure completes within the form's outgoing segment.
@@ -194,10 +215,35 @@ export function CharacterHost({
     return () => cancelAnimationFrame(frame);
   }, [sheetAside]);
 
+  // A layout-shape morph draws her as one of its pieces (`Character.tsx`): she takes her new seat just
+  // before it measures where pieces end; the chip follows once the morph has run.
+  useEffect(() => onMorphLayout(() => {
+    morphing.current = true;
+    parkNow.current(undefined, false);
+  }), []);
+  useEffect(() => {
+    let latest: MorphRun | null = null;
+    return onMorph((run) => {
+      latest = run;
+      void run.settled.then(() => {
+        if (latest !== run) return;
+        morphing.current = false;
+        if (awayNow.current) showCharacter(0);
+        parkNow.current();
+      });
+    });
+  }, []);
+
   // Tick only while the folded hero chip can be visible.
   const chipWanted = !open && !hidden;
   const now = useSecondClock(chipWanted);
   const chip = chipWanted ? heroChipFace(view, now) : null;
+  const chipUp = chip !== null;
+  // The chip arrives at her current place, read before the paint that first shows it.
+  useLayoutEffect(() => {
+    chipShown.current = chipUp;
+    if (chipUp) parkNow.current();
+  }, [chipUp]);
 
   return (
     <div

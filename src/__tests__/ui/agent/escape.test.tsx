@@ -13,7 +13,7 @@ import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults
 import type { PanelView } from '../../../agent/core/project-view';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { TOUR_SEEN_KEY } from '../../../ui/chrome/tour/use-tour';
+import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { Shell } from '../../../ui/shell/Shell';
@@ -30,8 +30,6 @@ Object.defineProperty(globalThis, 'localStorage', {
     clear: () => backing.clear(),
   },
 });
-
-/* ── the three states, as the fidelity rig names them ─────── */
 
 function baseView(over: Partial<PanelView> = {}): PanelView {
   return {
@@ -51,14 +49,9 @@ const job = (over = {}) => ({
   ...over,
 });
 
-/**
- * `setup.key-entry`, `run.gate` and `error.auth` as the panel sees them: the three states Escape has
- * to fold from, each of which owns the keyboard for something else.
- *
- * `setup.key-entry`'s `connected: false` alone lands on the keyless rest (`DreamOffice`), not the
- * key form this id names: Connect stands between the two. `renderPanel` presses it through, so the
- * fixture stands the form itself.
- */
+/** Three states Escape has to fold from, each of which owns the keyboard for something else.
+ *  `connected: false` alone lands on the keyless rest, so `renderPanel` presses Connect to reach the
+ *  key form. */
 const STATES: Record<string, { view: PanelView; connected: boolean }> = {
   'setup.key-entry': { view: baseView(), connected: false },
   'run.gate': {
@@ -107,7 +100,6 @@ function renderPanel(id: string, onCollapse: () => void) {
       </I18nProvider>
     </MotionConfig>,
   );
-  // Credential entry follows the disconnected rest, so the fixture presses Connect to reach it.
   if (id === 'setup.key-entry') fireEvent.click(view_.getByTestId('dream-connect'));
   return view_;
 }
@@ -120,11 +112,10 @@ function mountShell() {
   );
 }
 
-/** The panel is a lazy chunk, and here `import()` compiles the assistant graph rather than fetching
- *  a built one. Paid once, before anything below is timed (`assistant-entrance.test.tsx` makes the
- *  same argument at greater length). */
+/** The panel is a lazy chunk, and here `import()` compiles the assistant graph rather than fetching a
+ *  built one; paid once, before anything below is timed. */
 beforeAll(async () => {
-  backing.set(TOUR_SEEN_KEY, '1');
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
   useEditorStore.setState({ locale: 'en', assistantOpen: true });
   mountShell();
   await screen.findByTestId('shell-assistant-panel', undefined, { timeout: 30_000 });
@@ -133,7 +124,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   backing.clear();
-  backing.set(TOUR_SEEN_KEY, '1');
+  backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
   useEditorStore.setState({ locale: 'en', assistantOpen: true });
   useAgentSession.getState().clearSession();
 });
@@ -141,7 +132,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the collapse control never reads session state', () => {
-  /** Every panel state can return to the map in one press. */
   it('folds the panel from setup, from an open gate and from a refused key alike', async () => {
     for (const id of Object.keys(STATES)) {
       seedStore(id);
@@ -152,7 +142,7 @@ describe('the collapse control never reads session state', () => {
       fireEvent.click(screen.getByTestId('entrance-plate-anchor'));
       expect(useEditorStore.getState().assistantOpen, id).toBe(false);
 
-      // And back in, from the same press: the parked character is the standing way back.
+      // The parked character is the way back in.
       fireEvent.click(screen.getByTestId('entrance-plate-anchor'));
       expect(useEditorStore.getState().assistantOpen, id).toBe(true);
 
@@ -171,12 +161,7 @@ describe('the collapse control never reads session state', () => {
     }
   });
 
-  /**
-   * The form itself, standing genuinely rather than assumed: `renderPanel` walks the disconnected
-   * desk through Connect for `setup.key-entry`, and this is the tripwire that proves it landed
-   * there rather than on the keyless rest the walk starts from — without it a fixture whose id says
-   * "setup" tests the welcome screen. Escape folds from the form like every other surface here.
-   */
+  /** Guards the fixture: without it `setup.key-entry` could be testing the welcome screen. */
   it('genuinely stands the key form, and folds from it', () => {
     const folded: number[] = [];
     const view = renderPanel('setup.key-entry', () => folded.push(1));
@@ -186,7 +171,6 @@ describe('the collapse control never reads session state', () => {
     view.unmount();
   });
 
-  /** And from the manage card, which is a fourth surface the job zone can be showing. */
   it('folds from the manage card too', () => {
     const folded: number[] = [];
     const view = render(
@@ -209,8 +193,7 @@ describe('the collapse control never reads session state', () => {
     expect(folded).toEqual([1]);
   });
 
-  /** And from an opened past record, which is the fifth surface the job zone can be showing. Its
-   *  own way out is Back; Escape is the way out of the panel, whatever is standing in it. */
+  /** An opened record's own way out is Back; Escape still folds the panel. */
   it('folds from an opened past record too', () => {
     const folded: number[] = [];
     const settled = job({ orderSeq: 7, outcome: 'done', kind: 'build' });
@@ -230,18 +213,14 @@ describe('the collapse control never reads session state', () => {
         </I18nProvider>
       </MotionConfig>,
     );
-    // The record really is what the zone is showing, and the desk says so rather than claiming rest.
+    // The zone shows the record, and the desk says so.
     expect(view.getByTestId('archive-card')).toBeTruthy();
     expect(view.getByTestId('dock-sentence').textContent).toContain('Reading a past job');
     fireEvent.keyDown(view.getByTestId('panel-shell'), { key: 'Escape' });
     expect(folded).toEqual([1]);
   });
 
-  /**
-   * A fold puts the card away with the panel. `managing` lives in `PanelColumn` and nothing else
-   * clears it, so a user who folded from the settings card came back to the settings card — a
-   * surface they had already left, standing over the session they wanted.
-   */
+  /** `managing` lives in `PanelColumn` and only the fold clears it, so the card must go with the panel. */
   it('does not bring the manage card back with the panel', async () => {
     seedStore('run.gate');
     useEditorStore.setState({ assistantOpen: true });
@@ -257,13 +236,12 @@ describe('the collapse control never reads session state', () => {
     await screen.findByTestId('shell-assistant-panel', undefined, { timeout: 30_000 });
 
     expect(screen.queryByTestId('manage-screen'), 'the card the fold put away came back').toBeNull();
-    // And the session it was standing over is the one that comes back (invariant 4).
+    // The session the card stood over is the one that comes back.
     expect(screen.getByTestId('gate-block')).toBeTruthy();
   }, 40_000);
 
   /** Escape peels one layer per press: the composer's ghost first, then the field, and only a bare
-   *  panel folds. Otherwise one press both cleared the field and put the panel away, which is two
-   *  answers to one question. */
+   *  panel folds. One press never both clears the field and folds the panel. */
   it('lets the composer clear itself before the panel folds', () => {
     const folded: number[] = [];
     const view = render(
@@ -282,30 +260,23 @@ describe('the collapse control never reads session state', () => {
     );
     const input = view.getByTestId('composer-input') as HTMLInputElement;
 
-    // The ghost is standing: this press is the ghost's.
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(view.queryByTestId('composer-ghost')).toBeNull();
     expect(folded).toEqual([]);
 
-    // Something typed: this press is the field's.
     fireEvent.change(input, { target: { value: 'pave the square' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(input.value).toBe('');
     expect(folded).toEqual([]);
 
-    // Nothing left to clear: the panel folds.
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(folded).toEqual([1]);
   });
 });
 
 describe('a machine-initiated advance never writes the open flag', () => {
-  /**
-   * A source scan, because the defect is a write that should not exist and no state of the app can
-   * prove the absence of one. Only these files may move the flag: the store slice that owns it, the
-   * shell whose block the user presses, the panel's Escape and the planet session's opening. A probe
-   * timer, a retry settling or an arriving job reaching for it would show up here as another.
-   */
+  /** A source scan, since no app state can prove the absence of a write: a probe timer, a retry or
+   *  an arriving job reaching for the flag would show up here as another writer. */
   it('is written by the shell and the store slice only', () => {
     const writers = repoFiles('src', { skip: ['__tests__'] })
       .filter((path) => /setAssistantOpen|assistantOpen\s*:/.test(readFileSync(path, 'utf8')))
@@ -348,8 +319,7 @@ describe('pointer containment', () => {
     useEditorStore.setState({ assistantOpen: false });
     mountShell();
     expect(screen.getByTestId('character-layer').style.pointerEvents).toBe('none');
-    // The chip is the one control in that layer (the way back into a running job), so it is the one
-    // element allowed to hear a press.
+    // The chip, the way back into a running job, is the layer's one control.
     const chip = screen.queryByTestId('hero-chip');
     if (chip) expect(chip.style.pointerEvents).toBe('auto');
   });
@@ -397,7 +367,7 @@ describe('the opened past record: Back reopens the list', () => {
   it('stands the list open again after Back, with its rows showing', async () => {
     seedConnected();
     const log = useAgentSession.getState().log;
-    // Two settled jobs: the newer one stands as the receipt, the older one is what the strip lists.
+    // The newer job stands as the receipt; the older one is what the strip lists.
     append(log, { kind: 'order', text: 'Terrace the east slope', mapContext: '' });
     append(log, { kind: 'jobEnd', outcome: 'done', summary: 'Terraces cut.' });
     append(log, { kind: 'order', text: 'Raise the mill', mapContext: '' });
@@ -411,7 +381,6 @@ describe('the opened past record: Back reopens the list', () => {
     expect(screen.getByTestId('history-strip').getAttribute('data-open')).toBe('true');
 
     fireEvent.click(screen.getAllByTestId('history-open')[0]!);
-    // The opened record covers the zone: the strip stands down entirely while it does.
     expect(screen.queryByTestId('history-strip')).toBeNull();
 
     fireEvent.click(screen.getByTestId('archive-back'));

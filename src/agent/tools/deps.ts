@@ -1,6 +1,6 @@
 /** What every tool handler receives: the map, its executor and the seams the host wires. */
 import type { GridState, MacroCoord } from '../../core/model/types';
-import type { MapAnnotation } from '../../core/model/annotations';
+import type { CustomTag, MapAnnotation } from '../../core/model/annotations';
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { CellSet } from '../../core/grid/grids';
 
@@ -13,8 +13,8 @@ export interface AgentToolDeps {
   /** Resolves catalog names for human-facing approval summaries. */
   catalogName?(id: string): string | undefined;
   getExecutor(): CommandExecutor;
-  /** Applies one reversible edit to finished notes on the job’s captured map. */
-  editAnnotations?(edit: (items: MapAnnotation[]) => MapAnnotation[]): boolean;
+  /** Applies one reversible edit to the finished notes and custom tags of the job’s captured map. */
+  editAnnotations?(edit: (notes: { items: MapAnnotation[]; customTags: CustomTag[] }) => { items: MapAnnotation[]; customTags: CustomTag[] }): boolean;
   getRegion(): MacroCoord[];
   /** The clicked/selected block on canvas, if any. */
   getSelectedBlock?(): SelectedBlock;

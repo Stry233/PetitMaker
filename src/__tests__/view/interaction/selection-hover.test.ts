@@ -1,10 +1,9 @@
 /**
- * The hover-preview decision: while the pointer rests over the map in a
- * selection-capable mode (Hand, or ObjectPlacer with nothing to place), a grey
- * box shows what a click selects: the footprint of the object holding the pointer or, over ground, a
- * 1×1 box centred on the half-cell point nearest the pointer, sliding in half-cell steps, whose
- * centre names the terrain cell a click selects. Selected or not. Nothing shows outside those modes, during
- * region selection, or off the map.
+ * The hover preview: in a selection-capable mode (Hand, or ObjectPlacer with nothing to place) a grey
+ * box shows what a click selects, selected already or not. Over an object it is the footprint; over
+ * open ground it is the placement cell under the pointer, which a click picks; over mountain or
+ * water it is a 1×1 box on the nearest half-cell point, whose centre names the terrain cell. Nothing
+ * shows outside those modes, during region selection, or off the map.
  */
 import { describe, it, expect } from 'vitest';
 import { isDraggableObject, pointerTarget, selectionHoverBox } from '../../../view/interaction/selection-hover';
@@ -13,8 +12,8 @@ import { toolDeclares } from '../../../tools/pointer/runtime';
 import type { ToolArming } from '../../../state/editing/arming';
 import { ItemCategory } from '../../../config/catalog/categories';
 import { ToolType } from '../../../state/editing/vocabulary';
-import type { GridState, PlacedObject } from '../../../core/model/types';
-import { makeState } from '../../_support/map-state';
+import { TerrainType, type GridState, type PlacedObject } from '../../../core/model/types';
+import { makeState, setTerrain } from '../../_support/map-state';
 import { __setCatalogItem } from '../../../state/catalog';
 import { templateAnchor, templateLandmarkObjects } from '../../../core/model/landmarks';
 import { landmarkAt } from '../../_support/planet';
@@ -26,8 +25,15 @@ __setCatalogItem({
   traits: [],
 });
 
-function stateWithHouse(): GridState {
+/** A map of mountain one layer high, so a press that hits no object selects terrain. */
+function mountains(): GridState {
   const s = makeState(20, 20) as GridState;
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setTerrain(s, x, y, TerrainType.Mountain, 1);
+  return s;
+}
+
+function stateWithHouse(): GridState {
+  const s = mountains();
   const house: PlacedObject = {
     id: 'h1', catalogId: 'hover-house', position: { x: 5, y: 6 },
     rotation: 0, elevation: 0,
@@ -51,7 +57,16 @@ describe('selectionHoverBox', () => {
       .toEqual({ x: 5, y: 6, w: 3, h: 2, grid: 'object' });
   });
 
-  it('previews a 1×1 box centred on the nearest half-cell point over ground', () => {
+  it('[EDIT-54] previews the placement cell under the pointer over open ground, the cell a click picks', () => {
+    const s = makeState(20, 20) as GridState;
+    expect(hoverAt(s, { x: 12.2, y: 3.7 }, { tool: ToolType.Hand, item: null, region: false })).toEqual({ x: 12, y: 3, w: 1, h: 1, grid: 'object' });
+    expect(pointerTarget(s, mapPoint({ x: 12.8, y: 3.2 })).pick).toEqual({ x: 12, y: 3 });
+    setTerrain(s, 13, 3, TerrainType.Water, 0);
+    // Centre (13, 3) names terrain cell (13, 3), now water: that press selects it and picks nothing.
+    expect(pointerTarget(s, mapPoint({ x: 12.8, y: 3.2 })).pick).toBeNull();
+  });
+
+  it('previews a 1×1 box centred on the nearest half-cell point over mountain or water', () => {
     const s = stateWithHouse();
     expect(hoverAt(s, { x: 12.2, y: 3.2 }, { tool: ToolType.Hand, item: null, region: false })).toEqual({ x: 11.5, y: 2.5, w: 1, h: 1, grid: 'object' });
     expect(pointerTarget(s, mapPoint({ x: 12.2, y: 3.2 })).terrain).toEqual({ x: 12, y: 3 });
@@ -69,7 +84,7 @@ describe('selectionHoverBox', () => {
   });
 
   it('boxes a half-anchored object only where its footprint holds the pointer', () => {
-    const s = makeState(20, 20) as GridState;
+    const s = mountains();
     s.objects.set('h3', { id: 'h3', catalogId: 'hover-house', position: { x: 5.5, y: 6 }, rotation: 0, elevation: 0 });
     expect(hoverAt(s, { x: 5.7, y: 6.2 }, { tool: ToolType.Hand, item: null, region: false })).toEqual({ x: 5.5, y: 6, w: 3, h: 2, grid: 'object' });
     // The left half of cell 5 is outside the footprint: the pointer is over the ground there.
@@ -118,10 +133,8 @@ describe('selectionHoverBox', () => {
   });
 
   it('a locked object is never draggable: a move is a change, which is exactly what locked forbids', () => {
-    // planObjectMove validates only the resulting PlaceObject, which V-LOCK-02 doesn't gate (it
-    // excludes the object's own id as a self-overlap and only gates RemoveObject) — so arming a
-    // drag on a locked object would silently relocate it instead of refusing. isDraggableObject
-    // is the one gate the press/cursor both consult, so it must refuse before that path runs.
+    // V-LOCK-02 gates only RemoveObject, and planObjectMove validates only the PlaceObject, so a
+    // drag would relocate a locked object; isDraggableObject, which press and cursor consult, refuses.
     const s = makeState(120, 120) as GridState;
     s.template.landmarks = [{ id: ANCHOR_LANDMARK.id, x: 40, y: 40, width: 20, height: 20 }];
     const plaza = (templateLandmarkObjects(s.template)[0] ?? null)!;

@@ -53,7 +53,7 @@ describe('the real migration chain', () => {
     for (let v = 1; v < CURRENT_VERSION; v++) {
       expect(MIGRATIONS.filter((m) => m.from === v)).toHaveLength(1);
     }
-    // No migration may target at or beyond the current version.
+    // No migration targets the current version or beyond.
     expect(MIGRATIONS.every((m) => m.from < CURRENT_VERSION)).toBe(true);
   });
 });

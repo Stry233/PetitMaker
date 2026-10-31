@@ -3,7 +3,7 @@
  * The 2D projection reads where its canvas stands at use, from the canvas's own box.
  *
  * The box moves without resizing: the dock slide carries the map plane by transform and settles it
- * into an inset, and only the size changes reach a ResizeObserver — the settle itself moves the box
+ * into an inset, and only the size changes reach a ResizeObserver; the settle itself moves the box
  * back with no further event. An origin captured at the last resize therefore describes where the
  * canvas stood mid-slide, and every pointer→cell answer after the settle lands offset by exactly
  * that leftover (half the dock's width, indefinitely). So the origin is a reading, not a record:

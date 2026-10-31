@@ -163,7 +163,7 @@ export type SessionEvent = Base & (
   | { kind: 'resumed'; note?: string }
   // Persistent loop-authored instruction replayed as a user message on the next turn.
   // Its tag also enforces at-most-once delivery, review and unfinished-plan nudges per job.
-  | { kind: 'systemNote'; text: string; note: 'delivery' | 'review' | 'plan-close' }
+  | { kind: 'systemNote'; text: string; note: 'delivery' | 'review' | 'plan-close' | 'plan-sketch' }
   | { kind: 'retry'; attempt: number; cls: ErrorClass; delayMs: number }
   | { kind: 'compaction'; summary: string; retainedFromSeq: number }
   | { kind: 'incident'; error: TurnError }

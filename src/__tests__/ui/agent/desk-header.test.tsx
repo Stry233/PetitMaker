@@ -3,9 +3,8 @@
  * The desk: character slot and the one dock card, in every face it wears.
  *
  * Rendered under `MotionConfig reducedMotion="always"`, so `Character`'s WAAPI calls never fire
- * (jsdom has none) and the card flip is cut, which lets a face swap be asserted in the render that
- * caused it. Colour assertions push both sides through the same DOM round-trip (`asBackground`),
- * since jsdom's cssstyle can normalize equal colours differently.
+ * (jsdom has none) and a face swap shows in the render that caused it. Colours go through
+ * `asBackground` on both sides, since jsdom's cssstyle can normalise equal colours differently.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
@@ -72,12 +71,10 @@ const RETRY: NonNullable<PanelView['retry']> = { attempt: 2, cls: 'rate-limit', 
 /** The retry face's own clock: `since` + `delayMs` lands at 11_000. */
 const RETRY_MID = 6_000;
 
-/** Every face the dock wears, as the view that produces it. One table, read by the geometry group
- *  and by the glyph group, so a face added to the dock cannot be added to only one of them. */
+/** Every face the dock wears, as the view that produces it; the geometry and glyph groups both read it. */
 const FACES: Record<string, { view: PanelView; connected?: boolean; setup?: SetupFace }> = {
   disconnected: { view: makeView(), connected: false },
-  // The setup screen's own steps, reported up from the job zone: two of the ten, so the geometry and
-  // glyph sweeps above cover the family without restating its table.
+  // Two of the setup screen's steps stand for that family here.
   'setup.shaped': { view: makeView(), connected: false, setup: { step: 'shaped', name: 'Anthropic' } },
   'setup.refused': { view: makeView(), connected: false, setup: { step: 'refused', name: 'Anthropic' } },
   idle: { view: makeView() },
@@ -134,8 +131,7 @@ describe('the status card is ONE card in every state', () => {
     }
   });
 
-  /** The tag marks the whole feature, so it stands on every face — and out of flow, in the card's
-   *  top padding band, so no face's own lines move for it. */
+  /** Out of flow in the card's top padding, so no face's lines move for it. */
   it('wears the beta tag on every face, out of flow', () => {
     for (const name of Object.keys(FACES)) {
       const { getByTestId, unmount } = renderFace(name);
@@ -190,9 +186,7 @@ describe('the seat table: what stands above the gear', () => {
     expect(seatOf('paused').answer).toEqual({ act: 'resume', icon: 'pw-resume', off: false });
   });
 
-  /** The loop honours a pause only at a step boundary, so a pause asked for inside one long call
-   *  stands for as long as that call takes. A dimmed resume there left both dock controls
-   *  unpressable in the one state a user most wants out of. */
+  /** The loop pauses only at a step boundary, so a pause inside a long call stands as long as the call. */
   it('gives a pause that has not landed the stop, and says on the meta line what it is waiting for', () => {
     expect(seatOf('pausing').answer).toEqual({ act: 'stop', icon: 'pw-stop', off: false });
     const { getByTestId } = renderFace('pausing');
@@ -206,8 +200,7 @@ describe('the seat table: what stands above the gear', () => {
   });
 
   it('keeps the gear on every connected face, the retry included, and nowhere else', () => {
-    // The gearless faces are the ones whose caller reports no connection: the keyless sleep and
-    // every setup step (the gear's own surface is already what the job zone is showing).
+    // The keyless sleep and every setup step report no connection; the job zone already shows setup.
     for (const [name, face] of Object.entries(FACES)) {
       expect(seatOf(name).gear, name).toBe(face.connected !== false);
     }
@@ -237,7 +230,6 @@ describe('the seat table: what stands above the gear', () => {
     expect(onManage).toHaveBeenCalledTimes(1);
   });
 
-  /** A gear with no handler behind it stands disabled like every unavailable control. */
   it('disables the gear when no manage handler is wired, and enables it once one is', () => {
     const idle = renderWithI18n(<DeskHeader view={FACES.idle!.view} now={0} />);
     const bareGear = idle.getByTestId('dock-gear') as HTMLButtonElement;
@@ -303,12 +295,8 @@ describe('a job in flight outranks a key that has gone', () => {
 });
 
 /**
- * The setup screen's own step, said on the card above it. Without this channel the dock said "Not
- * connected / add a key to start" over a confirmed provider and a chosen model, and the two dead ends a
- * failed check lands on stood on the calm idle paper with no trouble face at all.
- *
- * The step arrives as a fact from the job zone (the phase cannot express it), and this file owns
- * what it looks like: the paper, the key glyph, the words and the pose.
+ * The setup screen's step, reported from the job zone because the phase cannot express it. The two
+ * dead ends of a failed check wear a trouble face rather than the idle paper.
  */
 describe('the setup family, as status-card faces', () => {
   const dock = (setup: SetupFace, over: Partial<PanelView> = {}) => ({
@@ -339,7 +327,7 @@ describe('the setup family, as status-card faces', () => {
       const { view, ctx } = dock({ step });
       expect(deskPose(view, ctx), step).toBe(pose);
     }
-    // A desk with no step reported is the phase's own business again.
+    // With no step reported, the phase decides.
     expect(deskPose(makeView(), { connected: false })).toBeNull();
   });
 
@@ -368,8 +356,7 @@ describe('the setup family, as status-card faces', () => {
     expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_setup_paste_again']);
   });
 
-  /** A step is what a desk with nothing louder says. A job the loop still has, and an incident with
-   *  its own repair, both outrank it — the same precedence the keyless sleep already has. */
+  /** A job in flight or an incident outranks a setup step, as it outranks the keyless sleep. */
   it('never speaks over a job in flight or an incident', () => {
     const setup: SetupFace = { step: 'typing' };
     const running = makeView({ phase: 'executing', current: makeJob() });
@@ -412,8 +399,6 @@ describe('the retry family, as a status-card face', () => {
     expect(onRetryNow).toHaveBeenCalledTimes(1);
   });
 
-  /** Empty means fired, which also means there is nothing left to hurry: a pill that still looked
-   *  live at that moment was neither doing something nor visibly refusing. */
   it('stops taking a press once the backoff has fired', () => {
     const onRetryNow = vi.fn();
     const { getByTestId } = renderWithI18n(
@@ -452,15 +437,12 @@ describe('the retry family, as a status-card face', () => {
 
     expect(secondsEl.textContent).toBe('5');
 
-    // `render(ui, { wrapper })`'s own `rerender` already re-applies the wrapper: wrapping again
-    // here would double-nest it, changing the tree shape at this position and forcing React to
-    // remount everything below.
+    // `rerender` re-applies the wrapper; wrapping again would remount everything below.
     rerender(<DeskHeader view={view} now={RETRY_MID + 1_000} />);
 
     expect(getByTestId('retry-seconds').textContent).toBe('4');
-    // The digit itself is replaced, and that is the motion rather than a fault: `panel.retry.digit`
-    // rolls a new number up from under the old one, which needs two nodes. What must not move is
-    // everything around it.
+    // The digit node is replaced because `panel.retry.digit` rolls the new number up under the old;
+    // everything around it stays.
     expect(getByTestId('retry-seconds')).not.toBe(secondsEl);
     expect(getByTestId('retry-seconds').parentElement).toBe(rollEl);
     const afterChildNodes = Array.from(labelEl.childNodes);
@@ -475,12 +457,10 @@ describe('the retry family, as a status-card face', () => {
 
 describe('the two decks, and the clock that steps up beside the word', () => {
   it('folds to one centered line where the state has no meta of its own', () => {
-    // A gate never repeats the question (the card below holds it in full) and this one's size is
-    // unknown to the caller, so it is the face with a clock and no meta at all.
+    // A gate never repeats its question (the card below holds it), so it has a clock and no meta.
     const { getByTestId } = renderFace('gated');
     const dock = getByTestId('dock');
     expect(dock.dataset.solo).toBe('true');
-    // A solo face keeps its clock on the word line because it has no metadata row.
     expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).not.toBeNull();
   });
 
@@ -496,9 +476,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).toBeNull();
   });
 
-  /** Thinking and writing are two things to be waiting on. They share the reasoning paper (a model
-   *  streaming text is still working out what to say), and the ticket's caret was the only place the
-   *  panel said which of them was happening — the dock said "Thinking" through both. */
   it('tells writing from thinking in the word, on the one paper the two share', () => {
     const thinking = renderWithI18n(<DeskHeader view={FACES.thinking!.view} now={0} />);
     expect(thinking.getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
@@ -509,9 +486,8 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(deskPaper(FACES.streaming!.view)).toBe(deskPaper(FACES.thinking!.view));
   });
 
-  /** What else is true of a running job, which a bare step count cannot say: a refused edit, a note
-   *  waiting, a helper at work, the playbook. Each clears itself; storage full is a standing condition,
-   *  so it reads under the four about the work. */
+  /** Facts a step count cannot say. Storage full is a standing condition, so it ranks under the four
+   *  about the work. */
   describe('the running sub-line', () => {
     const running = (over: Partial<PanelView>, helper = false) => renderWithI18n(
       <DeskHeader
@@ -538,8 +514,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
       expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_region_held']);
     });
 
-    /** A call in flight says nothing about what the last one did, and one is almost always in flight
-     *  while this face is up — so the reading is the newest settled op. */
+    /** A call is almost always in flight on this face, so the reading is the newest settled op. */
     it('reads past the call in flight, and drops the notice once another op has landed', () => {
       const stillHeld = running({
         current: makeJob({
@@ -575,8 +550,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
       expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_helper']);
     });
 
-    /** The rule is the projection's: the newest style, else the newest method. A job that loaded
-     *  three techniques is one sub-line, and it is the one shaping what the user is watching. */
     it('names one playbook, the newest style ahead of any method', () => {
       const skills: JobView['skills'] = [
         { name: 'terracing', kind: 'method', title: 'Terracing' },
@@ -634,8 +607,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
       expect(getByTestId('dock-meta').textContent).toBe('step 3 of 4');
     });
 
-    /** A gate says none of these. The three above are facts about a job proceeding; a gate is the job
-     *  stopped, and what its own line is for is the size of what is being asked (below). */
+    /** A gate's line carries the size of the ask instead (below). */
     it('says none of them on a gate face', () => {
       const { queryByTestId } = renderWithI18n(
         <DeskHeader
@@ -653,11 +625,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     });
   });
 
-  /**
-   * What a gate's own line is for: how big the thing being asked about is, which is the one fact the
-   * ask card below does not carry (the loop's summary is `describeCall`'s, so it names the call's
-   * coordinates rather than its extent).
-   */
+  /** The ask card's summary describes the call, not its extent, so the gate line gives the size. */
   describe('the gate sub-line says the size', () => {
     const gated = (
       gate: NonNullable<PanelView['gate']>, over: Partial<JobView> = {}, cells?: number,
@@ -695,7 +663,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
         },
         86,
       );
-      // The pick's own count outranks the call's footprint: what is being asked for is a choice.
+      // The pick's count outranks the call's footprint.
       expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_pick']);
       expect(getByTestId('dock-meta').textContent).toBe('3 options');
     });
@@ -708,7 +676,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
       expect(queryByTestId('dock-meta')).toBeNull();
     });
 
-    /** The reachable n=1 cases: a plan ask of one stage, and a pick offering one card. */
     it('names one stage as one step, and one card as one option, not the plural', () => {
       const onePlan = gated(
         { gateId: 'g5', scope: 'plan', summary: 'plan' },
@@ -725,10 +692,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     });
   });
 
-  /**
-   * A filed record is not news. The receipt and the dock are one piece of news, so a record put away
-   * takes the dock's reading of it with it: the desk reads its own rest, and the map it stands on.
-   */
+  /** A filed record takes the dock's reading of it along; the desk rests on its map. */
   it('rests once the settled record has been put away', () => {
     const view = makeView({ jobs: [makeJob({ outcome: 'done', kind: 'build' })] });
     const standing = renderWithI18n(<DeskHeader view={view} now={0} mapName="Hexia" />);
@@ -740,9 +704,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(filed.getByTestId('dock-meta').textContent).toBe('on Hexia');
   });
 
-  /** A trailing question over a landed build is a finished job with one question in the record:
-   *  the word says done, the meta carries the ask, and the paper is the resting one — the ask dress
-   *  stays reserved for a question with nothing built behind it. */
+  /** The ask paper is kept for a question with nothing built behind it. */
   it('reads done with a question meta when the question close landed edits', () => {
     const view = makeView({
       jobs: [makeJob({ outcome: 'done', kind: 'build', question: true, ops: [{
@@ -756,7 +718,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(getByTestId('dock').getAttribute('data-paper')).not.toBe('ask');
   });
 
-  /** The reachable n=1 case: a build that changed exactly one cell or object names it as one edit. */
   it('names a single-cell build as one edit, not the plural', () => {
     const view = makeView({
       jobs: [makeJob({ outcome: 'done', kind: 'build', ops: [{
@@ -769,11 +730,8 @@ describe('the two decks, and the clock that steps up beside the word', () => {
   });
 
   /**
-   * "ALL DONE. / 0 EDITS" is a report of a build that never happened, and the commonest way to reach
-   * it is the user's own refusal: `writeIssued` is set by the ask, so a gate the user skipped (or a
-   * write the rules reverted) still classifies the job a build and the meta line counted nothing.
-   * The map is untouched, and that is the fact the line owes them. `celebrate` already reads
-   * `writeApplied`, so the character was right while the dock was not.
+   * `writeIssued` is set when a write is asked for, so a skipped gate or a reverted write still makes
+   * the job a build; the line then says the map is unchanged rather than counting zero.
    */
   describe('a build with nothing on the map does not count zero', () => {
     const declined = (over: Partial<JobView> = {}) => makeView({
@@ -792,7 +750,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
       expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_no_edits']);
     });
 
-    /** The same face through the routine `REVERTED:` path: the call ran, the rules put it back. */
+    /** The `REVERTED:` path: the call ran and the rules put it back. */
     it('says the same where the write was reverted', () => {
       const view = declined({
         ops: [{
@@ -817,10 +775,8 @@ describe('the two decks, and the clock that steps up beside the word', () => {
   });
 
   /**
-   * The paused sub-line counts stages, not attempts. It borrowed `dock_try_of`, which is authored
-   * for "attempt n of MAX_TURN_ATTEMPTS" and carries the counter word inside the string in zh and ja
-   * (a count of times) — so the card read as a retry ladder over a hold, while the pausemark chip two rows
-   * below said stages. One fact in two units, one of them wrong.
+   * `dock_try_of` carries an attempt counter word in zh and ja, which over a hold would read as a
+   * retry ladder, so the paused line has its own stage string.
    */
   describe('the paused step count is a step count in every locale', () => {
     const paused = makeView({
@@ -839,10 +795,9 @@ describe('the two decks, and the clock that steps up beside the word', () => {
         const value = translations[locale]['agent.dock_stage_of']!;
         expect(value, locale).toContain('{n}');
         expect(value, locale).toContain('{m}');
-        // Terse, like the retry datum it sits in the same seat as.
+        // Terse, like the retry datum in the same seat.
         expect(value.replace(/\{[nm]\}/g, '').trim().length, locale).toBeLessThan(9);
       }
-      // The two CJK locales are the ones whose form must not be the attempt counter's.
       for (const locale of ['zh', 'ja'] as const) {
         expect(translations[locale]['agent.dock_stage_of'], locale)
           .not.toBe(translations[locale]['agent.dock_try_of']);
@@ -878,10 +833,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(asking.getByTestId('dock-glyph').getAttribute('data-icon')).not.toBe('pw-question');
   });
 
-  /**
-   * A hold the page did not make is an offer: the word says where the work stopped, and there is no
-   * clock, since every span a rehydrated log can offer is measured across a reload.
-   */
+  /** A restored hold has no clock: every span a rehydrated log offers crosses a reload. */
   it('says a restored hold stopped partway, and shows it no clock', () => {
     const view = makeView({
       phase: 'paused', current: makeJob({ orderAt: 1_000 }), lastEventAt: 200_000,
@@ -897,11 +849,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(offer.queryByTestId('dock-elapsed')).toBeNull();
   });
 
-  /**
-   * A hold standing at a decline is not the hold the user asked for, and "Paused" says nothing about
-   * why the job stopped where it did. Read off the newest op, so a decline with work after it is
-   * over: the job went on, and it is holding for some other reason.
-   */
+  /** Read off the newest op, so a decline followed by landed work is an ordinary pause. */
   describe('the hold that began at a decline', () => {
     const op = (status: 'ok' | 'skipped') => ({
       callId: `c-${status}`, name: 'build_road', status, summary: '', isRead: false,
@@ -924,12 +872,8 @@ describe('the two decks, and the clock that steps up beside the word', () => {
   });
 
   /**
-   * A plain hold reads the banked count, not the running "step N+1 of M" reading: a hold has no
-   * step in progress. But it reads the bare figure, not the ticket's own long sentence
-   * (`pausedWhere`): the ticket's pausemark chip already says "paused after step 2 of 4" in full,
-   * and a dock repeating it verbatim would state one fact twice in one card. Reading the running
-   * count here instead makes the two disagree outright: "step 3 of 4" above an offer note saying
-   * two of four.
+   * A hold has no step in progress, so it reads the banked count; the full sentence belongs to the
+   * ticket's pausemark (`pausedWhere`).
    */
   it('says the banked count tersely, leaving the long sentence to the ticket\'s own pausemark', () => {
     const banked = renderWithI18n(
@@ -944,7 +888,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(banked.getByTestId('dock-meta').textContent).toBe('2 of 4');
     banked.unmount();
 
-    // Nothing banked yet: the bare figure still reads honestly as zero, of the plan's own total.
+    // Nothing banked yet.
     const boundary = renderWithI18n(
       <DeskHeader
         view={makeView({
@@ -957,8 +901,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(boundary.getByTestId('dock-meta').textContent).toBe('0 of 4');
   });
 
-  /** The question card under the dock holds the same summary in full, so the card never repeats it:
-   *  with no size to report either, the face is the state and the clock. */
+  /** The question card below holds the summary in full. */
   it('leaves a gate face to the question card, and folds to one line with the clock', () => {
     const { getByTestId, queryByTestId } = renderFace('gated');
     expect(queryByTestId('dock-meta')).toBeNull();
@@ -991,11 +934,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     expect(refused.queryByTestId('dock-meta')).toBeNull();
   });
 
-  /**
-   * A session set aside on load outranks the map. The banner standing under this exact card already
-   * names the map (it is what the notice is about); a dock reading "on Hexia" over it repeats a true
-   * fact and drops the one the user needs, which is that a saved session could not be read.
-   */
+  /** The banner under this card already names the map, so the dock says the session was set aside. */
   it('names the set-aside session rather than the map it is standing on', () => {
     const { getByTestId } = renderWithI18n(
       <DeskHeader view={makeView({ phase: 'idle' })} now={0} mapName="Hexia" storageSetAside />,
@@ -1007,8 +946,7 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     const view = makeView({ phase: 'executing', current: makeJob(), allowAll: true });
     const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={0} mapName="Hexia" />);
     expect(getByTestId('dock-allow-mark').textContent).toBe(translations.en['agent.dock_asks_off']);
-    // And it can give way. Held at its natural width beside a state that also has a fact to report,
-    // it overran the deck and was drawn over the clock; both halves must be able to lose characters.
+    // At natural width beside the state's own fact it would overrun the clock, so it can shrink.
     const mark = getByTestId('dock-allow-mark');
     expect(mark.style.minWidth).toBe('0');
     expect(mark.style.textOverflow).toBe('ellipsis');
@@ -1040,9 +978,7 @@ describe('the terminal act faces', () => {
     }
   });
 
-  /** The datum is which model, on the face whose act is "go and change it": the endpoint's own name
-   *  does not fit beside the word and a model id does, so this face carries the fact its act needs
-   *  rather than sending the reader to the banner for it. */
+  /** A model id fits beside the word, so the face names the model its act asks to change. */
   it('says which model on the unserved-model face, and nothing where the caller names none', () => {
     const view = makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'model' })] });
     const named = renderWithI18n(<DeskHeader view={view} now={0} modelName="Claude Sonnet 4.5" />);
@@ -1075,7 +1011,7 @@ describe('the terminal act faces', () => {
 describe('the paper each face paints', () => {
   const PAPER: Record<SessionPhase, keyof typeof statePaper> = {
     idle: 'idle',
-    // A text part streaming is still the model working out what to say: think, not work.
+    // Streaming text is still the model working out what to say.
     thinking: 'think',
     streaming: 'think',
     executing: 'work',
@@ -1115,8 +1051,7 @@ describe('deskGlyph and deskFaceKey, as tables', () => {
       ['disconnected', 'pw-disconnected'],
       ['idle', 'pw-flag'],
       ['idle.done', 'pw-check'],
-      // A cap is not a completion: the flag the running face wears for it stays on the receipt, and
-      // the check would say the job finished.
+      // A cap is not a completion, so it wears no check.
       ['idle.capped', 'pw-flag'],
       ['idle.answered', 'pw-reply-bubble'],
       ['idle.silent', 'pw-history'],
@@ -1148,8 +1083,7 @@ describe('deskGlyph and deskFaceKey, as tables', () => {
     }
   });
 
-  /** The flip keys on the state's identity: a clock tick, a countdown digit or a word said
-   *  mid-state repaints the standing face, and only a state change turns the card. */
+  /** A clock tick, a countdown digit or a mid-state word repaints; only a state change turns the card. */
   it('keys the flip on the state, not on the repaint', () => {
     const running = makeView({ phase: 'executing', current: makeJob() });
     const later = makeView({ phase: 'executing', current: makeJob({ ops: [] }), lastEventAt: 9_000 });
@@ -1175,8 +1109,7 @@ describe('the right column: ink for a seat control, muted for the gear alone', (
     expect(asColor(getByTestId('dock-gear').style.color)).toBe(asColor(MUTED));
   });
 
-  /** The manage face carries no gear at all. A door drawn on the room it opens into is a second exit
-   *  for one act, and that card's own Done is the way out; every other connected face keeps it. */
+  /** The manage card's own Done is its way out. */
   it('draws no gear once the manage face it opens is standing', () => {
     const managing = renderWithI18n(<DeskHeader view={FACES.idle!.view} now={0} managing onManage={() => {}} />);
     expect(managing.queryByTestId('dock-gear')).toBeNull();
@@ -1219,17 +1152,13 @@ describe('the flip keys on state identity alone, never on the repaint', () => {
     );
     const before = getByTestId('dock');
 
-    // Same state, only the clock moved: `deskFaceKey` answers the same string, so the card must
-    // stand as the one node rather than turning. `mode="wait"` keeps a genuinely exiting node
-    // mounted until its leave finishes, which would mask a spurious key change checked right away
-    // (the stale node would still read back as `before`) — so the check waits out a full flip's own
-    // leave-then-enter length first, long enough for an unwanted turn to have already replaced it.
+    // Only the clock moved. `mode="wait"` keeps an exiting node mounted until its leave ends, so the
+    // check waits a full flip before reading the node.
     rerender(<DeskHeader view={FACES.executing!.view} now={5_000} />);
     await new Promise((resolve) => { setTimeout(resolve, 700); });
     expect(getByTestId('dock')).toBe(before);
 
-    // A genuine state change answers a different key. `mode="wait"` holds the arriving face off the
-    // DOM until the leave finishes, hence the wait rather than a synchronous assertion.
+    // `mode="wait"` mounts the arriving face only after the leave.
     rerender(<DeskHeader view={FACES.paused!.view} now={5_000} />);
     await waitFor(() => expect(getByTestId('dock')).not.toBe(before));
   });
@@ -1249,7 +1178,6 @@ describe('the retry face branches on the CAUSE, not on whether a delay was compu
     );
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_retry_offline']);
     expect(getByTestId('dock-retry-pill').textContent).toBe(translations.en['agent.action_retry_now']);
-    // No fuse and no digit: there is no clock on this face to draw.
     expect(queryByTestId('retry-seconds')).toBeNull();
   });
 
@@ -1294,8 +1222,7 @@ describe('the key faces name their provider, and a key that is GONE is not one t
     expect(queryByTestId('dock-datum')).toBeNull();
   });
 
-  /** Pressing "Enter a key" drops the refused key, which is the whole point of the press, so the
-   *  card must not land on the sleeping face — neither of the trouble family's two sentences. */
+  /** Pressing "Enter a key" drops the refused key, and the card must not fall to the sleeping face. */
   it('lands the fix-key act on its own sentence rather than on the sleeping face', () => {
     const { getByTestId } = renderWithI18n(
       <DeskHeader view={refused} connected={false} now={0} providerName="Anthropic" />,
@@ -1304,8 +1231,7 @@ describe('the key faces name their provider, and a key that is GONE is not one t
       .toBe(translations.en['agent.dock_err_key_missing']);
     expect(getByTestId('dock-act').textContent).toBe(translations.en['agent.dock_act_fix_key']);
     expect(getByTestId('dock-datum').textContent).toBe('Anthropic');
-    // It is the same trouble family: the danger paper, the warning glyph, and no seat to press —
-    // the job has settled, so there is nothing left to stop, key or no key.
+    // The same trouble family, and no seat: the job has settled.
     expect(getByTestId('dock').dataset.paper).toBe('danger');
     expect(deskSeat(refused, { connected: false })).toBeNull();
   });
@@ -1315,13 +1241,7 @@ describe('the key faces name their provider, and a key that is GONE is not one t
       .not.toBe(deskFaceKey(refused, { connected: false }));
   });
 
-  /**
-   * A keyless incident never offers a doomed retry, whatever its class.
-   *
-   * `try-again` files the same order again, and with nothing in the vault the one thing a second
-   * attempt can produce is a fresh auth failure — so a quota or network incident that arrived with no
-   * key put up a press that could only make things worse. Every keyless incident's act is the key.
-   */
+  /** With no key, `try-again` could only fail on auth again, so every keyless incident offers the key. */
   it('offers the key rather than another attempt on every keyless incident', () => {
     for (const cls of ['network', 'overloaded', 'unknown'] as const) {
       const view = makeView({
@@ -1378,7 +1298,6 @@ describe('the marks and spacing on an action face', () => {
   });
 });
 
-/** A new face turns the card. */
 describe('the card turns between faces', () => {
   function NeverWrapper({ children }: { children: React.ReactNode }) {
     return (
@@ -1388,31 +1307,25 @@ describe('the card turns between faces', () => {
     );
   }
 
-  /** A flipped-in control must not land under a stationary cursor: the turn puts a different verb in
-   *  the same box, so the card takes no pointer events for the length of it. */
+  /** A turn puts a different verb in the same box, under a cursor that has not moved. */
   it('takes no pointer events while it is turning, and takes them again after', async () => {
     const { getByTestId, rerender } = render(<DeskHeader view={FACES.executing!.view} now={0} />, {
       wrapper: NeverWrapper,
     });
     const turning = () => getByTestId('dock').parentElement!.style.pointerEvents;
-    // The first face was not turned to: nothing landed under anything.
+    // The first face was not turned to.
     expect(turning()).toBe('');
 
     const standing = getByTestId('dock');
     rerender(<DeskHeader view={FACES.paused!.view} now={0} />);
-    // `mode="wait"` holds the arriving face off the DOM until the leave finishes, and the arriving
-    // face is the one the guard is for — the departing one is the face the hand already pressed.
+    // `mode="wait"` mounts the arriving face, the one the guard is for, only after the leave.
     await waitFor(() => expect(getByTestId('dock')).not.toBe(standing));
     expect(turning()).toBe('none');
     await waitFor(() => expect(turning()).toBe(''), { timeout: 2_000 });
   });
 });
 
-/**
- * The meta deck is two tones, and which one a word wears says what kind of thing it is: the state's
- * own fact darker, the figures beside it receding. One tone over both flattened the distinction and
- * left the fact reading lighter than the numbers it explains.
- */
+/** The state's fact reads darker than the figures beside it. */
 describe('the meta deck s two tones', () => {
   it('paints the fact darker than the figures beside it', () => {
     const stepping = makeView({
