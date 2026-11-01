@@ -23,7 +23,7 @@ type AutosaveFile = SaveFile & { autosave: 1; history?: HistorySection };
 
 /** What a write reads at the moment it runs, roughly `AUTOSAVE_DEBOUNCE_MS` after the edit that
  *  owed it, so neither can describe a view or a map that has since moved on. */
-export interface AutosaveSources {
+interface AutosaveSources {
   /** The camera of each view opened this session; a view never opened reports nothing. Camera
    *  movement alone never schedules a write: the camera rides along on the next content write. */
   camera(): PersistedCamera | undefined;

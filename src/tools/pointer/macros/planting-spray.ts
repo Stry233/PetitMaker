@@ -13,7 +13,7 @@ import { LatestRequest } from './latest-request';
 const SPRAY_STEP = 3;
 
 /** The seed counter the macro tool's presses share, so every gesture draws from one sequence. */
-export interface SeedCounter {
+interface SeedCounter {
   /** The next seed, consumed. */
   next(): number;
   /** The next seed, left for the next press. */
@@ -34,7 +34,8 @@ interface Spray {
   stage: number;
   anchorSeed: number;
   baseIds: Set<string>;
-  timer: ReturnType<typeof setInterval>;
+  /** Stops the hold's burst ticks on the host's clock. */
+  stopTicks: () => void;
 }
 
 interface GhostRequest { coord: MacroCoord; key: string; ctx: MacroToolContext; id: MacroId; seed: number; radius: number; region?: MacroCoord[] }
@@ -58,7 +59,7 @@ export class PlantingSpray {
       id, at: coord, last: coord, stroke: ctx.beginStroke(), changes: 0,
       pending: 0, done: false, ctx: adjustContext(ctx), anchor: coord, stage: 0, anchorSeed: this.seeds.peek(),
       baseIds: new Set(ctx.state.objects.keys()),
-      timer: setInterval(() => { const s = this.spray; if (s && s.pending === 0) this.burst(s.at); }, HOLD_BURST_MS),
+      stopTicks: ctx.holdClock.every(HOLD_BURST_MS, () => { const s = this.spray; if (s && s.pending === 0) this.burst(s.at); }),
     };
     this.burst(coord);
   }
@@ -79,7 +80,7 @@ export class PlantingSpray {
   finish(): void {
     const spray = this.spray;
     if (!spray) return;
-    this.spray = null; clearInterval(spray.timer); spray.done = true;
+    this.spray = null; spray.stopTicks(); spray.done = true;
     if (spray.pending === 0) this.settle(spray);
   }
 
@@ -124,7 +125,7 @@ export class PlantingSpray {
   private fail(spray: Spray, error: unknown): void {
     console.error('[macro] landing failed', error);
     if (this.spray === spray) this.spray = null;
-    clearInterval(spray.timer);
+    spray.stopTicks();
     spray.done = true;
     spray.pending--;
     if (spray.pending === 0) this.settle(spray);

@@ -26,7 +26,7 @@ import { coatingStripFor, strippableRefusal } from '../placement/coatings';
 import { placeObjectCommand, removeObjectCommand } from '../../core/model/command-build';
 
 /** How far, in placement cells, a paste that does not fit where it was asked looks for open ground. */
-export const PASTE_REACH = 10;
+const PASTE_REACH = 10;
 
 /** What a copy took: the arrangement (null when nothing could be copied), where its outline's
  *  top-left stood on the map, and how many selected objects it left out. */
@@ -90,7 +90,7 @@ function memberAt(m: CopiedMember, at: MacroCoord, id: string): PlacedObject {
 
 /** A copy planned at one place: the objects it would place, whether the rules take all of them, and
  *  what refused it. */
-export interface PastePlan {
+interface PastePlan {
   /** The outline's top-left on the map. */
   at: MacroCoord;
   /** The members that would be placed, standing where the plan puts them. */
@@ -214,7 +214,7 @@ function offsetsWithin(reach: number): MacroCoord[] {
 }
 
 /** The reach that covers the whole of `state`'s map from any cell on it. */
-export function wholeMapReach(state: GridState): number {
+function wholeMapReach(state: GridState): number {
   const { width, height } = state.template;
   return Math.ceil(Math.hypot(width, height));
 }
@@ -225,7 +225,7 @@ export function wholeMapReach(state: GridState): number {
  * layer only when no such place is in reach. A place whose outline leaves the map is never tried.
  * Null when nothing fits.
  */
-export function findOpenPaste(
+function findOpenPaste(
   rules: RuleDispatcher, state: GridState, a: Arrangement, at: MacroCoord,
   { level, reach = PASTE_REACH }: { level: number; reach?: number },
 ): PastePlan | null {
@@ -243,7 +243,7 @@ export function findOpenPaste(
 }
 
 /** Called once per member right before its placement runs, so a view can play the landing. */
-export type PasteHook = (obj: PlacedObject) => void;
+type PasteHook = (obj: PlacedObject) => void;
 
 /** What a placed paste came to: the ids it placed, or the refusal that left the map unchanged. */
 export interface PasteResult {
@@ -306,6 +306,24 @@ export type PasteAim =
   | { kind: 'cell'; cell: MacroCoord }
   | { kind: 'region'; cells: readonly MacroCoord[] }
   | { kind: 'near'; origin: MacroCoord };
+
+const clampTo = (v: number, hi: number): number => Math.min(Math.max(v, 0), Math.max(hi, 0));
+
+/**
+ * Where the paste key aims (EDIT-54), never at the pointer: the picked block as the copy's top-left
+ * when one is picked, else inside the painted region when one is painted, else the open ground
+ * nearest the copy's own origin, held on the map `template` frames, so a copy from another map lands
+ * where it stood there; a copy with no origin starts from the map's middle.
+ */
+export function pasteKeyAim(
+  a: Arrangement,
+  { pickedCell, region, template }: { pickedCell: MacroCoord | null; region: readonly MacroCoord[]; template: { width: number; height: number } },
+): PasteAim {
+  if (pickedCell) return { kind: 'cell', cell: pickedCell };
+  if (region.length > 0) return { kind: 'region', cells: region };
+  const from = a.origin ?? { x: Math.floor((template.width - a.w) / 2), y: Math.floor((template.height - a.h) / 2) };
+  return { kind: 'near', origin: { x: clampTo(from.x, template.width - a.w), y: clampTo(from.y, template.height - a.h) } };
+}
 
 /** Whether every member of `a` with its outline at `at` covers only cells of `inside`, keyed by
  *  `cellKey` on the placement grid, as a planting keeps to a painted region. */

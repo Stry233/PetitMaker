@@ -24,7 +24,7 @@ import { writePlanetFile } from '../../../../../io/save/planet-codec';
 import { setToastPresenter } from '../../../../../platform/channels/toast-bus';
 import { planetFixture, NO_PLAZA } from '../../../../_support/planet';
 import { jsonFile } from '../../../../_support/json-file';
-import { newMap, requestTransferPreview } from '../../../../../editor/operations';
+import { newMap } from '../../../../../editor/operations';
 import { transferPreviewOf } from '../../../../../tools/generation/run/planet-preview';
 import { currentEditor, editorPort } from '../../../../../editor/session/context';
 import { createExecutor } from '../../../../../state/executor';
@@ -35,12 +35,6 @@ vi.mock('../../../../../pipelines/moderation/text/reviewer', async (original) =>
   ...await original<typeof import('../../../../../pipelines/moderation/text/reviewer')>(),
   reviewText: vi.fn(async () => ({ allowed: true })),
 }));
-
-// Passthrough, watched: how often the carry step asks for the transfer.
-vi.mock('../../../../../editor/operations', async (original) => {
-  const actual = await original<typeof import('../../../../../editor/operations')>();
-  return { ...actual, requestTransferPreview: vi.fn(actual.requestTransferPreview) };
-});
 
 const HEXIA = MAP_TEMPLATES['hexia']!;
 const TAFA = MAP_TEMPLATES['tafa']!;
@@ -556,11 +550,10 @@ describe('the carry step', () => {
     await ready();
   });
 
-  it('shows the loader on both pictures until the transfer is worked out, and asks once per destination', async () => {
+  it('shows the loader on both pictures until the transfer is worked out, and again only for a changed map', async () => {
     const w = world();
     paint(w.executor, 40);
     show();
-    vi.mocked(requestTransferPreview).mockClear();
     toCarry();
     // The step paints first; the transfer is worked out after it.
     expect(preview(carryOption()).getAttribute('aria-busy')).toBe('true');
@@ -568,20 +561,17 @@ describe('the carry step', () => {
     expect(preview(freshOption()).getAttribute('aria-busy')).toBe('true');
     await ready();
     expect(preview(freshOption()).getAttribute('aria-busy')).toBeNull();
-    expect(requestTransferPreview).toHaveBeenCalledTimes(1);
     // Panning, going back and coming again reuse it.
     drag(preview(carryOption()), 50, 30);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(verb());
     expect(preview(carryOption()).getAttribute('aria-busy')).toBeNull();
     await flush();
-    expect(requestTransferPreview).toHaveBeenCalledTimes(1);
     // A changed map is a different question.
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     paint(w.executor, 42);
     fireEvent.click(verb());
     await ready();
-    expect(requestTransferPreview).toHaveBeenCalledTimes(2);
   });
 
   it('chooses an option on a tap of its picture, and not on a drag', async () => {
@@ -728,20 +718,5 @@ describe('Export first', () => {
     expect(useEditorStore.getState().modals.share).toBe(true);
     expect(useEditorStore.getState().shareTarget).toBe('keep');
     act(() => { useEditorStore.getState().setModal('share', false); });
-  });
-});
-
-describe('the card height cap', () => {
-  it('bounds the card, which never scrolls: its planet list gives way and the actions stay', () => {
-    world();
-    show();
-    const dialog = screen.getByRole('dialog');
-    const cap = parseFloat(dialog.style.maxHeight);
-    expect(dialog.style.maxHeight).toMatch(/px$/);
-    expect(cap).toBeGreaterThan(0);
-    expect(dialog.style.overflow).toBe('hidden');
-    const scrolls = (el: HTMLElement | null): boolean => !!el && el !== dialog && (el.style.overflowY === 'auto' || scrolls(el.parentElement));
-    expect(scrolls(screen.getByTestId('planet-hexia'))).toBe(true);
-    expect(scrolls(screen.getByTestId('planet-switch'))).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import { wholeCellsOf } from '../../core/grid/footprint';
 import { objectRect } from '../../state/object-geometry';
 import { isCirculationTag } from '../../config/annotation-tags';
 
-export interface ZoneFact {
+interface ZoneFact {
   id: string;
   num: number;
   /** The preset tag id, the custom tag's text, or null. */
@@ -38,7 +38,7 @@ export interface ZoneFact {
 
 /** The typical thickness of a cell set: the median, over its cells, of the shorter of the row and
  *  column runs through each cell. A band drawn at any angle reads about its drawn width. */
-export function typicalWidth(cells: Set<number>, W: number): number {
+function typicalWidth(cells: Set<number>, W: number): number {
   const run = (i: number, step: number, sameLine: (j: number) => boolean) => {
     let n = 1;
     for (let j = i + step; cells.has(j) && sameLine(j); j += step) n++;
@@ -94,7 +94,7 @@ export interface AnnotationSurvey {
   outside: Partial<Record<ContentKind, number>>;
 }
 
-export interface ParcelEdges { parcels: number; paths: number; fixed: number; open: number }
+interface ParcelEdges { parcels: number; paths: number; fixed: number; open: number }
 
 /** What the edges of the parcels (zones `isPath` does not mark) meet: another parcel, a path, ground
  *  that is not open (coast, a landmark, the map edge or ground outside `ground`), or open ground no
@@ -262,7 +262,7 @@ export function surveyAnnotations(state: GridState): AnnotationSurvey {
 
 /** What a built map holds, by kind: the catalog roles, surfaces (coatings such as roads), crossings
  *  (other placed items without a role) and the two terrains. */
-export const CONTENT_KINDS = ['home', 'amenity', 'canopy', 'groundcover', 'surface', 'crossing', 'water', 'mountain'] as const;
+const CONTENT_KINDS = ['home', 'amenity', 'canopy', 'groundcover', 'surface', 'crossing', 'water', 'mountain'] as const;
 export type ContentKind = typeof CONTENT_KINDS[number];
 
 /** The kind of one placed item. */
@@ -271,7 +271,7 @@ export function contentKindOf(catalogId: string): ContentKind {
   return itemRole(item) ?? (isCoatingItem(item) ? 'surface' : 'crossing');
 }
 
-export interface ZoneContent {
+interface ZoneContent {
   /** Items whose footprint centre lies in the zone, and terrain cells in it, by kind. */
   counts: Partial<Record<ContentKind, number>>;
   /** Zone cells under an item or terrain, over the zone's cells. */
@@ -279,7 +279,7 @@ export interface ZoneContent {
 }
 
 /** What stands inside each zone, and what was built on open ground outside every zone. */
-export function zoneContents(state: GridState): { zones: Map<string, ZoneContent>; outside: Partial<Record<ContentKind, number>> } {
+function zoneContents(state: GridState): { zones: Map<string, ZoneContent>; outside: Partial<Record<ContentKind, number>> } {
   const W = state.template.width, H = state.template.height;
   const zones = (state.annotations?.items ?? []).filter((n): n is ZoneNote => n.kind === 'zone');
   const cellsOf = zones.map((z) => zoneWholeCells(z, W, H));
@@ -329,7 +329,7 @@ const CONTENT_WORDS: Record<ContentKind, string> = {
 };
 
 /** Content counts as "2 home, 14 tree"; empty when there are none. */
-export function contentText(counts: Partial<Record<ContentKind, number>>): string {
+function contentText(counts: Partial<Record<ContentKind, number>>): string {
   return CONTENT_KINDS.filter((k) => counts[k]).map((k) => `${counts[k]} ${CONTENT_WORDS[k]}`).join(', ');
 }
 

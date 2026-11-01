@@ -262,7 +262,7 @@ export function runStroke(
 }
 
 /** What `runStrokeBody` settles to: a finished refusal to return as is, or the body's result. */
-export type StrokeBodyOutcome<T> = { refusal: ToolOutcome } | { result: T; detail?: ToolResultDetail };
+type StrokeBodyOutcome<T> = { refusal: ToolOutcome } | { result: T; detail?: ToolResultDetail };
 
 /**
  * The callback variant of runStroke, for a stroke body that issues its own commands (a per-cell loop

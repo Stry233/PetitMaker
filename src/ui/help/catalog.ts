@@ -7,7 +7,6 @@
 import { forEdition, inEdition } from '../../platform/build/edition';
 import { editionHelpPage } from './edition-help';
 import type { HelpGroupId, HelpPage, HelpPageId, HelpSection } from './page-schema';
-import { MAP_LOAD_SHOWN } from '../chrome/modals/load/map-load';
 import { START_PAGES } from './pages/start';
 import { BUILD_PAGES } from './pages/build';
 import { GENERATE_PAGES } from './pages/generate';
@@ -39,10 +38,9 @@ const WRITTEN: readonly HelpPage[] = [
   ...MISC_PAGES,
 ];
 
-/** A page ships only where its subject does: the zone-load meter is gated by `MAP_LOAD_SHOWN`, so
- *  its page (and every pointer to it) follows the same flag, and a page the edition leaves out goes
- *  with its pointers too. */
-const SHIPPED = new Set(WRITTEN.filter((p) => (p.id !== 'load' || MAP_LOAD_SHOWN) && inEdition(p)).map((p) => p.id));
+/** A page ships only where its edition does, and a page the edition leaves out goes with its
+ *  pointers too. */
+const SHIPPED = new Set(WRITTEN.filter(inEdition).map((p) => p.id));
 const shipped = (id: HelpPageId): boolean => SHIPPED.has(id);
 
 /** A page's sections, key rows and questions as this edition offers them. */

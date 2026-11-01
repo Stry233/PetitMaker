@@ -10,7 +10,7 @@ import type { CellZone } from '../../../core/game/zones';
 import { CHUNK_GRID_STYLE } from '../../shared/grid/reference-grid';
 
 /** One preview grid the scan posts, as the painter reads it. */
-export interface ScanPicturePreview {
+interface ScanPicturePreview {
   /** `coverage` in pass 1, `ground` in pass 2. */
   readonly kind: 'coverage' | 'ground';
   /** The grid's top-left corner on the ground, in the scan's pixels. */

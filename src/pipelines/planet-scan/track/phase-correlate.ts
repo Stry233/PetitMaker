@@ -132,7 +132,7 @@ export function overlapNcc(
 }
 
 /** Correlator tuning; each value defaults to, and is documented in, `SCAN_PROFILE.tracking.correlation`. */
-export interface PhaseCorrelatorOptions {
+interface PhaseCorrelatorOptions {
   readonly candidates?: number;
   readonly suppressRadius?: number;
   readonly smoothSigma?: number;

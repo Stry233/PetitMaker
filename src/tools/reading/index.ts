@@ -11,7 +11,7 @@
  *   street-ends.ts   where a street stops, on a pavement mask or a finished map
  *   surface.ts       where a 1x1 flat object may stand, and so where a road tile may be laid
  */
-export { landAt, readMap, type MapMasks } from './masks';
+export { readMap, type MapMasks } from './masks';
 export { segmentRegions, type Region } from './regions';
 export { waterBodies, type WaterBody } from './water-bodies';
 export { eachTerminus, streetTermini } from './street-ends';

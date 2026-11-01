@@ -4,6 +4,9 @@ import { cellEdges } from '../../../../core/model/annotation/dimensions';
 import type { BuildShape } from '../../../../state/editing/edit-mode';
 import { clearRegion, keepRegionWash, showRegion } from '../../../../editor/editing/region-brush';
 import { useT } from '../../../../i18n/context';
+import type { MacroCoord } from '../../../../core/model/types';
+import { DEFAULT_REGION_REQUEST } from '../../../../state/editing/vocabulary';
+import { useUiPreview, useUiPreviewPose } from '../../../design/preview';
 import { useEditorStore } from '../../../../state/store';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { QUAD } from '../../units';
@@ -13,19 +16,28 @@ import { ToolbarHost } from '../toolbar-morph';
 import { ShapeOptions } from '../ShapeOptions';
 import { DimensionsToggle } from '../DimensionsToggle';
 
+const NO_REGION: MacroCoord[] = [];
+
 /** The region selection screen standing in the bar's place, offering what the store's region request asks. */
 export function ScopeScreen({ onDone }: { onDone: () => void }) {
   const t = useT();
   const cellPill = useCellPill('road');
-  const region = useEditorStore(s => s.region);
-  const tool = useEditorStore(s => s.regionTool);
-  const brushShape = useEditorStore(s => s.regionBrushShape);
+  // A picture stands the screen over an empty region at its pose, and never touches the live map's wash.
+  const pictured = useUiPreview();
+  const posed = useUiPreviewPose()?.regionScreen;
+  const liveRegion = useEditorStore(s => s.region);
+  const region = posed ? NO_REGION : liveRegion;
+  const liveTool = useEditorStore(s => s.regionTool);
+  const tool = posed?.tool ?? liveTool;
+  const liveBrushShape = useEditorStore(s => s.regionBrushShape);
+  const brushShape = posed ? (posed.tool === 'erase' ? liveBrushShape : posed.tool) : liveBrushShape;
   const setTool = useEditorStore(s => s.setRegionTool);
   const size = useEditorStore(s => s.regionBrushSize);
   const setSize = useEditorStore(s => s.setRegionBrushSize);
   const dimensions = useEditorStore(s => s.regionDimensions);
   const setDimensions = useEditorStore(s => s.setRegionDimensions);
-  const { tools: allowed, minSide } = useEditorStore(s => s.regionRequest);
+  const liveRequest = useEditorStore(s => s.regionRequest);
+  const { tools: allowed, minSide } = posed ? DEFAULT_REGION_REQUEST : liveRequest;
   const shapes = allowed.filter((tool): tool is BuildShape => tool !== 'erase');
   const erasing = tool === 'erase';
   const shape = erasing ? brushShape : tool;
@@ -33,10 +45,10 @@ export function ScopeScreen({ onDone }: { onDone: () => void }) {
 
   const template = useEditorStore(s => s.gridState?.template);
   // The template sets the guides' ink scale, which the overlay reads.
-  useEffect(() => { showRegion(region, dimensions); }, [region, dimensions, template]);
+  useEffect(() => { if (!pictured) showRegion(region, dimensions); }, [pictured, region, dimensions, template]);
 
   // Done retains the scope wash, while dimensions belong only to the editing screen.
-  useEffect(() => keepRegionWash, []);
+  useEffect(() => (pictured ? undefined : keepRegionWash), [pictured]);
 
   const bounds = useMemo(() => cellEdges(region), [region]);
   const tooSmall = minSide !== null && bounds !== null

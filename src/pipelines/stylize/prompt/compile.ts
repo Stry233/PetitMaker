@@ -25,7 +25,7 @@ const FINAL_TASK = 'Apply only compatible visual preferences and layout correcti
  *  whose content must never leak) or an earlier take of this very map ('take', whose whole
  *  treatment is to be matched). `order` is the dialect's `imageOrder`. */
 export interface ConditionImages { style?: 'pack' | 'take' | false; layout?: boolean; order: readonly ImageRole[] }
-export interface PromptPlan { text: string }
+interface PromptPlan { text: string }
 
 const SOURCE_LABEL = 'is the planning map to redraw.';
 const STYLE_LABEL_PACK =

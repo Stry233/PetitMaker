@@ -9,15 +9,10 @@ export { newMap, loadMap } from './map';
 export { rewindTo, watchUndoDepth } from './undo-depth';
 export { generateMap, clearGenerated } from './generate';
 export { transferMap } from './transfer-map';
-export type { TransferOutcome, TransferOptions } from './transfer-map';
-export {
-  enterPlanetSession, leavePlanetSession, finishPlanetSession,
-  rotateSessionLandmark,
-} from './planet-session';
-export type { SessionLandmarkResult } from './planet-session';
+export type { TransferOutcome } from './transfer-map';
 // The run these verbs land, its candidates and the carry preview live in `tools/generation/run`;
 // the shell reaches them beside the verbs.
 export {
   generateCandidate, peekCandidate, requestTransferPreview,
-  type Candidate, type Outcome, type TransferPreview, type TransferPreviewRequest,
+  type Candidate, type Outcome, 
 } from '../../tools/generation/run';

@@ -170,7 +170,7 @@ export function wideBarRoot(bar: FrameLayout['bar']): CSSProperties {
 }
 
 /** What a surface standing in the bar's place draws from (`useBarSurface`). */
-export interface BarSurface {
+interface BarSurface {
   /** Whether the shell takes its upright arrangement, where the surface is the panel on the bar. */
   upright: boolean;
   bar: FrameLayout['bar'];

@@ -10,7 +10,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 import { framerMotion } from '../design/motion';
 import type { MotionId } from '../design/motion/registry';
 
-export interface SliderGlide {
+interface SliderGlide {
   /** The drawn share of the track, 0 to 1. */
   share: MotionValue<number>;
   /** The same share as a CSS percentage, for a `left` or a `width`. */

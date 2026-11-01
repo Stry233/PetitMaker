@@ -6,8 +6,7 @@ import { isImportable, type Badge, type DroppedRows, type ExportComposition, typ
 import { canvasFitScale, CANVAS_LIMITS, type CanvasLimits, type PixelSize } from './sizing';
 import { moduleBaseFor, currentBandSize } from '../share/glyph/geometry';
 import type { Rect } from '../../core/grid/rect';
-export type { ExportComposition, ExportOptions, Rect, ResolutionKey };
-export type { PixelSize } from './sizing';
+export type { ExportOptions, Rect };
 
 /** Composition width per preset. `original` is resolved from the captured canvas width. */
 export const RESOLUTION_WIDTHS: Record<ResolutionKey, number> = { compact: 960, standard: 1600, high: 2400, original: 1600 };
@@ -23,7 +22,7 @@ export const PAD = 28;
 const GAP = 18;
 const TITLE_H = 34, DESC_H = 26, BADGE_ONLY_H = 34;   // header sub-heights
 const LAYER_LABEL_H = 20;                              // "LAYERS" strip above the column
-export const CARD_3D_H = 130;                          // optional 3D card row
+const CARD_3D_H = 130;                          // optional 3D card row
 export const CODE_LABEL_H = 20;                        // heading above the PetitGlyph raster
 const FOOTER_H = 40;                                   // footer band
 const BRAND_H = 56;                                    // maker's band, on every export

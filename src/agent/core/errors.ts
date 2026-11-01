@@ -1,7 +1,7 @@
 import { httpFailureKind, QUOTA_WORDING } from '../../platform/remote/http-failure';
 import type { ErrorClass, TurnError } from './types';
 
-export interface RawFailure { status?: number; message: string; retryAfterMs?: number; aborted?: boolean }
+interface RawFailure { status?: number; message: string; retryAfterMs?: number; aborted?: boolean }
 
 // Context-window and request-size messages across supported providers.
 const OVERFLOW_MESSAGE = /context.length|maximum context|too many tokens|prompt is too long|exceed context limit/i;

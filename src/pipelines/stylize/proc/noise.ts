@@ -17,7 +17,7 @@ export function contentRandom(catalogId: string, x: number, y: number, salt: str
 }
 
 
-export interface NoiseField {
+interface NoiseField {
   /** Value noise in [0,1] at a point. */
   at(x: number, y: number): number;
   /** Fractal sum. Each octave rotates the domain, which is what stops the sum showing the

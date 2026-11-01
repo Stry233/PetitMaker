@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   boundsOfSpans, hatchBars, isPreviewCell, isSolidRect, previewDots, previewIconRect,
-  previewPalette, PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES,
+  previewPalette, PREVIEW_CELL_ART, PREVIEW_ICON_ART,
 } from '../../../../view/shared/overlay/preview-cell';
+import { PREVIEW_PALETTES } from '../../../../view/shared/overlay/preview-cell-art';
 import { cellsBounds } from '../../../../core/grid/rect';
 import type { Rect } from '../../../../core/grid/rect';
 

@@ -6,14 +6,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { useUiZoomShortcut } from '../../../ui/app/use-ui-zoom-shortcut';
+import { UiZoomShortcut } from '../../../ui/app/use-ui-zoom-shortcut';
 import { useKeybinds } from '../../../state/keymap/store';
 import { useEditorStore } from '../../../state/store';
-
-function Zoomer() {
-  useUiZoomShortcut();
-  return null;
-}
 
 /** Dispatch a keydown at `target` (window by default) and report whether it was consumed. */
 function press(init: KeyboardEventInit, target: EventTarget = window): boolean {
@@ -35,7 +30,7 @@ afterEach(() => {
 
 describe('the UI-scale listener', () => {
   it('steps the scale on the shipped keys, in both spellings of the keycap', () => {
-    const view = render(<Zoomer />);
+    const view = render(<UiZoomShortcut />);
     expect(press({ key: '=', ctrlKey: true })).toBe(true);
     expect(zoom()).toBeCloseTo(1.05, 5);
     expect(press({ key: '_', ctrlKey: true, shiftKey: true })).toBe(true); // the - keycap, shifted
@@ -44,7 +39,7 @@ describe('the UI-scale listener', () => {
   });
 
   it('follows a rebind, live, and drops the key it left behind', () => {
-    const view = render(<Zoomer />);
+    const view = render(<UiZoomShortcut />);
     act(() => { useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+9'); });
     expect(press({ key: '=', ctrlKey: true })).toBe(false);
     expect(zoom()).toBeCloseTo(1, 5);
@@ -54,7 +49,7 @@ describe('the UI-scale listener', () => {
   });
 
   it('follows a rebind onto a numpad key', () => {
-    const view = render(<Zoomer />);
+    const view = render(<UiZoomShortcut />);
     act(() => { useKeybinds.getState().rebind('app.ui_zoom_in', 'ctrl+numadd'); });
     expect(press({ key: '+', code: 'NumpadAdd', ctrlKey: true })).toBe(true);
     expect(zoom()).toBeCloseTo(1.05, 5);
@@ -62,7 +57,7 @@ describe('the UI-scale listener', () => {
   });
 
   it('an unbound direction has no key at all', () => {
-    const view = render(<Zoomer />);
+    const view = render(<UiZoomShortcut />);
     act(() => { useKeybinds.getState().clear('app.ui_zoom_out'); });
     expect(press({ key: '-', ctrlKey: true })).toBe(false);
     expect(zoom()).toBeCloseTo(1, 5);
@@ -70,7 +65,7 @@ describe('the UI-scale listener', () => {
   });
 
   it('stands aside while the user is typing', () => {
-    const view = render(<Zoomer />);
+    const view = render(<UiZoomShortcut />);
     act(() => { useKeybinds.getState().rebind('app.ui_zoom_in', 'j'); });
     const field = document.createElement('input');
     document.body.appendChild(field);
@@ -86,7 +81,7 @@ describe('the UI-scale listener', () => {
   it('[UI-34] keeps touch mode on its own stops, 60% to 180% through 125% upright', () => {
     act(() => { useEditorStore.getState().setLayoutShape('portrait'); useEditorStore.getState().setInputMode('touch'); });
     try {
-      render(<Zoomer />);
+      render(<UiZoomShortcut />);
       expect(zoom()).toBe(1.25);
       press({ key: '=', ctrlKey: true });
       expect(zoom()).toBe(1.3);

@@ -9,7 +9,7 @@ import type { SandboxWorld } from '../../../editor/sandbox/demo-world';
 import type { Furniture } from './demo-player';
 import type { DemoView } from './scenes';
 
-export interface DemoViewHost {
+interface DemoViewHost {
   renderer: MapRenderer;
   world: SandboxWorld;
   /** Whether the figure stands still under reduced motion, where plops and spins do not play. */
@@ -21,15 +21,17 @@ export interface DemoViewHost {
 export function createDemoView({ renderer, world, still, holdGhost, furniture }: DemoViewHost): DemoView {
   const view = renderer.asEditorView();
   const overlay = () => view.overlay;
+  const notes = () => {
+    renderer.drawAnnotations(world.state.annotations ?? null, {
+      draft: world.annotationDraft, selectionIds: world.annotationSelection, inkScale: annotationInkScale(world.state.template),
+      tagLabel: noteTagLabel(world.state),
+    });
+    renderer.requestRender();
+  };
+  world.watchNotes(notes);
   return {
     clearGhost: () => { overlay().clearGhost(); holdGhost(false); },
     groupGhost: (members) => { overlay().showGroupPlacementGhost(members, true); holdGhost(true); },
-    selection: (x, y, w, h, append) => { overlay().showSelection({ x, y, w, h }, PLACEMENT_GRID, { append }); },
-    clearSelection: () => { overlay().clearSelection(); },
-    band: (rect) => {
-      if (rect) overlay().showBand({ x: rect.x, y: rect.y, w: rect.w, h: rect.h });
-      else overlay().clearBand();
-    },
     paintGhost: (cells, icon = 'mountain') => {
       if (cells) { overlay().showGhost(cellSet(icon === 'ground' ? PLACEMENT_GRID : TERRAIN_GRID, cells), { icon, valid: true }); holdGhost(true); }
       else { overlay().clearGhost(); holdGhost(false); }
@@ -42,19 +44,20 @@ export function createDemoView({ renderer, world, still, holdGhost, furniture }:
       if (cells) overlay().showPath(cellSet(TERRAIN_GRID, cells));
       else overlay().clearPath();
     },
-    marks: (marks) => { furniture({ marks: [...marks] }); },
-    gauge: (v) => { furniture({ gauge: v }); },
+    marks: (ends) => { furniture({ marks: ends }); },
+    loadMeter: (on) => { furniture({ loadMeter: on }); },
+    // An info notice reads as the app's plain toast; a warning as the toast a refusal shows.
+    notice: (n) => {
+      furniture({
+        toast: !n ? null : n.tone === 'info'
+          ? { kind: 'key', key: n.key, ...(n.params ? { params: n.params } : {}) }
+          : { kind: 'refusal', message: n.key, ...(n.params ? { params: n.params } : {}), tone: 'warning' },
+      });
+    },
     plop: (id) => { if (!still()) view.plopObject(id); },
     poof: (id) => { if (!still()) view.animateRemove?.(id); },
     spin: (id, fromDeg, toDeg) => { if (!still()) view.animateRotation(id, fromDeg, toDeg); },
     groupSpin: (turn) => { if (!still()) view.animateGroupRotation(turn); },
-    annotations: (draft, selection) => {
-      renderer.drawAnnotations(world.state.annotations ?? null, {
-        draft: draft ?? null, selectionIds: selection ?? [], inkScale: annotationInkScale(world.state.template),
-        tagLabel: noteTagLabel(world.state),
-      });
-      renderer.requestRender();
-    },
-    curveHandles: (anchors) => { furniture({ curveHandles: anchors ? anchors.map((a) => ({ ...a })) : null }); },
+    annotations: notes,
   };
 }

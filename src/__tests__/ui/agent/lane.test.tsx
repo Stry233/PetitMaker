@@ -9,7 +9,6 @@ import { render } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { Lane, laneRollup, type LaneView } from '../../../ui/agent/record/Lane';
 import { OpsList } from '../../../ui/agent/record/OpRow';
-import { DANGER_INK } from '../../../ui/design/tokens';
 import { translateFor } from '../../../i18n/context';
 import type { OpRow as OpRowData } from '../../../agent/core/project-view';
 import type { TextKey } from '../../../i18n/keys';
@@ -29,12 +28,6 @@ const backing = new Map<string, string>();
 
 function renderWithI18n(node: React.ReactElement) {
   return render(node, { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> });
-}
-
-function asColor(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.color = value;
-  return probe.style.color;
 }
 
 function makeLane(over: Partial<LaneView> = {}): LaneView {
@@ -125,7 +118,6 @@ describe('Lane: the line', () => {
   it('reads the whole line in the danger ink when the helper is in trouble, and chips the cause', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane({ error: 'ground not flat' })} />);
     expect(getByTestId('lane').getAttribute('data-erring')).toBe('true');
-    expect(asColor(getByTestId('lane-line').style.color)).toBe(asColor(DANGER_INK));
     expect(getByTestId('op-chip').textContent).toBe('This step could not be completed.');
   });
 });

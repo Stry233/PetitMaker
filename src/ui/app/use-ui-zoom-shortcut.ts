@@ -24,7 +24,7 @@ function uiZoomCombos(overrides: Overrides): { in: string | null; out: string | 
  *  `matchesUiZoomCombo` (Cmd counts as Ctrl; either spelling of the `=`/`+` and `-`/`_` keycaps).
  *  `ui/design/ui-zoom-anim.ts` eases the live value toward the target, so rapid presses accumulate
  *  against the target rather than restarting a tween from the drifting value. */
-export function useUiZoomShortcut() {
+function useUiZoomShortcut() {
   const overrides = useKeybinds((s) => s.overrides);
   const combos = useRef(uiZoomCombos(overrides));
   useEffect(() => { combos.current = uiZoomCombos(overrides); }, [overrides]);

@@ -34,6 +34,9 @@ const ROUTE_FIT = {
   referenceCellPx: 16,
 } as const;
 
+/** The cell size, in css px, a fit assumes where no view reports one. */
+export const REFERENCE_CELL_PX = ROUTE_FIT.referenceCellPx;
+
 export interface RouteFit {
   /** Css px of one cell at the press; the fit's lengths read through it. */
   readonly cellPixels: number;

@@ -73,7 +73,7 @@ async function screenNotes(log: SessionLog, deps: LoopDeps, checked: Set<string>
 }
 
 /** The context window a job assumes when its model reports none. */
-export const DEFAULT_CONTEXT_TOKENS = 128_000;
+const DEFAULT_CONTEXT_TOKENS = 128_000;
 
 export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcome | 'paused'> {
   const maxTurns = deps.maxTurns ?? MAX_TURNS_DEFAULT;

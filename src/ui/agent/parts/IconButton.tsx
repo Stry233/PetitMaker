@@ -7,7 +7,7 @@ import { Icon, type IconId } from './sprite';
 import { edge, panelTint } from '../panel-skin';
 
 /** The panel's one icon-control size, in frame px. */
-export const ICON_BUTTON = 28;
+const ICON_BUTTON = 28;
 
 /** The free panel's dock disc; it hangs half its own width past the plate's right edge. */
 export const PIN_KNOB = { size: ICON_BUTTON } as const;

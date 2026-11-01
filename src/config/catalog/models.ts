@@ -11,7 +11,7 @@ import type { DeckModelSpec, ModelSpec } from './model-spec';
 import anchorBody from './landmark.json';
 import anchorLandmark from './landmark.model.json';
 
-export interface CatalogModel {
+interface CatalogModel {
   /** Bespoke low-poly model. Absent: the item renders as its category archetype. */
   readonly model3d?: ModelSpec;
   /** Parts standing on the deck when the item is placed as a platform object. */

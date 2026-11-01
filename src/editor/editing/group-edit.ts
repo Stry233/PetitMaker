@@ -23,6 +23,7 @@ import {
   type DeleteGroupResult, type QuarterTurn, type RotateResult,
 } from '../../tools/objects';
 import { showToast } from '../../platform/channels/toast-bus';
+import { groupDeleteNotices } from '../../i18n/terms/copy-notices';
 import { reportRefusal } from '../../core/commands/refusal';
 import { host } from '../host/host';
 import { rotateSessionLandmark, turnsInSession, type SessionLandmarkResult } from '../operations/planet-session';
@@ -75,11 +76,8 @@ function reportDeleteGroup(
   t: Translate,
   result: DeleteGroupResult,
 ): void {
-  if (result.refusal) {
-    reportRefusal(eventBus, result.refusal);
-  } else if (result.kept > 0) {
-    showToast(t('toast.group_delete_kept', { n: result.kept }), 'info');
-  }
+  if (result.refusal) reportRefusal(eventBus, result.refusal);
+  for (const n of groupDeleteNotices(t, result)) showToast(n.text, n.tone);
 }
 
 /**
@@ -112,7 +110,7 @@ export const GROUP_ROTATION_CAUSE = 'group-rotation';
  * was a click or a keypress. `quarterTurns` lets a caller turn either way; the button only ever spins
  * clockwise (+1).
  */
-export function rotateGroupAction(ids: readonly string[], quarterTurns: QuarterTurn): void {
+function rotateGroupAction(ids: readonly string[], quarterTurns: QuarterTurn): void {
   const ed = currentEditor();
   if (!ed || ids.length < 2) return;
   const { executor, state } = ed;

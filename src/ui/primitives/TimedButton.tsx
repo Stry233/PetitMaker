@@ -21,8 +21,6 @@ const RING_GAP = 2;
 /** Stadium-indicator thickness and gap, in CSS pixels. */
 const STADIUM = 8;
 const STADIUM_GAP = 7;
-/** How far a stadium countdown stands below its button, in CSS pixels. */
-export const STADIUM_ROOM = STADIUM_GAP + STADIUM;
 
 /** How the countdown is drawn under reduced motion: one step per second, so the ring still falls
  *  but nothing glides. */
@@ -80,7 +78,7 @@ export function TimedButton({
   after, hint, onPress, paused: pausedProp = false, disabled = false, ring = ACCENT, clock = 'ring', external,
   pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
-  // A pictured button keeps its face and loses its clock (`ui-preview.tsx`). Read before the `||`:
+  // A pictured button keeps its face and loses its clock (`ui/design/preview.tsx`). Read before the `||`:
   // a short-circuit would skip the context hook whenever the prop is true, and a hook that comes
   // and goes between renders breaks every hook after it.
   const pictured = useUiPreview();

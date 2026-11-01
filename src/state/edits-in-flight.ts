@@ -9,7 +9,7 @@ import { createSignal } from '../core/base/signal';
 
 /** Who an edit lands by: the visitor's hand (a press still down, a card carried), which Escape takes
  *  back, or a build landing by itself (a Generate card's replay), which only taking the map back stops. */
-export type EditLanding = 'hand' | 'build';
+type EditLanding = 'hand' | 'build';
 
 const cancels = new Map<() => void, EditLanding>();
 const changed = createSignal();

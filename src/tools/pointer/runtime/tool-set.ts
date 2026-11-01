@@ -29,7 +29,7 @@ let declared: ReadonlyMap<ToolType, HostedTool> | null = null;
  *  live tool: whether a selection may stand while it is up and whether it is a terrain brush (both
  *  the store's facts, `state/editing/edit-mode.ts`), whether an arming puts it in the map's
  *  select mode, and the grid its cells lie on under an arming. */
-export interface ToolDeclaration {
+interface ToolDeclaration {
   holdsSelection: boolean;
   brush: boolean;
   selectMode(arming: ToolArming): boolean;

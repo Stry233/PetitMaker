@@ -60,18 +60,18 @@ export function carrying(...keys: SectionKey[]): Record<SectionKey, boolean> {
 
 /** The session section's wire shape. Files written before the camera moved to `camera` carry a 2D
  *  `camera: { x, y, zoom }` here too, which import still reads. */
-export interface SessionSection {
+interface SessionSection {
   v: 1;
   lockedLayers: number[];
 }
 
-export interface StatsSection {
+interface StatsSection {
   cells: { byType: Record<string, number>; byElevation: number[] };
   objects: { total: number; byCategory: Record<string, number> };
   load: { total: number };
 }
 
-export interface CatalogInfoEntry {
+interface CatalogInfoEntry {
   name: string;
   w: number;
   h: number;
@@ -79,7 +79,7 @@ export interface CatalogInfoEntry {
   loadValue: number;
 }
 
-export interface ManifestSection {
+interface ManifestSection {
   appVersion: string;
   saveVersion: number;
   templateHash: number;

@@ -143,7 +143,6 @@ describe('a camera pan under a stationary pointer', () => {
 
   it('does not feed the tool during a right-drag pan even though panning itself emits viewport-changed', () => {
     activate(ToolType.TerrainBrush);
-    const moveSpy = vi.spyOn(tm, 'handlePointerMove');
     // As in the real 2D renderer, `camera.pan` re-emits viewport-changed synchronously during the drag.
     camera.pan.mockImplementation(() => {
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
@@ -151,25 +150,24 @@ describe('a camera pan under a stationary pointer', () => {
 
     el.dispatchEvent(pointer('pointerdown', { button: 2, buttons: 2, clientX: 200, clientY: 200 }));
     window.dispatchEvent(pointer('pointermove', { buttons: 2, clientX: 230, clientY: 200 }));
+    overlay.showGhost.mockClear();
     window.dispatchEvent(pointer('pointerup', { button: 2, buttons: 0, clientX: 230, clientY: 200 }));
 
-    expect(moveSpy).not.toHaveBeenCalled();
+    expect(overlay.showGhost, 'no brush ghost chases the pan').not.toHaveBeenCalled();
+    expect(gs.cells.flat().some((c) => c?.terrain), 'the pan paints nothing').toBe(false);
   });
 
-  it('pans a Hand-tool left drag through the camera once and feeds the tool nothing mid-drag', () => {
+  it('pans a Hand-tool left drag through the camera once, though the pan itself emits viewport-changed', () => {
     activate(ToolType.Hand);
-    const moveSpy = vi.spyOn(tm, 'handlePointerMove');
     // The pan emits viewport-changed; the pan flag keeps the resampler from answering, so no recursion.
     camera.pan.mockImplementation(() => {
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
     });
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 200, clientY: 150 }));
-    moveSpy.mockClear();
     window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 190, clientY: 150 }));
 
     expect(camera.pan.mock.calls).toEqual([[10, 0]]);
-    expect(moveSpy).not.toHaveBeenCalled();
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 190, clientY: 150 }));
   });
 });

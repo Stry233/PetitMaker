@@ -28,7 +28,7 @@ import { renderShareCodeAsset, shareCodeIssueKey, shareCodeKey, type ShareCodeAs
 export { openingExportOptions, rememberExportOptions } from '../../io/export/options-store';
 
 /** The options with the map's own words taken out, as "export without text" writes them. */
-export function textlessOptions(options: ExportOptions): ExportOptions {
+function textlessOptions(options: ExportOptions): ExportOptions {
   return { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
 }
 
@@ -44,7 +44,7 @@ export function previewSafeOptions(options: ExportOptions, approved: boolean, co
   return (!automaticExportReview && !composing) || approved ? options : textlessOptions(options);
 }
 
-export interface ImageExportRequest {
+interface ImageExportRequest {
   options: ExportOptions;
   /** Export without the title, description and footer text. */
   withoutText: boolean;
@@ -56,7 +56,7 @@ export interface ImageExportRequest {
   site: string;
 }
 
-export interface ImageExportHooks {
+interface ImageExportHooks {
   signal: AbortSignal;
   /** The map check; it runs first where the edition checks automatically. */
   checkMap: () => Promise<MapReview>;
@@ -74,7 +74,7 @@ export interface ImageExportHooks {
   deliver?: (image: Blob) => Promise<void>;
 }
 
-export type ImageExportOutcome =
+type ImageExportOutcome =
   /** Aborted, refused by the map check, declined at the notice, or nothing to export. */
   | { status: 'stopped' }
   /** The text check refused the words or could not run. */

@@ -290,4 +290,4 @@ function treeWeight(style: KitStyle): number {
 const isTree = (catalogId: string): boolean => itemRole(getCatalogItem(catalogId)) === 'canopy';
 
 
-export type { KitGround, PlantMark };
+export type { KitGround };

@@ -8,7 +8,7 @@ import css from './fonts.css?raw';
 
 const FILES = import.meta.glob('./*.woff2', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
-export interface FontFile {
+interface FontFile {
   family: string;
   weight: number;
   /** The `font-display` the stylesheet declares (`swap` when it declares none). */

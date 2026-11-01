@@ -23,7 +23,7 @@ import { planetNaming, shownPlanetName } from '../session/planet-names';
 
 export {
   estimatedTotal, initialSections, sectionsReducer, RECENT_HISTORY_STEPS,
-  type HistoryDepth, type JsonSectionAvailability, type JsonSectionKey, type JsonSections,
+  type HistoryDepth, 
 } from '../../io/export/json-sections';
 
 /** The locked layers and both views' camera poses the session section writes. */

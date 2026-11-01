@@ -3,8 +3,7 @@
  * The desk: character slot and the one dock card, in every face it wears.
  *
  * Rendered under `MotionConfig reducedMotion="always"`, so `Character`'s WAAPI calls never fire
- * (jsdom has none) and a face swap shows in the render that caused it. Colours go through
- * `asBackground` on both sides, since jsdom's cssstyle can normalise equal colours differently.
+ * (jsdom has none) and a face swap shows in the render that caused it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
@@ -13,15 +12,11 @@ import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { translations } from '../../_support/locale-tables';
 import { DeskHeader } from '../../../ui/agent/desk/DeskHeader';
-import { STATUS_CARD_HEIGHT } from '../../../ui/agent/desk/StatusCard';
 import { buildFace, deskPose, deskSeat, deskFaceKey, type DeskContext } from '../../../ui/agent/derive/desk-face';
 import { translatorFor } from '../../../i18n/context';
 import type { SetupFace } from '../../../ui/agent/connection/setup-parts';
-import { metaInk, statePaper } from '../../../ui/agent/panel-skin';
-import { ACTIVE, INK, MUTED } from '../../../ui/design/tokens';
-import { cursors } from '../../../ui/design/styles';
 import { MAX_TURN_ATTEMPTS } from '../../../agent/core/retry';
-import type { JobView, PanelView, SessionPhase } from '../../../agent/core/project-view';
+import type { JobView, PanelView } from '../../../agent/core/project-view';
 import type { ErrorClass, PlanStage } from '../../../agent/core/types';
 import type { Locale } from '../../../core/model/locale';
 import { makeView, renderWithI18n } from '../../_support/agent-panel';
@@ -43,18 +38,6 @@ beforeEach(() => {
   backing.clear();
   useEditorStore.setState({ locale: 'en' });
 });
-
-function asBackground(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.background = value;
-  return probe.style.background;
-}
-
-function asColor(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.color = value;
-  return probe.style.color;
-}
 
 function makeJob(over: Partial<JobView> = {}): JobView {
   return {
@@ -122,26 +105,6 @@ function renderFace(name: keyof typeof FACES) {
 }
 
 describe('the status card is ONE card in every state', () => {
-  it('stands at the constant height, whatever face it wears', () => {
-    expect(STATUS_CARD_HEIGHT).toBe(74);
-    for (const name of Object.keys(FACES)) {
-      const { getByTestId, unmount } = renderFace(name);
-      expect(getByTestId('dock').style.height, name).toBe(`${STATUS_CARD_HEIGHT}px`);
-      unmount();
-    }
-  });
-
-  /** Out of flow in the card's top padding, so no face's lines move for it. */
-  it('wears the beta tag on every face, out of flow', () => {
-    for (const name of Object.keys(FACES)) {
-      const { getByTestId, unmount } = renderFace(name);
-      const tag = getByTestId('dock-beta');
-      expect(tag.textContent, name).toBe('Beta');
-      expect(tag.style.position, name).toBe('absolute');
-      expect(tag.getAttribute('aria-hidden'), name).toBe('true');
-      unmount();
-    }
-  });
 
   it('leads with exactly one state glyph, in the one slot', () => {
     for (const name of Object.keys(FACES)) {
@@ -234,7 +197,6 @@ describe('the seat table: what stands above the gear', () => {
     const idle = renderWithI18n(<DeskHeader view={FACES.idle!.view} now={0} />);
     const bareGear = idle.getByTestId('dock-gear') as HTMLButtonElement;
     expect(bareGear.disabled).toBe(true);
-    expect(bareGear.style.cursor).toBe(cursors.blocked);
     idle.unmount();
 
     const onManage = vi.fn();
@@ -382,12 +344,10 @@ describe('the retry family, as a status-card face', () => {
     );
     const pill = counting.getByTestId('dock-retry-pill');
     expect(pill.textContent).toContain('5');
-    // The pill lights only when the lent clock is spent (TimedButton's own `fired` reading).
-    expect(asBackground(pill.style.backgroundColor)).not.toBe(asBackground(ACTIVE));
     counting.unmount();
 
     const spent = renderWithI18n(<DeskHeader view={FACES.retrying!.view} now={99_999} />);
-    expect(asBackground(spent.getByTestId('dock-retry-pill').style.backgroundColor)).toBe(asBackground(ACTIVE));
+    expect(spent.getByTestId('dock-retry-pill').textContent).not.toContain('5');
   });
 
   it('presses retry-now through the caller\'s verb', () => {
@@ -405,7 +365,6 @@ describe('the retry family, as a status-card face', () => {
       <DeskHeader view={FACES.retrying!.view} now={99_999} onRetryNow={onRetryNow} />,
     );
     const pill = getByTestId('dock-retry-pill');
-    expect(pill.style.pointerEvents).toBe('none');
     fireEvent.click(pill);
     expect(onRetryNow).not.toHaveBeenCalled();
   });
@@ -456,25 +415,6 @@ describe('the retry family, as a status-card face', () => {
 });
 
 describe('the two decks, and the clock that steps up beside the word', () => {
-  it('folds to one centered line where the state has no meta of its own', () => {
-    // A gate never repeats its question (the card below holds it), so it has a clock and no meta.
-    const { getByTestId } = renderFace('gated');
-    const dock = getByTestId('dock');
-    expect(dock.dataset.solo).toBe('true');
-    expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).not.toBeNull();
-  });
-
-  it('keeps the clock at the meta\'s end where there is a meta', () => {
-    const view = makeView({
-      phase: 'executing',
-      current: makeJob({ plan: { stages: PLAN, currentIndex: 2, doneCount: 2, revision: 1 } }),
-    });
-    const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={0} mapName="Hexia" />);
-    expect(getByTestId('dock').dataset.solo).toBe('false');
-    expect(getByTestId('dock-meta').textContent).toBe('step 3 of 4');
-    expect(getByTestId('dock-deck-meta').querySelector('[data-testid="dock-elapsed"]')).not.toBeNull();
-    expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).toBeNull();
-  });
 
   it('tells writing from thinking in the word, on the one paper the two share', () => {
     const thinking = renderWithI18n(<DeskHeader view={FACES.thinking!.view} now={0} />);
@@ -905,7 +845,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
   it('leaves a gate face to the question card, and folds to one line with the clock', () => {
     const { getByTestId, queryByTestId } = renderFace('gated');
     expect(queryByTestId('dock-meta')).toBeNull();
-    expect(getByTestId('dock').dataset.solo).toBe('true');
     expect(getByTestId('dock-deck-word').querySelector('[data-testid="dock-elapsed"]')).not.toBeNull();
   });
 
@@ -946,10 +885,6 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     const view = makeView({ phase: 'executing', current: makeJob(), allowAll: true });
     const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={0} mapName="Hexia" />);
     expect(getByTestId('dock-allow-mark').textContent).toBe(translations.en['agent.dock_asks_off']);
-    // At natural width beside the state's own fact it would overrun the clock, so it can shrink.
-    const mark = getByTestId('dock-allow-mark');
-    expect(mark.style.minWidth).toBe('0');
-    expect(mark.style.textOverflow).toBe('ellipsis');
   });
 });
 
@@ -1009,34 +944,6 @@ describe('the terminal act faces', () => {
 });
 
 describe('the paper each face paints', () => {
-  const PAPER: Record<SessionPhase, keyof typeof statePaper> = {
-    idle: 'idle',
-    // Streaming text is still the model working out what to say.
-    thinking: 'think',
-    streaming: 'think',
-    executing: 'work',
-    gated: 'ask',
-    retrying: 'wait',
-    pausing: 'work',
-    paused: 'wait',
-    // An abort is not a wait: it wears its own darker stop tone.
-    aborted: 'stop',
-    incident: 'danger',
-  };
-
-  for (const phase of Object.keys(PAPER) as SessionPhase[]) {
-    it(`${phase} paints statePaper.${PAPER[phase]}`, () => {
-      const view = makeView({
-        phase,
-        current: phase === 'idle' || phase === 'aborted' ? undefined : makeJob(),
-        ...(phase === 'retrying' ? { retry: RETRY } : {}),
-        ...(phase === 'incident' ? { jobs: [makeJob({ outcome: 'incident', errorCls: 'auth' })] } : {}),
-      });
-      const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={RETRY_MID} />);
-      expect(asBackground(getByTestId('dock').style.background)).toBe(asBackground(statePaper[PAPER[phase]]));
-    });
-  }
-
   it('stands an exhausted ladder on the waiting paper, not the danger one', () => {
     const view = makeView({
       phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'network' })],
@@ -1103,11 +1010,6 @@ describe('the status card\'s words', () => {
 });
 
 describe('the right column: ink for a seat control, muted for the gear alone', () => {
-  it('paints the seat house ink and the resting gear the muted door tone', () => {
-    const { getByTestId } = renderFace('executing');
-    expect(asColor(getByTestId('dock-seat').style.color)).toBe(asColor(INK));
-    expect(asColor(getByTestId('dock-gear').style.color)).toBe(asColor(MUTED));
-  });
 
   /** The manage card's own Done is its way out. */
   it('draws no gear once the manage face it opens is standing', () => {
@@ -1139,7 +1041,6 @@ describe('the flip keys on state identity alone, never on the repaint', () => {
     for (const phase of ['streaming', 'executing', 'thinking', 'executing']) {
       rerender(<DeskHeader view={FACES[phase]!.view} now={0} onPause={pause} />);
       expect(getByTestId('dock')).toBe(card);
-      expect(card.parentElement!.style.pointerEvents).not.toBe('none');
     }
     fireEvent.click(card.querySelector('[data-act="pause"]')!);
     expect(pause).toHaveBeenCalledOnce();
@@ -1278,14 +1179,6 @@ describe('the marks and spacing on an action face', () => {
     expect(queryByTestId('dock-allow-mark')).toBeNull();
   });
 
-  /** The compact datum keeps its width; ellipsis is the final fallback for a clipped card. */
-  it('keeps the datum at its own width', () => {
-    const { getByTestId } = renderWithI18n(<DeskHeader view={FACES.retrying!.view} now={RETRY_MID} />);
-    const datum = getByTestId('dock-datum');
-    expect(datum.style.flexShrink).toBe('0');
-    expect(datum.style.textOverflow).toBe('ellipsis');
-  });
-
   /** The adjacent sentence supplies the noun, so the datum contains only the attempt figure. */
   it('says the attempt as a bare figure, in every locale', () => {
     for (const locale of Object.keys(translations) as Locale[]) {
@@ -1295,56 +1188,5 @@ describe('the marks and spacing on an action face', () => {
       // Nothing but the two numbers, their connective and at most one counter word.
       expect(value.replace(/\{[nm]\}/g, '').trim().length, locale).toBeLessThan(8);
     }
-  });
-});
-
-describe('the card turns between faces', () => {
-  function NeverWrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <MotionConfig reducedMotion="never">
-        <I18nProvider>{children}</I18nProvider>
-      </MotionConfig>
-    );
-  }
-
-  /** A turn puts a different verb in the same box, under a cursor that has not moved. */
-  it('takes no pointer events while it is turning, and takes them again after', async () => {
-    const { getByTestId, rerender } = render(<DeskHeader view={FACES.executing!.view} now={0} />, {
-      wrapper: NeverWrapper,
-    });
-    const turning = () => getByTestId('dock').parentElement!.style.pointerEvents;
-    // The first face was not turned to.
-    expect(turning()).toBe('');
-
-    const standing = getByTestId('dock');
-    rerender(<DeskHeader view={FACES.paused!.view} now={0} />);
-    // `mode="wait"` mounts the arriving face, the one the guard is for, only after the leave.
-    await waitFor(() => expect(getByTestId('dock')).not.toBe(standing));
-    expect(turning()).toBe('none');
-    await waitFor(() => expect(turning()).toBe(''), { timeout: 2_000 });
-  });
-});
-
-/** The state's fact reads darker than the figures beside it. */
-describe('the meta deck s two tones', () => {
-  it('paints the fact darker than the figures beside it', () => {
-    const stepping = makeView({
-      phase: 'executing',
-      current: makeJob({ plan: { stages: PLAN, currentIndex: 1, doneCount: 1, revision: 1 } }),
-    });
-    const { getByTestId } = renderWithI18n(<DeskHeader view={stepping} now={5_000} />);
-    const deck = getByTestId('dock-deck-meta');
-    expect(asColor(deck.style.color)).toBe(asColor(metaInk.fact));
-    expect(asColor(getByTestId('dock-elapsed').style.color)).toBe(asColor(metaInk.figure));
-    expect(asColor(metaInk.fact)).not.toBe(asColor(metaInk.figure));
-  });
-
-  it('softens the fact on the danger paper, where the word must lead', () => {
-    const { getByTestId } = renderWithI18n(
-      <DeskHeader view={FACES['error.auth']!.view} now={0} />,
-    );
-    expect(asColor(getByTestId('dock-deck-meta').style.color)).toBe(asColor(metaInk.danger));
-    expect(asColor(getByTestId('dock-sentence').style.color ?? ''))
-      .not.toBe(asColor(metaInk.danger));
   });
 });

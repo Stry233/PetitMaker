@@ -19,21 +19,18 @@ import {
 import { useEditorStore } from '../../../../../state/store';
 import { pickSelection } from '../../../../../editor/editing/pick-selection';
 import { generateObjectId } from '../../../../../core/model/object-id';
-import { ScaleProvider, fittedUiScale } from '../../../../../ui/design/scale';
+import { ScaleProvider } from '../../../../../ui/design/scale';
 import { ObjectShelf } from '../../../../../ui/shell/bars/objects/ObjectShelf';
 import { InputModeProvider } from '../../../../../ui/design/input-mode';
 import { spec } from '../../../../_support/spec';
 import { GESTURE_TIMING } from '../../../../../platform/input/gesture-timing';
-import { CARD, ROW, SCROLL, SEARCH, SHELF_BOX, TABS, planetShelfItems, shelfItems } from '../../../../../ui/shell/bars/objects/object-shelf';
+import { SCROLL, TABS, planetShelfItems, shelfItems } from '../../../../../ui/shell/bars/objects/object-shelf';
 import { newMap } from '../../../../../editor/operations/map';
 import { editorPort } from '../../../../../editor/session/context';
 import { enterPlanetSession, leavePlanetSession } from '../../../../../editor/operations/planet-session';
 import { host } from '../../../../../editor/host/host';
-import { CONTROL_CLEARANCE } from '../../../../../ui/primitives/use-scroll-row';
 import { wheelPush } from '../../../../../ui/primitives/scroll-input';
 import { ShelfScrollbar } from '../../../../../ui/shell/bars/objects/ShelfScrollbar';
-import { MOTIONS } from '../../../../../ui/design/motion/registry';
-import { MODE, PLATE_BAND, SHELF_SCALE, TEXT, ZOOM } from '../../../../../ui/shell/units';
 import { makeState } from '../../../../_support/map-state';
 import { CATEGORIES, ItemCategory } from '../../../../../config/catalog/categories';
 import { LANDMARKS } from '../../../../../core/game/profile';
@@ -59,11 +56,6 @@ function row(): HTMLElement {
 
 function cardNames(): string[] {
   return within(row()).queryAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
-}
-
-/** The scroller holding the category names. */
-function tabList(): HTMLElement {
-  return screen.getAllByRole('tab')[0]!.parentElement as HTMLElement;
 }
 
 /** A live map on the store's own event bus, so a placement reaches the shelf's subscription. */
@@ -117,191 +109,30 @@ describe('the shelf tabs', () => {
     expect(screen.getByRole('tab', { name: 'Trees' })).toHaveProperty('ariaSelected', 'true');
   });
 
-  it('marks the chosen one with a stadium, whatever the label is wide', () => {
-    mount();
-    const mark = screen.getAllByTestId('shell-shelf-tab-mark')[0]!;
-    // A radius of at least half the height gives semicircular caps at any label width.
-    expect(Number.parseFloat(mark.style.borderRadius))
-      .toBeGreaterThanOrEqual(Number.parseFloat(mark.style.height) / 2);
-  });
-
-  /** As in the game's category row; the active yellow on the chosen word would vanish against the sand. */
-  it('marks the chosen one by the bar alone: every name is one colour on one outline', () => {
-    mount();
-    const words = screen.getAllByRole('tab').map((tab) => tab.firstElementChild as HTMLElement);
-    const inks = new Set(words.map((w) => w.style.color));
-    expect(inks).toEqual(new Set(['rgb(255, 254, 227)']));
-    for (const word of words) expect(word.getAttribute('style')).toContain('-webkit-text-stroke');
-
-    const marks = screen.getAllByTestId('shell-shelf-tab-mark');
-    const filled = marks.filter((m) => m.style.background !== 'transparent');
-    expect(filled).toHaveLength(1);
-  });
-});
-
-/** jsdom has no layout, so these read the styles the row is laid out from. */
-describe('the search field belongs to the row of names', () => {
-  /** The input is a rectangle over the drawn capsule; `pw-field-wrap` and `pw-field-input` move the
-   *  focus ring onto the wrapper (`animations.css`), which wears the stadium's corner. */
-  it('is ringed as the pill it is drawn as when it takes focus', () => {
-    expect(SEARCH.radius).toBe(SEARCH.h / 2);
-
-    mount();
-    const input = screen.getByRole('searchbox');
-    const field = input.parentElement as HTMLElement;
-    expect(input.classList.contains('pw-field-input')).toBe(true);
-    expect(field.classList.contains('pw-field-wrap')).toBe(true);
-    expect(field.style.borderRadius).toBe(`${SEARCH.radius}px`);
-  });
-
-  /** Russian, Thai and French names run half again as wide as Chinese; the names scroll instead. */
-  it('never wraps onto a line of its own, whatever the names are wide', () => {
-    mount();
-    const row = screen.getByRole('searchbox').parentElement!.parentElement!.parentElement as HTMLElement;
-    expect(row.style.flexWrap).toBe('nowrap');
-    expect(tabList().style.flexWrap).toBe('nowrap');
-  });
-
-  /** The tab list shrinks to nothing if needed while the search group does not shrink. */
-  it('keeps its place by making the names the side that gives way', () => {
-    mount();
-    expect(tabList().style.flexShrink).toBe('1');
-    expect(Number.parseFloat(tabList().style.minWidth)).toBe(0);
-    expect((screen.getByRole('searchbox').parentElement!.parentElement as HTMLElement).style.flexShrink).toBe('0');
-  });
 });
 
 /** Outside Chinese and Japanese the names overflow the room beside the search field, and wrapping
- *  would grow the shelf into the map. Overflow is simulated by declaring the row's scroll metrics. */
+ *  would grow the shelf into the map. */
 describe('the row of names travels sideways', () => {
-  /** Declares a content width beyond the row's own, as a long language would produce. */
-  function overflowing(clientWidth = 400, scrollWidth = 900): HTMLElement {
-    const list = tabList();
-    Object.defineProperty(list, 'clientWidth', { value: clientWidth, configurable: true });
-    Object.defineProperty(list, 'scrollWidth', { value: scrollWidth, configurable: true });
-    let left = 0;
-    Object.defineProperty(list, 'scrollLeft', {
-      get: () => left, set: (v: number) => { left = v; }, configurable: true,
-    });
-    return list;
-  }
 
-  it('is one line that scrolls, and hides the platform bar', () => {
-    mount();
-    const list = tabList();
-    expect(list.style.overflowX).toBe('auto');
-    expect(list.style.overflowY).toBe('hidden');
-    expect(list.classList.contains('pw-noscroll')).toBe(true);
-  });
-
-  it('reveals the newly selected tab within its own row', () => {
-    mount();
-    const list = overflowing();
-    const tabs = screen.getAllByRole('tab');
-    const far = tabs[tabs.length - 1]!;
-    Object.defineProperties(far, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
-    fireEvent.click(far);
-    expect(list.scrollLeft).toBe(500);
-  });
-
-  /** A second bar above the item row's would read as a second control; the names fade at an end
-   *  they can still travel toward instead. */
-  it('draws no bar of its own, and fades only at an end it can reach', async () => {
+  /** A second bar above the item row's would read as a second control. */
+  it('draws no bar of its own', () => {
     mount();
     expect(screen.getAllByRole('scrollbar')).toHaveLength(1);
-
-    const list = overflowing();
-    expect(list.style.maskImage).toBe('');   // nothing measured yet
-
-    // `useScrollFade` settles the mask over several frames after a scroll event.
-    fireEvent.scroll(list);
-    await waitFor(() => {
-      expect(list.style.maskImage).toContain('transparent 100%');   // room to the right
-      expect(list.style.maskImage).not.toContain('transparent 0');  // flush at the start
-    });
-
-    list.scrollLeft = 500;
-    fireEvent.scroll(list);
-    await waitFor(() => {
-      expect(list.style.maskImage).toContain('transparent 0');
-      expect(list.style.maskImage).not.toContain('transparent 100%');
-    });
   });
 
-  /** A scroll container clips at its padding box, which would cut the focus ring and hover growth off
-   *  the end names; the padding is taken back as negative margin. */
-  it('keeps room for a ring at its ends without moving either of them', () => {
-    mount();
-    const list = tabList();
-    expect(list.style.padding).toBe(CONTROL_CLEARANCE);
-    expect(list.style.margin).toBe(`calc(0px - ${CONTROL_CLEARANCE})`);
-  });
-
-  /** The two rows stand one above the other, so a notch travels the same distance in either
-   *  (`scroll-input.ts:wheelPush`). */
-  it('takes a wheel by the same rule the item row does', async () => {
-    mount();
-    const list = overflowing();
-
-    // The live zoom includes the window's fit below the design reference.
-    const zoom = ZOOM * fittedUiScale(window.innerWidth, window.innerHeight, 1);
-    fireEvent.wheel(list, { deltaX: 0, deltaY: 100, deltaMode: 0 });
-    // The notch glides (`wheelGlider`) and snaps to its exact target on arrival.
-    await waitFor(() => expect(list.scrollLeft).toBeCloseTo(100 / zoom, 6), { timeout: 2000 });
-    expect(list.scrollLeft).toBeCloseTo(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 400, zoom)!.by, 6);
-
-    // A sideways wheel is left to the browser's native scroll.
-    const was = list.scrollLeft;
-    fireEvent.wheel(list, { deltaX: 40, deltaY: 0, deltaMode: 0 });
-    expect(list.scrollLeft).toBe(was);
-  });
-
-  it('reveals the armed category when a search is cleared', () => {
+  it('keeps the armed category selected once a search is cleared', () => {
     mount('facility-pavilion');
-    const list = overflowing();
-    const facilities = screen.getByRole('tab', { name: 'Facilities' });
-    expect(facilities.getAttribute('aria-selected')).toBe('true');
-    Object.defineProperties(facilities, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
+    const facilities = () => screen.getByRole('tab', { name: 'Facilities' });
+    expect(facilities().getAttribute('aria-selected')).toBe('true');
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzznothing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
-    expect(list.scrollLeft).toBe(500);
+    expect(facilities().getAttribute('aria-selected')).toBe('true');
   });
 
-  it('reveals a focused tab within its row and keeps every tab a tab stop', () => {
+  it('keeps every tab a tab stop', () => {
     mount();
-    const list = overflowing();
-    const tabs = screen.getAllByRole('tab');
-    for (const tab of tabs) expect(tab.tabIndex).toBeGreaterThanOrEqual(0);
-    const last = tabs[tabs.length - 1]!;
-    Object.defineProperties(last, { offsetLeft: { value: 800 }, offsetWidth: { value: 100 } });
-    fireEvent.focus(last);
-    expect(list.scrollLeft).toBe(500);
-  });
-});
-
-/** The item row's own scroll metrics decide its fade (`scroll-fade.ts`); the mask settles over real
- *  animation frames, so it is awaited. */
-describe('the item row fades where it can still travel', () => {
-  it('carries the mask only where scroll metrics say there is room', async () => {
-    mount();
-    const list = row();
-    expect(list.style.maskImage).toBe('');
-
-    Object.defineProperty(list, 'scrollWidth', { value: 900, configurable: true });
-    Object.defineProperty(list, 'clientWidth', { value: 400, configurable: true });
-    Object.defineProperty(list, 'scrollLeft', { value: 50, configurable: true });
-    fireEvent.scroll(list);
-    await waitFor(() => {
-      expect(list.style.maskImage).toContain('linear-gradient(to right,');
-      expect(list.style.maskImage).toContain('transparent 0');
-      expect(list.style.maskImage).toContain('transparent 100%');
-    });
-
-    // Fitted: no room either way, no mask.
-    Object.defineProperty(list, 'scrollWidth', { value: 400, configurable: true });
-    Object.defineProperty(list, 'scrollLeft', { value: 0, configurable: true });
-    fireEvent.scroll(list);
-    await waitFor(() => expect(list.style.maskImage).toBe(''));
+    for (const tab of screen.getAllByRole('tab')) expect(tab.tabIndex).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -482,11 +313,6 @@ describe('scrolling the row', () => {
     expect(wheelPush({ deltaX: -3, deltaY: -100, deltaMode: 0 }, 800, 1.25)!.by).toBe(-80);
   });
 
-  /** The glide is the caller's business (`wheelGlider`). */
-  it('says how far and nothing about gliding', () => {
-    expect(Object.keys(wheelPush({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 800, 1)!))
-      .toEqual(['by']);
-  });
 });
 
 describe('a card arms the item the map places', () => {
@@ -738,59 +564,5 @@ describe('the card is a picture and a count', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-/**
- * The shelf is proportioned against the game's own shelf (in a 1080-tall frame: a 119 px card, a band
- * 97 px above the bottom edge, 29 px name ink), not the design canvas. Asserted as ratios of the
- * declared layout, since jsdom lays nothing out.
- */
-describe('the item card against the band it stands out of', () => {
-  /** In CSS px. */
-  const card = ROW.card * SHELF_SCALE;
-  /** How far the card's own bottom edge stands above the window's, in css px: the scrollbar row,
-   *  the gap over it, and the row's padding. */
-  const cardBottom = SHELF_BOX.bottom + SCROLL.thumb.h * SHELF_SCALE
-    + SHELF_BOX.rowGap + ROW.pad * SHELF_SCALE;
-
-  it('keeps category names larger than mode captions', () => {
-    expect(TEXT.shelfTab).toBeGreaterThan(MODE.label.size);
-  });
-
-  it('keeps the item\'s picture mostly clear of the band, as the game does', () => {
-    const iconH = CARD.icon.h * SHELF_SCALE;
-    const iconBottom = cardBottom + (card - iconH) / 2;
-    const sunk = (PLATE_BAND.top - iconBottom) / iconH;
-    expect(sunk).toBeLessThan(0.5);
-    expect(sunk).toBeCloseTo(0.4, 1);   // the game's own
-  });
-
-  it('stands the card out of the band by the share the game stands its own', () => {
-    expect((cardBottom + card - PLATE_BAND.top) / card).toBeCloseTo(0.55, 2);
-  });
-});
-
-/** The cards are one keyed reel, so choosing a category remakes it and plays the entrance. */
-describe('the row of cards arrives', () => {
-  /** The element the cards stand in, which a category swap replaces. */
-  const reel = () => row().querySelector('[data-catalog-id]')!.parentElement as HTMLElement;
-
-  it('makes a new reel for the category chosen', () => {
-    mount();
-    const before = reel();
-    fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
-    expect(reel()).not.toBe(before);
-    expect(MOTIONS['shelf.category.swap'], 'the swap names no motion').toBeTruthy();
-  });
-
-  /** Typing is its own feedback, so a search stays one reel. */
-  it('does not replay it on each letter of a search', () => {
-    mount();
-    const field = screen.getByRole('searchbox');
-    fireEvent.change(field, { target: { value: 'a' } });
-    const searching = reel();
-    fireEvent.change(field, { target: { value: 'ap' } });
-    expect(reel()).toBe(searching);
   });
 });

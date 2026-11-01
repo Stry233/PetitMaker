@@ -17,7 +17,7 @@ const SPAN_PREMIUM = 0.15;
 
 /** Crossing links compete with ordinary walking in the same search. Direction belongs to the
  *  search state: reaching a cell from another side can avoid a bend at the next bridge or ramp. */
-export interface CrossingSearch {
+interface CrossingSearch {
   width: number;
   height: number;
   passable: (x: number, y: number) => boolean;

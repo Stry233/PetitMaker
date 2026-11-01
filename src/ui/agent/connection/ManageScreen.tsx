@@ -8,7 +8,8 @@ import { providerName } from '../../../i18n/terms/providers';
 import { EffortControl } from './EffortControl';
 import { ModelPicker } from './ModelPicker';
 import {
-  ensureModelCatalog, IDLE_MS, OVERSIGHTS, QUIRKS, type LiveConnection, type ProviderId, defaultListModels, fileEndpoint, forgetKeyAndRosters, type ListModels,
+  ensureModelCatalog, IDLE_MS, OVERSIGHTS, QUIRKS, type LiveConnection, type Oversight, type ProviderId,
+  defaultListModels, fileEndpoint, forgetKeyAndRosters, type ListModels,
 } from '../../../agent/panel';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../../i18n/context';
@@ -238,21 +239,7 @@ export function ManageScreen({
 
       <div>
         <EffortControl onChange={noteNextJob} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={LABEL_STYLE}>
-            {t('agent.setup_oversight')}
-          </div>
-          <SegmentedControl
-            value={settings.oversight}
-            options={OVERSIGHTS}
-            onChange={(o) => settings.setOversight(o)}
-            render={(o) => t(OVERSIGHT_COPY[o].label)}
-            idPrefix="agent3-oversight"
-          />
-          <p data-testid="manage-oversight-caption" style={NOTE_STYLE}>
-            {t(OVERSIGHT_COPY[settings.oversight].caption)}
-          </p>
-        </div>
+        <OversightRow value={settings.oversight} onChange={settings.setOversight} />
       </div>
 
       <div data-testid="manage-verbs" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -313,6 +300,28 @@ export function ManageScreen({
           {t('agent.setup_done')}
         </ActionButton>
       </div>
+    </div>
+  );
+}
+
+/** The oversight row: its name, the three levels and the chosen level's caption. */
+export function OversightRow({ value, onChange }: { value: Oversight; onChange: (o: Oversight) => void }) {
+  const t = useT();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={LABEL_STYLE}>
+        {t('agent.setup_oversight')}
+      </div>
+      <SegmentedControl
+        value={value}
+        options={OVERSIGHTS}
+        onChange={onChange}
+        render={(o) => t(OVERSIGHT_COPY[o].label)}
+        idPrefix="agent3-oversight"
+      />
+      <p data-testid="manage-oversight-caption" style={NOTE_STYLE}>
+        {t(OVERSIGHT_COPY[value].caption)}
+      </p>
     </div>
   );
 }

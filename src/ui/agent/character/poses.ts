@@ -50,7 +50,7 @@ interface BadgeTick {
   easing: string;
 }
 
-export interface PoseSpec {
+interface PoseSpec {
   /** The badge shown while this pose holds, or null for none. */
   badge: BadgeId | null;
   /** The pop-in curve `Character.tsx` gives the badge (default: the plain pop). */

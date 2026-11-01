@@ -22,7 +22,7 @@ import { TERRAIN_GRID } from '../../../core/game/profile';
 
 export interface Vec3 { x: number; y: number; z: number }
 
-export interface SurfacePick {
+interface SurfacePick {
   /** The macro cell the surface belongs to (terrain cells are macro coords). */
   cell: MacroCoord;
   /** The surface's layer (0 for ground/sea). */

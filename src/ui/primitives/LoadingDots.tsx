@@ -6,7 +6,7 @@ import { ON_DARK } from '../design/tokens';
 import { useDevicePixelRatio } from '../design/scale';
 
 /** One dot's diameter in css px at the chrome's reading size, and the gap's share of it. */
-export const LOADING_DOT_PX = 8.4;
+const LOADING_DOT_PX = 8.4;
 const GAP_SHARE = 11 / 15;
 
 export function LoadingDots({ color, size = LOADING_DOT_PX }: { color?: string; size?: number } = {}) {

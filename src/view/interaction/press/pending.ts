@@ -25,7 +25,7 @@ export interface PendingFacts {
 
 /** `wait`: undecided, keep listening. `tap`, `drag` and `hold` name the plan arm to run;
  *  `navigate`: the camera takes the gesture and the press does nothing. */
-export type PendingOutcome = 'wait' | 'tap' | 'drag' | 'hold' | 'navigate';
+type PendingOutcome = 'wait' | 'tap' | 'drag' | 'hold' | 'navigate';
 
 /** A second finger, then travel past the drag threshold, then a release, then the hold time. */
 export function resolvePending(f: PendingFacts): PendingOutcome {

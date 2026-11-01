@@ -14,7 +14,7 @@ import { cellKey } from '../../../core/grid/rect';
 import { footprintCells } from '../../../core/grid/footprint';
 
 /** Where a clear reaches, and what it leaves standing there. */
-export interface ClearOptions<Spare> {
+interface ClearOptions<Spare> {
   /** Restrict to these cells. Absent or null is the whole map, which is what Generate does when no
    *  region is painted. */
   region?: readonly MacroCoord[] | null;

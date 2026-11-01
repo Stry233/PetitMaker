@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useEffectEvent } from '../../primitives/use-effect-event';
 
 /** One cue of a pictured walk: when it lands in its step, in ms from the step's start, and what it does. */
-export type Beat = readonly [at: number, run: () => void];
+type Beat = readonly [at: number, run: () => void];
 
 /**
  * The timeline the Help figures' walk-throughs share: a looping step counter that advances every

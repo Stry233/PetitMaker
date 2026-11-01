@@ -16,7 +16,7 @@ _A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/e
 [![Support on Patreon](https://img.shields.io/badge/Patreon-Support-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
 &nbsp;[![Support on Afdian](https://img.shields.io/badge/Afdian-Support-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
 
-<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished planet, with seven labels: Build modes on the block row at the top left, AI agent on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins" width="840">
+<img src="./docs/media/hero-annotated.png" alt="The PetitMaker editor holding a finished planet, with seven labels: Build modes on the block row at the top left, Assistant on the character below them, Save and share at the top right, Layers panel, Undo and redo, and the 3D view, fit and zoom cluster on the right rail, and Object shelf on the bottom bar full of cabins, with the Object brush button beside its search" width="840">
 
 <sub>The header shows 鱼松的爱心桃花岛, created by project contributor 鱼松. An importable share image is available below.</sub>
 

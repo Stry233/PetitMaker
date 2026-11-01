@@ -5,8 +5,9 @@
 import type { CSSProperties } from 'react';
 import { PreviewFrame } from './PreviewFrame';
 import {
-  ContextMenuFace, objectMenuRows, terrainMenuRows,
+  ContextMenuFace, MenuHeader, objectMenuRows, terrainMenuRows,
 } from '../../../chrome/floating/ContextMenu';
+import { useTouchMode } from '../../../design/input-mode';
 import { DeleteConfirmFace, objectDeleteTitle } from '../../../chrome/floating/DeletePopover';
 import { getCatalogItem } from '../../../../state/catalog';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
@@ -19,16 +20,34 @@ const PIECE = 'building-forest-cabin';
 /** The facing the pictured piece stands at, so the tick is on a row rather than on the first one. */
 const STANDING_AT = 90;
 
-/** Both cards stand in the figure's flow rather than at a screen position of their own. */
+/** Both cards stand in the figure's flow rather than at a screen position of their own, and the frame
+ *  takes their own width, so a narrow column shrinks the figure whole rather than squeezing the card. */
 const IN_FLOW: CSSProperties = { position: 'relative' };
 
 /** The menu on a piece that turns, beside the menu on terrain: the same card, the rows each target
  *  actually offers. */
 export function ContextMenuPreview() {
   const t = useT();
+  const locale = useLocale();
+  const touch = useTouchMode();
   const item = getCatalogItem(PIECE);
+  // By finger the object's long-press menu, headed by its name; with a mouse its right-click menu
+  // beside the terrain's.
+  if (touch) {
+    return (
+      <PreviewFrame height={320} fit width="max-content">
+        <ContextMenuFace
+          rows={objectMenuRows(t, STANDING_AT, !!item?.rotatable, { pickable: true, movable: true })}
+          header={<MenuHeader item={item} name={item ? localizedName(item.name, locale) : PIECE} />}
+          touch
+          onPick={noop}
+          style={IN_FLOW}
+        />
+      </PreviewFrame>
+    );
+  }
   return (
-    <PreviewFrame height={240}>
+    <PreviewFrame height={240} fit width="max-content">
       <div style={{ display: 'flex', gap: 34, alignItems: 'flex-start' }}>
         <ContextMenuFace
           rows={objectMenuRows(t, STANDING_AT, !!item?.rotatable)}
@@ -47,7 +66,7 @@ export function DeleteConfirmPreview() {
   const locale = useLocale();
   const item = getCatalogItem(PIECE);
   return (
-    <PreviewFrame height={240}>
+    <PreviewFrame height={240} fit width="max-content">
       <DeleteConfirmFace
         title={objectDeleteTitle(t, item ? localizedName(item.name, locale) : PIECE)}
         onCancel={noop}

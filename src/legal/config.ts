@@ -4,7 +4,7 @@ import { activeTarget, type DeployTargetId } from '../platform/build/deploy-targ
 /** Shared facts for legal documents, About, filing rows and generated site metadata. */
 /** A person the About surfaces credit. `sort` is the lowercase romanization they are ordered by;
  *  `bilibili` is their Bilibili mid, which names both their space and their bundled avatar. */
-export interface CreditedMember { name: string; sort: string; bilibili: string }
+interface CreditedMember { name: string; sort: string; bilibili: string }
 
 /** A credited member's Bilibili space. */
 export function memberUrl(member: Pick<CreditedMember, 'bilibili'>): string {
@@ -50,7 +50,7 @@ export type LegalConfig = {
 };
 
 /** Each deployment's hosting and edge-delivery disclosures, as the privacy notice states them. */
-export const PRIVACY_HOSTING: Readonly<Record<DeployTargetId, Pick<LegalConfig, 'privacyHostNetwork' | 'privacyEdgeDelivery'>>> = {
+const PRIVACY_HOSTING: Readonly<Record<DeployTargetId, Pick<LegalConfig, 'privacyHostNetwork' | 'privacyEdgeDelivery'>>> = {
   global: {
     privacyHostNetwork: {
       en: "Cloudflare's network (Workers static asset hosting)",

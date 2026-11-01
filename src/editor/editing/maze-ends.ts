@@ -13,10 +13,10 @@ import { host } from '../host/host';
 import type { Outcome } from '../operations';
 import { defaultGatesOn, mazeFootprintOn, mazeMarks, snapMazeEnd, type MazeMarks } from './generate-batch';
 
-export type MazeEndId = 'entrance' | 'exit';
+type MazeEndId = 'entrance' | 'exit';
 
 /** What the shelf draws and asks with this render. */
-export interface MazeEndsView {
+interface MazeEndsView {
   /** Whether the visitor chooses the ends; off, the generator picks its own pair. */
   customEnds: boolean;
   /** The gates every run of the batch receives, or null where the generator picks them. */
@@ -29,7 +29,7 @@ export interface MazeEndsView {
 /** `scope` is the painted region or null for the whole map. */
 export interface MazeEndsInputs { maze: boolean; gridState: GridState | null; scope: MacroCoord[] | null; corridorWidth: number }
 
-export interface MazeEndsController {
+interface MazeEndsController {
   subscribe(listener: () => void): () => void;
   /** Changes whenever the settings do. */
   version(): number;

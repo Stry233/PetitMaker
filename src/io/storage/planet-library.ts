@@ -35,7 +35,7 @@ interface StoredEntry {
 }
 interface StoredLibrary { v: 1; entries: StoredEntry[] }
 
-export type SavePlanetResult = { ok: true; entry: PlanetEntry } | { ok: false; reason: 'quota' };
+type SavePlanetResult = { ok: true; entry: PlanetEntry } | { ok: false; reason: 'quota' };
 
 let version = 0;
 // A failing subscriber must not turn a completed write into a failed save.
@@ -140,7 +140,7 @@ export function planetEntryFor(template: MapTemplate): PlanetEntry | null {
   return planetEntryAmong(listPlanets(), template);
 }
 
-export interface SavePlanetOptions {
+interface SavePlanetOptions {
   /** The entry whose planet and name this save replaces, when it exists. */
   replaceEntryId?: string;
   /** False for a name that came from outside and has not passed the text check. Default true. */

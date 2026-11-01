@@ -23,9 +23,9 @@ export interface ScanPasses {
   preview(): ScanPreview | null;
 }
 
-export type FileScanStage = 'reading' | 'tracking' | 'ground';
+type FileScanStage = 'reading' | 'tracking' | 'ground';
 
-export type FileScanResult =
+type FileScanResult =
   | { readonly kind: 'done'; readonly outcome: ScanOutcome }
   | { readonly kind: 'unsupported'; readonly why: string };
 

@@ -58,7 +58,7 @@ export function defaultListModels(cfg: ListModelsRequest): Promise<string[]> {
 /** How a key check ended: no request made, the models listed (and remembered), the key refused
  *  (and forgotten), the listing failed otherwise (the endpoint stays usable, since a model can be
  *  entered by hand), or the asker moved on. */
-export type KeyCheck = 'skipped' | 'listed' | 'refused' | 'unlisted' | 'stale';
+type KeyCheck = 'skipped' | 'listed' | 'refused' | 'unlisted' | 'stale';
 
 /**
  * Checks `apiKey` for `id` by listing its models, without choosing one. A custom provider's key is

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createPrefsSlice, type PrefsSlice, type HintLevel, type ViewMode } from './slices/prefs';
+import { createPrefsSlice, type PrefsSlice } from './slices/prefs';
 import { createShellSlice, type ShellSlice, type ModalId, type ShareSection } from './slices/shell';
 import { createEditSlice, type EditSlice } from './slices/edit';
 import { createEngineSlice, type EngineSlice } from './slices/engine';
@@ -8,7 +8,6 @@ import { createPlanetSessionSlice, type PlanetSessionSlice } from './slices/plan
 import { createRepairSessionSlice, type RepairSessionSlice } from './slices/repair-session';
 import { initialInputMode, readInputEnv } from '../platform/device/input-mode';
 
-export type { HintLevel, ViewMode };
 export type { ModalId, ShareSection };
 
 // The store is seven independently-typed slices composed at one `create()` call. Each factory

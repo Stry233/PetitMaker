@@ -9,7 +9,7 @@ import { cellCornerWorld } from './coords';
 import { surfaceHeightAt } from './pick';
 
 /** One geometry's worth of ribbon strips: interleaved x, y, z positions and triangle indices. */
-export interface RibbonStrips {
+interface RibbonStrips {
   positions: number[];
   index: number[];
 }

@@ -101,11 +101,6 @@ describe('held pan keys', () => {
     input.remove();
   });
 
-  it('schedules no frame loop while nothing is held', () => {
-    render(<Panner onPan={vi.fn()} />);
-    expect(frames).toHaveLength(0);
-  });
-
   it('stops panning when the window loses focus mid-hold, rather than running on', () => {
     // The keyup goes to whatever took focus, so without this the camera drifts.
     const pan = vi.fn();

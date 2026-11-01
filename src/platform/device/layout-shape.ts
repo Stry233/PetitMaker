@@ -20,7 +20,7 @@ export interface ShapeSignals {
 
 /** How many times longer one side of a window must be than the other to change the shape, so a
  *  resize near square does not flip the arrangement back and forth. */
-export const SHAPE_MARGIN = 1.1;
+const SHAPE_MARGIN = 1.1;
 
 /**
  * A coarse device reports its physical orientation, which a software keyboard cannot change. Where

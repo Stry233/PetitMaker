@@ -224,7 +224,7 @@ export function ghostPlan<C extends MacroCoord | GridCellRef, T extends GhostTri
 }
 
 /** What a flashed cell should be drawn as. */
-export interface FlashShape { x: number; y: number; corners: CornerList; patchOnly: boolean; grid: GridId }
+interface FlashShape { x: number; y: number; corners: CornerList; patchOnly: boolean; grid: GridId }
 type CornerList = readonly string[];
 
 /**

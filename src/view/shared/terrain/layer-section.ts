@@ -13,7 +13,7 @@ import { rrPath } from '../viewport/round-rect';
 const UNKNOWN_OBJECT_MARK = '#e6c48a';
 
 /** The flat colour an object footprint is drawn in on a top-down picture of the map, by category. */
-export function objectMarkColor(catalogId: string): string {
+function objectMarkColor(catalogId: string): string {
   const item = getCatalogItem(catalogId);
   return (item && CATEGORY_BY_ID.get(item.category)?.markColor) ?? UNKNOWN_OBJECT_MARK;
 }

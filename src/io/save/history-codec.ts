@@ -35,7 +35,7 @@ type WireTrim = Partial<Pick<MaterialisePatchCommand, 'terrainType' | 'elevation
 
 /** The map the decoded entries replay into: its size bounds every coordinate and its zones are
  *  the only ones a snapshot may hold, since map saves never change a cell's zone. */
-export type HistoryTemplate = Pick<MapTemplate, 'width' | 'height' | 'zones'>;
+type HistoryTemplate = Pick<MapTemplate, 'width' | 'height' | 'zones'>;
 
 export function encodeHistory(entries: HistoryEntry[], depth: 'all' | number): HistorySection {
   const kept = depth === 'all' ? entries : entries.slice(Math.max(0, entries.length - depth));

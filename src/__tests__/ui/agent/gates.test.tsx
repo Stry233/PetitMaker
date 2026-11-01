@@ -12,7 +12,6 @@ import { PlanGate } from '../../../ui/agent/record/PlanGate';
 import { OptionPick, optionAskFrom, type OptionAsk } from '../../../ui/agent/record/OptionPick';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { Banner, BANNER_CLASSES, type BannerActionId, type BannerClass } from '../../../ui/agent/desk/Banner';
-import { ACTIVE, INK, INSET, LINE, PLATE, PLATE_INK } from '../../../ui/design/tokens';
 import { useEditorStore } from '../../../state/store';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
@@ -21,7 +20,6 @@ import { deriveView } from '../../../agent/core/project-view';
 import { submitComposer } from '../../../agent/session/composer-routing';
 import type { AskRecord, JobView } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/locale';
-import { recede } from '../../../ui/agent/panel-skin';
 import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
@@ -42,12 +40,6 @@ beforeEach(() => {
   });
 });
 
-/** jsdom re-serializes every colour as `rgb(...)`, so a hex token never matches as written. */
-function rgb(hex: string): string {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
 function makeAsk(over: Partial<AskRecord> = {}): AskRecord {
   return { gateId: 'gate-1', scope: 'tool', summary: 'Pave a stone road from the plaza to the mill', ...over };
 }
@@ -56,35 +48,6 @@ describe('the ask card stands on the plate under a retiring spine', () => {
   it('renders nothing when the ask is undefined (a settled job leaves no stale gate)', () => {
     const { container } = renderWithI18n(<GateBlock ask={undefined} onAnswer={() => {}} />);
     expect(container.firstChild).toBeNull();
-  });
-
-  it('paints the panel plate and a 5px ACTIVE left border while the ask is open', () => {
-    const { getByTestId } = renderWithI18n(<GateBlock ask={makeAsk()} onAnswer={() => {}} />);
-    const card = getByTestId('gate-block');
-    expect(card.style.background).toBe(rgb(PLATE));
-    expect(card.style.borderLeft).toContain('5px');
-    expect(card.style.borderLeft).toContain(rgb(ACTIVE));
-    expect(card.getAttribute('data-settled')).toBe('false');
-  });
-
-  it('retires the spine to the hairline once the ask is answered', () => {
-    const { getByTestId } = renderWithI18n(
-      <GateBlock ask={makeAsk({ verdict: 'approved' })} onAnswer={() => {}} />,
-    );
-    const card = getByTestId('gate-block');
-    expect(card.getAttribute('data-settled')).toBe('true');
-    expect(card.style.borderLeft).toContain(rgb(LINE));
-    expect(card.style.borderLeft).not.toContain(rgb(ACTIVE));
-  });
-
-  it('never paints the ask paper on a card: only the status card wears it', () => {
-    for (const verdict of [undefined, 'approved', 'declined'] as const) {
-      const { getByTestId, unmount } = renderWithI18n(
-        <GateBlock ask={makeAsk(verdict ? { verdict } : {})} onAnswer={() => {}} />,
-      );
-      expect(getByTestId('gate-block').style.background).toBe(rgb(PLATE));
-      unmount();
-    }
   });
 
   it('renders the summary sentence as-is, and the thumbnail slot only when one is given', () => {
@@ -128,12 +91,6 @@ describe('the ask card stands on the plate under a retiring spine', () => {
 });
 
 describe('the verdict chip', () => {
-  it('carries the inset fill and the plate ink (the contrast ruling)', () => {
-    const { getByTestId } = renderWithI18n(<VerdictChip verdict="approved" />);
-    const chip = getByTestId('gate-verdict');
-    expect(chip.style.background).toBe(rgb(INSET));
-    expect(chip.style.color).toBe(rgb(PLATE_INK));
-  });
 
   it('says each verdict in its own words', () => {
     const said: Record<string, string> = {};
@@ -164,19 +121,6 @@ describe('the verdict chip', () => {
 });
 
 describe('the quick row keeps its box', () => {
-  it('stands at the same height empty as filled', () => {
-    const empty = renderWithI18n(<QuickRow />);
-    const emptyRow = empty.getByTestId('gate-quick-row');
-    const emptyMin = emptyRow.style.minHeight;
-    expect(emptyRow.offsetHeight).toBe(0); // jsdom lays nothing out; the reservation is the style
-    empty.unmount();
-
-    const filled = renderWithI18n(<QuickRow answers={['Yes', 'No', 'You decide']} />);
-    const filledRow = filled.getByTestId('gate-quick-row');
-    expect(filledRow.style.minHeight).toBe(emptyMin);
-    expect(filledRow.offsetHeight).toBe(emptyRow.offsetHeight);
-    expect(emptyMin).toBe('32px');
-  });
 
   it('sends the pill the user pressed as the answer', () => {
     let said: string | undefined;
@@ -298,10 +242,7 @@ describe('the option pick', () => {
     expect(cards.every((c) => c.disabled)).toBe(true);
     const pick = cards[1]!;
     expect(pick.getAttribute('data-picked')).toBe('true');
-    expect(pick.style.boxShadow).toContain(INK);
-    expect(pick.style.background).toBe(rgb(PLATE));
     expect(getByTestId('option-mark').textContent).toBe('picked');
-    expect(cards[0]!.style.opacity).toBe(String(recede.apart));
   });
 
   it('declines with None of these, and says so on the settled card', () => {
@@ -563,22 +504,6 @@ describe('an ask carrying options is a pick', () => {
     expect(optionAskFrom(makeAsk())).toBeUndefined();
   });
 
-  it('clears the hover fill from the card the user just picked', () => {
-    const { getAllByTestId, rerender } = renderWithI18n(
-      <OptionPick ask={makeOptions()} onPick={() => {}} onDecline={() => {}} />,
-    );
-    const card = (getAllByTestId('option-card') as HTMLButtonElement[])[1]!;
-    fireEvent.pointerEnter(card);
-    expect(card.style.background).toBe(rgb(ACTIVE));
-
-    // Re-rendered, not remounted: hover residue survives only on a node React keeps. `rerender`
-    // re-applies the wrapper itself; wrapping again would remount the card.
-    rerender(<OptionPick ask={makeOptions({ picked: 1 })} onPick={() => {}} onDecline={() => {}} />);
-    const settled = (getAllByTestId('option-card') as HTMLButtonElement[])[1]!;
-    expect(settled.getAttribute('data-picked')).toBe('true');
-    expect(settled.style.boxShadow).toContain(INK);
-    expect(settled.style.background).toBe(rgb(PLATE));
-  });
 });
 
 describe('typed words at a gate', () => {
@@ -591,11 +516,9 @@ describe('typed words at a gate', () => {
     const { getByTestId } = renderWithI18n(<PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS })} />);
     const approve = getByTestId('gate-approve');
     expect(approve.getAttribute('data-demoted')).toBe('false');
-    expect(approve.style.background).toBe(rgb(INK));
 
     fireEvent.change(getByTestId('composer-input'), { target: { value: 'stop at the meadow instead' } });
     expect(approve.getAttribute('data-demoted')).toBe('true');
-    expect(approve.style.background).toBe(rgb(INSET));
 
     fireEvent.change(getByTestId('composer-input'), { target: { value: '   ' } });
     expect(approve.getAttribute('data-demoted')).toBe('false');

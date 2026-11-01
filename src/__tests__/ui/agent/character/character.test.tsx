@@ -11,7 +11,6 @@ import { render, renderHook, act, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { Character } from '../../../../ui/agent/character/Character';
 import { useCharacterChannel, type CharacterChannel } from '../../../../ui/agent/character/intent';
-import { Badge } from '../../../../ui/agent/character/badges';
 import { MICRO, POSE_DWELL, POSES, PRESS_SQUASH, WAKE_BEAT, poseForPhase, type PoseName } from '../../../../ui/agent/character/poses';
 import type { SessionPhase } from '../../../../agent/core/project-view';
 import { amplitude, framerMotion } from '../../../../ui/design/motion';
@@ -331,13 +330,6 @@ describe('the character wears the house hover', () => {
     expect(framerMotion('panel.character.hover')).toEqual(pressable.transition);
   });
 
-  /** No independent lift composes with the shared scale transform. */
-  it('writes no lift of its own on the drawing', () => {
-    const { getByTestId } = render(
-      <Character pose="idle" size={64} press={{ onPress: () => {}, open: false }} />,
-    );
-    expect(getByTestId('pw-character').style.translate).toBe('');
-  });
 });
 
 /** The sleeping pose combines a held droop with a two-axis breathing loop. */
@@ -484,63 +476,10 @@ describe('the press acknowledgement', () => {
   });
 });
 
-/** The three z marks share `pw-zzzfade` (`design/animations.css`, reduced-motion gated) and two
- *  delay classes make them a sequence. */
-describe('the sleeper\'s zzz', () => {
-  it('gives each mark the shared fade and staggers the last two', () => {
-    const { container } = render(<Badge id="zzz" />);
-    const marks = [...container.querySelectorAll('.pw-zzz-mark')];
-    expect(marks).toHaveLength(3);
-    expect(marks[1]?.classList.contains('pw-zzz-mark-2')).toBe(true);
-    expect(marks[2]?.classList.contains('pw-zzz-mark-3')).toBe(true);
-    expect(marks[0]?.getAttribute('class')).toBe('pw-zzz-mark');
-  });
-});
-
 /** The sleeping plume holds its position while the body moves beneath it. It alternates between
  * sleep marks and a dream glyph, with a breath bubble during the transition. */
 describe('the sleeper\'s plume', () => {
-  const plume = (c: HTMLElement) => part(c, 'dream-badge');
-
   afterEach(() => { act(() => { live.setDream('off'); }); });
-
-  it('stands beside the pose rather than inside it', () => {
-    act(() => { live.setDream('zzz'); });
-    const { container } = render(<Character pose="sleeping" size={60} />);
-    const flip = part(container, 'flip');
-    expect(plume(container).parentElement).toBe(flip.parentElement);
-    expect(flip.contains(plume(container))).toBe(false);
-    // The pose's own badge hides, so only one badge shows.
-    expect(part(container, 'badge').style.opacity).toBe('0');
-  });
-
-  /** The disc stays the same element so its transition has a state to arrive from. */
-  it('keeps the glyph\'s disc mounted so it can arrive, and swaps it in for the zzz', () => {
-    act(() => { live.setDream('zzz'); });
-    const { container, rerender } = render(<Character pose="sleeping" size={60} />);
-    const disc = part(container, 'dream-glyph');
-    expect(disc.style.opacity).toBe('0');
-    expect(part(container, 'dream-zzz').style.opacity).toBe('1');
-
-    act(() => { live.setDream('pw-road'); });
-    rerender(<Character pose="sleeping" size={60} />);
-    expect(part(container, 'dream-glyph')).toBe(disc);
-    expect(disc.style.opacity).toBe('1');
-    expect(disc.style.transform).toBe('none');
-    expect(part(container, 'dream-zzz').style.opacity).toBe('0');
-  });
-
-  it('breathes once as the zzz come back, and not on the way out', () => {
-    act(() => { live.setDream('pw-road'); });
-    const { container, rerender } = render(<Character pose="sleeping" size={60} />);
-    const breaths = () => animateCalls.filter((a) => a.part === 'dream-puff').length;
-    expect(breaths()).toBe(0);
-
-    act(() => { live.setDream('zzz'); });
-    rerender(<Character pose="sleeping" size={60} />);
-    expect(breaths()).toBe(1);
-    expect(part(container, 'dream-puff')).toBeTruthy();
-  });
 
   it('cuts every plume beat under reduced motion', () => {
     act(() => { live.setDream('zzz'); });

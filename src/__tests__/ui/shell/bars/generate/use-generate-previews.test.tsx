@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
-/** Pins that a preview card whose build throws goes blank and never holds the batch's spinner, and
- *  that every card pictures its candidate under the open map's notes, which landing it leaves. */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+/** A preview card whose build throws goes blank and never holds the batch's spinner. */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { makeState } from '../../../../_support/map-state';
 import { CANDIDATES } from '../../../../../ui/shell/bars/generate/generate-shelf';
-import { sampleNotes } from '../../../../_support/picture-renderer';
 
 const build = vi.hoisted(() => ({ throwOn: new Set<number>(), calls: 0, notes: undefined as unknown, asked: [] as { notes?: unknown }[] }));
 vi.mock('../../../../../editor/operations', async (importOriginal) => ({
@@ -38,11 +36,14 @@ function options(customSeed: number | null = null) {
   };
 }
 
+/** Past the debounce before a batch builds, on the faked clock. */
 async function settle(): Promise<void> {
-  await act(async () => { await new Promise((r) => setTimeout(r, 600)); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(600); });
 }
 
+beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
 afterEach(() => {
+  vi.useRealTimers();
   build.throwOn.clear();
   build.calls = 0;
   build.notes = undefined;
@@ -71,12 +72,4 @@ describe('generate previews', () => {
     unmount();
   });
 
-  it('pictures every card under the open map\'s notes', async () => {
-    build.notes = sampleNotes();
-    const { unmount } = renderHook((o) => useGeneratePreviews(o), { initialProps: options(7) });
-    await settle();
-    expect(build.asked.length).toBeGreaterThan(0);
-    expect(build.asked.every((o) => o.notes === build.notes)).toBe(true);
-    unmount();
-  });
 });

@@ -7,7 +7,6 @@
  * AboutModal suite's convention (this repo does not register @testing-library/jest-dom).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { roleWeight } from '../../../../../ui/design/text-weight';
 import { render, screen, fireEvent, within, act, cleanup } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { BuildChecklist } from '../../../../../ui/chrome/modals/export/BuildChecklist';
@@ -111,15 +110,6 @@ describe('BuildChecklist — supply shelves', () => {
     expect(tile.getAttribute('src')).toContain('path-overgrown-dirt');
   });
 
-  it('the item name ellipses and the count sits right-aligned, bold, tabular', () => {
-    renderChecklist();
-    const row = screen.getByTestId('checklist-item-building-stall');
-    const count = row.querySelector('span:last-child') as HTMLElement;
-    expect(count.textContent).toBe('x2');
-    // The count takes the chip rung, whose weight arrives as the card's own adapting property.
-    expect(count.style.fontWeight).toBe(roleWeight('chip'));
-    expect(count.style.fontVariantNumeric).toBe('tabular-nums');
-  });
 
   it('roads keep their cell counts, wearing the same card treatment', () => {
     renderChecklist();

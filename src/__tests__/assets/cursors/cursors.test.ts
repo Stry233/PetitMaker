@@ -305,40 +305,40 @@ describe('cursor CSS', () => {
   it('wraps the url as image-set 1x where the engine reads it in cursor', async () => {
     // Blink and WebKit divide the drawn size by the image-set density and rasterise an SVG at device
     // scale themselves, so only 1x draws the intrinsic size. The prefixed spelling is a fallback.
-    const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
+    const { cursorCss, __resetCursorCssCache } = await import('../../../assets/cursors/cursor-css');
     const supports = vi.fn((_p: string, v: string) => v.startsWith('image-set('));
     vi.stubGlobal('CSS', { supports });
-    __clearCursorCssCache();
+    __resetCursorCssCache();
     expect(cursorCss('mountain')).toMatch(/^image-set\(url\("[^"]+mountain\.svg"\) 1x\) 2 2, crosshair$/);
     expect(supports.mock.calls.map(([p, v]) => (v.includes('image-set') ? v.slice(0, v.indexOf('(')) : p)))
       .toEqual(['image-set', '-moz-appearance']);
     expect(cursorCss('busy')).toMatch(/^image-set\(url\("[^"]+busy-0\.svg"\) 1x\) 2 2, progress$/);
 
     vi.stubGlobal('CSS', { supports: (_p: string, v: string) => v.startsWith('-webkit-image-set(') });
-    __clearCursorCssCache();
+    __resetCursorCssCache();
     expect(cursorCss('mountain')).toMatch(/^-webkit-image-set\(url\("[^"]+"\) 1x\) 2 2, crosshair$/);
     vi.unstubAllGlobals();
-    __clearCursorCssCache();
+    __resetCursorCssCache();
   });
 
   it('raises the density to 2x on Gecko alone, where it is a rasterisation hint and not a size', async () => {
     // Gecko sizes a vector cursor intrinsically but rasterises at the declared density, so 1x blurs
     // under the chrome's CSS zoom (Firefox 152 at dpr 2). Only Gecko parses `-moz-appearance`.
-    const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
+    const { cursorCss, __resetCursorCssCache } = await import('../../../assets/cursors/cursor-css');
     vi.stubGlobal('CSS', {
       supports: (p: string, v: string) => v.startsWith('image-set(') || p === '-moz-appearance',
     });
-    __clearCursorCssCache();
+    __resetCursorCssCache();
     expect(cursorCss('mountain')).toMatch(/^image-set\(url\("[^"]+mountain\.svg"\) 2x\) 2 2, crosshair$/);
     // The busy ring swaps frames inside the same wrapper, so the animation survives the density.
     expect(cursorCss('busy', { frame: 2 })).toMatch(/^image-set\(url\("[^"]+busy-2\.svg"\) 2x\) 2 2, progress$/);
     vi.unstubAllGlobals();
-    __clearCursorCssCache();
+    __resetCursorCssCache();
   });
 
   it('resolves busy to its ring, one frame per ask, wrapping past the last', async () => {
-    const { cursorCss, __clearCursorCssCache } = await import('../../../assets/cursors/cursor-css');
-    __clearCursorCssCache();
+    const { cursorCss, __resetCursorCssCache } = await import('../../../assets/cursors/cursor-css');
+    __resetCursorCssCache();
     expect(cursorCss('busy')).toContain('busy-0');
     expect(cursorCss('busy', { frame: 3 })).toContain('busy-3');
     expect(cursorCss('busy', { frame: BUSY_FRAME_COUNT })).toContain('busy-0');

@@ -9,7 +9,7 @@
 import { IS_LITE } from '../../platform/build/edition.ts';
 import type { Locale } from '../../core/model/locale.ts';
 
-export const BASE_APP_NAME = 'PetitMaker';
+const BASE_APP_NAME = 'PetitMaker';
 
 /** Per-locale names without the edition badge; locales absent here use BASE_APP_NAME. */
 const LOCALE_BASE_NAMES: Partial<Record<Locale, string>> = {

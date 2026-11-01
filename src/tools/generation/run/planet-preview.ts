@@ -34,7 +34,7 @@ export function transferPreviewOf(source: GridState, target: MapTemplate): Trans
   return { state: built.dest, dropped: built.droppedCells, moved: built.moved, droppedCounts: built.dropped };
 }
 
-export interface TransferPreviewRequest {
+interface TransferPreviewRequest {
   /** Aborted by the caller once the answer is no longer wanted. A request aborted before it runs
    *  resolves null without running; one already running in a worker finishes there unread. */
   signal: AbortSignal;

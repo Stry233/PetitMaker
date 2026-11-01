@@ -6,8 +6,7 @@ import { SettingsModal } from '../../../../../ui/chrome/modals/settings/Settings
 import { I18nProvider } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { setStoreState } from '../../../../_support/store';
-import { poseLegacyZoom } from '../../../../_support/legacy-zoom';
-import { NO_DOCK, reachOf } from '../../../../../ui/design/scale';
+import { NO_DOCK, reachOf } from '../../../../../ui/design/scale-model';
 import { spec } from '../../../../_support/spec';
 
 function renderModal() {
@@ -134,23 +133,6 @@ describe('SettingsModal — UI-scale slider', () => {
     expect(useEditorStore.getState().uiZoom).toBe(1);
     ptr(slider, 'pointercancel', {});
     expect(useEditorStore.getState().uiZoom).toBe(0.9);
-  });
-
-  it('maps the pointer against the screen rect of the track on an engine that measures zoomed subtrees in their own pixels', () => {
-    renderModal();
-    const slider = screen.getByRole('slider', { name: 'UI scale' });
-    // Inside a zoom 0.5 card the track's own-pixel reading is twice its screen size: screen 50..250.
-    slider.getBoundingClientRect = () =>
-      ({ left: 100, top: 0, right: 500, bottom: 24, width: 400, height: 24, x: 100, y: 0, toJSON() {} }) as DOMRect;
-    const card = slider.parentElement!;
-    const restore = poseLegacyZoom((node) => (node === card ? 0.5 : 1));
-    try {
-      ptr(slider, 'pointerdown', { clientX: 250 });
-      ptr(slider, 'pointerup', { clientX: 250 });
-      expect(useEditorStore.getState().uiZoom).toBe(1.8);
-    } finally {
-      restore();
-    }
   });
 
   it('ends its range where this window stops responding to a larger scale', () => {

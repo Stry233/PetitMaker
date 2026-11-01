@@ -17,7 +17,7 @@ import { REEL_FILES } from './reel-files';
 import type { TourKind } from './deck';
 
 /** The four arrangements a reel is recorded in: the input mode, then the screen's shape. */
-export type ReelForm = 'mouse-land' | 'mouse-tall' | 'touch-tall' | 'touch-land';
+type ReelForm = 'mouse-land' | 'mouse-tall' | 'touch-tall' | 'touch-land';
 
 export function reelForm(inputMode: InputMode, shape: LayoutShape): ReelForm {
   return `${inputMode === 'touch' ? 'touch' : 'mouse'}-${shape === 'portrait' ? 'tall' : 'land'}`;
@@ -101,9 +101,6 @@ export function reelTiming(files: ReelFiles): Promise<ReelTiming | null> {
     return isTiming(timing) ? timing : null;
   });
 }
-
-/** Test hook: forget the tables read. */
-export function __resetReelTimings(): void { tables.clear(); }
 
 /** The caption each segment shows under its reel, by kind and segment id. A segment with no caption
  *  here shows none. Mouse wording; touch readings are in `i18n/terms/device-readings.ts`. */

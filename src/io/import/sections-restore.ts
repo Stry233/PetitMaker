@@ -22,7 +22,7 @@ export interface SectionRestoreDeps {
   setCamera: (c: PersistedCamera) => void;
 }
 
-export interface SectionRestoreResult { restored: SectionKey[]; dropped: SectionKey[] }
+interface SectionRestoreResult { restored: SectionKey[]; dropped: SectionKey[] }
 
 /** Best-effort restore of the optional top-level sections a "keep everything" export may
  *  carry. Each section is independent: a throw or shape mismatch drops just that section. */

@@ -32,7 +32,6 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     qa: [
       { qKey: 'help.notes.q1', aKey: 'help.notes.a1' },
       { qKey: 'help.notes.q2', aKey: 'help.notes.a2' },
-      { qKey: 'help.notes.q3', aKey: 'help.notes.a3', lite: false },
       { qKey: 'help.notes.q4', aKey: 'help.notes.a4' },
       { qKey: 'help.notes.q5', aKey: 'help.notes.a5' },
     ],
@@ -54,11 +53,9 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     ],
     qa: [
       { qKey: 'help.layers.q1', aKey: 'help.layers.a1' },
-      { qKey: 'help.layers.q2', aKey: 'help.layers.a2' },
       { qKey: 'help.layers.q3', aKey: 'help.layers.a3' },
-      { qKey: 'help.layers.q4', aKey: 'help.layers.a4' },
     ],
-    seeAlso: ['notes', 'load', 'frame'],
+    seeAlso: ['notes', 'load', 'frame', 'camera'],
   },
   {
     id: 'load',
@@ -74,10 +71,7 @@ export const PLAN_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'load-limit', titleKey: 'help.load.limit_t', bodyKeys: ['help.load.limit_b1'] },
     ],
     qa: [
-      { qKey: 'help.load.q1', aKey: 'help.load.a1' },
-      { qKey: 'help.load.q2', aKey: 'help.load.a2' },
       { qKey: 'help.load.q3', aKey: 'help.load.a3' },
-      { qKey: 'help.load.q4', aKey: 'help.load.a4' },
     ],
     seeAlso: ['layers', 'checklist', 'generate'],
   },
@@ -91,16 +85,16 @@ export const PLAN_PAGES: readonly HelpPage[] = [
     sections: [
       { kind: 'prose', anchor: 'undo-step', titleKey: 'help.undo.step_t', bodyKeys: ['help.undo.step_b1'] },
       { kind: 'prose', anchor: 'undo-gone', titleKey: 'help.undo.gone_t', bodyKeys: ['help.undo.gone_b1'] },
+      { kind: 'prose', anchor: 'undo-select', titleKey: 'help.undo.select_t', bodyKeys: ['help.undo.select_b1'] },
+      { kind: 'prose', anchor: 'undo-escape', titleKey: 'help.undo.escape_t', bodyKeys: ['help.undo.escape_b1'] },
       { kind: 'prose', anchor: 'undo-skip', titleKey: 'help.undo.skip_t', bodyKeys: ['help.undo.skip_b1'] },
       { kind: 'prose', anchor: 'undo-scope', titleKey: 'help.undo.scope_t', bodyKeys: ['help.undo.scope_b1'] },
       { kind: 'prose', anchor: 'undo-agent', titleKey: 'help.undo.agent_t', bodyKeys: ['help.undo.agent_b1'], lite: false },
     ],
     qa: [
       { qKey: 'help.undo.q1', aKey: 'help.undo.a1' },
-      { qKey: 'help.undo.q2', aKey: 'help.undo.a2' },
-      { qKey: 'help.undo.q3', aKey: 'help.undo.a3' },
       { qKey: 'help.undo.q4', aKey: 'help.undo.a4' },
     ],
-    seeAlso: ['agent-undo', 'region', 'faq'],
+    seeAlso: ['select', 'agent-undo', 'region', 'faq'],
   },
 ];

@@ -38,7 +38,7 @@ function touchSample(e: TouchEvent, id: number, pointerId: number): CarrySample 
   return t ? { pointerId, pointerType: 'touch', clientX: t.clientX, clientY: t.clientY, timeStamp: e.timeStamp } : null;
 }
 
-export interface CardCarry {
+interface CardCarry {
   /** The card is in the hand. */
   lifted: boolean;
   /** Whether the click now arriving ends a carry or a scroll rather than being a tap; the card

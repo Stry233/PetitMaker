@@ -38,7 +38,7 @@ export interface FloatMenuItem {
 }
 
 /** A field over the list that narrows its rows to what is typed. Every string is already translated. */
-export interface FloatMenuSearch {
+interface FloatMenuSearch {
   /** The field's name and placeholder. */
   label: string;
   /** Said when the typed text matches no row. */

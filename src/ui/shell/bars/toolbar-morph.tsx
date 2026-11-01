@@ -190,7 +190,7 @@ function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
 
 /** A row or column of slots. Departures and arrivals use the registry's leave and enter motions;
  *  under reduced motion the swap happens before paint. */
-export function MorphRow({ slots, column = false, gap = 0, underlay, style, attrs }: {
+function MorphRow({ slots, column = false, gap = 0, underlay, style, attrs }: {
   slots: readonly ToolbarSlot[];
   column?: boolean;
   gap?: number;

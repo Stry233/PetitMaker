@@ -36,7 +36,7 @@ import { placeBeside, VIEWPORT_MARGIN, type Box } from './place-beside';
 import type { ShowStep, TourCard } from './deck';
 
 /** Visual-pixel padding between a ringed control and its ring. */
-export const LIT_INSET = 8;
+const LIT_INSET = 8;
 /** The callout's width in its own px, and its gap from the ring. */
 const CALLOUT_W = 300;
 const GAP = 16;

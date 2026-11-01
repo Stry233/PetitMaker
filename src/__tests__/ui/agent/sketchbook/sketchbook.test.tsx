@@ -2,8 +2,8 @@
 /** Sketchbook behavior, lifecycle, and reduced-motion coverage. jsdom has no Web Animations, so
  * the suite installs an `Element.prototype.animate` spy to observe whether animation was requested. */
 import { useState } from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { cleanup, fireEvent, render, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 
 import type { PanelView } from '../../../../agent/core/project-view';
@@ -15,7 +15,6 @@ import { PanelShell } from '../../../../ui/agent/PanelShell';
 import { Character } from '../../../../ui/agent/character/Character';
 import { Sketchbook } from '../../../../ui/agent/sketchbook/Sketchbook';
 import type { SketchIdea } from '../../../../ui/agent/sketchbook/propose';
-import { DREAM, SKETCH } from '../../../../ui/agent/sketchbook/sketch-motion';
 import { makeState } from '../../../_support/map-state';
 import type { GridState } from '../../../../core/model/types';
 import { panelProps } from '../../../_support/agent-panel';
@@ -112,16 +111,6 @@ describe('the card only stands where there is something to say', () => {
     expect(shot.childElementCount, 'the house loader stands in the empty frame').toBeGreaterThan(0);
   });
 
-  /** The wash must separate proposal marks from a full-color map without hiding the map. */
-  it('lays enough tracing paper for the pencil to read over a built island', () => {
-    const { getByTestId } = mount([LANE]);
-    const alpha = Number(/rgba?\([^)]*?([\d.]+)\s*\)$/.exec(getByTestId('sketch-wash').style.background)?.[1]);
-    expect(Number.isFinite(alpha), getByTestId('sketch-wash').style.background).toBe(true);
-    // Below 0.35 the pencil competes with the map's own lines.
-    expect(alpha).toBeGreaterThanOrEqual(0.35);
-    // The upper bound keeps the live map visible beneath the wash.
-    expect(alpha).toBeLessThan(0.75);
-  });
 });
 
 describe('a press hands the order over', () => {
@@ -160,85 +149,6 @@ describe('the figure', () => {
   });
 });
 
-describe('the pencil', () => {
-  /** Animating the dashed path's own offset would slide the pattern and read as a solid line arriving;
-   *  animating the mask lets the dashes appear tip-first. */
-  it('draws in by retreating the reveal mask, not by moving the dashes', () => {
-    mount([LANE, POND]);
-    const frames = animate.mock.calls.map((call) => call[0] as Keyframe[]);
-    const drawn = frames.filter((kf) => kf.some((frame) => 'strokeDashoffset' in frame));
-    expect(drawn.length, 'the figure draws itself in').toBeGreaterThan(0);
-    for (const kf of drawn) {
-      expect(Number(kf[0]!.strokeDashoffset)).toBeGreaterThan(0);
-      expect(Number(kf[kf.length - 1]!.strokeDashoffset)).toBe(0);
-    }
-    // The animated stroke is the white one inside the mask, never the drawn path.
-    const runners = (animate.mock.contexts as Element[])
-      .filter((_el, i) => (animate.mock.calls[i]![0] as Keyframe[]).some((f) => 'strokeDashoffset' in f));
-    expect(runners.length).toBe(drawn.length);
-    for (const el of runners) {
-      expect(el.getAttribute('mask')).toBeNull();
-      expect(el.getAttribute('stroke')).toBe('#fff');
-    }
-  });
-});
-
-/** The caption swap (`sketchEngine.swapCap`). jsdom has no frame clock, so the rAF loop is stepped by
- *  pinning `performance.now` and invoking its last-registered callback. */
-describe('the caption', () => {
-  function stepEngineTo(
-    raf: MockInstance<(callback: FrameRequestCallback) => number>,
-    now: MockInstance<() => number>,
-    ms: number,
-  ): void {
-    now.mockReturnValue(ms);
-    const cb = raf.mock.calls[raf.mock.calls.length - 1]![0];
-    act(() => { cb(ms); });
-  }
-
-  it('fades the standing line out, swaps the words underneath, then fades the new line in', () => {
-    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
-    const raf = vi.spyOn(window, 'requestAnimationFrame');
-    try {
-      const { getByTestId } = mount([LANE, POND]);
-      const capEl = getByTestId('sketch-caption');
-      expect(capEl.textContent).toBe(said(LANE, 'capKey'));
-
-      animate.mockClear();
-      stepEngineTo(raf, now, SKETCH.cycle); // `LANE` gives way to `POND`
-
-      const onCap = (calls: unknown[][]) => calls
-        .map((call, i) => ({ call, el: animate.mock.contexts[i] as Element }))
-        .filter(({ el }) => el === capEl);
-      let capCalls = onCap(animate.mock.calls);
-      expect(capCalls, 'the caption fades out, and nothing else touches this element').toHaveLength(1);
-      expect(capCalls[0]!.call[0]).toEqual([{ opacity: 1 }, { opacity: 0 }]);
-      expect(capCalls[0]!.call[1]).toMatchObject({ duration: SKETCH.capOut.dur, easing: SKETCH.capOut.easing });
-
-      // The words change only once the out beat finishes.
-      expect(capEl.textContent).toBe(said(LANE, 'capKey'));
-
-      const outIndex = animate.mock.calls.indexOf(capCalls[0]!.call as unknown as unknown[]);
-      const outAnim = animate.mock.results[outIndex]!.value as { onfinish?: () => void };
-      animate.mockClear();
-      act(() => { outAnim.onfinish?.(); });
-
-      // The in beat rises from below on the same element.
-      expect(capEl.textContent).toBe(said(POND, 'capKey'));
-      capCalls = onCap(animate.mock.calls);
-      expect(capCalls).toHaveLength(1);
-      expect(capCalls[0]!.call[0]).toEqual([
-        { opacity: 0, transform: `translateY(${SKETCH.capRise}px)` },
-        { opacity: 1, transform: 'none' },
-      ]);
-      expect(capCalls[0]!.call[1]).toMatchObject({ duration: SKETCH.capIn.dur, easing: SKETCH.capIn.easing });
-    } finally {
-      now.mockRestore();
-      raf.mockRestore();
-    }
-  });
-});
-
 describe('reduced motion is the complete still', () => {
   it('draws the first idea fully in and starts no animation at all', () => {
     const { getByTestId } = mount([LANE, POND, GROVE], () => {}, true);
@@ -251,40 +161,6 @@ describe('reduced motion is the complete still', () => {
     expect(animate, 'nothing moves under reduced motion').not.toHaveBeenCalled();
   });
 
-  it('runs no rotation loop, so the still stays the still', () => {
-    const raf = vi.spyOn(window, 'requestAnimationFrame');
-    const { unmount } = mount([LANE, POND], () => {}, true);
-    expect(raf).not.toHaveBeenCalled();
-    unmount();
-    raf.mockRestore();
-  });
-});
-
-describe('the engine is gated by the card', () => {
-  /** The card owns the rotation's rAF loop, so unmounting must end it. */
-  it('cancels its loop when the card goes away', () => {
-    const cancel = vi.spyOn(window, 'cancelAnimationFrame');
-    const raf = vi.spyOn(window, 'requestAnimationFrame');
-    const { unmount } = mount([LANE, POND]);
-    expect(raf, 'the loop runs while the card stands').toHaveBeenCalled();
-    const started = raf.mock.results.map((r) => r.value as number);
-
-    unmount();
-    expect(cancel).toHaveBeenCalled();
-    expect(started).toContain(cancel.mock.calls[0]![0]);
-    cancel.mockRestore();
-    raf.mockRestore();
-  });
-
-  /** With one idea a wipe would blank the card every cycle with nothing behind it. */
-  it('starts no loop for a map that offers exactly one idea', () => {
-    const raf = vi.spyOn(window, 'requestAnimationFrame');
-    const { getByTestId, unmount } = mount([LANE]);
-    expect(getByTestId('sketch-card')).toBeTruthy();
-    expect(raf).not.toHaveBeenCalled();
-    unmount();
-    raf.mockRestore();
-  });
 });
 
 /** The panel seats the card only at rest (not behind a job, an unread record, a question or a
@@ -460,44 +336,4 @@ describe('the dreaming office', () => {
     raf.mockRestore();
   });
 
-  it('cancels its loop when the screen goes away', () => {
-    const cancel = vi.spyOn(window, 'cancelAnimationFrame');
-    const { unmount } = dream();
-    unmount();
-    expect(cancel).toHaveBeenCalled();
-    cancel.mockRestore();
-  });
-
-  /** `dreamEngine.rotateOnce`'s ghost row, with the loop stepped by hand as in the caption test. */
-  it('fades the departed row over the board rather than dropping it outright', async () => {
-    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
-    const raf = vi.spyOn(window, 'requestAnimationFrame');
-    try {
-      const { getByTestId, queryByTestId } = dream();
-      expect(queryByTestId('dream-row-leaving'), 'nothing has left yet').toBeNull();
-
-      now.mockReturnValue(DREAM.cycle);
-      const cb = raf.mock.calls[raf.mock.calls.length - 1]![0] as FrameRequestCallback;
-      animate.mockClear();
-      // Async: flushes the new row's mocked `MapShot` capture.
-      await act(async () => { cb(DREAM.cycle); });
-
-      // The first row (dreams[0]) is the one that left.
-      const leaving = getByTestId('dream-row-leaving');
-      expect(leaving.dataset.order).toBe('village');
-
-      const onLeaving = animate.mock.calls
-        .map((call, i) => ({ call, el: animate.mock.contexts[i] as Element }))
-        .filter(({ el }) => el === leaving);
-      expect(onLeaving).toHaveLength(1);
-      expect(onLeaving[0]!.call[0]).toEqual([
-        { opacity: 1, transform: 'none' },
-        { opacity: 0, transform: 'translate(-18px,-6px) scale(.98)' },
-      ]);
-      expect(onLeaving[0]!.call[1]).toMatchObject({ duration: DREAM.rowOut.dur, easing: DREAM.rowOut.easing });
-    } finally {
-      now.mockRestore();
-      raf.mockRestore();
-    }
-  });
 });

@@ -34,10 +34,13 @@ export function liveDockDepth(bottom: boolean): number | undefined {
   return bottom ? dockDrag.get() ?? dockDepthNow() : undefined;
 }
 
-/** The frame's zoom on this frame: the dock's live fraction at `depth` and the window's live size,
- *  in the upright arrangement when `upright`, under `scale` (the live UI zoom unless a picture holds its own). */
-export function liveFrameZoom(depth: number | undefined, upright: boolean, scale: ScaleInputs = liveScaleNow()): { zoom: number; windowH: number } {
-  const { width, height } = viewportSizeSnapshot();
+/** The frame's zoom on this frame: the dock's live fraction at `depth` and `window`'s size (the live
+ *  window's unless a picture poses its own), in the upright arrangement when `upright`, under `scale`
+ *  (the live UI zoom unless a picture holds its own). */
+export function liveFrameZoom(
+  depth: number | undefined, upright: boolean, scale: ScaleInputs = liveScaleNow(), window = viewportSizeSnapshot(),
+): { zoom: number; windowH: number } {
+  const { width, height } = window;
   return { zoom: frameZoomAt(dockAside.get(), width, height, scale.uiZoom, { touch: scale.touch, upright, depth }), windowH: height };
 }
 

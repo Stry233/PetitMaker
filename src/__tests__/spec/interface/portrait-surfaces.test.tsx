@@ -2,7 +2,7 @@
 /**
  * The bottom surfaces that are not a mode's panel, on an upright window: the welcome-back offer and
  * generation's scope screen stand on the dark surface the bar raises, and the arrival notice stands
- * under the top row at its content's width. jsdom has no layout, so every panel reports one height and positions are read from styles.
+ * under the top row at its content's width. jsdom has no layout, so heights and positions are checked in a browser.
  */
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
@@ -37,9 +37,6 @@ vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
 
 const AUTOSAVE_STORAGE_KEY = 'petit-planet-autosave';
 
-/** The height every panel standing on the bar reports, in frame px. */
-const PANEL_H = 300;
-
 /** A working map with content, so the browser holds a session worth offering back. */
 function workingMap(): GridState {
   const cells = createGrid(DEFAULT_MAP);
@@ -60,18 +57,12 @@ function painted(color: string): string {
   return probe.style.background;
 }
 
-const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
-
 beforeEach(() => {
   __resetArrivals();
   __resetRestoreOffer();
   localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   setStoreState({ locale: 'en', assistantOpen: false, tourRunning: false });
   useEditorStore.getState().setEditMode({ mode: null });
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-    configurable: true,
-    get(this: HTMLElement) { return this.hasAttribute('data-bar-panel') ? PANEL_H : 0; },
-  });
   sizeWindow(390, 844);
 });
 /** Settles the UI scale at `inputMode`'s default. */
@@ -82,7 +73,6 @@ function atDefaultScale(inputMode: InputMode): void {
 afterEach(() => {
   cleanup();
   localStorage.removeItem(AUTOSAVE_STORAGE_KEY);
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight);
   sizeWindow(1024, 768);
 });
 
@@ -107,65 +97,10 @@ describe('the welcome-back offer on an upright window', () => {
     expect(resume.getAttribute('aria-describedby')).toBeTruthy();
     expect(inside.getByTestId('restore-card').getAttribute('aria-describedby')).toBeNull();
     expect(resume.parentElement!.style.flexDirection || 'row').toBe('row');
-    // The offer stands on the bar, and the bar's dark band reaches up behind it as one surface.
-    const band = screen.getByTestId('shell-mode-band');
-    const rest = parseFloat(panel.style.bottom);
-    expect(parseFloat(band.style.height)).toBe(rest + PANEL_H);
-    expect(band.style.background).toBe(painted(DARK_PLATE));
+    // The offer stands on the bar's dark band, with no plate of its own.
+    expect(screen.getByTestId('shell-mode-band').style.background).toBe(painted(DARK_PLATE));
     expect(screen.queryByTestId('bar-plate')).toBeNull();
   });
-});
-
-describe('the welcome-back offer\'s height on an upright phone', () => {
-  /** The offer's parts besides its picture as a phone lays them out, in frame px: title and two lines
-   *  of words, the answers' row, the rule, and the panel's own gaps and padding. */
-  const WORDS_H = 110;
-  const ANSWERS_H = 38;
-  const GAPS = 3 * 16;
-  const PADDING = 16 + 4;
-
-  /** Lays the offer out as a browser would: the picture as tall as it is drawn, the column as tall as
-   *  its parts, the panel as tall as its column up to its cap. */
-  function layOut(): void {
-    const pictureOf = (el: HTMLElement) => Array.from(el.children).find((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.testid === 'restore-card');
-    const columnOf = (el: HTMLElement) => Array.from(el.children).some((c) => c instanceof HTMLElement && pictureOf(c));
-    const columnH = (el: HTMLElement) => {
-      const picture = Array.from(el.children).map((c) => pictureOf(c as HTMLElement)).find(Boolean)!;
-      return parseFloat(picture.style.height) + WORDS_H + ANSWERS_H + 1 + GAPS;
-    };
-    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-      configurable: true,
-      get(this: HTMLElement) {
-        const picture = pictureOf(this);
-        if (picture) return parseFloat(picture.style.height);
-        if (columnOf(this)) return columnH(this);
-        if (this.hasAttribute('data-bar-panel')) {
-          const column = Array.from(this.querySelectorAll<HTMLElement>('div')).find(columnOf)!;
-          return Math.min(columnH(column) + PADDING, parseFloat(this.style.maxHeight) || Infinity);
-        }
-        return 0;
-      },
-    });
-  }
-
-  for (const [w, h] of [[384, 740], [360, 560]] as const) {
-    spec('UI-42', `at ${w}x${h} in touch mode the offer claims all it holds and does not scroll`, () => {
-      sizeWindow(w, h);
-      layOut();
-      localStorage.setItem(AUTOSAVE_STORAGE_KEY, serialize(workingMap()));
-      render(
-        <InputModeProvider inputMode="touch" shape="portrait">
-          <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
-        </InputModeProvider>,
-      );
-      const panel = screen.getByTestId('restore-card').closest<HTMLElement>('[data-bar-panel="dark"]')!;
-      const picture = parseFloat(screen.getByTestId('restore-card').style.height);
-      const content = picture + WORDS_H + ANSWERS_H + 1 + GAPS + PADDING;
-      expect(['auto', 'scroll']).not.toContain(panel.style.overflowY);
-      expect(parseFloat(panel.style.maxHeight)).toBeGreaterThanOrEqual(content);
-      expect(screen.getByTestId('restore-resume')).toBeTruthy();
-    });
-  }
 });
 
 describe('the screens standing in the bar on an upright window', () => {

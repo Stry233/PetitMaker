@@ -14,7 +14,7 @@ export type StencilFillKind = 'mountain' | 'water' | 'object' | 'flora' | 'trees
  * `tiles` selects a per-cell catalog palette, `decor` adds sparse anchor objects, and `water` defines water's terrain role.
  * Mixed uses terrain with palette water plus sparse non-tree objects; Water builds the figure itself from water.
  */
-export interface PictureRecipe {
+interface PictureRecipe {
   tiles: ObjectPaletteKind | null;
   decor: ObjectPaletteKind | null;
   water: StencilWaterRole;

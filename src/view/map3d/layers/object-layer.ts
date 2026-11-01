@@ -77,7 +77,7 @@ export function makeInstancedMesh(
 }
 
 /** What the instances read from the scene that holds them. */
-export interface ObjectInstancesHost {
+interface ObjectInstancesHost {
   readonly scene: THREE.Scene;
   /** The archetype bodies' material, tinted per instance. */
   readonly sharedMat: THREE.Material;

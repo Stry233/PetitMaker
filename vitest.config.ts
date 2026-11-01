@@ -1,6 +1,6 @@
-import { globSync, readFileSync } from 'node:fs';
+import { globSync, readFileSync, realpathSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
@@ -44,17 +44,25 @@ export const SHARED_UNIT_FILES = globSync(SHARED_FOLDERS.map((dir) => `${dir}*.t
   .filter((p) => !/\.(e2e|slow)\./.test(p) && !NEEDS_ISOLATION.test(readFileSync(join(ROOT, p), 'utf8')))
   .sort();
 
+/** A worktree links the main checkout's packages (`scripts/internal/worktree/setup.mts`), and Vite
+ *  refuses to serve a file outside the root, so the folder holding the real `node_modules` is allowed. */
+const PACKAGES_HOME = dirname(realpathSync(join(ROOT, 'node_modules')));
+
 export default defineConfig({
   plugins: [react()],
+  server: { fs: { allow: [...new Set([ROOT, PACKAGES_HOME])] } },
   test: {
     globals: true,
     // A worker peaks near 0.8 GB, so twelve keep a full run near 10 GB; on a shared machine more
     // workers add contention faster than throughput. A hosted runner for a private repository has two
     // cores and runs nothing else, so CI takes them all.
-    maxWorkers: process.env.CI ? availableParallelism() : Math.min(12, Math.max(1, availableParallelism() - 1)),
-    // Both cores of that runner are busy, so a test runs three to four times slower there than on a
-    // workstation; the default 5 s would time out a test that takes 1.5 s locally.
-    ...(process.env.CI ? { testTimeout: 20_000 } : {}),
+    // PETIT_TEST_WORKERS caps a machine that runs several jobs at once (the private runner service).
+    maxWorkers: Number(process.env.PETIT_TEST_WORKERS) || (process.env.CI ? availableParallelism() : Math.min(12, Math.max(1, availableParallelism() - 1))),
+    // A hosted runner's two busy cores run a test three to four times slower than a workstation, and a
+    // workstation under a browser campaign or a second suite slows as much; a load read at start misses
+    // the load the run itself adds. Slowness belongs to the slow tier and the perf budgets, not to a
+    // timeout that fails a correct test on a busy machine.
+    testTimeout: process.env.CI ? 20_000 : 15_000,
     // Files that need a DOM open with a `// @vitest-environment jsdom` docblock; jsdom setup costs
     // most of a small file's run time, so it is not the default.
     environment: 'node',

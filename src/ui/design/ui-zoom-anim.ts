@@ -93,9 +93,14 @@ export function onUiZoomSpan(tell: () => void): () => void {
 /** The UI zoom a render lays out for: the store's target, never a frame of the follow. A pictured
  *  shell holds 1 instead: a figure is laid out for its posed window, not for the reader's UI-scale
  *  setting, so its picture does not move when the live interface is rescaled. */
+/** The UI zoom a pictured subtree draws at unless its pose names one, so a reader rescaling the live
+ *  interface leaves a picture still. */
+export const PICTURED_UI_ZOOM = 1;
+
 export function useSettledUiZoom(): number {
   const zoom = useEditorStore((s) => s.uiZoom);
-  return useUiPreviewPose() ? 1 : zoom;
+  const pose = useUiPreviewPose();
+  return pose ? (pose.uiZoom ?? PICTURED_UI_ZOOM) : zoom;
 }
 
 /** Test-only: hard-reset the singleton to the store's current value with no

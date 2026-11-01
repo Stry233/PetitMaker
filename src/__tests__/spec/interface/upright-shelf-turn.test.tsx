@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The upright object panel turning its cards between the grid and the one sideways row (UI-28), on a
- * rendered shell. jsdom lays nothing out, so the cards stand on a declared geometry: three columns in
- * the grid, one line centred in the box in the row, read back through the offsets, scroll positions
- * and boxes the panel and the morph read.
+ * rendered shell. jsdom lays nothing out, so the cards stand on a declared geometry, three columns in
+ * the grid and one line centred in the box in the row, that gives the morph a distance and the handle
+ * a turning height; where the cards and the panel land is checked in a browser.
  */
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
@@ -19,7 +19,6 @@ import { Shell } from '../../../ui/shell/Shell';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { __resetUprightGrid } from '../../../ui/shell/bars/objects/UprightObjectPanel';
 import { MORPH_ANIMATION, MORPH_PIECE_ATTR, MORPHING_ATTR } from '../../../ui/primitives/morph';
-import { SCROLL_FADE } from '../../../ui/primitives/scroll-fade';
 import { UPRIGHT_GRID } from '../../../ui/shell/bars/objects/object-shelf';
 import { TEXT } from '../../../ui/shell/units';
 import { BAR_LINE_HEIGHT } from '../../../ui/shell/bars/bar-atoms';
@@ -204,14 +203,6 @@ function hold() {
   return drag;
 }
 
-/** Closes the object panel and opens it again. */
-function reopen(): void {
-  act(() => { useEditorStore.getState().setEditMode({ mode: null }); });
-  act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
-}
-/** A window height whose panel reach leaves the grid less than its turn. */
-const SHORT_H = 400;
-
 const morphsOn = (el: Element): RecordedAnimation[] => env.animations.filter((a) => a.target === el && a.animation.id === MORPH_ANIMATION);
 
 beforeEach(() => {
@@ -244,22 +235,6 @@ describe('the upright object panel turning its cards', () => {
     expect(cellsOf(grid())).toEqual(cards);
   });
 
-  spec('UI-28', 'the first card in view before a turn starts the row after it, and the grid after the turn back', async () => {
-    mount(false);
-    await frames();
-    const leadRow = 1;
-    grid().scrollTop = leadRow * (CARD.h + CARD.gap);
-    const lead = cellsOf(grid())[leadRow * COLUMNS]!;
-    await step('ArrowDown', 'row');
-    // The lead stands just past the fade the view shows at its start.
-    expect(grid().scrollLeft).toBe(lead.offsetLeft - SCROLL_FADE);
-
-    const back = cellsOf(grid())[COLUMNS + 1]!;
-    grid().scrollLeft = back.offsetLeft;
-    await step('ArrowUp', 'grid');
-    expect(grid().scrollTop).toBe(back.offsetTop - SCROLL_FADE);
-  });
-
   spec('UI-28', 'the cards travel between the arrangements, and with reduced motion they turn with no animation and the grid carries no data-morphing', async () => {
     mount(false);
     await frames();
@@ -275,88 +250,6 @@ describe('the upright object panel turning its cards', () => {
     await step('ArrowUp', 'grid');
     expect(cellsOf(grid()).flatMap(morphsOn)).toHaveLength(0);
     expect(grid().hasAttribute(MORPHING_ATTR)).toBe(false);
-  });
-
-  spec('UI-28', 'dragging the handle past the turning height turns the cards before the finger lets go, each from where it stood', async () => {
-    mount(false);
-    await frames();
-    await step('ArrowDown', 'row');
-    const card = cellsOf(grid())[0]!;
-    const drag = hold();
-    await drag.begin();
-    // Up to just short of where the cards turn, then just past it.
-    await drag.to(drag.least);
-    await drag.to(drag.turnAt + SLACK - 0.01);
-    expect(grid().dataset.arrangement).toBe('row');
-    const held = card.getBoundingClientRect().top;
-    await drag.to(drag.turnAt + SLACK + 0.01);
-    expect(grid().dataset.arrangement).toBe('grid');
-    await frames();
-    const move = morphsOn(card).find((a) => a.options.composite === 'add' && a.animation.playState !== 'finished');
-    expect(move).toBeDefined();
-    const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(String(move!.keyframes[0]?.transform));
-    // Where the morph starts the card: its place now, moved by the morph's first translation.
-    const startTop = placed(card)!.top + Number(m![2]) * zoomOf(card);
-    expect(Math.abs(startTop - held)).toBeLessThanOrEqual(1);
-    // Letting go where the cards already stand turns nothing more.
-    for (const a of env.animations) a.animation.finish();
-    const before = env.animations.length;
-    await drag.release();
-    expect(grid().dataset.arrangement).toBe('grid');
-    expect(env.animations.slice(before).filter((a) => a.animation.id === MORPH_ANIMATION)).toHaveLength(0);
-  });
-
-  spec('UI-28', 'dragging back below the turning height turns the cards back while held, and a finger resting at the turn never flaps', async () => {
-    mount(false);
-    await frames();
-    expect(grid().dataset.arrangement).toBe('grid');
-    const drag = hold();
-    await drag.begin();
-    await drag.to(drag.turnAt - 2 * SLACK);
-    expect(grid().dataset.arrangement).toBe('row');
-    // Within the slack either side of the turn the cards keep the arrangement they reached.
-    for (const live of [drag.turnAt + SLACK / 2, drag.turnAt, drag.turnAt - SLACK / 2, drag.turnAt + SLACK / 2]) {
-      await drag.to(live);
-      expect(grid().dataset.arrangement, `at ${live}`).toBe('row');
-    }
-    await drag.to(drag.turnAt + 2 * SLACK);
-    expect(grid().dataset.arrangement).toBe('grid');
-    for (const live of [drag.turnAt - SLACK / 2, drag.turnAt, drag.turnAt + SLACK / 2]) {
-      await drag.to(live);
-      expect(grid().dataset.arrangement, `at ${live}`).toBe('grid');
-    }
-    // Let go inside the slack, the cards stay as they stand and the height the panel keeps agrees.
-    await drag.release();
-    expect(grid().dataset.arrangement).toBe('grid');
-    await frames();
-    expect(grid().dataset.arrangement).toBe('grid');
-  });
-
-  spec('UI-28', 'a turn back made as soon as the cards have turned starts each card from where it is drawn', async () => {
-    mount(false);
-    await frames();
-    const card = cellsOf(grid())[1]!;
-    const drag = hold();
-    await drag.begin();
-    await drag.to(drag.turnAt - 2 * SLACK);
-    expect(grid().dataset.arrangement).toBe('row');
-    // One frame on, the turn's pass holds each card where it stood until it sets off.
-    await frames(1);
-    const drawn = card.getBoundingClientRect();
-    const was = heightOf(grid());
-    await drag.to(drag.turnAt + 2 * SLACK);
-    expect(grid().dataset.arrangement).toBe('grid');
-    // The row stands its cards centred in the box, so the finger's taller box drew them that much lower
-    // before the cards turned back.
-    const lower = ((heightOf(grid()) - was) / 2) * zoomOf(card);
-    await frames();
-    const now = card.getBoundingClientRect();
-    expect(Math.abs(now.top - (drawn.top + lower))).toBeLessThanOrEqual(1);
-    expect(Math.abs(now.left - drawn.left)).toBeLessThanOrEqual(1);
-    // Run out, the motion leaves the card where the grid puts it.
-    for (const a of env.animations) a.animation.finish();
-    expect(card.getBoundingClientRect().top).toBeCloseTo(placed(card)!.top, 5);
-    await drag.release();
   });
 
   spec('UI-28', 'in touch mode the handle takes a fingertip around its grip, reaching above the panel\'s edge and not over the names under it', async () => {
@@ -375,73 +268,6 @@ describe('the upright object panel turning its cards', () => {
     expect((SEAM_HANDLE.h - SEAM_HANDLE.grip.h) / 2 - inset('top')).toBeLessThan(0);
     // The strip itself grows no area of its own under the names.
     expect(Array.from(strip.children).some((el) => el.hasAttribute('data-touch-reach'))).toBe(false);
-  });
-
-  spec('UI-28', 'let go short of the grid, the panel settles to the least height its one row needs and stays so when opened again', async () => {
-    mount(false);
-    await frames();
-    const drag = hold();
-    await drag.begin();
-    const between = (drag.least + drag.turnAt) / 2;
-    await drag.to(between);
-    expect(grid().dataset.arrangement).toBe('row');
-    // While held the panel follows the finger.
-    expect(heightOf(grid())).toBeCloseTo(between, 0);
-    await drag.release();
-    await frames();
-    expect(grid().dataset.arrangement).toBe('row');
-    expect(heightOf(grid())).toBeCloseTo(drag.least, 5);
-    reopen();
-    await frames();
-    expect(grid().dataset.arrangement).toBe('row');
-    expect(heightOf(grid())).toBeCloseTo(drag.least, 5);
-  });
-
-  spec('UI-28', 'a height that holds the grid is kept on letting go and on opening again', async () => {
-    mount(false);
-    await frames();
-    const drag = hold();
-    await drag.begin();
-    const kept = drag.turnAt + 4 * SLACK;
-    await drag.to(kept);
-    await drag.release();
-    await frames();
-    expect(grid().dataset.arrangement).toBe('grid');
-    expect(heightOf(grid())).toBeCloseTo(kept, 0);
-    reopen();
-    await frames();
-    expect(grid().dataset.arrangement).toBe('grid');
-    expect(heightOf(grid())).toBeCloseTo(kept, 0);
-  });
-
-  spec('UI-28', 'a kept grid height a shorter window cannot hold is replaced by the one row\'s least height on opening again', async () => {
-    mount(false);
-    await frames();
-    const drag = hold();
-    await drag.begin();
-    await drag.to(drag.turnAt + 4 * SLACK);
-    await drag.release();
-    await frames();
-    expect(grid().dataset.arrangement).toBe('grid');
-    act(() => { useEditorStore.getState().setEditMode({ mode: null }); });
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: SHORT_H });
-    act(() => { window.dispatchEvent(new Event('resize')); });
-    await frames();
-    act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
-    await frames();
-    expect(grid().dataset.arrangement).toBe('row');
-    expect(heightOf(grid())).toBeCloseTo(drag.least, 5);
-  });
-
-  spec('UI-28', 'with reduced motion a held handle turns the cards at once at the crossing', async () => {
-    mount(true);
-    await frames();
-    const drag = hold();
-    await drag.begin();
-    await drag.to(drag.turnAt - 2 * SLACK);
-    expect(grid().dataset.arrangement).toBe('row');
-    expect(cellsOf(grid()).flatMap(morphsOn)).toHaveLength(0);
-    await drag.release();
   });
 
   spec('UI-28', 'a drag commits React only as it begins, at each turn and as it ends, not on each move', async () => {

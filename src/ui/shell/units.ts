@@ -26,7 +26,7 @@ const MODE_SIZE = Math.round(BLOCK_W * MODE_SCALE);
 export const MODE_PLATE_W = 265;
 
 /** How far the splat reaches past its block, one side, in css px. */
-export const PLATE_OVERHANG = (MODE_PLATE_W * MODE_SCALE - MODE_SIZE) / 2;
+const PLATE_OVERHANG = (MODE_PLATE_W * MODE_SCALE - MODE_SIZE) / 2;
 
 /**
  * The bottom shelves' art scale: pictures read bigger than plates, so cards draw under the frame's

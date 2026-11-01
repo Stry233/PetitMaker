@@ -9,7 +9,7 @@ import type { ViewProjection } from './view-seam';
 import type { Tool, ToolContext } from './types';
 
 /** The pointer read once: the map point, the grid that resolved it and the cell holding it. */
-export interface ResolvedPointer<G extends GridId = GridId> {
+interface ResolvedPointer<G extends GridId = GridId> {
   point: MapPoint;
   grid: G;
   cell: GridCell<G>;

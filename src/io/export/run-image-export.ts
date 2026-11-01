@@ -24,7 +24,7 @@ export type ImageExportHost = MapCaptureHost & Pick<MapCapturer, 'capture2d' | '
 
 /** The share code drawn at a band width: its canvas and a notice to show after the export, or null
  *  where the band cannot hold a legible code. Throws where the code could not be built. */
-export type ShareCodeBand = (width: number) => Promise<{ canvas: HTMLCanvasElement; notice: I18nKey | null } | null>;
+type ShareCodeBand = (width: number) => Promise<{ canvas: HTMLCanvasElement; notice: I18nKey | null } | null>;
 
 export interface ImageExportRequest {
   state: GridState;
@@ -41,7 +41,7 @@ export interface ImageExportRequest {
   limits: CanvasLimits;
 }
 
-export type ImageExportResult =
+type ImageExportResult =
   | { status: 'no-capture' }
   | { status: 'no-image' }
   | { status: 'done'; blob: Blob; carriesCode: boolean; codeTooSmall: boolean; codeFailed: boolean; codeNotice: I18nKey | null };

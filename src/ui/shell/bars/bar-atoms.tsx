@@ -17,7 +17,7 @@ import { usePanelInk } from './bar-panel';
 import { useT } from '../../../i18n/context';
 
 /** The live key combo of a bar command in the toolbar's context, or null where it has none. */
-export function useCommandCombo(): (commandId: string) => string | null {
+function useCommandCombo(): (commandId: string) => string | null {
   const overrides = useKeybinds((s) => s.overrides);
   const context = useToolbarContext();
   return (commandId) => effectiveCombo(overrides, commandId, context);

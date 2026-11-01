@@ -1,5 +1,0 @@
-{
-  "src/ui/chrome/modals/export/FooterEditor.tsx": {
-    "`⇥ ${t('export.footer_fill')}`": "The arrow is the menu row's icon glyph, drawn before the label in every locale."
-  }
-}

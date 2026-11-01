@@ -1,26 +1,22 @@
 /*
  * The assistant figures: the key field's detection, the oversight control, and `PanelShell` posed at four
  * moments from fixture projections. `SetupScreen` mounts under the pictured context, which stands its
- * network asks down; `ManageScreen` never mounts (it writes the key vault), so oversight shows its row.
+ * network asks down; `ManageScreen` never mounts (it asks for model lists), so oversight shows its row.
  */
 import { useEffect, useState } from 'react';
 import { PreviewFrame } from './PreviewFrame';
+import { FIGURE_LEAST, useFigureRoom } from '../figure-scale';
 import { PanelShell } from '../../../agent/PanelShell';
-import { PANEL_WIDTH } from '../../../agent/panel-skin';
+import { PANEL_PAD, PANEL_WIDTH } from '../../../agent/panel-skin';
 import { RegionVignette } from '../../../agent/composer/region-chip';
 import { Banner } from '../../../agent/desk/Banner';
 import { useEditorStore } from '../../../../state/store';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
-import { rowFace } from '../../../agent/connection/setup-copy';
-import { SetupKeyField } from '../../../agent/connection/SetupKeyField';
-import { SetupProviderFace } from '../../../agent/connection/SetupProviderFace';
-import { NOTE_STYLE, OVERSIGHT_COPY } from '../../../agent/connection/setup-parts';
-import { OVERSIGHTS, readKeyShape, type AskRecord, type JobView, type OpRow, type PanelView } from '../../../../agent/panel';
+import { SetupScreen } from '../../../agent/connection/SetupScreen';
+import { OversightRow } from '../../../agent/connection/ManageScreen';
+import { type AskRecord, type JobView, type OpRow, type PanelView } from '../../../../agent/panel';
 import type { RegionBounds } from '../../../../core/grid/rect';
 import { useT } from '../../../../i18n/context';
-import { SegmentedControl } from '../../../primitives/SegmentedControl';
-import { PLATE_INK } from '../../../design/tokens';
-import { roleFont } from '../../../design/text-weight';
 import { ruleToast } from '../../../../i18n/terms/rule-copy';
 
 const noop = () => {};
@@ -72,50 +68,38 @@ export function AgentSetupPreview() {
   );
 }
 
+/** The job zone's width the connection screens lay out in: the panel's, or the widest the column holds
+ *  at the figure rule's least share where that is narrower, as a narrower screen would give them. */
+function useZoneWidth(): number {
+  const room = useFigureRoom();
+  const panel = PANEL_WIDTH - 2 * PANEL_PAD;
+  return room > 0 ? Math.min(panel, Math.floor(room / FIGURE_LEAST)) : panel;
+}
+
+/** The setup screen the moment a shaped key has been pasted: its field, the provider the shape
+ *  names, and the note under them. The pictured screen never asks the provider or advances. */
 export function AgentSetupDetectPreview() {
-  const t = useT();
-  const shape = readKeyShape(SAMPLE_KEY);
-  // The row at the moment a shaped key has just settled: not pinned, not checking, not refused —
-  // the same face `SetupScreen` shows once its idle gate opens on a key a provider claims.
-  const row = rowFace({ t, shape, pinned: null, checking: false, refused: false });
+  const width = useZoneWidth();
   return (
-    <PreviewFrame height={140} fit>
-      <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <SetupKeyField
-          value={SAMPLE_KEY}
-          masked
-          refused={false}
-          shakeSeq={0}
-          onChange={noop}
-          onEnter={noop}
-        />
-        <SetupProviderFace row={row} mark={null} />
+    <PreviewFrame height={260} fit>
+      <div style={{ width, display: 'flex', flexDirection: 'column' }}>
+        <SetupScreen pasted={SAMPLE_KEY} />
       </div>
     </PreviewFrame>
   );
 }
 
-/* ── oversight: the manage card's own control row, posed at the default ──── */
+/* ── oversight: the manage screen's own oversight row, posed at the default ── */
 
 /** The level the picture stands at: the default, whose caption explains the middle ground. */
 const OVERSIGHT_SHOWN = 'checkpoint' as const;
 
 export function AgentOversightPreview() {
-  const t = useT();
+  const width = useZoneWidth();
   return (
     <PreviewFrame height={150} fit>
-      <div style={{ width: 320, display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <div style={{ ...roleFont('label'), color: PLATE_INK, padding: '0 3px' }}>
-          {t('agent.setup_oversight')}
-        </div>
-        <SegmentedControl
-          value={OVERSIGHT_SHOWN}
-          options={OVERSIGHTS}
-          onChange={noop}
-          render={(o) => t(OVERSIGHT_COPY[o].label)}
-          idPrefix="help-fig-oversight"
-        />
-        <p style={{ ...NOTE_STYLE, margin: 0 }}>{t(OVERSIGHT_COPY[OVERSIGHT_SHOWN].caption)}</p>
+      <div style={{ width }}>
+        <OversightRow value={OVERSIGHT_SHOWN} onChange={noop} />
       </div>
     </PreviewFrame>
   );

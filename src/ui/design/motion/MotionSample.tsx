@@ -3,7 +3,7 @@ import { seconds } from '.';
 import { CSS_CURVES } from './curves';
 import { MOTIONS, type SampleKey, type SampleMotionId } from './registry';
 
-export type SampleLevel = 'full' | 'reduced';
+type SampleLevel = 'full' | 'reduced';
 
 /** The ground mark's opacity at its resting scale; a squash's wider mark darkens towards 1. */
 const GROUND_REST = 0.8;

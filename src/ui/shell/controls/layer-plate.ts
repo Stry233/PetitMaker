@@ -61,7 +61,7 @@ interface TileMetrics {
  * toggles, bar on three lines); the file trades depth for width (words on one line). The bar keeps its
  * own line at both sizes, and a size's width is its longest line.
  */
-export const TILE: Record<'grid' | 'column', TileMetrics> = {
+const TILE: Record<'grid' | 'column', TileMetrics> = {
   grid: {
     padX: 12, padY: 10, line: 8, swatchGap: 7, readingGap: 12, toggleGap: 5,
     swatch: 13, count: 38, icon: 22, bar: 8, radius: 14, gap: 10,
@@ -94,12 +94,12 @@ export const PLATE_MIN_WIDTH = 2 * (PANEL.pad + PANEL.edge + Math.max(TILE.grid.
 export const tileOf = (mode: LayerMode, touch = false): TileMetrics =>
   (touch ? TOUCH_TILE : TILE)[mode === 'grid' ? 'grid' : 'column'];
 /** Every floor the map can hold, which is what both sizes list. */
-export const FLOORS = ELEVATION_MAX + 1;
+const FLOORS = ELEVATION_MAX + 1;
 /** The square's own column count, which lays the stack out as square as it goes. */
 const GRID_COLS = Math.ceil(Math.sqrt(FLOORS));
 /** The least width a floor's tile stands in: its count with the eye and the lock, which never give
  *  way; the name ends in an ellipsis rather than widening the tile past it. */
-export function tileLeastWidth(mode: LayerMode, touch = false): number {
+function tileLeastWidth(mode: LayerMode, touch = false): number {
   const tile = tileOf(mode, touch);
   return 2 * tile.padX + tile.count + tile.readingGap + 2 * tile.icon + tile.toggleGap;
 }

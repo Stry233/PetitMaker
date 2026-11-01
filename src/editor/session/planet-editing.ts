@@ -12,7 +12,7 @@ import { host } from '../host/host';
 import { autosave } from './autosave';
 import { editorPort } from './context';
 
-export type FinishPlanetResult = { ok: true; entry: PlanetEntry } | { ok: false; reason: 'quota' | 'empty' };
+type FinishPlanetResult = { ok: true; entry: PlanetEntry } | { ok: false; reason: 'quota' | 'empty' };
 
 /**
  * Whether a planet session may open over the current map: there is a map, no session is open, the

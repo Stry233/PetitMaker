@@ -5,6 +5,7 @@
  * when first reached and stays mounted, its `open` being the window's, so nothing typed is lost and no
  * section's capture runs before it is asked for.
  */
+import type { GridState } from '../../../../core/model/types';
 import { tourTargetAttr } from '../../tour/steps';
 import { useWindow } from '../use-window';
 import { useCallback, useEffect, useState } from 'react';
@@ -33,7 +34,7 @@ const LABEL: Record<Section, I18nKey> = {
 
 /** The window's own head, title over the three purpose tabs: the live window turns its pages with
  *  it, and a Help figure poses the same head over the same panels. */
-export function ShareWindowHead({ section, onPick, onClose }: { section: ShareSection; onPick: (s: ShareSection) => void; onClose: () => void }) {
+function ShareWindowHead({ section, onPick, onClose }: { section: ShareSection; onPick: (s: ShareSection) => void; onClose: () => void }) {
   const t = useT();
   const touch = useTouchMode();
   // A short card, a phone held sideways, draws the head's rows tighter.
@@ -72,7 +73,8 @@ function slot(showing: boolean): CSSProperties {
 }
 
 /** `open` and `section` picture the window for a Help figure in place of the store's flag and target. */
-export function ShareWindow({ open: posedOpen, section: posedSection }: { open?: boolean; section?: ShareSection } = {}) {
+/** `subject` is the map a Help figure shows the checklist of, where the visitor's own map holds nothing to list. */
+export function ShareWindow({ open: posedOpen, section: posedSection, subject }: { open?: boolean; section?: ShareSection; subject?: GridState } = {}) {
   const t = useT();
   const { open, close } = useWindow('share', { open: posedOpen });
   const target = useEditorStore((s) => s.shareTarget);
@@ -123,7 +125,7 @@ export function ShareWindow({ open: posedOpen, section: posedSection }: { open?:
       )}
       {visited.includes('game') && (
         <div style={slot(section === 'game')}>
-          <WindowBody><BuildChecklist /></WindowBody>
+          <WindowBody><BuildChecklist {...(subject ? { subject } : {})} /></WindowBody>
         </div>
       )}
     </ModalShell>

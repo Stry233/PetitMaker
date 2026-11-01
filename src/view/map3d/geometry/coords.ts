@@ -47,7 +47,7 @@ export const SEA_Y = GROUND_SLAB_Y - WATER_RECESS;
 
 /** What the 3D view draws for a cell's own zone (`ZoneSpec.surface`): the recessed sea or the land
  *  slab. A value that names no zone draws land. */
-export type ZoneSurface = 'sea' | 'land';
+type ZoneSurface = 'sea' | 'land';
 
 export function zoneSurface(zone: CellZone): ZoneSurface {
   return zoneSpec(zone)?.surface ?? 'land';

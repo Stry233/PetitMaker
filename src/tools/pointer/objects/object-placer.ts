@@ -41,7 +41,7 @@ function halfReading(item: CatalogItem, coord: MacroCoord, ctx: Pick<ToolContext
 }
 
 /** What a placement probe reads of a tool context: the map, the rules and the pointer's point. */
-export type PlacementProbe = Pick<ToolContext, 'state' | 'registry' | 'validateCommand' | 'point'>;
+type PlacementProbe = Pick<ToolContext, 'state' | 'registry' | 'validateCommand' | 'point'>;
 
 /**
  * One computation of "what would placing the armed item here do", for the ghost and for the

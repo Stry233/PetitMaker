@@ -21,7 +21,7 @@ function boundaryIndex(bounds: readonly number[], offset: number): number {
 }
 
 /** The field's selection in UTF-16 offsets, and how many times it has moved (a caret restarts its blink on each). */
-export interface GhostSelection { start: number; end: number; moves: number }
+interface GhostSelection { start: number; end: number; moves: number }
 
 /**
  * Tracks a ghost input's focus and selection, and places presses on the painted text instead of the

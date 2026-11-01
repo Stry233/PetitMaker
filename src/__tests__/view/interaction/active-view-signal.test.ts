@@ -3,7 +3,7 @@
  * The lazily built 3D scene registers after the store flips `viewMode`, so `viewMode` cannot stand in
  * for the signal. The same listener repaints the ring on any selection change.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setActiveView, getActiveView, onActiveViewChange } from '../../../view/active-view';
 import { installSelectionViewSync } from '../../../view/shared/overlay/selection-view-sync';
 import type { ActiveView, ToolOverlay } from '../../../tools/pointer/runtime';
@@ -13,17 +13,21 @@ import { useEditorStore } from '../../../state/store';
 import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
 
-interface Fake { view: ActiveView; overlay: ToolOverlay }
+/** A view whose overlay holds the rings on screen, as the port's contract describes them: a 2D
+ *  footprint ring at its rect, or a 3D body box named by object id. */
+interface Fake { view: ActiveView; rings: string[] }
 
-/** A view double carrying only what the sync touches: its overlay. */
 function makeFakeView(objectBox = false): Fake {
+  const rings: string[] = [];
+  const draw = (ring: string, append?: boolean) => { if (!append) rings.length = 0; rings.push(ring); };
+  const noop = () => {};
   const overlay = {
-    showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(),
-    showSelection: vi.fn(), clearSelection: vi.fn(),
-    showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
-    ...(objectBox ? { showObjectSelection: vi.fn() } : {}),
+    showGhost: noop, showGhostSpans: noop, clearGhost: noop, showHover: noop, clearHover: noop, flashCommit: noop,
+    showSelection: (r: { x: number; y: number }, _grid: unknown, opts?: { append?: boolean }) => draw(`ring@${r.x},${r.y}`, opts?.append),
+    clearSelection: () => { rings.length = 0; },
+    ...(objectBox ? { showObjectSelection: (id: string, append?: boolean) => draw(`box:${id}`, append) } : {}),
   } as unknown as ToolOverlay;
-  return { overlay, view: { overlay } as unknown as ActiveView };
+  return { rings, view: { overlay } as unknown as ActiveView };
 }
 
 function mapWithObject(id: string): GridState {
@@ -83,90 +87,76 @@ describe('active-view: the change signal', () => {
 });
 
 describe('selection-view-sync: the ring follows the active view', () => {
-  it('paints the selection into the newly active overlay and clears the outgoing one', () => {
-    const gs = mapWithObject('a');
-    setStoreState({ gridState: gs, selection: [{ kind: 'object', id: 'a' }] });
-    const two = makeFakeView(), three = makeFakeView(true);
-    uninstall = installSelectionViewSync();
-
-    setActiveView(two.view);
-    expect(two.overlay.showSelection).toHaveBeenCalledTimes(1); // footprint ring (2D idiom)
-
-    setActiveView(three.view);
-    // Outgoing 2D drops its ring; the now-visible 3D overlay draws the body box.
-    expect(two.overlay.clearSelection).toHaveBeenCalled();
-    expect(three.overlay.showObjectSelection).toHaveBeenCalledWith('a', false);
-
-    setActiveView(two.view);
-    expect(three.overlay.clearSelection).toHaveBeenCalled();
-    expect(two.overlay.showSelection).toHaveBeenCalledTimes(2);
-  });
-
-  it('leaves no ring in either view when the selection is empty', () => {
-    setStoreState({ gridState: mapWithObject('a'), selection: [] });
-    const two = makeFakeView(), three = makeFakeView(true);
-    uninstall = installSelectionViewSync();
-    setActiveView(two.view);
-    setActiveView(three.view);
-    expect(two.overlay.showSelection).not.toHaveBeenCalled();
-    expect(three.overlay.showObjectSelection).not.toHaveBeenCalled();
-    expect(two.overlay.clearSelection).toHaveBeenCalled();
-    expect(three.overlay.clearSelection).toHaveBeenCalled();
-  });
-
-  it('is a no-op without a map, and never re-clears the same overlay it is about to repaint', () => {
-    const two = makeFakeView();
-    uninstall = installSelectionViewSync();
-    setActiveView(two.view);
-    expect(two.overlay.showSelection).not.toHaveBeenCalled();
-
-    // 2D hands out a fresh view object per call over the same overlay, which the repaint owns.
+  it('draws the selection in the visible view only, in that view\'s idiom', () => {
     setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'object', id: 'a' }] });
-    const again = { overlay: two.overlay } as unknown as ActiveView;
-    setActiveView(again);
-    expect(two.overlay.clearSelection).not.toHaveBeenCalled();
-    expect(two.overlay.showSelection).toHaveBeenCalled();
-    expect(useEditorStore.getState().selection).toHaveLength(1);
+    const two = makeFakeView(), three = makeFakeView(true);
+    uninstall = installSelectionViewSync();
+
+    setActiveView(two.view);
+    expect(two.rings).toEqual(['ring@4,5']);
+
+    setActiveView(three.view);
+    expect(two.rings).toEqual([]);
+    expect(three.rings).toEqual(['box:a']);
+
+    setActiveView(two.view);
+    expect(three.rings).toEqual([]);
+    expect(two.rings).toEqual(['ring@4,5']);
   });
 
-  it('paints a selection CHANGE without the caller asking', () => {
+  it('leaves no ring in either view when the selection is empty or there is no map', () => {
+    setStoreState({ gridState: mapWithObject('a'), selection: [] });
+    const two = makeFakeView(), three = makeFakeView(true);
+    uninstall = installSelectionViewSync();
+    setActiveView(two.view);
+    setActiveView(three.view);
+    expect(two.rings).toEqual([]);
+    expect(three.rings).toEqual([]);
+
+    setStoreState({ gridState: null, selection: [{ kind: 'object', id: 'a' }] });
+    setActiveView(two.view);
+    expect(two.rings).toEqual([]);
+  });
+
+  it('keeps the ring when the same overlay registers again under a fresh view object', () => {
+    const two = makeFakeView();
+    setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'object', id: 'a' }] });
+    uninstall = installSelectionViewSync();
+    setActiveView(two.view);
+    setActiveView({ overlay: two.view.overlay } as unknown as ActiveView);
+    expect(two.rings).toEqual(['ring@4,5']);
+  });
+
+  it('follows a selection change and a cleared selection without the caller asking', () => {
     const two = makeFakeView();
     setStoreState({ gridState: mapWithObject('a'), selection: [] });
     uninstall = installSelectionViewSync();
     setActiveView(two.view);
-    (two.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
 
     useEditorStore.getState().setSelection([{ kind: 'object', id: 'a' }]);
-    expect(two.overlay.showSelection).toHaveBeenCalledTimes(1);
+    expect(two.rings).toEqual(['ring@4,5']);
 
     useEditorStore.getState().clearSelection();
-    expect(two.overlay.clearSelection).toHaveBeenCalled();
+    expect(two.rings).toEqual([]);
   });
 
-  it('repaints the active view on objects-changed while an object is selected, and only then', () => {
-    const two = makeFakeView(), three = makeFakeView(true);
-    setStoreState({ gridState: mapWithObject('a'), selection: [{ kind: 'terrain', x: 1, y: 1 }] });
+  it('moves the ring with a selected object that moves under it, until uninstalled', () => {
+    const gs = mapWithObject('a');
+    const two = makeFakeView();
+    setStoreState({ gridState: gs, selection: [{ kind: 'object', id: 'a' }] });
     uninstall = installSelectionViewSync();
     setActiveView(two.view);
-    setActiveView(three.view);
     const bus = useEditorStore.getState().eventBus;
-    (two.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
-    (three.overlay.showSelection as ReturnType<typeof vi.fn>).mockClear();
 
+    gs.objects.get('a')!.position = { x: 7, y: 8 };
     bus.emit('objects-changed', {});
-    expect(three.overlay.showSelection).not.toHaveBeenCalled(); // terrain only
-
-    setStoreState({ selection: [{ kind: 'object', id: 'a' }] });
-    (three.overlay.showObjectSelection as ReturnType<typeof vi.fn>).mockClear();
-    bus.emit('objects-changed', {});
-    expect(three.overlay.showObjectSelection).toHaveBeenCalledWith('a', false);
-    expect(two.overlay.showSelection).not.toHaveBeenCalled();
+    expect(two.rings).toEqual(['ring@7,8']);
 
     uninstall();
     uninstall = null;
-    (three.overlay.showObjectSelection as ReturnType<typeof vi.fn>).mockClear();
+    gs.objects.get('a')!.position = { x: 9, y: 9 };
     bus.emit('objects-changed', {});
-    expect(three.overlay.showObjectSelection).not.toHaveBeenCalled();
+    expect(two.rings).toEqual(['ring@7,8']);
   });
 
   it('clears the ring when arming a brush drops the selection', () => {
@@ -177,6 +167,6 @@ describe('selection-view-sync: the ring follows the active view', () => {
 
     useEditorStore.getState().setEditMode({ mode: 'mountain', arm: { kind: 'brush' } });
     expect(useEditorStore.getState().selection).toEqual([]);
-    expect(two.overlay.clearSelection).toHaveBeenCalled();
+    expect(two.rings).toEqual([]);
   });
 });

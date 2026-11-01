@@ -28,12 +28,12 @@ export function usePinRoom(): boolean {
 }
 
 /** The axis the dock takes its strip along: the foot of an upright window, a side of a wide one. */
-export function useDockAxis(): DockAxis {
+function useDockAxis(): DockAxis {
   return useLayoutShape() === 'portrait' ? 'y' : 'x';
 }
 
 /** Resolved dock intent; the transition may not yet have reached this state. */
-export function useAssistantDocked(): boolean {
+function useAssistantDocked(): boolean {
   const pinned = useEditorStore((s) => s.assistantPinned);
   const open = useEditorStore((s) => s.assistantOpen);
   const room = usePinRoom();

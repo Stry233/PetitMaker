@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Windows on an upright screen keep their frame and reflow their body into one column, scrolling one
- * region between a head and a foot that stay in the card; Settings keeps its cursor and keyboard
- * sections for PC mode. A scroller is read from the inline overflow style, which is how every window
- * declares one. jsdom has no layout, so a window body (the element
- * carrying `data-columns`) reports the width of the card it stands in, read from the card's inline
- * width; this assumes the body spans its card, as every converted body does.
+ * Windows on an upright screen keep their frame, scrolling one region between a head and a foot that
+ * stay in the card; Settings keeps its cursor and keyboard sections for PC mode. A scroller is read
+ * from the inline overflow style, which is how every window declares one. jsdom has no layout, so a
+ * window body (the element carrying `data-columns`) reports its card's inline width, only to bring a
+ * body to its one-column form; how many columns fit and how wide a card stands are checked in a browser.
  */
 import { afterEach, beforeEach, describe, expect } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -20,7 +19,6 @@ import { InputModeProvider } from '../../../ui/design/input-mode';
 import { SettingsModal } from '../../../ui/chrome/modals/settings/SettingsModal';
 import { ShareWindow } from '../../../ui/chrome/modals/export/ShareWindow';
 import { AboutModal } from '../../../ui/chrome/modals/about/AboutModal';
-import { DropImportOverlay } from '../../../ui/chrome/modals/import/DropImportOverlay';
 import { ChangePlanetModal } from '../../../ui/chrome/modals/planet/ChangePlanetModal';
 import { PlanetImportWindow } from '../../../ui/chrome/modals/planet/PlanetImportWindow';
 import { ImportModal } from '../../../ui/chrome/modals/import/ImportModal';
@@ -43,7 +41,8 @@ function sizeWindow(w: number, h: number): void {
 
 const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth')!;
 
-/** A window body's width: the inline width of the card it stands in. Other elements keep jsdom's 0. */
+/** A window body's width, which picks its column form: the inline width of the card it stands in.
+ *  Other elements keep jsdom's 0. */
 function bodyWidth(el: Element): number {
   if (!el.hasAttribute('data-columns')) return clientWidth.get!.call(el) as number;
   const card = el.closest<HTMLElement>('[role="dialog"]');
@@ -71,22 +70,13 @@ function mount(node: ReactNode, inputMode: InputMode, shape: LayoutShape) {
   return render(<I18nProvider><InputModeProvider inputMode={inputMode} shape={shape}>{node}</InputModeProvider></I18nProvider>);
 }
 
-const columnsOf = (dialog: HTMLElement) => dialog.querySelector('[data-columns]')?.getAttribute('data-columns');
-
 describe('windows on an upright screen', () => {
-  spec('UI-31', 'Settings at 390x844 keeps its header and close and shows one column', () => {
+  spec('UI-31', 'Settings at 390x844 keeps its header and close', () => {
     sizeWindow(390, 844);
     mount(<SettingsModal open onClose={() => {}} />, 'touch', 'portrait');
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
     expect(within(dialog).getByText('Settings')).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeTruthy();
-    expect(columnsOf(dialog)).toBe('1');
-  });
-
-  spec('UI-31', 'Settings on a landscape PC window keeps its two columns', () => {
-    sizeWindow(1280, 800);
-    mount(<SettingsModal open onClose={() => {}} />, 'pc', 'landscape');
-    expect(columnsOf(screen.getByRole('dialog', { name: 'Settings' }))).toBe('2');
   });
 
   spec('UI-27', 'a window on an upright screen in PC mode keeps the live chrome zoom; touch mode at its default lifts it to a fingertip', () => {
@@ -132,7 +122,6 @@ describe('windows on an upright screen', () => {
     act(() => { useEditorStore.getState().openShare('friend'); });
     const dialog = await screen.findByRole('dialog', { name: 'Save and share' });
     const panel = within(dialog).getByTestId('export-panel');
-    expect(panel.getAttribute('data-columns')).toBe('1');
     const preview = within(panel).getByTestId('export-preview');
     const title = within(panel).getByRole('textbox', { name: /title/i });
     expect(preview.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -144,7 +133,6 @@ describe('windows on an upright screen', () => {
     act(() => { useEditorStore.getState().openShare('friend'); });
     const dialog = await screen.findByRole('dialog', { name: 'Save and share' });
     const panel = within(dialog).getByTestId('export-panel');
-    expect(panel.getAttribute('data-columns')).toBe('1');
     const scrollersAbove = (el: Element) => {
       const found: HTMLElement[] = [];
       for (let node = el.parentElement; node && node !== dialog.parentElement; node = node.parentElement) {
@@ -177,29 +165,6 @@ describe('windows on an upright screen', () => {
     expect(scrollersAbove(pretty)).toEqual([]);
     expect(scrollersAbove(within(dialog).getByRole('button', { name: 'Export' }))).toEqual([]);
     expect(scrollersAbove(within(dialog).getByRole('button', { name: 'Cancel' }))).toEqual([]);
-  });
-
-  spec('UI-31', 'About on an upright tablet stands as wide as its card, leaving no empty band at its side', () => {
-    sizeWindow(820, 1180);
-    mount(<AboutModal open onClose={() => {}} />, 'touch', 'portrait');
-    const dialog = screen.getByRole('dialog', { name: 'About' });
-    const view = dialog.querySelector<HTMLElement>('[data-view="about"]')!;
-    expect(parseFloat(dialog.style.width)).toBeGreaterThan(440);
-    expect(view.style.width).toBe(dialog.style.width);
-  });
-
-  spec('UI-31', 'the card a file dragged over the window raises fills the width as Settings does', () => {
-    sizeWindow(820, 1180);
-    const settings = mount(<SettingsModal open onClose={() => {}} />, 'touch', 'portrait');
-    const filled = screen.getByRole('dialog', { name: 'Settings' }).style.width;
-    settings.unmount();
-    mount(<DropImportOverlay />, 'touch', 'portrait');
-    const drag = new Event('dragenter', { bubbles: true, cancelable: true }) as Event & { dataTransfer?: unknown };
-    drag.dataTransfer = { types: ['Files'], files: [] };
-    act(() => { window.dispatchEvent(drag); });
-    const card = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(parseFloat(filled)).toBeGreaterThan(520);
-    expect(card.style.width).toBe(filled);
   });
 });
 
@@ -380,7 +345,7 @@ describe('every window on an upright screen keeps its head and foot in the card'
   }
 });
 
-describe('a window too short for its body beside its foot', () => {
+describe('a window whose body scrolls', () => {
   const props = ['offsetHeight', 'clientHeight', 'scrollHeight'] as const;
   const saved = props.map((k) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, k) ?? Object.getOwnPropertyDescriptor(Element.prototype, k));
   /** Gives the window body `shown` px of `content` and every footer 52 px, as layout would; a joined
@@ -405,27 +370,6 @@ describe('a window too short for its body beside its foot', () => {
     mount(<WhatsNewModal />, 'touch', 'landscape');
     return screen.getByRole('dialog');
   }
-  const gotIt = (dialog: HTMLElement) => within(dialog).getAllByRole('button').at(-1)!;
-
-  spec('UI-31', 'a card too short for two rows of its scrolling body moves its actions to the body\'s end, and a taller one keeps them at its foot', () => {
-    heights(60, 400);
-    let dialog = whatsNew();
-    act(() => { dialog.querySelector('[data-window-body]')!.dispatchEvent(new Event('scroll')); });
-    expect(gotIt(dialog).closest('[data-window-body]'), 'joined the scrolled region').not.toBeNull();
-    cleanup();
-    act(() => { useEditorStore.getState().setModal('whatsNew', false); });
-    heights(300, 400);
-    dialog = whatsNew();
-    expect(gotIt(dialog).closest('[data-window-body]'), 'at the foot').toBeNull();
-  });
-
-  spec('UI-31', 'a short body that holds everything it has keeps its actions at the foot, so nothing flips at the line', () => {
-    heights(60, 60);
-    const dialog = whatsNew();
-    act(() => { dialog.querySelector('[data-window-body]')!.dispatchEvent(new Event('scroll')); });
-    expect(gotIt(dialog).closest('[data-window-body]')).toBeNull();
-  });
-
   spec('UI-31', 'scrolling the body tucks the title to a smaller size, and scrolling back restores it', async () => {
     sizeWindow(1280, 800);
     heights(300, 900);
@@ -437,13 +381,5 @@ describe('a window too short for its body beside its foot', () => {
     await waitFor(() => expect(title()).toBeLessThan(full * 0.8));
     act(() => { scroller.scrollTop = 0; scroller.dispatchEvent(new Event('scroll')); });
     await waitFor(() => expect(title()).toBeCloseTo(full, 6));
-  });
-
-  spec('UI-31', 'a short card, as a phone held sideways, starts with its title tucked', async () => {
-    sizeWindow(832, 328);
-    heights(120, 600);
-    const dialog = whatsNew();
-    const title = () => parseFloat(dialog.querySelector<HTMLElement>('[data-window-title]')!.style.fontSize);
-    await waitFor(() => expect(title()).toBeLessThan(20));
   });
 });

@@ -1,7 +1,7 @@
 /**
- * What copying and pasting objects tell the visitor: one wording for the keyboard, the menus, the
- * placer and a Ctrl+drag copy, so every path says the same thing (EDIT-53, EDIT-57, EDIT-59,
- * EDIT-62).
+ * What copying, pasting and deleting objects tell the visitor: one wording for the keyboard, the
+ * menus, the placer and a Ctrl+drag copy, so every path says the same thing (EDIT-53, EDIT-57,
+ * EDIT-59, EDIT-62), the Help figures included.
  */
 import type { Translate } from '../keys';
 
@@ -31,4 +31,10 @@ export function pasteNotices(
   if (capped > 0) out.push({ text: t('paste.capped', { n: capped }), tone: 'info' });
   if (unknown > 0) out.push({ text: t('paste.unknown', { n: unknown }), tone: 'info' });
   return out;
+}
+
+/** What a group delete came to when it removed some members and kept the locked ones; a delete that
+ *  removed nothing is a refusal, said by the rule, and one that removed all says nothing. */
+export function groupDeleteNotices(t: Translate, { deleted, kept }: { deleted: number; kept: number }): CopyNotice[] {
+  return deleted > 0 && kept > 0 ? [{ text: t('toast.group_delete_kept', { n: kept }), tone: 'info' }] : [];
 }

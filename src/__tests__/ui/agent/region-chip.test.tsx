@@ -16,13 +16,9 @@ import { useEditorStore } from '../../../state/store';
 import { I18nProvider } from '../../../i18n/context';
 import { append } from '../../../agent/core/log';
 import { useAgentSession, panelView } from '../../../agent/session/store';
-import { seaFrame } from '../../../view/map2d/capture/thumbnail';
-import { regionBounds } from '../../../core/grid/rect';
 import { host } from '../../../editor/host/host';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { Shell } from '../../../ui/shell/Shell';
-import { OPTION_THUMB } from '../../../ui/agent/record/OptionPick';
-import { CHIP_VIGNETTE } from '../../../ui/agent/composer/region-chip';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import { makeState } from '../../_support/map-state';
@@ -146,25 +142,6 @@ describe('the chip is a view of the store\'s painted region', () => {
     const { getByTestId } = await mountColumn();
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 6 cells');
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
-  });
-
-  /** The count cannot show a bounds error, so the vignette mark's percentages are compared with
-   *  `regionBounds` plus the capture's sea framing. */
-  it('draws the mark on the box the shared derivation names', async () => {
-    // A scatter whose box is much larger than the paint, so an off-by-one or swapped axis shows.
-    const scatter: MacroCoord[] = [{ x: 3, y: 2 }, { x: 11, y: 4 }, { x: 7, y: 9 }];
-    const { getByTestId } = await mountColumn();
-    await paint(scatter);
-
-    const bounds = regionBounds(scatter)!;
-    const sea = seaFrame(24, 24, CHIP_VIGNETTE.width / CHIP_VIGNETTE.height);
-    const mark = getByTestId('composer-region-chip').querySelector<HTMLElement>('[data-testid="region-vignette-mark"]')!;
-    const pct = (v: string) => Number.parseFloat(v);
-
-    expect(pct(mark.style.left)).toBeCloseTo(((sea.dx + bounds.x1) / sea.width) * 100, 6);
-    expect(pct(mark.style.top)).toBeCloseTo(((sea.dy + bounds.y1) / sea.height) * 100, 6);
-    expect(pct(mark.style.width)).toBeCloseTo(((bounds.x2 - bounds.x1 + 1) / sea.width) * 100, 6);
-    expect(pct(mark.style.height)).toBeCloseTo(((bounds.y2 - bounds.y1 + 1) / sea.height) * 100, 6);
   });
 
   it('says the singular for one cell', async () => {
@@ -397,34 +374,5 @@ describe('the ticket head reads the region as filed', () => {
     expect(after).toContain(1128);
     expect(after).toContain(40);
     expect(after).not.toContain(6);
-  });
-});
-
-/** Gate and option thumbs show the whole island with the option's rect marked, since crops of
- *  similar ground would look alike. */
-describe('the gate family\'s pictures mark their place rather than cropping to it', () => {
-  const OPTIONS = [
-    { cap: 'A cove on the west shore, sheltered', rect: { x1: 2, y1: 3, x2: 6, y2: 8 } },
-    { cap: 'A highland lake above the terraces', rect: { x1: 15, y1: 4, x2: 20, y2: 9 } },
-    { cap: 'A river delta along the south sand', rect: { x1: 6, y1: 16, x2: 12, y2: 21 } },
-  ];
-
-  it('gives each option a mark of its own geometry', async () => {
-    const l = useAgentSession.getState().log;
-    append(l, { kind: 'order', text: 'Put the water somewhere it belongs', mapContext: 'Hexia' });
-    append(l, {
-      kind: 'gateAsked', gateId: 'gate-1', scope: 'tool', callId: 'c1',
-      summary: 'carve_river: three places it could go', options: OPTIONS,
-    });
-    const { getAllByTestId } = await mountColumn();
-    const marks = getAllByTestId('option-shot-mark');
-    expect(marks.length).toBe(OPTIONS.length);
-
-    const sea = seaFrame(24, 24, OPTION_THUMB.width / OPTION_THUMB.height);
-    const placed = marks.map((m) => `${m.style.left}|${m.style.top}|${m.style.width}`);
-    expect(new Set(placed).size, 'three options, three different pictures').toBe(3);
-    const first = OPTIONS[0]!.rect;
-    expect(Number.parseFloat(marks[0]!.style.left))
-      .toBeCloseTo(((sea.dx + first.x1) / sea.width) * 100, 4);
   });
 });

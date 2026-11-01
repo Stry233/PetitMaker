@@ -15,7 +15,7 @@ import { useEditorStore, type EditorStore } from '../store';
  *  membership toggle and a drag into a rubber band; break-handle turns a curve anchor's two
  *  direction sides apart; pan-drag turns a left drag into a camera pan in any tool mode. */
 const HELD_IDS = ['tool.constrain', 'selection.multi', 'tool.break_handle', 'camera.pan_drag'] as const satisfies readonly CommandId[];
-export type HeldCommandId = typeof HELD_IDS[number];
+type HeldCommandId = typeof HELD_IDS[number];
 
 let memo: { overrides: Overrides; tokens: Map<HeldCommandId, string> } | null = null;
 

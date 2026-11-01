@@ -27,10 +27,10 @@ export type RoadPt = [number, number];
 
 /** Where `roadTxPt` puts the canonical frame: cell corner (x,y) and half-extents (hw,hh), for a
  *  road connected on `side`. */
-export interface RoadFrame { side: RoadConnSide; x: number; y: number; hw: number; hh: number }
+interface RoadFrame { side: RoadConnSide; x: number; y: number; hw: number; hh: number }
 
 /** The frame of a road connected on `side` occupying `box`. */
-export function roadFrame(side: RoadConnSide, box: Rect): RoadFrame {
+function roadFrame(side: RoadConnSide, box: Rect): RoadFrame {
   return { side, x: box.x, y: box.y, hw: box.w / 2, hh: box.h / 2 };
 }
 
@@ -114,7 +114,7 @@ export type RoadEl =
  *  from its first vertex, so a mesher may fan-triangulate from there (the arcs make these
  *  concave — a fan from any other vertex overdraws across the arc). `elements` is the same
  *  outline at `t = 0` in exact form, for the region feather. */
-export interface RoadFeed {
+interface RoadFeed {
   feeders: readonly PlacedObject[];
   points(box: Rect, t: number): RoadPt[];
   elements(box: Rect): RoadEl[];

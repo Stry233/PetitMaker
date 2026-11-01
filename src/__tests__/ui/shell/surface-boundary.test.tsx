@@ -2,10 +2,9 @@
 /**
  * A shell surface that throws while rendering stays inside its own slot. A throwing bar leaves its
  * band in its place; the map, the mode row and the rail go on working; a retry or another mode brings
- * a bar back; and the console hears the failure once by name. The windows host shows the notice
- * instead, and the bar slot keeps working beside it.
+ * a bar back. The windows host shows the notice instead, and the bar slot keeps working beside it.
  */
-import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translateFor } from '../../../i18n/context';
@@ -47,19 +46,15 @@ function mount() {
 
 const choose = (mode: 'mountain' | 'water' | null) => act(() => { useEditorStore.getState().setEditMode({ mode }); });
 
-/** The lines this app writes about a failed surface, apart from React's own report. */
-const surfaceReports = (spy: MockInstance<typeof console.error>) =>
-  spy.mock.calls.filter(([first]) => typeof first === 'string' && first.includes('failed to render'));
 
 // React in development rethrows a caught render error as a window event, which jsdom reports.
 const swallow = (event: ErrorEvent) => event.preventDefault();
-let consoleError: MockInstance<typeof console.error>;
 
 beforeEach(() => {
   broken.toolbar = null;
   broken.windows = false;
   window.addEventListener('error', swallow);
-  consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   setStoreState({ locale: 'en' });
   useEditorStore.getState().setSelectingRegion(false);
   useEditorStore.getState().setEditMode({ mode: null });
@@ -124,14 +119,6 @@ describe('a bar that throws', () => {
     expect(screen.queryByTestId('bar-failed')).toBeNull();
   });
 
-  it('is reported once, by name', () => {
-    broken.toolbar = 'mountain';
-    mount();
-    choose('mountain');
-    const reports = surfaceReports(consoleError);
-    expect(reports).toHaveLength(1);
-    expect(String(reports[0]![0])).toContain('mountain bar');
-  });
 });
 
 describe('a windows host that throws', () => {

@@ -7,18 +7,26 @@
  * registration, a clear stays cleared, and a region shown before any view registers lands on the
  * first one that does.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setActiveView } from '../../../../view/active-view';
 import { installOverlayViewSync, showBuildableRegion, clearBuildableRegion, showPath, clearPath } from '../../../../view/shared/overlay/overlay-view-sync';
 import type { ActiveView, ToolOverlay } from '../../../../tools/pointer/runtime';
 import { cellSet } from '../../../../core/grid/grids';
 import { TERRAIN_GRID } from '../../../../core/game/profile';
 
-interface Fake { view: ActiveView; overlay: ToolOverlay }
+/** What one view's overlay shows: the fake keeps the region and the path drape as a view would draw them. */
+interface Shown { region: { cells: unknown; dims: number | undefined } | null; path: unknown }
+interface Fake { view: ActiveView; shown: Shown }
 
 function makeFakeView(): Fake {
-  const overlay = { showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(), showPath: vi.fn(), clearPath: vi.fn() } as unknown as ToolOverlay;
-  return { overlay, view: { overlay } as unknown as ActiveView };
+  const shown: Shown = { region: null, path: null };
+  const overlay = {
+    showBuildableRegion: (scope: { cells: unknown }, dims?: number) => { shown.region = { cells: scope.cells, dims }; },
+    clearBuildableRegion: () => { shown.region = null; },
+    showPath: (way: unknown) => { shown.path = way; },
+    clearPath: () => { shown.path = null; },
+  } as unknown as ToolOverlay;
+  return { shown, view: { overlay } as unknown as ActiveView };
 }
 
 const CELLS = [{ x: 3, y: 4 }, { x: 4, y: 4 }];
@@ -28,20 +36,20 @@ beforeEach(() => { setActiveView(null); clearBuildableRegion(); clearPath(); });
 afterEach(() => { uninstall?.(); uninstall = null; setActiveView(null); });
 
 describe('overlay-view-sync', () => {
-  it('shows the standing region in the newly active overlay and clears the outgoing one', () => {
+  it('shows the standing region in the newly active view and takes it off the outgoing one', () => {
     const two = makeFakeView(), three = makeFakeView();
     uninstall = installOverlayViewSync();
     setActiveView(three.view);
     showBuildableRegion(CELLS);
-    expect(three.overlay.showBuildableRegion).toHaveBeenCalledWith({ grid: 'terrain', cells: CELLS }, undefined);
+    expect(three.shown.region?.cells).toEqual(CELLS);
 
     setActiveView(two.view);
-    expect(three.overlay.clearBuildableRegion).toHaveBeenCalled();
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith({ grid: 'terrain', cells: CELLS }, undefined);
+    expect(three.shown.region).toBeNull();
+    expect(two.shown.region?.cells).toEqual(CELLS);
 
     setActiveView(three.view);
-    expect(two.overlay.clearBuildableRegion).toHaveBeenCalled();
-    expect(three.overlay.showBuildableRegion).toHaveBeenCalledTimes(2);
+    expect(two.shown.region).toBeNull();
+    expect(three.shown.region?.cells).toEqual(CELLS);
   });
 
   it('carries editing dimensions into the next view and removes them independently of the scope', () => {
@@ -50,9 +58,9 @@ describe('overlay-view-sync', () => {
     setActiveView(two.view);
     showBuildableRegion(CELLS, 0.8);
     setActiveView(three.view);
-    expect(three.overlay.showBuildableRegion).toHaveBeenLastCalledWith({ grid: 'terrain', cells: CELLS }, 0.8);
+    expect(three.shown.region).toEqual({ cells: CELLS, dims: 0.8 });
     showBuildableRegion(CELLS);
-    expect(three.overlay.showBuildableRegion).toHaveBeenLastCalledWith({ grid: 'terrain', cells: CELLS }, undefined);
+    expect(three.shown.region).toEqual({ cells: CELLS, dims: undefined });
   });
 
   it('keeps a cleared region cleared across the swap, and treats an empty show as a clear', () => {
@@ -62,12 +70,12 @@ describe('overlay-view-sync', () => {
     showBuildableRegion(CELLS);
     clearBuildableRegion();
     setActiveView(three.view);
-    expect(three.overlay.showBuildableRegion).not.toHaveBeenCalled();
+    expect(three.shown.region).toBeNull();
 
     showBuildableRegion(CELLS);
     showBuildableRegion([]);
     setActiveView(two.view);
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledTimes(1); // the first show only
+    expect(two.shown.region).toBeNull();
   });
 
   it('lands a region shown before any view registered on the first registration', () => {
@@ -75,32 +83,31 @@ describe('overlay-view-sync', () => {
     uninstall = installOverlayViewSync();
     showBuildableRegion(CELLS);
     setActiveView(two.view);
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledWith({ grid: 'terrain', cells: CELLS }, undefined);
+    expect(two.shown.region?.cells).toEqual(CELLS);
   });
 
-  it('does not clear an overlay it is about to repaint on a re-registration of the same view', () => {
+  it('still shows the region after the same overlay registers again', () => {
     const two = makeFakeView();
     uninstall = installOverlayViewSync();
     setActiveView(two.view);
     showBuildableRegion(CELLS);
-    setActiveView({ overlay: two.overlay } as unknown as ActiveView);
-    expect(two.overlay.clearBuildableRegion).not.toHaveBeenCalled();
-    expect(two.overlay.showBuildableRegion).toHaveBeenCalledTimes(2);
+    setActiveView({ ...two.view });
+    expect(two.shown.region?.cells).toEqual(CELLS);
   });
 });
 
 describe('the path drape follows the view', () => {
   const WAY = cellSet(TERRAIN_GRID, CELLS);
 
-  it('moves the standing drape to the newly active overlay and takes it off the outgoing one', () => {
+  it('moves the standing drape to the newly active view and takes it off the outgoing one', () => {
     const two = makeFakeView(), three = makeFakeView();
     uninstall = installOverlayViewSync();
     setActiveView(two.view);
     showPath(WAY);
-    expect(two.overlay.showPath).toHaveBeenCalledWith(WAY);
+    expect(two.shown.path).toBe(WAY);
     setActiveView(three.view);
-    expect(two.overlay.clearPath).toHaveBeenCalled();
-    expect(three.overlay.showPath).toHaveBeenCalledWith(WAY);
+    expect(two.shown.path).toBeNull();
+    expect(three.shown.path).toBe(WAY);
   });
 
   it('keeps a drape cleared off screen cleared when its view comes back', () => {
@@ -111,6 +118,6 @@ describe('the path drape follows the view', () => {
     setActiveView(three.view);
     clearPath();
     setActiveView(two.view);
-    expect(two.overlay.showPath).toHaveBeenCalledTimes(1);
+    expect(two.shown.path).toBeNull();
   });
 });

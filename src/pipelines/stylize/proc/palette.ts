@@ -33,14 +33,14 @@ export interface PackPalette {
 }
 
 /** Water must clear the dominant ground by this much, or the two read as one mass. */
-export const MIN_WATER_GROUND_DELTA = 0.1;
+const MIN_WATER_GROUND_DELTA = 0.1;
 /** The road must clear the dominant ground by this much, or the lattice stops carrying. */
-export const MIN_ROAD_GROUND_DELTA = 0.18;
+const MIN_ROAD_GROUND_DELTA = 0.18;
 /** Against the rarer ground values a smaller floor applies: a road crossing a high terrace may
  *  close on it without the picture failing, but it must not disappear into it. */
-export const MIN_ROAD_TIER_DELTA = 0.07;
+const MIN_ROAD_TIER_DELTA = 0.07;
 /** A pack needs a real dark somewhere, or nothing in it reads as structure. */
-export const MAX_DARK_ANCHOR = 0.32;
+const MAX_DARK_ANCHOR = 0.32;
 
 /** Check a pack palette. Returns one message per violation; empty means the palette is sound. */
 export function validatePalette(p: PackPalette): string[] {

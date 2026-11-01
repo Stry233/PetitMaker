@@ -6,7 +6,7 @@
  * land exactly on itself. Layout is NCHW, RGB, floats in 0..1, batch of one.
  */
 
-export interface ModelSize { width: number; height: number }
+interface ModelSize { width: number; height: number }
 
 /** The largest multiple-of-8 frame that fits inside the given one. */
 export function modelSize(width: number, height: number): ModelSize {

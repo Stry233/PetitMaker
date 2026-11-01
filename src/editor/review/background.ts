@@ -25,7 +25,7 @@ const tagReview = createBackgroundReview<string>({
 export const reviewCustomTags = tagReview.run;
 
 /** Forgets which tag texts this page has tried; for tests that reuse texts. */
-export const forgetTriedCustomTags = tagReview.forgetTried;
+export const __resetTriedCustomTags = tagReview.forgetTried;
 
 type PendingName = { entry: PlanetEntry } | { name: string };
 
@@ -55,4 +55,4 @@ const nameReview = createBackgroundReview<PendingName>({
 export const reviewPlanetNames = nameReview.run;
 
 /** Forgets which planet names this page has tried; for tests that reuse names. */
-export const forgetTriedPlanetNames = nameReview.forgetTried;
+export const __resetTriedPlanetNames = nameReview.forgetTried;

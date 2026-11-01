@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Help and the tour read by the device: the touch gestures have their own Help section, copy that
+ * Help read by the device: the touch gestures have their own Help section, copy that
  * names a mouse button, the wheel or hovering reads as finger copy in touch mode, and copy that
  * places the modes at the top left reads as the bottom bar on an upright screen.
  */
@@ -10,9 +10,6 @@ import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { spec } from '../../_support/spec';
 import { I18nProvider, translateFor } from '../../../i18n/context';
 import { HelpModal } from '../../../ui/help/HelpModal';
-import { Tour } from '../../../ui/chrome/tour/Tour';
-import { useEditorStore } from '../../../state/store';
-import { startTour } from '../../../ui/chrome/tour/use-tour';
 import { InputModeProvider } from '../../../ui/design/input-mode';
 import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
@@ -58,10 +55,10 @@ const shown = (key: TextKey): string => en(key).replace(/\*\*/g, '').replace(/\[
 
 describe('Help in touch mode', () => {
   spec('UI-33', 'Help lists the touch gestures', async () => {
-    const help = await helpAt('camera', 'pc');
-    await waitFor(() => expect(help.querySelector('#help-camera-touch')).toBeTruthy());
+    const help = await helpAt('touch', 'pc');
+    await waitFor(() => expect(help.querySelector('#help-touch-gestures')).toBeTruthy());
     const text = help.textContent ?? '';
-    for (const key of ['help.camera.g_double', 'help.camera.g_hold', 'help.camera.g_multi', 'help.camera.g_shelf', 'help.camera.g_loupe', 'help.camera.g_undo'] as const) {
+    for (const key of ['help.camera.g_tap', 'help.camera.g_double', 'help.camera.g_hold', 'help.camera.g_multi', 'help.camera.g_shelf', 'help.camera.g_loupe', 'help.camera.g_undo'] as const) {
       expect(text, key).toContain(shown(key).slice(0, 40));
     }
   });
@@ -79,7 +76,7 @@ describe('Help in touch mode', () => {
   spec('UI-33', 'the camera page tells a finger to pinch and twist where it tells a mouse about the wheel', async () => {
     const touch = await helpAt('camera', 'touch');
     await waitFor(() => expect(touch.textContent).toContain(shown('help.camera.wheel_b1_touch')));
-    for (const key of ['help.camera.wheel_t_touch', 'help.camera.wheel_b2_touch', 'help.camera.touch_b1_touch'] as const) expect(touch.textContent, key).toContain(shown(key));
+    for (const key of ['help.camera.wheel_t_touch', 'help.camera.wheel_b2_touch'] as const) expect(touch.textContent, key).toContain(shown(key));
     for (const key of ['help.camera.wheel_t', 'help.camera.wheel_b1', 'help.camera.wheel_b2', 'help.camera.touch_b1'] as const) expect(touch.textContent, key).not.toContain(shown(key));
   });
 
@@ -153,25 +150,5 @@ describe('Help in touch mode', () => {
     await act(() => new Promise((done) => setTimeout(done, GESTURE_TIMING.touch.holdMs + 50)));
     expect(await screen.findByText(en('help.whats_this_tip_touch'))).toBeTruthy();
     expect(screen.queryByText(en('help.whats_this_tip'))).toBeNull();
-  });
-});
-
-describe('the welcome tips in touch mode', () => {
-  const tips = async (inputMode: InputMode) => {
-    act(() => startTour());
-    const view = render(
-      <MotionConfig reducedMotion="always"><I18nProvider><InputModeProvider inputMode={inputMode}><Tour /></InputModeProvider></I18nProvider></MotionConfig>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: en('tour.next') }));
-    await waitFor(() => expect(screen.getAllByRole('heading')).toHaveLength(1));
-    const text = screen.getByTestId('tour-deck').textContent;
-    view.unmount();
-    act(() => useEditorStore.getState().finishTour());
-    return text;
-  };
-
-  spec('UI-33', 'the tips tell a finger how to move the map, and a mouse its own way', async () => {
-    expect(await tips('touch')).toContain(en('tour.move_body_touch'));
-    expect(await tips('pc')).toContain(en('tour.move_body'));
   });
 });

@@ -10,8 +10,8 @@
 import { clamp } from '../../../core/base/math';
 import { hexChannels, linearToSrgb, srgbToLinear } from '../../../core/base/color';
 
-export type Rgb = readonly [number, number, number];
-export type Lab = readonly [number, number, number];
+type Rgb = readonly [number, number, number];
+type Lab = readonly [number, number, number];
 
 const hexToRgb = (hex: string): Rgb => hexChannels(hex);
 function rgbToHex(c: Rgb): string {
@@ -65,9 +65,9 @@ function oklabToRgb(lab: Lab): Rgb {
   return oklabToRgbRaw([L, lab[1] * lo, lab[2] * lo]).map((v) => clamp(v, 0, 255)) as unknown as Rgb;
 }
 
-export type Lch = readonly [number, number, number];
-export const labToLch = (lab: Lab): Lch => [lab[0], Math.hypot(lab[1], lab[2]), Math.atan2(lab[2], lab[1])];
-export const lchToLab = (lch: Lch): Lab => [lch[0], lch[1] * Math.cos(lch[2]), lch[1] * Math.sin(lch[2])];
+type Lch = readonly [number, number, number];
+const labToLch = (lab: Lab): Lch => [lab[0], Math.hypot(lab[1], lab[2]), Math.atan2(lab[2], lab[1])];
+const lchToLab = (lch: Lch): Lab => [lch[0], lch[1] * Math.cos(lch[2]), lch[1] * Math.sin(lch[2])];
 
 export const hexToLch = (hex: string): Lch => labToLch(rgbToOklab(hexToRgb(hex)));
 const lchToHex = (lch: Lch): string => rgbToHex(oklabToRgb(lchToLab(lch)));
@@ -75,7 +75,7 @@ const lchToHex = (lch: Lch): string => rgbToHex(oklabToRgb(lchToLab(lch)));
 /** Lightness of a hex colour. The number every pack assertion is written against. */
 export const lightness = (hex: string): number => rgbToOklab(hexToRgb(hex))[0];
 
-export interface ColorMove {
+interface ColorMove {
   /** Absolute lightness. */
   L?: number;
   /** Absolute chroma. */

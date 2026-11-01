@@ -1,7 +1,7 @@
 /* Edits of the finished notes: a scripted edit on the Notes history lane under the layer's own rules,
  * and the door into editing them. */
 import type { CustomTag, MapAnnotation, MeasureNote } from '../../core/model/annotations';
-import { resizeMeasurement } from '../../core/model/annotation/dimensions';
+import { resizeMeasurementOn } from '../../core/model/annotation/dimensions';
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { SELECTABLE_ANNOTATION_TAGS } from '../../config/annotation-tags';
 import type { I18nKey } from '../../i18n/keys';
@@ -21,7 +21,7 @@ export function showNotesForEditing(options: { close?: ModalId } = {}): void {
 }
 
 /** The finished notes and the map's custom tags, as a scripted edit reads and returns them. */
-export interface NoteSet {
+interface NoteSet {
   items: MapAnnotation[];
   customTags: CustomTag[];
 }
@@ -82,11 +82,7 @@ export function moveMeasureEnd(original: MeasureNote, endpoint: 0 | 1, cell: Mac
   const s = useEditorStore.getState();
   const grid = s.gridState;
   if (!grid) return false;
-  const points = resizeMeasurement(original.points, endpoint, {
-    x: Math.max(0, Math.min(grid.template.width - 1, cell.x)),
-    y: Math.max(0, Math.min(grid.template.height - 1, cell.y)),
-  });
-  return s.setMeasurementPoints(original.id, points, begin);
+  return s.setMeasurementPoints(original.id, resizeMeasurementOn(grid.template, original.points, endpoint, cell), begin);
 }
 
 /**

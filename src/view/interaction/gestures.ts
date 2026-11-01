@@ -7,7 +7,7 @@
  *                    smooth, magnitude-proportional zoom anchored at the cursor.
  *  - 'scroll-pan'  — a continuous touchpad-style scroll (small fractional deltas).
  *  - 'wheel-zoom'  — a discrete mouse-wheel notch. */
-export type WheelIntent = 'pinch-zoom' | 'scroll-pan' | 'wheel-zoom';
+type WheelIntent = 'pinch-zoom' | 'scroll-pan' | 'wheel-zoom';
 
 export interface WheelLike { deltaX: number; deltaY: number; deltaMode: number; ctrlKey: boolean }
 

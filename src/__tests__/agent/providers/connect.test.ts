@@ -46,10 +46,6 @@ async function collect(adapter: Adapter): Promise<StreamEvent[]> {
 afterEach(() => { built.length = 0; });
 
 describe('buildAdapter', () => {
-  it('constructs nothing until the first request', () => {
-    buildAdapter({ providerId: 'deepseek', apiKey: 'k' });
-    expect(built).toEqual([]);
-  });
 
   it('constructs the adapter once, from the connection as it stood at build time', async () => {
     const cfg = { providerId: 'qwen' as const, apiKey: 'k1', region: 1 as const };

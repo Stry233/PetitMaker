@@ -16,7 +16,7 @@ export type PinMode = 'pinned' | 'light' | 'scaled' | 'unpinned';
  *  robust solve meets the pins by cutting pinned frames from their neighbours, which leaves the
  *  frames between them cells off. */
 const SCAN_PIN_MODE: PinMode = 'scaled';
-export const LIGHT_PIN_WEIGHT = 1;
+const LIGHT_PIN_WEIGHT = 1;
 /** Pins an axis needs, still and moving together, before `scaled` fits its scale; the slope is
  *  fitted through both kinds before the moving pins' offset is solved. */
 export const SCALE_MIN_PINS = 8;
@@ -122,7 +122,7 @@ export interface PathSolveOptions {
 }
 
 /** The lattice the pins of one axis agree on. */
-export interface PinFit {
+interface PinFit {
   /** Lines sit at `origin + n * period` in scan coordinates; origin in [0, period). */
   readonly origin: number;
   /** The calibrated period. */

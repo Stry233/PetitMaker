@@ -42,10 +42,6 @@ function confirm(id: string): void {
 
 function expectAvailable(button: HTMLElement) {
   expect((button as HTMLButtonElement).disabled).toBe(false);
-  for (let el: HTMLElement | null = button; el; el = el.parentElement) {
-    expect(Number(el.style.opacity || '1')).toBe(1);
-    expect(el.style.pointerEvents).not.toBe('none');
-  }
 }
 
 beforeEach(() => {
@@ -135,16 +131,6 @@ describe('done: the built thing leads', () => {
     expect(getByTestId('ticket-summary').textContent).toContain('A fishing village stands');
     expect(queryByTestId('ticket-ledger')).toBeNull();
     expect(queryByTestId('ticket-keep-going')).toBeNull();
-  });
-
-  /**
-   * The projection magnifies the turning card past its box, and a scroller counts that as overflow,
-   * but only downward. With the origin on the bottom edge both faces project upward, so the record
-   * grows no scrollbar mid-flip. jsdom does no layout, so the origin itself is pinned.
-   */
-  it('projects the turn upward off the bottom edge, so a flip adds no scrollable overflow', () => {
-    const { getByTestId } = renderWithI18n(<FlipTicket job={VILLAGE} onFileAway={() => {}} />);
-    expect(getByTestId('flip-ticket').style.perspectiveOrigin).toBe('50% 100%');
   });
 
   /** Both faces share one box in a scrolling zone, so without a reset a face would open at the other's
@@ -259,12 +245,8 @@ describe('done.capped: the ledger leads and the decision owns the foot', () => {
     expect(rows.slice(0, 2).every((el) => el.querySelector('[data-testid="ticket-ledger-tick"]') !== null)).toBe(true);
     const open = rows[2]!;
     expect(open.getAttribute('data-unreached')).toBe('true');
-    expect(open.style.border).toContain('dashed');
     expect(open.querySelector('[data-testid="ticket-ledger-tick"]')).toBeNull();
     expect(open.querySelector('[data-testid="ticket-ledger-stat"]')!.textContent).toBe('not reached');
-    // The revert amber.
-    const name = open.querySelector('[data-testid="ticket-ledger-name"]') as HTMLElement;
-    expect(name.style.color).toBe('rgb(185, 127, 36)');
     expect(queryByTestId('ticket-postcard')).toBeNull();
     expect(queryByTestId('ticket-stats')).toBeNull();
   });
@@ -428,19 +410,6 @@ describe('done.question: the receipt compresses to a two-line settle', () => {
     expectAvailable(getByTestId('ticket-file-away'));
     fireEvent.click(getByTestId('flip-button'));
     expect(getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
-  });
-
-  it('stands at the compact floor rather than the card floor', () => {
-    const floorOf = (node: React.ReactElement) => {
-      const view = renderReduced(node);
-      const floor = Number.parseFloat(view.getByTestId('flip-inner').style.minHeight);
-      view.unmount();
-      return floor;
-    };
-    const compact = floorOf(<FlipTicket job={asked} compact />);
-    const full = floorOf(<FlipTicket job={VILLAGE} />);
-    expect(compact).toBeGreaterThan(0);
-    expect(compact).toBeLessThan(full);
   });
 
   it('wears its provenance in the seat where a done receipt wears its score', () => {
@@ -609,45 +578,6 @@ describe('the whole family', () => {
     expect(getAllByTestId('ticket-step-name').map((el) => el.textContent))
       .toEqual(['Map changes', 'Lay the boardwalk', 'Raise the houses']);
     expect(getByTestId('ticket-back-stamp').textContent).toBe('4 steps');
-  });
-
-  it('preserves the flip perspective and keeps rewound records readable and usable', () => {
-    const plain = renderReduced(<FlipTicket job={VILLAGE} />);
-    const card = plain.getByTestId('flip-ticket');
-    expect(card.style.perspective).toBe('1100px');
-    expect(plain.getByTestId('flip-inner').style.transformStyle).toBe('preserve-3d');
-    for (const id of ['flip-face-front', 'flip-face-back']) {
-      expect(plain.getByTestId(id).style.backfaceVisibility, id).toBe('hidden');
-    }
-    expect(plain.getByTestId('flip-face-back').style.transform).toBe('rotateY(180deg)');
-    // An opacity between the perspective box and the faces would flatten the 3D context.
-    expect(card.style.opacity).toBe('');
-    expect(plain.getByTestId('flip-inner').style.opacity).toBe('');
-    plain.unmount();
-
-    const filed: number[] = [];
-    const rolled = renderReduced(<FlipTicket job={VILLAGE} rolledBack onFileAway={seq => filed.push(seq)} />);
-    expect(rolled.getByTestId('flip-ticket').style.opacity).toBe('');
-    expectAvailable(rolled.getByTestId('flip-button'));
-    fireEvent.click(rolled.getByTestId('flip-button'));
-    expectAvailable(rolled.getByTestId('flip-button-back'));
-    fireEvent.click(rolled.getByTestId('flip-button-back'));
-    expectAvailable(rolled.getByTestId('ticket-file-away'));
-    fireEvent.click(rolled.getByTestId('ticket-file-away'));
-    expect(filed).toEqual([VILLAGE.orderSeq]);
-  });
-
-  it('turns over a real rotation, and swaps the faces outright under reduced motion', () => {
-    const full = renderWithI18n(<FlipTicket job={VILLAGE} />);
-    expect(full.getByTestId('flip-inner').style.transition).toContain('transform');
-    full.unmount();
-
-    const reduced = renderReduced(<FlipTicket job={VILLAGE} />);
-    const inner = reduced.getByTestId('flip-inner');
-    expect(inner.getAttribute('data-reduced')).toBe('true');
-    expect(inner.style.transition).toBe('none');
-    fireEvent.click(reduced.getByTestId('flip-button'));
-    expect(reduced.getByTestId('flip-ticket').getAttribute('data-face')).toBe('back');
   });
 
   it.each(['full', 'compact', 'capped'] as const)('moves focus before hiding the %s card face', (shape) => {

@@ -19,10 +19,6 @@ export function close(mask: Uint8Array, w: number, h: number, r: number): Uint8A
   return r > 0 ? erode(dilate(mask, w, h, r), w, h, r) : mask.slice();
 }
 
-export function open(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
-  return r > 0 ? dilate(erode(mask, w, h, r), w, h, r) : mask.slice();
-}
-
 function squareFilter(mask: Uint8Array, w: number, h: number, r: number, grow: boolean): Uint8Array {
   if (r <= 0) return mask.slice();
   const across = new Uint8Array(w * h);

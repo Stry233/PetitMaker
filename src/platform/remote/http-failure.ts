@@ -1,6 +1,6 @@
 /** What a provider's non-2xx HTTP status says about the request, read the same way by the assistant
  *  and the illustration services. Each caller maps the class onto its own user-facing faces. */
-export type HttpFailureKind = 'auth' | 'quota' | 'rate-limit' | 'server' | 'client';
+type HttpFailureKind = 'auth' | 'quota' | 'rate-limit' | 'server' | 'client';
 
 /** Wording of an exhausted quota or an unpaid balance: the account accepted the key but may not
  *  spend. `quota` stays unbounded so `insufficient_quota` and `quota_exceeded` match. */

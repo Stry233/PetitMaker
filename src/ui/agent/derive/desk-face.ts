@@ -216,7 +216,7 @@ export function deskPose(view: PanelView, ctx: DeskContext = {}): PoseName | nul
   return openQuestion(stand) ? 'asking' : null;
 }
 
-export type FaceKind = 'plain' | 'retry' | 'act';
+type FaceKind = 'plain' | 'retry' | 'act';
 
 /** The card's four seats, resolved to the text and the controls this face stands. */
 export interface Face {

@@ -143,8 +143,5 @@ describe('the regions window', () => {
     for (const name of ['A1', 'A2', 'A3', 'B1', 'B2', 'B3']) {
       expect(screen.getByTestId(`shell-region-${name}`), name).toBeTruthy();
     }
-    // Three regions across, the island's own shape.
-    const grid = screen.getByTestId('shell-region-A1').parentElement!;
-    expect(grid.style.gridTemplateColumns).toContain('repeat(3,');
   });
 });

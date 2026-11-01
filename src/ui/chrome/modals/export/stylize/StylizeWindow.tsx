@@ -10,6 +10,7 @@ import { z } from '../../../../design/styles';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { WindowHeader, windowFrame } from '../../../../primitives/Window';
 import { useT } from '../../../../../i18n/context';
+import type { GridState } from '../../../../../core/model/types';
 import { Hero } from './Hero';
 import { Studio } from './Studio';
 import { amplitude, framerMotion, outMotion } from '../../../../design/motion';
@@ -24,13 +25,15 @@ const swapTravel = amplitude('stylize.page.swap');
 interface StylizeWindowProps extends Pick<WindowProps, 'onClose'> {
   /** Injected for tests; the default asks the chosen dialect. */
   listModels?: StylizeListModels;
+  /** The map a Help figure pictures the studio over, where it is not the live one. */
+  subject?: GridState;
 }
 
 /** The studio card's own geometry, one record: the live window and the Help Center's figure wear
  *  the same box. */
 export const STUDIO_CARD = { width: 880, height: 672 } as const;
 
-export function StylizeWindow({ onClose, listModels }: StylizeWindowProps) {
+export function StylizeWindow({ onClose, listModels, subject }: StylizeWindowProps) {
   const t = useT();
   // Its host mounts it only while the flag is on, the lazy chunk with it.
   const { open, close } = useWindow('stylize', { open: true, onClose });
@@ -68,7 +71,7 @@ export function StylizeWindow({ onClose, listModels }: StylizeWindowProps) {
       backdropStyle={{ zIndex: z.takeover }}
       cardStyle={{ ...windowFrame, overflow: 'hidden' }}
     >
-      <WindowHeader title={<h2 style={{ margin: 0, font: 'inherit' }}>{t('stylize.win_title')}</h2>} reserve
+      <WindowHeader title={t('stylize.win_title')} reserve
         close={{ label: t('hint.close'), onPress: close }} style={{ flex: 'none' }} />
       {/*
         The two pages cross in one box. A bare key change takes the old page out on the frame the new
@@ -97,6 +100,7 @@ export function StylizeWindow({ onClose, listModels }: StylizeWindowProps) {
                   connected={conn.connected}
                   onSettings={() => { setPage('hero'); setOpenedOverStudio(true); }}
                   onDone={close}
+                  {...(subject ? { subject } : {})}
                 />
               ) : null}
             </motion.div>

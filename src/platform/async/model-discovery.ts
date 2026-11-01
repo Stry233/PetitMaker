@@ -11,11 +11,11 @@ export type ProbeAnswer = { models: readonly string[] } | 'unlisted' | 'refused'
 
 /** One connection form's model request. A throw is a failure the form may still generate through,
  *  so it settles as `unlisted`; an adapter that reports the failure catches it itself. */
-export type ModelProbe<Req> = (request: Req, signal: AbortSignal, isCurrent: () => boolean) => Promise<ProbeAnswer>;
+type ModelProbe<Req> = (request: Req, signal: AbortSignal, isCurrent: () => boolean) => Promise<ProbeAnswer>;
 
 export type DiscoveryState = 'none' | 'loading' | 'ready' | 'unlisted' | 'refused';
 
-export interface DiscoverySnapshot {
+interface DiscoverySnapshot {
   state: DiscoveryState;
   models: readonly string[];
   /** Bumped by every refusal, so a second refusal of the same credential shakes again. */
@@ -24,7 +24,7 @@ export interface DiscoverySnapshot {
   arrivals: number;
 }
 
-export interface ModelDiscovery<Req> {
+interface ModelDiscovery<Req> {
   get(): DiscoverySnapshot;
   subscribe(listener: () => void): () => void;
   /** Asks after `debounceMs` (at once when 0), outdating every earlier probe. */

@@ -33,7 +33,7 @@ const mount = () => render(<I18nProvider><WhatsNewModal /></I18nProvider>);
 describe('the What\'s new window', () => {
   it('titles itself with the version and lists the notes', () => {
     mount();
-    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe(translate('whatsnew.title', { version: APP_VERSION }));
+    expect(screen.getByRole('dialog', { name: translate('whatsnew.title', { version: APP_VERSION }) })).toBeTruthy();
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0);
   });
 

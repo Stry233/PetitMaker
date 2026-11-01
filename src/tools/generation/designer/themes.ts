@@ -76,7 +76,7 @@ export type ThemeId = Theme['id'];
 /** The five theme families of the theme library. */
 export type ThemeFamily = Theme['family'];
 /** The themes of one family. */
-export type ThemeOf<F extends ThemeFamily> = Extract<Theme, { family: F }>['id'];
+type ThemeOf<F extends ThemeFamily> = Extract<Theme, { family: F }>['id'];
 export type FoodLeisureTheme = ThemeOf<'food-leisure'>;
 export type NatureTheme = ThemeOf<'nature'>;
 export type ViewpointTheme = ThemeOf<'viewpoint'>;

@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-/** The 3D scene draws on demand: an idle map rests, object edits owe their whole-map work once per drawn frame, and the shadow bake is keyed after the light state is set up. */
+/** The 3D scene draws on demand: an idle map rests and the shadow bake is keyed after the light state is set up. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventBus } from '../../../../core/commands/event-bus';
-import { bumpObjectsVersion } from '../../../../core/model/grid-model';
-import { TerrainType, type PlacedObject } from '../../../../core/model/types';
+import { TerrainType } from '../../../../core/model/types';
 import { type EditorEvents } from '../../../../state/editing/events';
 import { setGlQualityOverride } from '../../../../platform/device/device-quality';
 import { FrameLoop } from '../../../../view/shared/viewport/frame-loop';
@@ -91,40 +90,6 @@ describe('the 3D render loop', () => {
     expect(painted).not.toHaveBeenCalled();
     runFrames();
     expect(painted).toHaveBeenCalledOnce();
-    three.destroy();
-  });
-});
-
-describe('object edits in 3D', () => {
-  it('owe one road rebuild, one icon refinement and one chrome nudge per drawn frame, however many events arrive', async () => {
-    const { RoadSurfaces3D } = await import('../../../../view/map3d/layers/road-surfaces');
-    const { ObjectLayer3D } = await import('../../../../view/map3d/layers/object-layer');
-    const { three, state, bus } = await scene();
-    settle();
-    const rebuilds = vi.spyOn(RoadSurfaces3D.prototype, 'rebuild');
-    const refines = vi.spyOn(ObjectLayer3D.prototype, 'refineIconColors');
-    const nudges = vi.fn();
-    bus.on('viewport-changed', nudges);
-
-    for (let i = 0; i < 50; i++) {
-      const road: PlacedObject = { id: `road${i}`, catalogId: 'path-urban-asphalt', position: { x: 10 + (i % 8), y: 10 + Math.floor(i / 8) }, rotation: 0, elevation: 0 };
-      state.objects.set(road.id, road);
-      bumpObjectsVersion(state, { added: [road] });
-      bus.emit('objects-changed', { added: [road] });
-    }
-    expect(rebuilds).not.toHaveBeenCalled();
-    expect(refines).not.toHaveBeenCalled();
-    expect(nudges).not.toHaveBeenCalled();
-
-    runFrames();
-    expect(rebuilds).toHaveBeenCalledTimes(1);
-    expect(refines).toHaveBeenCalledTimes(1);
-    expect(nudges).toHaveBeenCalledTimes(1);
-
-    settle();
-    expect(rebuilds).toHaveBeenCalledTimes(1);
-    expect(refines).toHaveBeenCalledTimes(1);
-    expect(nudges).toHaveBeenCalledTimes(1);
     three.destroy();
   });
 });

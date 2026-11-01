@@ -15,7 +15,7 @@ type Keyring = Partial<Record<ProviderId, string>>;
 /** The non-secret part of the record a write persists. */
 export type SettingsFields = Omit<AgentSettings, 'keys' | 'customAuth'>;
 
-export interface CredentialStoreOptions {
+interface CredentialStoreOptions {
   /** Stops the running job; called before the armed provider's key disappears. */
   stopJob(): void;
   /** The non-secret fields to write, read at write time so an owed write carries the latest. */

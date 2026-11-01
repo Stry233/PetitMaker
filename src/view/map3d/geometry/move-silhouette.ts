@@ -1,4 +1,4 @@
-export interface ScreenPoint { x: number; y: number }
+interface ScreenPoint { x: number; y: number }
 
 /** Rasterize the union of projected triangles, then trace only its exterior boundaries. */
 export function silhouetteContours(triangles: readonly number[], width: number, height: number): ScreenPoint[][] {

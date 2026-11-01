@@ -35,8 +35,6 @@ export const CHUNK_LABELS = {
 } as const;
 /** The load one chunk may carry. */
 export const CHUNK_LOAD_LIMIT = 10_000;
-/** Whether placement enforces the measured catalog loads. */
-export const CHUNK_LOAD_ENABLED = true;
 /** Decimal precision of measured object loads. */
 export const LOAD_DECIMALS = 1;
 /** The game this editor plans maps for, as the assistant names it. */

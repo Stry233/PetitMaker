@@ -362,7 +362,7 @@ export const COMMANDS: readonly EditorCommand[] = COMMAND_META.map((meta) => ({
 export const COMMAND_BY_ID: ReadonlyMap<string, EditorCommand> = new Map(COMMANDS.map((c) => [c.id, c]));
 
 /** A combo the discrete engine registers, and what pressing it runs. */
-export interface KeyBinding {
+interface KeyBinding {
   combo: string;
   run: () => void;
   /** The key's default stays the browser's (`CommandMeta.native`). */

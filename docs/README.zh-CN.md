@@ -16,7 +16,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 [![通过 Patreon 支持项目](https://img.shields.io/badge/Patreon-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
 &nbsp;[![通过爱发电支持项目](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
 
-<img src="./media/hero-annotated.zh.png" alt="谷地工坊编辑器中一个建成的星球，图上有七处标注：左上的方块行标为「建造模式」，其下的角色标为「智能体」，右上角标为「保存与分享」，右侧栏标为「图层面板」「撤销与重做」与「3D 视图、适应视图和缩放」，底部一排小屋卡片标为「物品架」" width="840">
+<img src="./media/hero-annotated.zh.png" alt="谷地工坊编辑器中一个建成的星球，图上有七处标注：左上的方块行标为「建造模式」，其下的角色标为「智能体」，右上角标为「保存与分享」，右侧栏标为「图层面板」「撤销与重做」与「3D 视图、适应视图和缩放」，底部一排小屋卡片标为「物品栏」，搜索框旁是「物品笔刷」按钮" width="840">
 
 <sub>页首展示的是团队成员鱼松制作的「鱼松的爱心桃花岛」。下文提供可直接导入的分享图。</sub>
 

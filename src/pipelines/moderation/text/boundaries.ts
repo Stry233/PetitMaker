@@ -1,7 +1,7 @@
 export type LiteralKind = 'anywhere' | 'word' | 'token' | 'phrase';
 
 /** Scripts written without word spacing cannot supply word boundaries. */
-export const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
 /** Letters, digits and combining marks continue a word; Thai vowels and Indic signs are marks. */
 const WORD = /[\p{L}\p{N}\p{M}]/u;
 const DIGIT = /\p{N}/u;

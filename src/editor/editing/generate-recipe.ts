@@ -15,7 +15,7 @@ interface KindMemory {
   customSeed: number | null;
 }
 
-export interface RecipeState {
+interface RecipeState {
   kind: GenerateKind;
   byKind: Readonly<Record<GenerateKind, KindMemory>>;
   richness: number;
@@ -28,9 +28,9 @@ export interface RecipeState {
 }
 
 /** The knobs' starting values, in the shelf's own units. */
-export interface RecipeDefaults { richness: number; corridorWidth: number; contrast: number }
+interface RecipeDefaults { richness: number; corridorWidth: number; contrast: number }
 
-export interface GenerateRecipeController {
+interface GenerateRecipeController {
   get(): RecipeState;
   subscribe(listener: () => void): () => void;
   setKind(kind: GenerateKind): void;

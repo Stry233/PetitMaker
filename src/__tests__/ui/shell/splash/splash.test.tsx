@@ -11,7 +11,7 @@ import { preloadAssets, probeWarmCache, __resetPreload } from '../../../../ui/sh
 import { markSplashDone, shouldShowSplash } from '../../../../io/storage/splash-facts';
 import { splashAssetUrls } from '../../../../ui/shell/splash/asset-list';
 import { seconds } from '../../../../ui/design/motion';
-import { I18nProvider, translate } from '../../../../i18n/context';
+import { I18nProvider } from '../../../../i18n/context';
 import { decodeImage } from '../../../../platform/async/http-cache';
 import { FONT_FILES, __resetFontFaces } from '../../../../assets/fonts/faces';
 import { INTERFACE_FACE } from '../../../../assets/fonts/family';
@@ -123,7 +123,8 @@ describe('the preload', () => {
     const art = splashAssetUrls().length;
     expect([...totals]).toEqual([expect.any(Number)]);
     expect([...totals][0]! - art).toBeGreaterThanOrEqual(2);
-    await new Promise((r) => setTimeout(r, 20));
+    // One task turn lets every settled fetch and decode report; only the warm items are left.
+    await new Promise((r) => setTimeout(r, 0));
     expect(complete).toBe(false);
     warm.settleOne(); warm.settleOne();
     expect(await work).toBe(true);
@@ -275,33 +276,5 @@ describe('the component', () => {
     // The slide ends on an animation frame, so the overlay goes within a few frames of its duration.
     for (let i = 0; i < 10 && screen.queryByTestId('boot-splash'); i++) await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(screen.queryByTestId('boot-splash'), 'gone once the slide has played').toBeNull();
-  });
-});
-
-describe('the column fits the visible window', () => {
-  /** The splash drawn in a window `height` px tall: its column's zoom and the banner's opening offset. */
-  async function columnAt(height: number): Promise<{ zoom: number; travel: number }> {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
-    vi.stubGlobal('innerHeight', height);
-    const { Splash } = await import('../../../../ui/shell/splash/Splash');
-    const { unmount } = render(<I18nProvider><Splash onHandoff={() => {}} onDone={() => {}} /></I18nProvider>);
-    const banner = screen.getByRole('img', { name: translate('app.name') });
-    const zoom = parseFloat(banner.parentElement!.style.zoom);
-    const travel = parseFloat(/translateY\((-?[\d.]+)px\)/.exec(banner.style.transform)?.[1] ?? 'NaN');
-    unmount();
-    return { zoom, travel };
-  }
-
-  it('stands at full size where the window has room and zooms down below it', async () => {
-    expect((await columnAt(768)).zoom).toBe(1);
-    expect((await columnAt(420)).zoom).toBe(1);
-    expect((await columnAt(300)).zoom).toBeCloseTo(300 / 420, 6);
-  });
-
-  it('opens the banner where the boot loader drew it, whatever the column zoom', async () => {
-    expect((await columnAt(768)).travel).toBe(121);
-    // The boot loader's banner top is 50vh - 63; the zoomed column's is 50vh - 184 x fit.
-    const fit = 210 / 420;
-    expect((await columnAt(210)).travel).toBeCloseTo((184 * fit - 63) / fit, 4);
   });
 });

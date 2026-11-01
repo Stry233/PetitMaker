@@ -1,6 +1,7 @@
 /** The layer control and the Notes row walked through on the pictured shell, each press landing on the control's own target. */
 import { useReducedMotionConfig } from 'framer-motion';
-import { measureBox, measurePoint, PicturedShell, useWindowSnapshot, type Box } from './frame-overview';
+import { measureBox, measurePoint, PicturedShell, useLiveShellZoom, useWindowSnapshot, type Box } from './frame-overview';
+import { cutShare, useFigureRoom } from '../figure-scale';
 import { INERT } from './PreviewFrame';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { useScriptedWalk } from '../scripted-walk';
@@ -11,19 +12,21 @@ import { useInView } from '../use-in-view';
 import { FOCUS_RING } from '../../../design/tokens';
 import { radii, shadows, z } from '../../../design/styles';
 import { PressPulse } from '../caption';
+import { tourTargetSelector } from '../../../chrome/tour/steps';
+import { fadeMask, SCROLL_FADE } from '../../../primitives/scroll-fade';
 
 /** The Notes row's two toggles, walked on the pictured panel standing open: the mark lands on the
  *  eye, the eye closes; then on the lock, the lock shuts; then each opens again. The row is posed
  *  through the preview context rather than pressed, because the pictured panel is the live one and
  *  a real press would hide or lock the reader's own notes. */
-export type NotesPress = 'eye' | 'lock';
-export const NOTES_TAP: Record<NotesPress, readonly string[]> = {
+type NotesPress = 'eye' | 'lock';
+const NOTES_TAP: Record<NotesPress, readonly string[]> = {
   eye: ['[data-testid="shell-layer-annotation-eye"]'],
   lock: ['[data-testid="shell-layer-annotation-lock"]'],
 };
-export const NOTES_WALK: readonly NotesPress[] = ['eye', 'eye', 'lock', 'lock'];
+const NOTES_WALK: readonly NotesPress[] = ['eye', 'eye', 'lock', 'lock'];
 /** The Notes recording window, shifted right and up from the right-anchored placement the layer walk keeps. */
-export const NOTES_VIEW: WalkView = { w: 560, h: 300, pad: 14, reach: { right: 200, up: 60 } };
+const NOTES_VIEW: WalkView = { w: 560, h: 300, pad: 14, reach: { right: 200, up: 60 } };
 
 /** The Notes row's own help mark, or the layer control where the row is not drawn yet. */
 const NOTES_ANCHOR: readonly string[] = ['[data-testid="shell-layer-annotation-help"]', '[data-help="layers"]'];
@@ -45,7 +48,7 @@ export function NotesRowTour() {
   }, win.w);
 
   return (
-    <PicturedCrop walk={walk} view={NOTES_VIEW}>
+    <PicturedCrop walk={walk}>
       <PicturedShell win={win} zoom={1} layerPanel="column" notesRow={row} />
     </PicturedCrop>
   );
@@ -55,12 +58,10 @@ export function NotesRowTour() {
  *  reaches right of and above the anchor's right-anchored placement. */
 interface WalkView { w: number; h: number; pad: number; reach?: { right: number; up: number } }
 
-/** The width a walk figure draws at; its recording window scales to it. */
-const WALK_WIDTH = 620;
 
 /** The state a pictured walk shares: one fixed recording window read off a static anchor, so every
  *  state of the walk plays inside it, the press mark and the pointer standing on its targets. */
-function usePicturedWalk(view: WalkView, anchor: readonly string[]) {
+function usePicturedWalk(view: WalkView, anchor: readonly string[], frame?: (root: HTMLElement, win: { w: number; h: number }) => Box | null) {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
   const near = useInView(holdRef);
@@ -74,11 +75,18 @@ function usePicturedWalk(view: WalkView, anchor: readonly string[]) {
     const root = rootRef.current;
     if (!root) return;
     setBox((was) => {
+      // A framed walk re-reads its frame as the panel settles from its entrance; its width and top
+      // hold through every state, so the frame stands still once settled.
+      if (frame) {
+        const next = frame(root, win);
+        return next && (!was || Math.abs(next.x - was.x) + Math.abs(next.w - was.w) + Math.abs(next.y - was.y) + Math.abs(next.h - was.h) > 1) ? next : was;
+      }
       if (was) return was;
       const at = measureBox(root, anchor, win.w, 0);
       if (!at) return was;
       const reach = view.reach ?? { right: 0, up: 0 };
-      return { x: at.x + at.w + view.pad + reach.right - view.w, y: at.y - view.pad - reach.up, w: view.w, h: view.h };
+      const x = Math.min(Math.max(at.x + at.w + view.pad + reach.right - view.w, 0), Math.max(0, win.w - view.w));
+      return { x, y: at.y - view.pad - reach.up, w: view.w, h: view.h };
     });
   };
   const readTap = (selectors: readonly string[]) => () => {
@@ -88,23 +96,35 @@ function usePicturedWalk(view: WalkView, anchor: readonly string[]) {
     setTap((was) => (was && p && Math.abs(was.x - p.x) < 1 && Math.abs(was.y - p.y) < 1 ? was : p));
     if (p) setCur(p);
   };
-  return { win, holdRef, near, still, rootRef, box, tap, cur, readBox, readTap, clearTap: () => setTap(null) };
+  return { win, view, holdRef, near, still, rootRef, box, tap, cur, readBox, readTap, clearTap: () => setTap(null) };
 }
 
 /** The walk's frame: the pictured shell cropped to the recording window and scaled to the figure's
  *  width, with the press mark and the pointer, which wears the app's own cursor art, over it. */
-function PicturedCrop({ walk, view, children }: { walk: ReturnType<typeof usePicturedWalk>; view: WalkView; children: ReactNode }) {
+function PicturedCrop({ walk, children }: { walk: ReturnType<typeof usePicturedWalk>; children: ReactNode }) {
   const { win, holdRef, near, still, rootRef, box, tap, cur } = walk;
+  // A framed walk records the box it measured; the rest their fixed window.
+  const view = box ?? walk.view;
   const cursorHost = (el: HTMLDivElement | null) => { if (el) drawCursorImg(el, 'clickable'); };
-  const scale = WALK_WIDTH / view.w;
+  // The recording window at the reader's live size, shrunk by the figure rule; past it the crop
+  // keeps the room and its right edge, where the layer control stands.
+  const live = useLiveShellZoom(win);
+  const room = useFigureRoom();
+  const scale = live * cutShare(room, view.w * live);
+  const walkWidth = Math.min(Math.round(view.w * scale), room || Infinity);
+  const trim = view.w - walkWidth / scale;
   const height = Math.round(view.h * scale);
+  // The side the crop cuts into fades out, as a row that scrolls does, so no control ends in a hard cut.
+  const mask = fadeMask('x', { start: trim > 0.5 ? SCROLL_FADE : 0, end: 0 });
   return (
     <div
       ref={holdRef}
       aria-hidden
+      data-figure-sized
       {...INERT}
       style={{
-        position: 'relative', width: WALK_WIDTH, height, overflow: 'hidden',
+        ...(mask ? { maskImage: mask, WebkitMaskImage: mask } : null),
+        position: 'relative', width: walkWidth, height, overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRadius: radii.md, pointerEvents: 'none', userSelect: 'none',
         opacity: box ? 1 : 0,
@@ -112,15 +132,16 @@ function PicturedCrop({ walk, view, children }: { walk: ReturnType<typeof usePic
       }}
     >
       {near && (
-        <div style={{ position: 'relative', width: WALK_WIDTH, height, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', width: walkWidth, height, overflow: 'hidden' }}>
         <div style={{ zoom: scale }}>
-          <div style={{ marginLeft: -(box?.x ?? 0), marginTop: -(box?.y ?? 0) }}>
+          <div style={{ marginLeft: -((box?.x ?? 0) + trim), marginTop: -(box?.y ?? 0) }}>
             <div ref={rootRef} style={{ position: 'relative', width: win.w }}>
               {children}
               {tap && <TapMark x={tap.x} y={tap.y} />}
               {cur && (
                 <div
                   ref={cursorHost}
+                  data-figure-pointer
                   style={{
                     position: 'absolute', left: cur.x, top: cur.y, zIndex: z.unmissable,
                     pointerEvents: 'none',
@@ -139,8 +160,8 @@ function PicturedCrop({ walk, view, children }: { walk: ReturnType<typeof usePic
 
 /** The presses the walk is made of, each on the control's own target: the readout's words open
  *  the panel, the head's left arrow grows it, the right arrow steps the ladder back down. */
-export type LayerPress = 'open' | 'bigger' | 'smaller';
-export const LAYER_TAP: Record<LayerPress, readonly string[]> = {
+type LayerPress = 'open' | 'bigger' | 'smaller';
+const LAYER_TAP: Record<LayerPress, readonly string[]> = {
   // The press lane draws only once its own measurement lands; the readout word is the anchor
   // that is always there.
   open: ['[data-testid="shell-layer-readout-press"]', '[data-testid="shell-layer-readout"]'],
@@ -151,16 +172,16 @@ export const LAYER_TAP: Record<LayerPress, readonly string[]> = {
 /** Up the ladder and back down: pill to column to grid, then grid to column to pill, and round
  *  again. Each entry is the press its beat lands while the control stands at the size the
  *  previous beat left it at. */
-export const LAYER_WALK: readonly LayerPress[] = ['open', 'bigger', 'smaller', 'smaller'];
+const LAYER_WALK: readonly LayerPress[] = ['open', 'bigger', 'smaller', 'smaller'];
 
 /** The reduced-motion figure's mark: a floor's row on the posed column, the press that pins it. */
-export const LAYER_TAP_STILL: readonly string[] = ['[data-testid="shell-layer-row-2"]'];
+const LAYER_TAP_STILL: readonly string[] = ['[data-testid="shell-layer-row-2"]'];
 
-export const LAYER_BEAT_MS = 2800;
+const LAYER_BEAT_MS = 2800;
 
 
 /** The first present press target under `root`, in the given order of preference. */
-export function pressTarget(root: HTMLElement, selectors: readonly string[]): HTMLElement | null {
+function pressTarget(root: HTMLElement, selectors: readonly string[]): HTMLElement | null {
   for (const selector of selectors) {
     const el = root.querySelector<HTMLElement>(selector);
     if (el) return el;
@@ -172,7 +193,7 @@ export function pressTarget(root: HTMLElement, selectors: readonly string[]): HT
  *  `pointer-events: none` block user input only; a dispatched event still runs the listeners.
  *  jsdom has no PointerEvent, and a MouseEvent under the pointer type name reaches the same
  *  listeners (Framer's press gesture reads `isPrimary !== false`, which a MouseEvent passes). */
-export function pressEvent(type: 'pointerdown' | 'pointerup', buttons: number): Event {
+function pressEvent(type: 'pointerdown' | 'pointerup', buttons: number): Event {
   const init = { bubbles: true, cancelable: true, button: 0, buttons };
   return typeof PointerEvent === 'function'
     ? new PointerEvent(type, { ...init, isPrimary: true, pointerId: 1, pointerType: 'mouse' })
@@ -181,7 +202,7 @@ export function pressEvent(type: 'pointerdown' | 'pointerup', buttons: number): 
 
 /** A pulsing mark on the spot the pictured state answers a press at, and the exact point beside
  *  it: the ring is the house's own press pulse, standing rather than blooming once. */
-export function TapMark({ x, y }: { x: number; y: number }) {
+function TapMark({ x, y }: { x: number; y: number }) {
   return (
     <>
       <PressPulse x={x} y={y} repeat />
@@ -197,7 +218,7 @@ export function TapMark({ x, y }: { x: number; y: number }) {
 
 /** The recording window's size in shell px: wide and tall enough for the walk's largest state
  *  (the grid), read right-anchored off the readout control. */
-export const LAYERS_VIEW: WalkView = { w: 560, h: 430, pad: 14 };
+const LAYERS_VIEW: WalkView = { w: 560, h: 430, pad: 14 };
 
 /** The readout pill, which stands still through every size the walk passes. */
 const LAYERS_ANCHOR: readonly string[] = ['[data-testid="shell-layer-readout"]', '[data-help="layers"]'];
@@ -209,11 +230,13 @@ const LAYERS_ANCHOR: readonly string[] = ['[data-testid="shell-layer-readout"]',
  *  shared-layout resize. Each beat marks the next press target, lands the press a cue later, and
  *  re-reads the crop box on a stagger while the control springs to its new size. */
 export function LayersTour() {
-  const walk = usePicturedWalk(LAYERS_VIEW, LAYERS_ANCHOR);
+  const upright = useWindowSnapshot().h > useWindowSnapshot().w;
+  const walk = usePicturedWalk(LAYERS_VIEW, LAYERS_ANCHOR, upright ? framePanelUpright : undefined);
   const { win, near, still, rootRef, readBox, readTap, clearTap } = walk;
-  useObservedSize(() => (near && still ? rootRef.current : null), () => { readBox(); readTap(LAYER_TAP_STILL)(); }, [near, win.w]);
-  useScriptedWalk(LAYER_WALK.length, LAYER_BEAT_MS, near && !still, (step) => {
-    const press = LAYER_WALK[step]!;
+  const steps = upright ? LAYER_WALK_UPRIGHT : LAYER_WALK;
+  useObservedSize(() => (near && (still || upright) ? rootRef.current : null), () => { readBox(); if (still) readTap(LAYER_TAP_STILL)(); }, [near, win.w]);
+  useScriptedWalk(steps.length, LAYER_BEAT_MS, near && !still, (step) => {
+    const press = steps[step]!;
     const firePress = (phase: 'down' | 'up') => () => {
       const root = rootRef.current;
       const el = root && pressTarget(root, LAYER_TAP[press]);
@@ -236,8 +259,27 @@ export function LayersTour() {
   }, win.w);
 
   return (
-    <PicturedCrop walk={walk} view={LAYERS_VIEW}>
-      <PicturedShell win={win} zoom={1} layerPanel={still ? 'column' : undefined} />
+    <PicturedCrop walk={walk}>
+      <PicturedShell win={win} zoom={1} layerPanel={still || upright ? 'column' : undefined} />
     </PicturedCrop>
   );
+}
+
+/** Upright the walk starts on the open column and steps to the grid and back: the collapsed pill
+ *  stands on the rail, which has its own figure. */
+const LAYER_WALK_UPRIGHT: readonly LayerPress[] = ['bigger', 'smaller'];
+
+const PANEL = ['[data-testid="shell-layer-panel"]'];
+
+/** Upright the walk records the panel alone, at live size: its width and top as the open column
+ *  stands, and down to the bar or mode row under it, as far as the grid may grow. The panel spans
+ *  nearly a phone column, so its margin is a hairline. */
+function framePanelUpright(root: HTMLElement, win: { w: number; h: number }): Box | null {
+  const panel = measureBox(root, PANEL, win.w, 2);
+  if (!panel) return null;
+  const under = [tourTargetSelector('bar'), '[data-bar-panel]', tourTargetSelector('modes')]
+    .map((at) => measureBox(root, [at], win.w, 0)?.y)
+    .filter((y): y is number => y !== undefined && y > panel.y + panel.h / 2);
+  const bottom = under.length ? Math.min(...under) - 4 : panel.y + LAYERS_VIEW.h;
+  return { x: panel.x, y: panel.y, w: panel.w, h: Math.max(panel.h, bottom - panel.y) };
 }

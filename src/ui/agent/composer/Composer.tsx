@@ -26,7 +26,7 @@ import { CLUSTER_SIZE, COMPOSER_HEIGHT, FIELD_LINE, FIELD_MAX_LINES, PILL_RADIUS
 import type { I18nKey } from '../../../i18n/keys';
 import { useEffectEvent } from '../../primitives/use-effect-event';
 
-export { CLUSTER_SIZE, COMPOSER_HEIGHT, FIELD_MAX_LINES, PILL_RADIUS, WELL_LEAD_IN, WELL_PAD } from './metrics';
+export { COMPOSER_HEIGHT } from './metrics';
 
 /** Placeholder key for each routing mode, kept as literals for the i18n drift check. */
 const PLACEHOLDER_KEY: Record<ComposerRoute, I18nKey> = {

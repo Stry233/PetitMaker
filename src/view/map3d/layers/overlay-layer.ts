@@ -20,7 +20,7 @@ import { OverlayFlagged3D } from './overlay/flagged';
 import type { MapAnnotation } from '../../../core/model/annotations';
 
 /** What the 3D overlay reads from the scene that holds it. */
-export interface Overlay3DDeps {
+interface Overlay3DDeps {
   /** The map the decals drape over (the scene's peel view while layers are hidden). */
   state(): GridState;
   requestRender(): void;

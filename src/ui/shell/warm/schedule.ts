@@ -86,7 +86,7 @@ interface Job extends WarmItem { readonly run: Task }
 /** The item a job counts as, without its task. */
 const itemOf = ({ url }: Job): WarmItem => Object.freeze(url === undefined ? {} : { url });
 
-export interface WarmRun {
+interface WarmRun {
   /** The counted items, in order; known once `planned` resolves. */
   items(): readonly WarmItem[];
   /** The counted items settled so far, in the order they settled. */

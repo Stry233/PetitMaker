@@ -176,7 +176,7 @@ export class Fft2d {
 }
 
 /** One complex grid as its real and imaginary planes. */
-export interface ComplexPlane { re: Float64Array; im: Float64Array }
+interface ComplexPlane { re: Float64Array; im: Float64Array }
 
 /**
  * Splits the forward transform of `a + i b`, for real grids `a` and `b`, into the spectra of `a`

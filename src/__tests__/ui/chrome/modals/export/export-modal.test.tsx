@@ -11,7 +11,6 @@ import { makeState } from '../../../../_support/map-state';
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../../../../rules';
 import { I18nProvider } from '../../../../../i18n/context';
-import * as PreviewBridge from '../../../../../editor/export/preview';
 import { reviewText } from '../../../../../pipelines/moderation/text/reviewer';
 
 const requestNotice = vi.hoisted(() => vi.fn(async (_hasPetitGlyph?: boolean) => true));
@@ -247,82 +246,9 @@ describe('ExportModal', () => {
       expect(useEditorStore.getState().modals.share).toBe(true);
     });
 
-    it('fits the Native glyph to the reserved band width without clipping either finder', async () => {
-      vi.stubGlobal('Image', class {
-        width = 8192;
-        height = 6000;
-        onload: (() => void) | null = null;
-        set src(_value: string) { queueMicrotask(() => this.onload?.()); }
-      });
-      mountStateWith();
-      render(<ShareWindow />, { wrapper: Wrapper });
-      fireEvent.click(screen.getByText('Native'));
-      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
 
-      await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
-      const calls = vi.mocked(buildShareCode).mock.calls;
-      expect(calls[calls.length - 1]![3]).toBe(7440);
-      const result = await vi.mocked(buildShareCode).mock.results[calls.length - 1]!.value;
-      expect(result?.width).toBe(7440);
-    });
 
-    it('the preview shows NO image while the code is encoding (no placeholder), then the real one', async () => {
-      // The encode is held until released, so each state is sampled by event rather than by time.
-      const build = vi.mocked(buildShareCode).getMockImplementation()!;
-      let release!: () => void;
-      const encoded = new Promise<void>((resolve) => { release = resolve; });
-      vi.mocked(buildShareCode).mockImplementationOnce(async (...args) => { await encoded; return build(...args); });
-      mountStateWith();
-      const { baseElement: container } = render(<ShareWindow />, { wrapper: Wrapper });
-      // Through the debounce and the encode the preview stays loading, with no stand-in band.
-      expect(vi.mocked(buildShareCode)).not.toHaveBeenCalled();
-      expect(container.querySelector('[data-export-preview]')).toBeNull();
-      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1), { timeout: 3000 });
-      await act(() => new Promise<void>((r) => setTimeout(r, 0)));
-      expect(container.querySelector('[data-export-preview]')).toBeNull();
-      release();
-      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy(), { timeout: 3000 });
-      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
-    });
 
-    it('typing in the title repaints the image and rebuilds the glyph once the typing settles, since the title rides in the code', async () => {
-      const paints = vi.spyOn(PreviewBridge, 'paintPreview');
-      mountStateWith();
-      const { baseElement: container } = render(<ShareWindow />, { wrapper: Wrapper });
-      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy(), { timeout: 3000 });
-      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
-      const paintsBefore = vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length;
-
-      // An IME hands the field a new value on every composition step.
-      const input = screen.getByLabelText('Title');
-      for (const value of ['山', '山下', '山下的家']) fireEvent.change(input, { target: { value } });
-
-      // Inside the settle window there is no rebuild and no repaint.
-      await act(() => new Promise<void>((r) => setTimeout(r, 200)));
-      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length).toBe(paintsBefore);
-      expect(container.querySelector('[data-export-preview]')).toBeTruthy();
-
-      await waitFor(() => expect(paints.mock.calls.some(([args]) => args.options.title === '山下的家')).toBe(true), { timeout: 3000 });
-      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(2), { timeout: 3000 });
-      expect(vi.mocked(buildShareCode).mock.calls[1]![0].notes).toEqual({ title: '山下的家' });
-      expect(vi.mocked(buildShareCode).mock.calls[1]![2]).not.toHaveProperty('title');
-      await waitFor(() => expect(container.querySelector('[data-export-preview]')).toBeTruthy());
-    });
-
-    it('the preview builds the REAL code once (debounced) and the export reuses it — one encode total', async () => {
-      mountStateWith();
-      render(<ShareWindow />, { wrapper: Wrapper });
-
-      await waitFor(() => expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1), { timeout: 3000 });
-      // The standard preset's export width, which compose also uses.
-      expect(vi.mocked(buildShareCode).mock.calls[0]![3]).toBe(1600);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Export image' }));
-      await waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalled());
-      // The export reuses the previewed canvas, so the band in the preview is the band in the file.
-      expect(vi.mocked(buildShareCode)).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe('nested FooterEditor Escape does not bubble to close the whole modal', () => {

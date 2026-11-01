@@ -11,15 +11,15 @@
  */
 import {
   PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES,
-  type PreviewIconArt, type PreviewPalette,
+  type PreviewPalette,
 } from './preview-cell-art';
 import type { GhostPaint, PlacementWash, PreviewCell, PreviewIcon } from '../../../tools/pointer/runtime';
 import type { Rect } from '../../../core/grid/rect';
 import { hexStringToNumber } from '../../../core/base/color';
 import { ERROR_RED } from '../../../assets/brand-palette';
 
-export { PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES };
-export type { PreviewIconArt, PreviewPalette };
+export { PREVIEW_CELL_ART, PREVIEW_ICON_ART };
+export type { PreviewPalette };
 
 /** The tints a placement wash wears in both views. */
 const PLACEMENT_WASH = { valid: 0x22c55e, invalid: hexStringToNumber(ERROR_RED) } as const;

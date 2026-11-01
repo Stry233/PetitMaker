@@ -355,6 +355,17 @@ export class MapRenderer implements ViewSettingsTarget {
     this.mountNumberContainer();
   }
 
+  /** The notes layer's drawn extent (`AnnotationLayer.inkExtent`), its fades settled first. */
+  annotationExtent(): ReturnType<AnnotationLayer['inkExtent']> {
+    this.annotationLayer.settleFades();
+    return this.annotationLayer.inkExtent();
+  }
+
+  /** End every note fade where it is heading, so a reset map holds none of the notes it dropped. */
+  settleAnnotations(): void {
+    this.annotationLayer.settleFades();
+  }
+
   /** The plan-notes layer, drawn whole. */
   drawAnnotations(...args: Parameters<AnnotationLayer['draw']>): void {
     this.overlayLayer.noteInkScale = args[1].inkScale;

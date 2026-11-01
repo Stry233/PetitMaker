@@ -16,7 +16,7 @@ import { fnv1a32, fnv1aInts } from '../../../core/base/hash';
 
 /** A map's canonical bytes (sorted, id-normalised, provenance-free), supplied by the save codec's
  *  owner so the renderer does not depend on it. */
-export type CanonicalBytesOf = (state: GridState) => Uint8Array;
+type CanonicalBytesOf = (state: GridState) => Uint8Array;
 
 /** The seed a map's pictures descend from: a hash of the canonical map, so the same map draws the
  *  same picture on every machine and after any save/load or share round trip — and a different map
@@ -34,7 +34,7 @@ export function takeSeed(state: GridState, roll: number, canonicalBytesOf: Canon
   return roll === 0 ? base : (base ^ Math.imul(roll, 0x9e3779b9)) >>> 0;
 }
 
-export interface ProcRenderRequest {
+interface ProcRenderRequest {
   state: GridState;
   packId: string;
   /** Longest side of the wanted bitmap, in pixels. The renderer keeps the band's own aspect. */

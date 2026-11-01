@@ -3,13 +3,14 @@
  *  deep-link target the import window's refusals scroll to. */
 import { StrictMode } from 'react';
 import { MotionConfig } from 'framer-motion';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider, translateFor } from '../../../i18n/context';
 import { HelpModal } from '../../../ui/help/HelpModal';
 import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../ui/chrome/modals/planet/video-guide';
 import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
+import { useEditorStore } from '../../../state/store';
 
 const scrollDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 const scrolled: string[] = [];
@@ -41,13 +42,17 @@ describe('the recording guide in Help', () => {
     expect([...list.querySelectorAll('li')].map((li) => li.textContent)).toEqual(VIDEO_STEPS.map((key) => translateFor(locale, key)));
   });
 
-  it.each(VIDEO_FIXES.map((fix) => fix.failures[0]!))('scrolls to the fix for %s', async (reason) => {
-    const anchor = videoFixAnchor(reason);
-    setStoreState({ gridState: makeState(20, 20), locale: 'en', helpTarget: { page: 'planet', anchor } });
+  it('scrolls to each fix an import refusal names, in the one open Help', async () => {
+    const reasons = VIDEO_FIXES.map((fix) => fix.failures[0]!);
+    setStoreState({ gridState: makeState(20, 20), locale: 'en', helpTarget: { page: 'planet', anchor: videoFixAnchor(reasons[0]!) } });
     const { baseElement } = render(<Help />);
-    await waitFor(() => expect(scrolled).toContain(`help-${anchor}`));
-    const item = baseElement.querySelector(`#help-${anchor}`)!;
-    expect(item.tagName).toBe('LI');
-    expect(item.textContent).toBe(translateFor('en', VIDEO_FIXES.find((fix) => fix.anchor === anchor)!.key));
+    for (const reason of reasons) {
+      const anchor = videoFixAnchor(reason);
+      act(() => useEditorStore.getState().setHelpTarget({ page: 'planet', anchor }));
+      await waitFor(() => expect(scrolled).toContain(`help-${anchor}`));
+      const item = baseElement.querySelector(`#help-${anchor}`)!;
+      expect(item.tagName, reason).toBe('LI');
+      expect(item.textContent).toBe(translateFor('en', VIDEO_FIXES.find((fix) => fix.anchor === anchor)!.key));
+    }
   });
 });

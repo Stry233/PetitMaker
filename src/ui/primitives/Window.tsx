@@ -8,7 +8,7 @@
  * where that body is the window's whole width: a column beside another leaves the title as it is.
  */
 import {
-  createContext, forwardRef, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState,
+  createContext, forwardRef, useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type HTMLAttributes, type ReactNode, type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -27,11 +27,11 @@ import type { ScrollChange, ScrollGeometry } from './scroll-geometry';
 /** The card padding at each side every window shares, in css px. */
 export const WINDOW_PADDING_X = 24;
 /** The card padding every window shares, in css px (top, sides, bottom). */
-export const WINDOW_PADDING = `24px ${WINDOW_PADDING_X}px 20px`;
+const WINDOW_PADDING = `24px ${WINDOW_PADDING_X}px 20px`;
 /** The glyph inside a window header's icon buttons, in css px. */
-export const WINDOW_GLYPH = 18;
+const WINDOW_GLYPH = 18;
 /** The gap between the footer's actions, in css px. */
-export const WINDOW_FOOTER_GAP = 8;
+const WINDOW_FOOTER_GAP = 8;
 
 /** The card frame: the window plate, the shared padding and a column the parts stack in. Spread into
  *  `ModalShell`'s `cardStyle`, then add what the window itself needs. */
@@ -89,6 +89,8 @@ interface WindowParts {
   setBody: (room: BodyRoom) => void;
   joined: boolean;
   setJoined: (joined: boolean) => void;
+  /** Hears the id of the title heading `WindowHeader` stands in the card, and when it leaves. */
+  nameTitle?: (id: string, shown: boolean) => void;
 }
 
 interface BodyRoom { shown: number; content: number }
@@ -99,14 +101,17 @@ const NO_ROOM: BodyRoom = { shown: 0, content: 0 };
 
 /** One card's shared parts state, for `ModalShell` to stand around the window it holds, given the
  *  card and the height in its own px it may take. */
-export function WindowPartsProvider({ card, room, children }: { card: RefObject<HTMLElement | null>; room: number; children: ReactNode }) {
+export function WindowPartsProvider({ card, room, nameTitle, children }: {
+  card: RefObject<HTMLElement | null>; room: number; nameTitle?: (id: string, shown: boolean) => void; children: ReactNode;
+}) {
   const tuck = useMemo(() => motionValue(0), []);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [body, setBodyRoom] = useState<BodyRoom>(NO_ROOM);
   const setBody = useCallback((next: BodyRoom) => setBodyRoom((was) => (was.shown === next.shown && was.content === next.content ? was : next)), []);
   const [joined, setJoined] = useState(false);
   const short = room < SHORT_CARD;
-  const value = useMemo(() => ({ tuck, card, short, slot, setSlot, body, setBody, joined, setJoined }), [tuck, card, short, slot, body, setBody, joined]);
+  const value = useMemo(() => ({ tuck, card, short, slot, setSlot, body, setBody, joined, setJoined, nameTitle }),
+    [tuck, card, short, slot, body, setBody, joined, nameTitle]);
   return <WindowPartsContext.Provider value={value}>{children}</WindowPartsContext.Provider>;
 }
 
@@ -201,6 +206,7 @@ interface HeaderAction {
  * The title row. Back stands at the start and Close at the end, both centred on the title's line;
  * `reserve` keeps the title clear of them when it wraps. With `aside` the title stands at the start
  * and the aside at the end before Close, dropping under the title when the row cannot hold both.
+ * The title is the window's one h2, which names a card given no name of its own.
  */
 export function WindowHeader({ title, titleId, back, close, reserve = false, style, children, aside }: {
   title: ReactNode;
@@ -215,12 +221,20 @@ export function WindowHeader({ title, titleId, back, close, reserve = false, sty
   /** A control of the whole window that stands in its head, such as a switch the window obeys. */
   aside?: ReactNode;
 }) {
+  const ownId = useId();
+  const id = titleId ?? ownId;
+  const nameTitle = useContext(WindowPartsContext)?.nameTitle;
+  useLayoutEffect(() => {
+    if (!nameTitle) return undefined;
+    nameTitle(id, true);
+    return () => nameTitle(id, false);
+  }, [nameTitle, id]);
   if (aside) {
     return (
       <TuckedRow style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: 'none', ...style }}>
         {back && <WindowBack {...back} />}
         <div style={{ ...asideRow, flex: '1 1 auto', minWidth: 0 }}>
-          <TuckedTitle id={titleId} align="start">{title}{children}</TuckedTitle>
+          <TuckedTitle id={id} align="start">{title}{children}</TuckedTitle>
           {aside}
         </div>
         {close && <WindowClose {...close} />}
@@ -231,7 +245,7 @@ export function WindowHeader({ title, titleId, back, close, reserve = false, sty
   return (
     <TuckedRow style={{ ...titleRow, flex: 'none', ...pad, ...style }}>
       {back && <WindowBack {...back} style={{ ...edgeButton, insetInlineStart: 0 }} />}
-      <TuckedTitle id={titleId}>{title}{children}</TuckedTitle>
+      <TuckedTitle id={id}>{title}{children}</TuckedTitle>
       {close && <WindowClose {...close} style={{ ...edgeButton, insetInlineEnd: 0 }} />}
     </TuckedRow>
   );
@@ -272,11 +286,11 @@ function TuckedRow({ style, children }: { style: CSSProperties; children: ReactN
 
 /** The title, its size following the body's scroll from full to `TITLE_TUCKED`, so a title that wraps
  *  gives its lines back to the body. It follows the finger; only `WindowBody`'s settle plays. */
-function TuckedTitle({ id, align, children }: { id: string | undefined; align?: 'start'; children: ReactNode }) {
+function TuckedTitle({ id, align, children }: { id: string; align?: 'start'; children: ReactNode }) {
   const tuck = useTuck();
   const full = Number(windowTitle.fontSize);
   const fontSize = useTransform(tuck, [0, 1], [full, full * TITLE_TUCKED]);
-  return <motion.div id={id} data-window-title="" style={{ ...windowTitle, ...(align ? { textAlign: align } : null), fontSize }}>{children}</motion.div>;
+  return <motion.h2 id={id} data-window-title="" style={{ ...windowTitle, margin: 0, ...(align ? { textAlign: align } : null), fontSize }}>{children}</motion.h2>;
 }
 
 type EdgeButtonProps = HeaderAction & { style?: CSSProperties };

@@ -58,12 +58,6 @@ export function saturation(r: number, g: number, b: number): number {
   return v > 0 ? ((v - Math.min(r, g, b)) * 255) / v : 0;
 }
 
-/** Hue angle of (a, b) in degrees, in [0, 360). */
-export function labHue(a: number, b: number): number {
-  const h = (Math.atan2(b, a) * 180) / Math.PI;
-  return h < 0 ? h + 360 : h;
-}
-
 /** Bits per channel of the colour index pixels are classed by: a pixel takes the class of its
  *  quantisation step's centre colour, so colours under a step apart class alike. */
 const STEP_BITS = 6;

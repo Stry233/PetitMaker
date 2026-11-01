@@ -1,8 +1,8 @@
 /**
- * The generate shelf's batch against the live map: which recipe a card stands for, its plan,
- * candidate and picture built on detached copies (restored from the caches where they answer, else
- * after the settings settle), the landing of one card, and Clear. The shelf holds the pictures and
- * flags as its own state and hands their setters in; this module never renders.
+ * The generate shelf's batch against the live map, or the map a Help figure hands in: which recipe a
+ * card stands for, its plan, candidate and picture built on detached copies (restored from the caches
+ * where they answer, else after the settings settle), the landing of one card, and Clear. The shelf
+ * holds the pictures and flags as its own state and hands their setters in; this module never renders.
  */
 import { SUPPORTS_WORKERS } from '../../platform/build/edition';
 import { TERRAIN_GRID } from '../../core/game/profile';
@@ -33,12 +33,12 @@ const SETTLE_MS = 350;
 /** A card's picture: a data URL, null for a card with no picture, undefined while it is being made. */
 export type Shot = string | null | undefined;
 /** A slot the shelf keeps across renders (a React ref fits). */
-export interface Slot<T> { current: T }
+interface Slot<T> { current: T }
 type ShotFrame = ReturnType<typeof focusFrame>;
 /** The batch's settings; each card adds its own seed. */
 export type BatchSettings = Omit<KindSettings, 'seed'>;
 /** How a card is photographed: the long edge in device pixels and the picture slot's aspect. */
-export interface ShotSize { px: number; aspect: number }
+interface ShotSize { px: number; aspect: number }
 
 /** What a picture kind builds from on the live map: the box it fills, whether the region fits it,
  *  the plan inputs, and whether a word fits the box (asked before any run). */
@@ -49,7 +49,7 @@ export interface StencilInputs {
   wordFits: (sample: StencilSource | null) => boolean;
 }
 
-export interface StencilRecipe { kind: GenerateKind; fill: StencilFillKind; item: string | null; contrast: number }
+interface StencilRecipe { kind: GenerateKind; fill: StencilFillKind; item: string | null; contrast: number }
 
 /** `contrast` is the shelf's percentage. */
 export function stencilInputs(grid: GridState | null, region: readonly MacroCoord[], recipe: StencilRecipe): StencilInputs {
@@ -81,6 +81,8 @@ interface Pass {
   candidates: Slot<(Candidate | null)[]>;
   setShot: (i: number, shot: Shot) => void;
   dropped: () => boolean;
+  /** The map the batch builds against. */
+  editor: () => EditContext | null;
 }
 
 /** The frame a card's picture shows: the painted region's box, or the map. */
@@ -88,10 +90,10 @@ export function shotFrameFor(region: readonly MacroCoord[], grid: GridState | nu
   return focusFrame(regionBox(region), grid?.template ?? null, aspect);
 }
 
-/** A card's picture carries the open map's notes: a candidate holds none, and landing it leaves them. */
-const photo = (candidate: Candidate | null, frame: ShotFrame, size: ShotSize): Promise<Shot> =>
+/** A card's picture carries its map's notes: a candidate holds none, and landing it leaves them. */
+const photo = (candidate: Candidate | null, frame: ShotFrame, size: ShotSize, kit: EditContext | null): Promise<Shot> =>
   candidate
-    ? renderThumbnail(candidate.state, size.px, { aspect: size.aspect, frame, notes: currentEditor()?.state.annotations ?? null })
+    ? renderThumbnail(candidate.state, size.px, { aspect: size.aspect, frame, notes: kit?.state.annotations ?? null })
     : Promise.resolve(null);
 const seedOf = (pass: Pass, i: number): number => (pass.stencil ? pass.base + i : (pass.dealt[i] as number));
 
@@ -147,11 +149,17 @@ async function buildCard(kit: EditContext, pass: Pass, i: number, signal: AbortS
   if (pass.dropped()) return;
   pass.candidates.current[i] = candidate;
   // The picture waits on the map's icons decoding, so the batch may be dropped by the time it is back.
-  const shot = await photo(candidate, pass.shotFrame, pass.shotSize);
+  const shot = await photo(candidate, pass.shotFrame, pass.shotSize, kit);
   if (!pass.dropped()) pass.setShot(i, shot);
 }
 
-export interface BatchPass {
+/** The map a batch or own card builds against: a given one (a Help figure's sandbox), else the live editor's. */
+interface BatchTarget {
+  /** Absent, the live editor's map. */
+  kit?: EditContext;
+}
+
+interface BatchPass extends BatchTarget {
   stencil: boolean; fits: boolean; ready: boolean; fontsReady: boolean;
   hand: readonly StencilSource[]; seeds: readonly number[]; base: number;
   settings: BatchSettings; scope: MacroCoord[] | null; planInputs: PlanInputs | null;
@@ -191,10 +199,10 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
   const { signal } = controller;
   const pass: Pass = {
     stencil, dealt: stencil ? hand : seeds, base, settings, scope, planInputs, wordFits, shotFrame, shotSize,
-    plans: plansRef, candidates: candidatesRef, dropped: () => dropped,
+    plans: plansRef, candidates: candidatesRef, dropped: () => dropped, editor: () => o.kit ?? currentEditor(),
     setShot: (i, shot) => setShots((prev) => prev.map((s, j) => (j === i ? shot : s))),
   };
-  const peekKit = currentEditor();
+  const peekKit = pass.editor();
   const restored = peekKit && (!stencil || planInputs) ? peekBatch(peekKit, pass) : null;
   if (restored) {
     forgetApplied();
@@ -204,7 +212,7 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
     // Cleared and repainted within one frame, so a card never shows another recipe's picture.
     setShots(Array(CANDIDATES).fill(undefined));
     void Promise.all(restored.peeked.map(async (candidate, i) => {
-      const shot = await photo(candidate, shotFrame, shotSize).catch((): Shot => null);
+      const shot = await photo(candidate, shotFrame, shotSize, peekKit).catch((): Shot => null);
       if (!dropped) pass.setShot(i, shot);
     }));
     return () => { dropped = true; blank(); };
@@ -212,7 +220,7 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
   // Blank now rather than when the run starts, so the old pictures never stand under the new numbers.
   setShots(Array(CANDIDATES).fill(undefined));
   const run = async (): Promise<void> => {
-    const kit = currentEditor();
+    const kit = pass.editor();
     if (!kit) return;
     // What stands no longer answers this batch: the shelf lets go of it, and it stays on the map.
     forgetApplied();
@@ -239,7 +247,7 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
   };
 }
 
-export interface OwnPass {
+interface OwnPass extends BatchTarget {
   stencil: boolean; fits: boolean; ready: boolean; ownFontsReady: boolean; ownSample: StencilSource | null;
   customSeed: number | null; base: number; settings: BatchSettings; scope: MacroCoord[] | null;
   planInputs: PlanInputs | null; wordFits: (sample: StencilSource | null) => boolean; shotFrame: ShotFrame; shotSize: ShotSize;
@@ -278,7 +286,8 @@ export function previewOwn(o: OwnPass): (() => void) | undefined {
     customRef.current = candidate;
   };
   setCustomShot(undefined);
-  const peekKit = currentEditor();
+  const editor = () => o.kit ?? currentEditor();
+  const peekKit = editor();
   const peekedPlan = peekKit ? (wantsPlan ? peekStencilPlan(ownSample!, planInputs!) : null) : undefined;
   if (stencil && peekedPlan === null) {
     // The cached answer is the refusal: the card comes back blank as the slow path leaves it.
@@ -291,7 +300,7 @@ export function previewOwn(o: OwnPass): (() => void) | undefined {
   if (hit) {
     land(peekedPlan ?? null, hit);
     setCustomPending(false);
-    void photo(hit, shotFrame, shotSize).catch((): Shot => null).then((shot) => { if (!dropped) setCustomShot(shot); });
+    void photo(hit, shotFrame, shotSize, peekKit).catch((): Shot => null).then((shot) => { if (!dropped) setCustomShot(shot); });
     return () => { dropped = true; customRef.current = null; };
   }
   const build = async (kit: EditContext): Promise<void> => {
@@ -304,13 +313,13 @@ export function previewOwn(o: OwnPass): (() => void) | undefined {
     );
     if (dropped) return;
     customRef.current = candidate;
-    const shot = await photo(candidate, shotFrame, shotSize);
+    const shot = await photo(candidate, shotFrame, shotSize, kit);
     if (dropped) return;
     setCustomShot(shot);
     setCustomPending(false);
   };
   const run = async (): Promise<void> => {
-    const kit = currentEditor();
+    const kit = editor();
     if (!kit) return;
     setCustomPending(true);
     try {
@@ -338,7 +347,7 @@ export function kindCandidate(kit: EditContext, settings: KindSettings, region: 
 }
 
 /** What a card's click asks for: the card and the batch it stands in. */
-export interface CardAsk {
+interface CardAsk {
   index: number;
   stencil: boolean;
   base: number;
@@ -452,7 +461,7 @@ export function snapMazeEnd(scope: MacroCoord[] | null, corridorWidth: number, c
   return fp ? resolveEnd(latticeField(kit.state, fp), cell) : null;
 }
 
-export interface BatchKeyParts {
+interface BatchKeyParts {
   kind: GenerateKind; richness: number; maxElevation: number; corridorWidth: number;
   /** The maze's chosen ends, for a kind with gates. */
   gates: ResolvedMazeGates | null;

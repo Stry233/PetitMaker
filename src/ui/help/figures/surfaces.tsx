@@ -21,7 +21,6 @@ import {
 import {
   LetterMaterialsPreview, PictureMaterialsPreview, PictureStencilPreview, PictureTuningPreview,
 } from './previews/generate';
-import { Camera3dPreview } from './previews/camera';
 import { FrameCut } from './previews/frame-overview';
 import { CORE_SURFACES } from './core-surfaces';
 
@@ -69,7 +68,6 @@ export const HELP_SURFACES: Record<string, ComponentType> = {
   'picture-materials': PictureMaterialsPreview,
   'picture-tuning': PictureTuningPreview,
   search: SearchPreview,
-  'camera-3d': Camera3dPreview,
   checklist: ChecklistPreview,
   'checklist-full': FullChecklistPreview,
 };

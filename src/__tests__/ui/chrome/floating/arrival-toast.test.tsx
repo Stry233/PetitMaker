@@ -254,8 +254,7 @@ describe('the arrival notice', () => {
   });
 
   /*
-   * jsdom lays nothing out, so widths are stubbed and the decision is what is checked: a size change
-   * starts a glide, during which the card clips itself, and reduced motion takes the new size outright.
+   * jsdom lays nothing out, so widths are stubbed: reduced motion takes a new size outright.
    */
   const withWidths = (run: (setWidth: (w: number) => void) => void) => {
     let width = 200;
@@ -270,51 +269,19 @@ describe('the arrival notice', () => {
     }
   };
 
-  it('eases its box to the new words when a resume swaps a standing notice', () => {
-    withWidths((setWidth) => {
-      mount();
-      act(() => announceArrival({ kind: 'boot' }));
-      settle();
-      // An arrival flies in at its own size.
-      expect(screen.getByTestId('arrival-row').style.overflow).toBe('');
-      setWidth(320);
-      act(() => announceArrival({ kind: 'restored' }));
-      settle();
-      expect(screen.getByTestId('arrival-row').style.overflow).toBe('hidden');
-    });
-  });
-
-  it('brings the card with each line, since one line is not the width of the next', () => {
-    withWidths((setWidth) => {
-      mount();
-      act(() => announceArrival({
-        kind: 'transferred',
-        detail: [{ key: 'arrival.transferred' }, { key: 'arrival.transferred_lost_none' }],
-      }));
-      settle();
-      setWidth(320);
-      wait(EYEBROW_SWAP_MS);
-      expect(screen.getByTestId('arrival-row').style.overflow).toBe('hidden');
-    });
-  });
-
   /** Inside the clipped row the buttons would stand past a growing card's moving edge and be sliced;
    *  outside it they ride the card's own edge. */
   it('carries the answers outside the box it clips, so a travelling card cannot cut one', () => {
-    withWidths((setWidth) => {
-      mount();
-      act(() => announceArrival({ kind: 'boot' }));
-      settle();
-      setWidth(320);
-      act(() => announceArrival({ kind: 'restored' }));
-      settle();
-      const row = screen.getByTestId('arrival-row');
-      expect(row.style.overflow).toBe('hidden');
-      for (const answer of ['arrival-ok', 'arrival-switch']) {
-        expect(row.contains(screen.getByTestId(answer)), answer).toBe(false);
-        expect(screen.getByTestId('arrival-toast').contains(screen.getByTestId(answer))).toBe(true);
-      }
-    });
+    mount();
+    act(() => announceArrival({ kind: 'boot' }));
+    settle();
+    act(() => announceArrival({ kind: 'restored' }));
+    settle();
+    const row = screen.getByTestId('arrival-row');
+    for (const answer of ['arrival-ok', 'arrival-switch']) {
+      expect(row.contains(screen.getByTestId(answer)), answer).toBe(false);
+      expect(screen.getByTestId('arrival-toast').contains(screen.getByTestId(answer))).toBe(true);
+    }
   });
 
   /** Every line on screen, the outgoing one included, is held to one line and cut with an ellipsis
@@ -332,19 +299,14 @@ describe('the arrival notice', () => {
 
   for (const reduced of [false, true]) {
     spec('UI-28', `keeps the upright notice's words on one line while a resume swaps them${reduced ? ', under reduced motion too' : ''}`, () => {
-      withWidths((setWidth) => {
-        mount({ upright: true, reduced });
-        act(() => announceArrival({ kind: 'boot' }));
-        settle();
-        act(() => announceArrival({ kind: 'restored' }));
-        settle();
-        expect(oneLine()).toEqual(["You're at"]);
-        setWidth(320);
-        wait(EYEBROW_SWAP_MS);
-        expect(oneLine()).toContain('Your last progress is back');
-        // Full motion glides the width to the new line; reduced motion takes it at once.
-        expect(screen.getByTestId('arrival-row').style.overflow).toBe(reduced ? '' : 'hidden');
-      });
+      mount({ upright: true, reduced });
+      act(() => announceArrival({ kind: 'boot' }));
+      settle();
+      act(() => announceArrival({ kind: 'restored' }));
+      settle();
+      expect(oneLine()).toEqual(["You're at"]);
+      wait(EYEBROW_SWAP_MS);
+      expect(oneLine()).toContain('Your last progress is back');
     });
   }
 

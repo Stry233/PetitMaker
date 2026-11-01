@@ -14,7 +14,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'save-when', titleKey: 'help.save.when_t', bodyKeys: ['help.save.when_b1', 'help.save.background_b1'] },
       { kind: 'prose', anchor: 'save-return', titleKey: 'help.save.return_t', bodyKeys: ['help.save.return_b1', 'help.save.return_b2'] },
       { kind: 'prose', anchor: 'save-carry', titleKey: 'help.save.carry_t', bodyKeys: ['help.save.carry_b1'] },
-      { kind: 'prose', anchor: 'save-caution', titleKey: 'help.save.caution_t', bodyKeys: ['help.save.caution_b1'], figure: { kind: 'surface', surface: 'frame-topright', captionKey: 'help.save.entry_figcap' }, lite: { bodyKeys: ['lite.save_hint'] } },
+      { kind: 'prose', anchor: 'save-caution', titleKey: 'help.save.caution_t', bodyKeys: ['help.save.caution_b1'], lite: { bodyKeys: ['lite.save_hint'] } },
       { kind: 'callout', bodyKey: 'help.save.co1', lite: false },
     ],
     qa: [
@@ -35,7 +35,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
     entryKey: 'help.share.entry',
     figure: { kind: 'surface', surface: 'share-window', captionKey: 'help.share.window_figcap' },
     sections: [
-      { kind: 'prose', anchor: 'share-tabs', titleKey: 'help.share.tabs_t', bodyKeys: ['help.share.tabs_b1'], lite: false },
+      { kind: 'prose', anchor: 'share-tabs', titleKey: 'help.share.tabs_t', bodyKeys: ['help.share.tabs_b1'], figure: { kind: 'reel', reel: 'share' }, lite: false },
       { kind: 'prose', anchor: 'share-preset', titleKey: 'help.share.preset_t', bodyKeys: ['help.share.preset_b1'], figure: { kind: 'surface', surface: 'export-controls', captionKey: 'help.share.controls_figcap' }, lite: { bodyKeys: ['lite.preset_share_desc', 'lite.preset_plain_desc'] } },
       { kind: 'prose', anchor: 'share-size', titleKey: 'help.share.size_t', bodyKeys: ['help.share.size_b1'], lite: { bodyKeys: ['lite.help_export_size'] } },
       { kind: 'prose', anchor: 'share-header', titleKey: 'help.sharelook.header_t', bodyKeys: ['help.sharelook.header_b1', 'help.sharelook.attribution_b1'], figure: { kind: 'surface', surface: 'pic-header', captionKey: 'help.sharelook.header_figcap' }, lite: { bodyKeys: ['lite.help_export_header'] } },
@@ -66,7 +66,6 @@ export const SHARE_PAGES: readonly HelpPage[] = [
     ],
     qa: [
       { qKey: 'help.share.q1', aKey: 'help.share.a1', lite: false },
-      { qKey: 'help.share.q2', aKey: 'help.share.a2', lite: false },
       { qKey: 'help.share.q3', aKey: 'help.share.a3', lite: false },
       { qKey: 'help.share.q4', aKey: 'help.share.a4' },
       { qKey: 'help.sharelook.q3', aKey: 'help.sharelook.a3' },
@@ -89,7 +88,7 @@ export const SHARE_PAGES: readonly HelpPage[] = [
     sections: [
       { kind: 'prose', anchor: 'json-core', titleKey: 'help.json.core_t', bodyKeys: ['help.json.core_b1'] },
       { kind: 'prose', anchor: 'json-sections', titleKey: 'help.json.sections_t', bodyKeys: ['help.json.sections_b1'] },
-      { kind: 'prose', anchor: 'json-confirm', titleKey: 'help.share.confirm_t', bodyKeys: ['help.sharelook.attribution_b1', 'help.share.confirm_b1'] },
+      { kind: 'prose', anchor: 'json-confirm', titleKey: 'help.share.confirm_t', bodyKeys: ['help.json.confirm_b1'] },
       { kind: 'prose', anchor: 'json-format', titleKey: 'help.json.format_t', bodyKeys: ['help.json.format_b1'] },
       { kind: 'callout', bodyKey: 'help.json.co1' },
     ],
@@ -135,6 +134,8 @@ export const SHARE_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'planet-mine', titleKey: 'help.planet.mine_t', bodyKeys: ['help.planet.mine_b1'] },
       { kind: 'prose', anchor: 'planet-draw', titleKey: 'help.planet.draw_t', bodyKeys: ['help.planet.draw_b1', 'help.planet.draw_b2', 'help.planet.draw_b3'] },
       { kind: 'prose', anchor: 'planet-files', titleKey: 'help.planet.files_t', bodyKeys: ['help.planet.files_b1'], lite: false },
+      { kind: 'prose', anchor: 'planet-repair', titleKey: 'help.planet.repair_t', bodyKeys: ['help.planet.repair_b1', 'help.planet.repair_b2'] },
+      { kind: 'prose', anchor: 'planet-redirect', titleKey: 'help.planet.redirect_t', bodyKeys: ['help.planet.redirect_b1'], lite: false },
       {
         kind: 'list', anchor: VIDEO_GUIDE_HELP.anchor, titleKey: 'planet.scan_title', bodyKeys: ['help.planet.video_b1'], ordered: true,
         items: VIDEO_STEPS.map((key) => ({ key })), lite: false,

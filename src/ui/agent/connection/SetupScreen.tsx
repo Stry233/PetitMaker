@@ -28,11 +28,7 @@ import {
 } from './setup-parts';
 import { endpointUrlLooksUsable } from '../../../platform/remote/endpoint-url';
 
-export { defaultListModels, type ListModels } from '../../../agent/panel';
-export { IDLE_MS } from '../../../agent/panel';
-export { SetupKeyField, type Mark } from './SetupKeyField';
-export { SetupProviderFace } from './SetupProviderFace';
-export { rowFace } from './setup-copy';
+export { type ListModels } from '../../../agent/panel';
 
 interface SetupScreenProps {
   /** Called once a key, a provider and a model are all settled. The shell leaves setup on it. */
@@ -49,6 +45,8 @@ interface SetupScreenProps {
   onManage?: () => void;
   /** Focus the key field as the screen opens. */
   focusKey?: boolean;
+  /** A key standing pasted in the field at the key step, for a Help figure; read once at mount. */
+  pasted?: string;
 }
 
 /** What the panel may ask of a standing setup screen. */
@@ -64,12 +62,16 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
   entry = 'key',
   onManage,
   focusKey = false,
+  pasted,
 }, ref) {
   const t = useT();
   const zoomedLayout = useZoomedLayoutTransform();
   const reduced = useReducedMotionConfig() === true;
   const pictured = useUiPreview();
-  const r = useKeyReading({ entry, listModels, focusKey, pictured, ...(onManage ? { onManage } : {}), ...(onLeave ? { onLeave } : {}) });
+  const r = useKeyReading({
+    entry, listModels, focusKey, pictured,
+    ...(pasted !== undefined ? { pasted } : {}), ...(onManage ? { onManage } : {}), ...(onLeave ? { onLeave } : {}),
+  });
   const { phase, refused, gate, pinned, shape, regionProvider, url, fieldRef } = r;
   useImperativeHandle(ref, () => ({ focusKey: () => fieldRef.current?.focus() }), [fieldRef]);
 

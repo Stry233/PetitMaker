@@ -18,7 +18,7 @@ export type { GenerateKind, StencilFillKind };
 export { CANDIDATES, STENCIL_MIN_SIDE };
 
 /** Everything the shelf, its strip and Help read about a kind; no surface tests a kind by name. */
-export interface KindTraits extends KindEngine {
+interface KindTraits extends KindEngine {
   readonly labelKey: I18nKey;
   /** Whether released builds offer the visitor's own card. Development builds offer every card. */
   readonly customCardReleased: boolean;

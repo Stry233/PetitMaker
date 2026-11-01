@@ -54,7 +54,7 @@ export interface MapStats {
   maxElevation: number;
   /** Per-chunk object count + load. Locked objects (landmarks) do occupy chunk capacity;
    *  patchOnly ones are excluded — a cosmetic corner-cut re-index of a road already on the
-   *  map, not new load. Meaningful only while CHUNK_LOAD_ENABLED. */
+   *  map, not new load. */
   chunks: Map<string, ChunkStat>;
 }
 

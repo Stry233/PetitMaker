@@ -53,9 +53,9 @@ function erodeCells(cells: readonly MacroCoord[], r: number): MacroCoord[] {
   });
 }
 
-export interface TerraceSpec { cx: number; cy: number; baseRadius: number; tiers: number; seed: number }
+interface TerraceSpec { cx: number; cy: number; baseRadius: number; tiers: number; seed: number }
 
-export interface Terrace {
+interface Terrace {
   /** Each tier's cells, bottom first; tier L stands at elevation L + 1. */
   tiers: MacroCoord[][];
   commands: Command[];
@@ -103,7 +103,7 @@ export function sculptTerrace(
   return { tiers: tierCells, commands, clipped };
 }
 
-export type MapEdge = 'N' | 'S' | 'E' | 'W';
+type MapEdge = 'N' | 'S' | 'E' | 'W';
 
 /**
  * The rect a wall sited as the map's boundary covers: abutting `edge` of the buildable grass,
@@ -126,7 +126,7 @@ export function wallRectAtEdge(
   return { x1: gx2 - depth + 1, x2: gx2, y1: gy1, y2: gy2 };
 }
 
-export interface Wall {
+interface Wall {
   commands: Command[];
   /** Every cell the wall stands on: its base band. */
   base: MacroCoord[];
@@ -186,7 +186,7 @@ export function sculptWall(
   return { commands, base, bands, crest, poolCells };
 }
 
-export interface PoolCourt {
+interface PoolCourt {
   commands: Command[];
   /** Every cell of the rect the court stands on. */
   cells: MacroCoord[];

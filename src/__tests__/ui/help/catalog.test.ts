@@ -3,6 +3,7 @@
  * resolving, every referenced string in the reference tables, and every figure naming a scene or mock
  * that exists.
  */
+import { TOUR_KINDS } from '../../../ui/chrome/tour/deck';
 import { describe, expect, it, vi } from 'vitest';
 
 /** The catalog under test is the development one, which carries every help string. Sections a
@@ -40,8 +41,8 @@ import { illustrationProviderName } from '../../../i18n/terms/providers';
 import { readingKey } from '../../../i18n/terms/device-readings';
 
 const ALL_IDS: readonly HelpPageId[] = [
-  'welcome', 'frame', 'camera', 'tour',
-  'terrain', 'trim', 'objects', 'search', 'select', 'smart',
+  'welcome', 'frame', 'camera', 'touch', 'tour',
+  'terrain', 'trim', 'objects', 'search', 'select', 'copy', 'smart',
   'generate', 'gen-island', 'maze', 'gen-letter', 'gen-picture', 'candidates', 'region',
   'notes', 'layers', 'load', 'undo',
   'save', 'share', 'json', 'checklist', 'planet',
@@ -53,17 +54,21 @@ const ALL_IDS: readonly HelpPageId[] = [
  *  contract reads the same timeline the player runs. Memoized: building a world runs generators. */
 const sceneSteps = new Map<string, SceneStep[]>();
 const NO_VIEW: DemoView = {
-  clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
-  clearSelection: () => {}, band: () => {}, paintGhost: () => {}, region: () => {}, route: () => {},
-  marks: () => {}, gauge: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
-  spin: () => {}, groupSpin: () => {}, curveHandles: () => {},
+  clearGhost: () => {}, groupGhost: () => {},
+  paintGhost: () => {}, region: () => {}, route: () => {},
+  marks: () => {}, loadMeter: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
+  spin: () => {}, groupSpin: () => {},
 };
 function stepsOf(scene: HelpScene): SceneStep[] {
   const key = sceneKeyOf(scene);
   let steps = sceneSteps.get(key);
   if (!steps) {
     const world = new SandboxWorld(scene.template);
-    steps = scene.run({ world, view: NO_VIEW }, (k) => k);
+    // A scene steps the touch way where a gesture differs by finger, so both readers' steps count.
+    steps = [
+      ...scene.run({ world, view: NO_VIEW }, (k) => k, { touch: false, upright: false }),
+      ...scene.run({ world: new SandboxWorld(scene.template), view: NO_VIEW }, (k) => k, { touch: true, upright: false }),
+    ];
     sceneSteps.set(key, steps);
   }
   return steps;
@@ -73,6 +78,7 @@ function sceneKeyOf(scene: HelpScene): string {
 }
 
 function figureKeys(fig: NonNullable<HelpPage['figure']>): TextKey[] {
+  if (fig.kind === 'reel') return fig.fallback ? figureKeys(fig.fallback) : [];
   if (fig.kind === 'surface') return [fig.captionKey];
   if (fig.kind === 'demos') return fig.scenes.map((s) => s.labelKey);
   return [];
@@ -141,7 +147,11 @@ describe('the help catalog', () => {
 
   it('names only scenes and mocks that exist', () => {
     for (const id of HELP_PAGE_ORDER) {
-      const fig = HELP_PAGES[id]!.figure;
+      const named = HELP_PAGES[id]!.figure;
+      if (!named) continue;
+      // A reel names its tips card; what the catalog must hold is the figure standing in for it.
+      if (named.kind === 'reel') expect(TOUR_KINDS, `${id} → ${named.reel}`).toContain(named.reel);
+      const fig = named.kind === 'reel' ? named.fallback : named;
       if (!fig) continue;
       if (fig.kind === 'demo') expect(HELP_SCENES[fig.scene], `${id} → ${fig.scene}`).toBeTruthy();
       else if (fig.kind === 'demos') for (const s of fig.scenes) expect(HELP_SCENES[s.scene], `${id} → ${s.scene}`).toBeTruthy();

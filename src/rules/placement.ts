@@ -162,15 +162,6 @@ const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitValidator<K> } = {
     return [];
   },
 
-  noFloat(_trait, { state, footprint, fail }) {
-    const offenders = footprint.filter((coord) => {
-      const cell = getCell(state.cells, coord.x, coord.y);
-      return !cell || !realSurface(cell.terrain);
-    });
-    if (offenders.length > 0) return [fail('error.floating_block', evidenceOn(TERRAIN_GRID, offenders))];
-    return [];
-  },
-
   // The resolve step has snapped a bridge or ramp that can stand; one that still does not stands
   // where nothing resolves it.
   waterSpan(trait, { item, cmd, state, pos, fail }) {

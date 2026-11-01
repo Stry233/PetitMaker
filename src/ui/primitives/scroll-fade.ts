@@ -23,7 +23,7 @@ type FadeAt = (el: HTMLElement, edge: number, atEnd: boolean) => number;
  *  read as more to scroll to; the scroll length caps it. */
 type Extent = (el: HTMLElement) => number;
 
-export interface FadeOptions {
+interface FadeOptions {
   fadeAt?: FadeAt;
   extent?: Extent;
   /** False where the caller draws the scroller without a fade: nothing is observed or written. */

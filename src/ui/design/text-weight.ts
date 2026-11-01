@@ -61,8 +61,8 @@ const TEXT_FLOOR = 12;
  * A weight adapts to a size and a token cannot read a hook, so the type inventory is declared once
  * here as (size, weight) pairs; a surface publishes one resolved custom property per role and every
  * token inside it inherits by naming its role. Each `px` is the size the tokens are authored at; a
- * site drawing a role at another size uses `useReadableWeight`. This is the whole inventory
- * (`text-ladder.test.ts` fails a raw `fontSize` under `ui/` elsewhere). Rungs sharing a size differ
+ * site drawing a role at another size uses `useReadableWeight`. This is the whole inventory:
+ * a type size under `ui/` names a role. Rungs sharing a size differ
  * by weight (`body`/`field`/`label`/`menu` at 14, `subhead` 13/900 against `chip` 13/800); `note`
  * keeps prose off the `caption`/`small` pair, which is for figures and asides.
  */

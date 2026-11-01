@@ -36,7 +36,7 @@ function surfaceRung(el: Element | null): number {
  * The css `zoom` everything above `el` draws it at: the product of each box's own `zoom`. An engine
  * that reports no computed zoom (one without the property, or jsdom) falls back to the inline one.
  */
-export function anchorZoom(el: Element | null): number {
+function anchorZoom(el: Element | null): number {
   let zoom = 1;
   for (let at = el; at; at = at.parentElement) {
     const own = getComputedStyle(at).zoom || (at as HTMLElement).style?.zoom || '';

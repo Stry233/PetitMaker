@@ -7,7 +7,7 @@
 import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { SandboxWorld } from '../../editor/sandbox/demo-world';
-import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene } from '../../ui/help/figures/scenes';
+import { HELP_SCENES, sceneWorld, type DemoCtx, type DemoView, type HelpScene } from '../../ui/help/figures/scenes';
 import { HELP_PAGES, HELP_PAGE_ORDER } from '../../ui/help/catalog';
 import { searchHelp, __resetHelpSearch } from '../../ui/help/search';
 import { helpFacts } from '../../ui/help/facts';
@@ -21,10 +21,10 @@ const s = perfSuite('help');
 
 /** Every mark a no-op, as in `__tests__/ui/help/catalog.test.ts`. */
 const NO_VIEW: DemoView = {
-  clearGhost: () => {}, groupGhost: () => {}, selection: () => {},
-  clearSelection: () => {}, band: () => {}, paintGhost: () => {}, region: () => {}, route: () => {},
-  marks: () => {}, gauge: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
-  spin: () => {}, groupSpin: () => {}, curveHandles: () => {},
+  clearGhost: () => {}, groupGhost: () => {},
+  paintGhost: () => {}, region: () => {}, route: () => {},
+  marks: () => {}, loadMeter: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
+  spin: () => {}, groupSpin: () => {},
 };
 
 const SCENES = Object.entries(HELP_SCENES);
@@ -33,7 +33,7 @@ const SCENES = Object.entries(HELP_SCENES);
  *  `on` fired in order, every `during` sampled at its end (`k = 1`). Returns the step count. */
 function runScene(world: SandboxWorld, run: HelpScene['run']): number {
   const ctx: DemoCtx = { world, view: NO_VIEW };
-  const steps = run(ctx, (key) => key);
+  const steps = run(ctx, (key) => key, { touch: false, upright: false });
   for (const step of steps) {
     step.on?.(ctx);
     step.during?.(ctx, 1);
@@ -58,7 +58,7 @@ describe.runIf(PERF)('perf: help', () => {
 
   it('scenes: every catalog timeline, run headless against a fresh world each', async () => {
     let worlds: SandboxWorld[] = [];
-    const rebuild = () => { worlds = SCENES.map(([, scene]) => new SandboxWorld(scene.template)); };
+    const rebuild = () => { worlds = SCENES.map(([, scene]) => sceneWorld(scene)); };
     rebuild();
     let totalSteps = 0;
     for (let i = 0; i < SCENES.length; i++) totalSteps += runScene(worlds[i]!, SCENES[i]![1].run);
@@ -76,16 +76,16 @@ describe.runIf(PERF)('perf: help', () => {
     let heaviestId = SCENES[0]![0];
     let heaviestMs = -1;
     for (const [id, scene] of SCENES) {
-      const world = new SandboxWorld(scene.template);
+      const world = sceneWorld(scene);
       const t0 = performance.now();
       runScene(world, scene.run);
       const dt = performance.now() - t0;
       if (dt > heaviestMs) { heaviestMs = dt; heaviestId = id; }
     }
     const scene = HELP_SCENES[heaviestId]!;
-    let world = new SandboxWorld(scene.template);
+    let world = sceneWorld(scene);
     await s.bench('scenes/single-heaviest', () => { runScene(world, scene.run); }, {
-      setup: () => { world = new SandboxWorld(scene.template); },
+      setup: () => { world = sceneWorld(scene); },
       meta: { scene: heaviestId },
     });
   });

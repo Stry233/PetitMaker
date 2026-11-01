@@ -1,7 +1,7 @@
 /** How a composition too large for one canvas is cut into the tiles `banded.ts` paints. */
 import type { CanvasLimits } from './sizing';
 
-export interface TilePlan {
+interface TilePlan {
   cols: Array<{ x: number; w: number }>;
   rows: Array<{ y: number; h: number }>;
 }

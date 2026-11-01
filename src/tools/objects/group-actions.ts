@@ -52,7 +52,7 @@ function refuse(
  * Lets a caller request a landing animation on the view it owns; never invoked for a member the
  * transform never reaches (an earlier refusal rewinds before placing anything).
  */
-export type GroupPlaceHook = (member: PlacedObject, next: PlacedObject) => void;
+type GroupPlaceHook = (member: PlacedObject, next: PlacedObject) => void;
 
 /**
  * Lift every member off the map, then place each where `destination` puts it, as one stroke group
@@ -272,7 +272,7 @@ export function deleteGroup(
 
 /** What a group drag previews: whether `moveGroup` would be accepted, and each member as it would
  *  land (a bridge or ramp snapped onto its span, as `planObjectMove` resolves a single move). */
-export interface GroupMovePlan {
+interface GroupMovePlan {
   valid: boolean;
   landed: PlacedObject[];
 }

@@ -3,11 +3,15 @@
  * template, and what a demo shows is what the editor does, refusals included with the captioned
  * error. `DemoView` is a recorder here.
  */
+import { getCatalogItem } from '../../../state/catalog';
+import { readingKey } from '../../../i18n/terms/device-readings';
 import { describe, expect, it } from 'vitest';
 import { holdsTemplateTerrain } from '../../../core/model/template';
-import { HELP_SCENES, type DemoCtx, type DemoView, type HelpScene, type SceneStep } from '../../../ui/help/figures/scenes';
+import { sameTerrain } from '../../../core/model/grid-model';
+import { objectRect } from '../../../state/object-geometry';
+import { HELP_SCENES, plotClearing, sceneWorld, type DemoCtx, type DemoView, type HelpScene, type SceneForm, type SceneStep } from '../../../ui/help/figures/scenes';
 import { SandboxWorld } from '../../../editor/sandbox/demo-world';
-import { TerrainType, type MacroCoord } from '../../../core/model/types';
+import { TerrainType, type MacroCoord, type PlacedObject } from '../../../core/model/types';
 import { detectWaterfalls } from '../../../core/domain/terrain/waterfall-geometry';
 import { isBuildableZone } from '../../../core/game/zones';
 import { INNER_TRI, OUTER_TRI } from '../../../core/domain/edge-cut/cut-validator';
@@ -19,57 +23,69 @@ import { brushCells } from '../../../core/grid/shapes';
 import { measureDrawing } from '../../../core/model/annotation/dimensions';
 import { ANCHOR_LANDMARK } from '../../_support/anchor';
 import { HEADLESS_OVERLAY } from '../../../tools/pointer/runtime/host';
-import { mapPoint } from '../../../core/grid/grids';
+import { mapChunkAt } from '../../../core/grid/map-chunks';
+import { getMapStats } from '../../../state/map-stats';
+import { chunkLoad } from '../../../ui/chrome/modals/load/map-load';
+import { selectionTarget } from '../../../editor/editing/group-edit';
+
+const MOUSE: SceneForm = { touch: false, upright: false };
 
 interface Recorded {
   /** The last region mark the view was shown, before any clear. */
   region: Array<{ x: number; y: number }>;
   marks: number;
   routeMax: number;
-  gauges: number[];
+  meter: boolean;
   plops: number;
   spins: Array<[number, number]>;
   groupSpins: number;
+  /** Every notice the scene stood as its toast, in order. */
+  notices: Array<{ key: string; params?: Record<string, string | number> }>;
 }
 
 function recorder(): { view: DemoView; rec: Recorded } {
-  const rec: Recorded = { region: [], marks: 0, routeMax: 0, gauges: [], plops: 0, spins: [], groupSpins: 0 };
+  const rec: Recorded = { region: [], marks: 0, routeMax: 0, meter: false, plops: 0, spins: [], groupSpins: 0, notices: [] };
   const view: DemoView = {
     clearGhost: () => {},
     groupGhost: () => {},
-    selection: () => {},
-    clearSelection: () => {},
-    band: () => {},
     paintGhost: () => {},
+    notice: (n) => { if (n) rec.notices.push({ key: n.key, ...(n.params ? { params: n.params } : {}) }); },
     region: (cells) => { if (cells) rec.region = cells; },
     route: (cells) => { if (cells) rec.routeMax = Math.max(rec.routeMax, cells.length); },
-    marks: (m) => { rec.marks = Math.max(rec.marks, m.length); },
-    gauge: (v) => { rec.gauges.push(v); },
+    marks: (m) => { rec.marks = Math.max(rec.marks, (m?.entrance ? 1 : 0) + (m?.exit ? 1 : 0)); },
+    loadMeter: (on) => { rec.meter ||= on; },
     plop: () => { rec.plops++; },
     poof: () => {},
     spin: (_id, fromDeg, toDeg) => { rec.spins.push([fromDeg, toDeg]); },
     groupSpin: () => { rec.groupSpins++; },
     annotations: () => {},
-    curveHandles: () => {},
   };
   return { view, rec };
 }
 
-interface Run { world: SandboxWorld; rec: Recorded; steps: SceneStep[]; refusalAtRelease: string | null }
+/** `start` holds the ids the world stood with before the scene ran: a scene with a plot plays inside
+ *  a built neighbourhood, so what the scene laid is what stands beyond them. */
+interface Run { world: SandboxWorld; rec: Recorded; steps: SceneStep[]; refusalAtRelease: string | null; start: ReadonlySet<string> }
+
+/** The objects standing in `world` that it did not start with. */
+function laidSince(world: SandboxWorld, start: ReadonlySet<string>): PlacedObject[] {
+  return [...world.state.objects.values()].filter((o) => !start.has(o.id));
+}
 
 /** Play a scene the way the player's reduced-motion path does: every step settled in order. */
-function play(scene: HelpScene): Run {
-  const world = new SandboxWorld(scene.template);
+function play(scene: HelpScene, form: SceneForm = MOUSE): Run {
+  const world = sceneWorld(scene);
+  const start = new Set(world.state.objects.keys());
   const { view, rec } = recorder();
   const ctx: DemoCtx = { world, view };
-  const steps = scene.run(ctx, (key) => key);
+  const steps = scene.run(ctx, (key) => key, form);
   let refusalAtRelease: string | null = null;
   for (const step of steps) {
     step.on?.(ctx);
     step.during?.(ctx, 1);
     if (step.realToast) refusalAtRelease = world.refusal?.message ?? null;
   }
-  return { world, rec, steps, refusalAtRelease };
+  return { world, rec, steps, refusalAtRelease, start };
 }
 
 function terrainAt(run: Run, x: number, y: number): { type: TerrainType; elevation: number } | undefined {
@@ -78,7 +94,7 @@ function terrainAt(run: Run, x: number, y: number): { type: TerrainType; elevati
 }
 
 function objectCount(run: Run, catalogId: string): number {
-  return [...run.world.state.objects.values()].filter((o) => o.catalogId === catalogId).length;
+  return laidSince(run.world, run.start).filter((o) => o.catalogId === catalogId).length;
 }
 
 describe('the demo world finishes a stroke the way the live tool does', () => {
@@ -102,26 +118,83 @@ describe('the demo world finishes a stroke the way the live tool does', () => {
   });
 });
 
-describe("a follow-ghost's press", () => {
-  it.each(Object.keys(HELP_SCENES))('%s: lands where the placement tool would, or is refused where its ghost is red', (name) => {
+describe('[EDIT-51] a placing press', () => {
+  const PLACING = new Set(['welcome', 'objects', 'ramp', 'spacing', 'objlimit', 'rectpad']);
+
+  it.each(Object.keys(HELP_SCENES))('%s: lands where the placer\'s own ghost stood, or nowhere where it stood refused', (name) => {
     const scene = HELP_SCENES[name]!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    let follow: { catalogId: string; rotation?: 0 | 90 | 180 | 270 } | null = null;
-    let at: readonly [number, number] | null = null;
-    for (const step of scene.run(ctx, (key) => key)) {
-      if (Array.isArray(step.move)) at = step.move;
-      if (follow && at && step.press && step.on) {
-        const plan = world.hoverPlacement({ ...HEADLESS_OVERLAY }, follow.catalogId, mapPoint({ x: at[0], y: at[1] }), follow.rotation ?? 0)!;
-        const before = new Set(world.state.objects.keys());
-        step.on(ctx);
-        const placed = [...world.state.objects.values()].filter((o) => !before.has(o.id) && o.catalogId === follow!.catalogId);
-        expect(placed.map((o) => o.position), `${name} at ${at.join(',')}`).toEqual(plan.valid ? [plan.cells[0]] : []);
-      } else step.on?.(ctx);
+    // The last body ghost the world's tools drew, as the figure's overlay shows it.
+    let ghost: { catalogId: string; x: number; y: number; valid: boolean } | null = null;
+    world.drawToolsOn({
+      ...HEADLESS_OVERLAY,
+      showPlacementGhost: (g, valid) => { ghost = { catalogId: g.catalogId, x: g.x, y: g.y, valid }; },
+      clearGhost: () => { ghost = null; },
+    });
+    let aims = 0;
+    for (const step of scene.run(ctx, (key) => key, MOUSE)) {
+      const before = new Set(world.state.objects.keys());
+      const aimed = ghost as { catalogId: string; x: number; y: number; valid: boolean } | null;
+      step.on?.(ctx);
       step.during?.(ctx, 1);
-      if (step.follow !== undefined) follow = step.follow;
+      // A press the placer took while its ghost stood: what landed is the ghost's item at its place.
+      if (!aimed || !step.press) continue;
+      const landed = [...world.state.objects.values()].filter((o) => !before.has(o.id) && o.catalogId === aimed.catalogId);
+      expect(landed.map((o) => o.position), `${name} at ${aimed.x},${aimed.y}`).toEqual(aimed.valid ? [{ x: aimed.x, y: aimed.y }] : []);
+      aims++;
     }
+    // Every figure that places by hand does so under the placer's ghost.
+    if (PLACING.has(name)) expect(aims, name).toBeGreaterThan(0);
+  });
+});
+
+describe('[UI-65] a building demonstration plays inside a lived-in map', () => {
+  const PLOTTED = Object.entries(HELP_SCENES).filter(([, scene]) => scene.plot);
+  /** Every object scene but `delight`, whose set pieces ask for a large open field around them. */
+  const OBJECT_SCENES = [
+    'welcome', 'objects', 'ramp', 'spacing', 'objlimit', 'objpaint', 'objmix', 'rotate', 'select', 'grouprotate', 'locked',
+    'copypaste', 'pasteblock', 'copydrag', 'smartpatch',
+  ];
+  type Box = { x1: number; y1: number; x2: number; y2: number };
+  const inside = (r: { x: number; y: number; w: number; h: number }, b: Box) =>
+    r.x >= b.x1 && r.y >= b.y1 && r.x + r.w <= b.x2 + 1 && r.y + r.h <= b.y2 + 1;
+  const meets = (r: { x: number; y: number; w: number; h: number }, b: Box) =>
+    r.x < b.x2 + 1 && r.x + r.w > b.x1 && r.y < b.y2 + 1 && r.y + r.h > b.y1;
+  const holds = (b: Box, x: number, y: number) => x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2;
+
+  it('every object scene names its plot', () => {
+    expect(OBJECT_SCENES.filter((name) => !HELP_SCENES[name]?.plot)).toEqual([]);
+  });
+
+  it.each(PLOTTED.map(([name]) => name))('%s: built pieces stand in the frame around a bare plot, and the action stays on cleared ground', (name) => {
+    const scene = HELP_SCENES[name]!;
+    const plot = scene.plot!;
+    const cleared = plotClearing(plot);
+    const world = sceneWorld(scene);
+    const { template } = world.state;
+    const standing = [...world.state.objects.values()].filter((o) => !o.locked);
+    // The frame shows the neighbourhood: built pieces stand on the stage beyond the cleared ground.
+    expect(standing.filter((o) => meets(objectRect(o), scene.stage) && !meets(objectRect(o), cleared)).length, name).toBeGreaterThan(0);
+    // The street stands back around the plot, but nothing built stands on it or within a cell of it,
+    // and the plot is the planet's own ground.
+    const apron = { x1: plot.x1 - 1, y1: plot.y1 - 1, x2: plot.x2 + 1, y2: plot.y2 + 1 };
+    expect(standing.filter((o) => meets(objectRect(o), apron)), name).toEqual([]);
+    for (let y = plot.y1; y <= plot.y2; y++) {
+      for (let x = plot.x1; x <= plot.x2; x++) expect(holdsTemplateTerrain(template, x, y, world.state.cells[y]![x]!), `${name} ${x},${y}`).toBe(true);
+    }
+    const before = world.state.cells.map((row) => row.map((c) => c.terrain));
+    const run = play(scene);
+    // Nothing the scene does reaches past the cleared ground: every piece it laid stands on it, and
+    // no terrain changes beyond it.
+    for (const o of laidSince(run.world, run.start)) expect(inside(objectRect(o), cleared), `${name} ${o.catalogId}@${o.position.x},${o.position.y}`).toBe(true);
+    run.world.state.cells.forEach((row, y) => row.forEach((c, x) => {
+      if (!holds(cleared, x, y)) expect(sameTerrain(c.terrain, before[y]![x], { patchOnly: 'flag' }), `${name} ${x},${y}`).toBe(true);
+    }));
+    // The player's rewind stops at the neighbourhood, never taking it apart.
+    while (run.world.undo()) { /* rewinding */ }
+    expect([...run.world.state.objects.keys()].sort()).toEqual([...run.start].sort());
   });
 });
 
@@ -134,7 +207,8 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(objectCount(run, 'tree-apple')).toBe(3);
     expect(run.world.objectAt('tree-apple', 62, 120)).toBeTruthy();
     expect(run.world.objectAt('tree-apple', 66, 116)).toBeFalsy();
-    expect(run.rec.plops).toBe(2);
+    // A single move lands without the squash a placement plays, as on the map; the cabin plops.
+    expect(run.rec.plops).toBe(1);
   });
 
   it('camera authors its base scene by the plaza', () => {
@@ -157,10 +231,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trim: the block stands and its corner cycles fan, tri, square through the real command', () => {
     const scene = HELP_SCENES.trim!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const cornersAfter: (string | undefined)[] = [];
     for (const step of steps) {
       step.on?.(ctx);
@@ -176,17 +250,18 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('objects: the pond stands, the follow-ghost answers come from the registry, the pieces land', () => {
     const scene = HELP_SCENES.objects!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
+    const start = new Set(world.state.objects.keys());
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     // The registry answers the follow-ghost shows on its way: an anchor with no crossing refuses,
     // the bank with one stands; beside a fresh tree refuses, one cell of air stands.
     expect(world.canPlace('bridge-plank', 72, 101)).toBe(false);
     expect(world.canPlace('bridge-plank', 71, 101)).toBe(true);
     for (const step of steps) { step.on?.(ctx); step.during?.(ctx, 1); }
     expect(world.canPlace('tree-apple', 65, 100)).toBe(false);
-    const run: Run = { world, rec: recorder().rec, steps, refusalAtRelease: null };
+    const run: Run = { world, rec: recorder().rec, steps, refusalAtRelease: null, start };
     expect(terrainAt(run, 71, 101)?.type).toBe(TerrainType.Water);
     expect(objectCount(run, 'bridge-plank')).toBe(1);
     expect(objectCount(run, 'tree-apple')).toBe(2);
@@ -211,10 +286,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('roadtrim: each click lands a road-layer trim command and walks the canonical cycle', () => {
     const scene = HELP_SCENES.roadtrim!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const seen = new Set<string>();
     for (const step of steps) {
       step.on?.(ctx);
@@ -234,10 +309,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trimmulti: one click at the pinch governs both corners, and the clicks walk distinct combinations', () => {
     const scene = HELP_SCENES.trimmulti!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const pairs: string[] = [];
     for (const step of steps) {
       step.on?.(ctx);
@@ -263,10 +338,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('trimnotch: the click fillets the taller block and leaves the hollow a patch, never solid ground', () => {
     const scene = HELP_SCENES.trimnotch!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     // Before any click the hollow is a real cell one layer below the L around it.
     expect(world.state.cells[100]?.[73]?.terrain?.elevation).toBe(1);
     expect(world.state.cells[100]?.[73]?.terrain?.patchOnly).toBeFalsy();
@@ -284,8 +359,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
   it('delight: two presses of the planting card lay two different set pieces', () => {
     const run = play(HELP_SCENES.delight!);
     const bySpecies = new Map<string, Array<{ x: number; y: number }>>();
-    for (const obj of run.world.state.objects.values()) {
-      if (obj.locked) continue;
+    for (const obj of laidSince(run.world, run.start)) {
       const cells = bySpecies.get(obj.catalogId) ?? [];
       cells.push(obj.position);
       bySpecies.set(obj.catalogId, cells);
@@ -321,7 +395,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('ramp: the heightDrop rule snaps the ramp onto the one-layer terrace edge', () => {
     const run = play(HELP_SCENES.ramp!);
-    const rampObj = [...run.world.state.objects.values()].find((o) => o.catalogId === 'ramp-park-steps');
+    const rampObj = laidSince(run.world, run.start).find((o) => o.catalogId === 'ramp-park-steps');
     expect(rampObj).toBeTruthy();
     expect(rampObj!.elevation).toBe(1);
     expect(rampObj!.rotation).toBe(0);
@@ -339,15 +413,16 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('smartpatch: each press plants a varied stand through the real macro, and the two differ', () => {
     const scene = HELP_SCENES.smartpatch!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const start = new Set(world.state.objects.keys());
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const countAfter: number[] = [];
     for (const step of steps) {
       step.on?.(ctx);
       step.during?.(ctx, 1);
-      countAfter.push([...world.state.objects.values()].filter((o) => !o.locked).length);
+      countAfter.push(laidSince(world, start).length);
     }
     const afterFirst = countAfter[4]!;
     const afterSecond = countAfter[countAfter.length - 1]!;
@@ -356,9 +431,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(afterSecond).toBeGreaterThan(afterFirst + 1);
     // Two seeds, two compositions: the stands do not share every species count.
     const bySpecies = new Map<string, number>();
-    for (const o of world.state.objects.values()) {
-      if (!o.locked) bySpecies.set(o.catalogId, (bySpecies.get(o.catalogId) ?? 0) + 1);
-    }
+    for (const o of laidSince(world, start)) bySpecies.set(o.catalogId, (bySpecies.get(o.catalogId) ?? 0) + 1);
     expect(bySpecies.size).toBeGreaterThan(1);
   });
 
@@ -367,34 +440,36 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(run.rec.groupSpins).toBe(1);
     expect(objectCount(run, 'tree-apple')).toBe(2);
     expect(objectCount(run, 'flower-daisy')).toBe(1);
-    const flower = [...run.world.state.objects.values()].find((o) => o.catalogId === 'flower-daisy');
+    const flower = laidSince(run.world, run.start).find((o) => o.catalogId === 'flower-daisy');
     expect(flower?.position).not.toEqual({ x: 66, y: 102 });
   });
 
-  it('select: the group lands at its destination through real remove and place', () => {
+  it('select: the group lands at its destination through the map\'s own drag', () => {
     const run = play(HELP_SCENES.select!);
     expect(objectCount(run, 'tree-apple')).toBe(2);
     expect(objectCount(run, 'flower-daisy')).toBe(1);
-    const moved = [...run.world.state.objects.values()].find((o) => o.catalogId === 'flower-daisy');
+    const moved = laidSince(run.world, run.start).find((o) => o.catalogId === 'flower-daisy');
     expect(moved?.position).toEqual({ x: 68, y: 103 });
   });
 
   it('locked: the group delete keeps the plaza and counts it, and deleting it alone is refused', () => {
     const scene = HELP_SCENES.locked!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
+    const start = new Set(world.state.objects.keys());
     const { view } = recorder();
-    scene.run({ world, view }, (key) => key);
+    scene.run({ world, view }, (key) => key, MOUSE);
     // The two trees the band is about genuinely stand before a step runs.
-    expect([...world.state.objects.values()].filter((o) => o.catalogId === 'tree-apple').length).toBe(2);
+    expect(laidSince(world, start).filter((o) => o.catalogId === 'tree-apple').length).toBe(2);
     const run = play(scene);
     // Both trees the band caught are gone; the plaza and the cabin standing outside it are not.
     expect(objectCount(run, 'tree-apple')).toBe(0);
     expect(objectCount(run, 'building-forest-cabin')).toBe(1);
     expect(run.world.state.objects.get(ANCHOR_LANDMARK.id)?.locked).toBe(true);
-    // The toast counts what the band caught that survived locked: the plaza alone.
+    // The toast is the group delete's own word, counting what the band caught that survived locked:
+    // the plaza alone. No step scripts it.
     const survivedLocked = [...run.world.state.objects.values()].filter((o) => o.locked && o.id === ANCHOR_LANDMARK.id).length;
-    const claim = run.steps.find((s) => s.toastKey === 'toast.group_delete_kept');
-    expect(claim?.toastParams).toEqual({ n: survivedLocked });
+    expect(run.rec.notices).toEqual([{ key: 'toast.group_delete_kept', params: { n: survivedLocked } }]);
+    expect(run.steps.some((s) => s.toastKey)).toBe(false);
     // The refusal is the lock rule's own, word for word.
     expect(run.refusalAtRelease).toBe('error.locked_immutable');
   });
@@ -412,6 +487,14 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(raised.some((x) => x < 73)).toBe(true);
     expect(raised.some((x) => x >= 73)).toBe(true);
     expect(run.world.state.cells[102]![72]!.terrain?.elevation).toBeGreaterThan(3);
+  });
+
+  it('[GEN-17] smart1: the whole hold is one undo step', () => {
+    const run = play(HELP_SCENES.smart1!);
+    expect(run.world.undo()).toBe(true);
+    for (let y = 95; y <= 109; y++) {
+      for (let x = 61; x <= 84; x++) expect(run.world.state.cells[y]![x]!.terrain?.type ?? TerrainType.None, `${x},${y}`).not.toBe(TerrainType.Mountain);
+    }
   });
 
   it('stream: the drag joins the upper pond to the selected destination through legal falls', () => {
@@ -461,16 +544,36 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(walls).toBeGreaterThan(10);
   });
 
-  it('undo: the base rule cuts the held column, one undo clears it, and the closing rebuild stands', () => {
-    const run = play(HELP_SCENES.undo!);
-    expect(run.refusalAtRelease).toBe('error.need_base_support');
+  it('[EDIT-07] [EDIT-21] undo: the base rule cuts the column the brush stacks, one undo clears it, and the closing rebuild stands', () => {
+    const scene = HELP_SCENES.undo!;
+    const world = sceneWorld(scene);
+    const { view } = recorder();
+    const ctx: DemoCtx = { world, view };
+    const columns: Array<number | null> = [];
+    const toasts: Array<string | null> = [];
+    for (const step of scene.run(ctx, (key) => key, MOUSE)) {
+      step.on?.(ctx);
+      step.during?.(ctx, 1);
+      const cell = world.state.cells[101]![73]!.terrain;
+      columns.push(cell?.type === TerrainType.Mountain ? cell.elevation : null);
+      if (step.realToast) toasts.push(world.refusal?.message ?? null);
+    }
+    // The press fills the bare cell up to layer 4 in one stroke; its release settles at 3, naming
+    // the support rule.
+    expect(toasts).toEqual(['error.need_base_support']);
+    const cut = columns.indexOf(3);
+    expect(columns.slice(0, cut)).toEqual([null, 4]);
+    // The undo takes the whole column back in one step.
+    expect(columns[cut + 1]).toBeNull();
     // The loop ends on the short rebuilt stack, so the settled frame is never an empty map.
-    expect(terrainAt(run, 73, 101)).toEqual({ type: TerrainType.Mountain, elevation: 2 });
+    expect(columns.at(-1)).toBe(2);
   });
 
-  it('load: the disc readings are the meter arithmetic over the real stats', () => {
+  it('load: the live meter stands over a region the world really loads', () => {
     const run = play(HELP_SCENES.load!);
-    expect(Math.max(...run.rec.gauges)).toBeGreaterThan(0);
+    expect(run.rec.meter).toBe(true);
+    const region = mapChunkAt(run.world.state.template, 67, 99);
+    expect(chunkLoad(getMapStats(run.world.state), region.cx, region.cy)?.value ?? 0).toBeGreaterThan(0);
   });
 
   it('faq: capped water stands, uncapped water takes itself back with the real refusal', () => {
@@ -482,10 +585,11 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(run.refusalAtRelease).toBe('error.water_only_layer');
   });
 
-  it('notes: the zone and the dragged route ride the state for the real annotation layer to draw', () => {
+  it('notes: the zone kept with Done and the dragged route ride the state for the real annotation layer to draw', () => {
     const run = play(HELP_SCENES.notes!);
     const items = run.world.state.annotations?.items ?? [];
     expect(items.map((i) => i.kind).sort()).toEqual(['route', 'zone']);
+    expect(run.world.annotationDraft).toBeNull();
     const route = items.find((i) => i.kind === 'route')!;
     expect(route.kind === 'route' && route.points.length).toBe(3);
   });
@@ -514,14 +618,38 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     }
   });
 
+  it('region: the brush paints the dragged box, one undo takes the drag back, and a press inside moves the figure', () => {
+    const scene = HELP_SCENES.region!;
+    const world = sceneWorld(scene);
+    const { view } = recorder();
+    const ctx: DemoCtx = { world, view };
+    const key = (cells: readonly MacroCoord[]) => cells.map((c) => `${c.x},${c.y}`).sort();
+    const box = (dx: number, dy: number) => {
+      const cells: MacroCoord[] = [];
+      for (let y = 100; y <= 104; y++) for (let x = 65; x <= 69; x++) cells.push({ x: x + dx, y: y + dy });
+      return key(cells);
+    };
+    const regions: string[][] = [[]];
+    const map = JSON.stringify(world.state.cells);
+    for (const step of scene.run(ctx, (k) => k, MOUSE)) {
+      step.on?.(ctx);
+      step.during?.(ctx, 1);
+      const now = key(world.region);
+      if (JSON.stringify(regions.at(-1)) !== JSON.stringify(now)) regions.push(now);
+    }
+    expect(regions).toEqual([[], box(0, 0), [], box(0, 0), box(5, 1)]);
+    // The region's lane is its own: the map never changed.
+    expect(JSON.stringify(world.state.cells)).toBe(map);
+  });
+
   it('ground: the region wash answers with the brush eligibility rule, cell for cell', () => {
     const scene = HELP_SCENES.ground!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     let lastWash: Array<{ x: number; y: number }> = [];
     view.region = (cells) => { if (cells) lastWash = cells; };
     const ctx: DemoCtx = { world, view };
-    for (const step of scene.run(ctx, (key) => key)) { step.on?.(ctx); step.during?.(ctx, 1); }
+    for (const step of scene.run(ctx, (key) => key, MOUSE)) { step.on?.(ctx); step.during?.(ctx, 1); }
     // Independently computed expectation: the dragged box filtered by the zone rule itself.
     const expected: string[] = [];
     for (let y = 118; y <= 128; y++) {
@@ -576,11 +704,13 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     if (zone.kind !== 'zone') return;
     expect(zone.cells.some((c) => c.y >= 109)).toBe(true);
     expect(zone.cells.some((c) => c.x === 67 && c.y === 98)).toBe(false);
+    // The closing click inside selects it.
+    expect(run.world.annotationSelection).toEqual([zone.id]);
   });
 
   it('measurement counts both endpoints, flips its label and resizes along its original axis', () => {
     const scene = HELP_SCENES.measurement!;
-    const initial = play({ ...scene, run: (ctx, t) => scene.run(ctx, t).slice(0, 4) });
+    const initial = play({ ...scene, run: (ctx, t, form) => scene.run(ctx, t, form).slice(0, 4) });
     const before = initial.world.state.annotations!.items[0]!;
     expect(before.kind).toBe('measure');
     if (before.kind !== 'measure') return;
@@ -603,6 +733,9 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(items.map((i) => i.kind)).toEqual(['route']);
     const route = items[0]!;
     expect(route.kind === 'route' && route.points.length).toBe(3);
+    // The release leaves it selected with the curve brush's adjust handles on its anchors.
+    expect(run.world.annotationSelection).toEqual([route.id]);
+    expect(run.world.curveAnchors()?.length).toBe(3);
   });
 
   it('noteselect: the dragged zone moved whole and the others stayed', () => {
@@ -613,7 +746,27 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(homes.kind === 'zone' && Math.min(...homes.cells.map((c) => c.y))).toBe(102);
     const farm = items[1]!;
     expect(farm.kind === 'zone' && Math.min(...farm.cells.map((c) => c.y))).toBe(106);
+    // The Ctrl-click added the farm zone to the moved one.
+    expect(run.world.annotationSelection).toEqual([homes.id, farm.id]);
   });
+
+  it.each(['notes', 'notetext', 'notezone', 'notegrow', 'measurement', 'noteroute', 'noteselect'])(
+    '[UI-62] %s: the world\'s own undo takes every note and object back, and the next loop lays the same notes',
+    (name) => {
+      const run = play(HELP_SCENES[name]!);
+      const shape = (w: SandboxWorld) => (w.state.annotations?.items ?? []).map(({ id: _id, ...rest }) => JSON.stringify(rest));
+      const laid = shape(run.world);
+      const template = sceneWorld(HELP_SCENES[name]!);
+      while (run.world.undo()) { /* the player's rewind */ }
+      expect(run.world.state.annotations?.items ?? []).toEqual([]);
+      expect(run.world.annotationDraft).toBeNull();
+      expect(run.world.annotationSelection).toEqual([]);
+      expect([...run.world.state.objects.keys()].sort()).toEqual([...template.state.objects.keys()].sort());
+      const ctx: DemoCtx = { world: run.world, view: recorder().view };
+      for (const step of HELP_SCENES[name]!.run(ctx, (key) => key, MOUSE)) { step.on?.(ctx); step.during?.(ctx, 1); }
+      expect(shape(run.world)).toEqual(laid);
+    },
+  );
 
   it('notetext: two chips of different tags and sizes land on the annotations state', () => {
     const run = play(HELP_SCENES.notetext!);
@@ -672,10 +825,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('lineridge: nothing lands while dragging, only the release paints the causeway', () => {
     const scene = HELP_SCENES.lineridge!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const landedByStep: boolean[] = [];
     for (const step of steps) {
       step.on?.(ctx);
@@ -690,10 +843,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('curvebank: nothing lands until the finishing double click, and the handle drag relays through the moved anchor', () => {
     const scene = HELP_SCENES.curvebank!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const anchors: CurveAnchor[] = [{ x: 64, y: 115 }, { x: 72, y: 117 }, { x: 80, y: 115 }];
     const moved: CurveAnchor = { x: 72, y: 120 };
     const width = 2;
@@ -734,10 +887,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('rectpad: nothing lands while dragging, only the release lays the whole platform', () => {
     const scene = HELP_SCENES.rectpad!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const landedByStep: boolean[] = [];
     for (const step of steps) {
       step.on?.(ctx);
@@ -759,10 +912,10 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('circlepond: nothing lands while dragging, only the release lays the whole pond', () => {
     const scene = HELP_SCENES.circlepond!;
-    const world = new SandboxWorld(scene.template);
+    const world = sceneWorld(scene);
     const { view } = recorder();
     const ctx: DemoCtx = { world, view };
-    const steps = scene.run(ctx, (key) => key);
+    const steps = scene.run(ctx, (key) => key, MOUSE);
     const landedByStep: boolean[] = [];
     for (const step of steps) {
       step.on?.(ctx);
@@ -792,5 +945,219 @@ describe('help demo scenes are proofs: the real commands land on the real templa
       const again = play(scene);
       expect(again.world.state.objects.size, name).toBe(placed);
     }
+  });
+
+  it('the brush, shape, curve and trim figures lay the same map for a touch reader, with no key held', () => {
+    const mapOf = (run: Run) => JSON.stringify(run.world.state.cells.map((r) => r.map((c) => c?.terrain ?? null)));
+    for (const name of ['terrain', 'brushfree', 'brushwidth', 'eraseline', 'lineridge', 'curvebank', 'rectpad', 'circlepond', 'autotrim', 'trim', 'trimmulti', 'trimnotch', 'roadtrim']) {
+      const touch = play(HELP_SCENES[name]!, { touch: true, upright: false });
+      expect(touch.steps.some((s) => s.keys), name).toBe(false);
+      expect(touch.world.held.constrain, name).toBe(false);
+      expect(mapOf(touch), name).toBe(mapOf(play(HELP_SCENES[name]!)));
+    }
+  });
+});
+
+describe('object and plan figures ask the real hit tests and step the touch gestures', () => {
+  const TOUCH: SceneForm = { touch: true, upright: false };
+
+  type Ring = Array<{ x: number; y: number; w: number; h: number }>;
+
+  /** Plays `scene` settled in order, keeping each selection ring the world's painter left standing
+   *  after a step (when it changed) and every mark the view was handed. */
+  function watch(scene: HelpScene, form: SceneForm = MOUSE) {
+    const world = sceneWorld(scene);
+    const start = new Set(world.state.objects.keys());
+    const { view } = recorder();
+    const rings: Ring[] = [];
+    const words: string[] = [];
+    let ring: Ring = [];
+    world.drawToolsOn({
+      ...HEADLESS_OVERLAY,
+      showSelection: (r, _grid, opts) => { ring = opts?.append ? [...ring, { ...r }] : [{ ...r }]; },
+      clearSelection: () => { ring = []; },
+    });
+    view.marks = (m) => { if (m?.entrance) words.push(m.entrance.kind); };
+    const steps = scene.run({ world, view }, (key) => key, form);
+    let last = '';
+    const keep = () => {
+      const now = JSON.stringify(ring);
+      if (now !== last && ring.length > 0) rings.push(ring);
+      last = now;
+    };
+    keep();
+    for (const step of steps) {
+      step.on?.({ world, view });
+      step.during?.({ world, view }, 1);
+      keep();
+    }
+    return { world, steps, rings, words, start };
+  }
+
+  const byPlace = (r: Ring) => [...r].sort((a, b) => a.y - b.y || a.x - b.x);
+
+  it.each([MOUSE, TOUCH])('[EDIT-24] select: the band rings exactly the objects its rect touches, each on its own footprint (%o)', (form) => {
+    const { rings } = watch(HELP_SCENES.select!, form);
+    // The band's catch: two trees and the flower, never the cabin outside it (a finger's menu
+    // selects the first tree before its band adds the rest).
+    const caught = rings.find((r) => r.length === 3)!;
+    expect(byPlace(caught)).toEqual([{ x: 64, y: 98, w: 1, h: 1 }, { x: 66, y: 99, w: 1, h: 1 }, { x: 64, y: 102, w: 1, h: 1 }]);
+    // The Ctrl+click (a tap under Multi-select) brings the cabin in on its own placed footprint, then lets it go.
+    const withCabin = rings.find((r) => r.length === 4)!;
+    expect(withCabin).toContainEqual({ x: 75, y: 99, w: 5, h: 4 });
+    expect(rings.at(-1)).toHaveLength(3);
+  });
+
+  it.each(['objects', 'ramp', 'spacing', 'objlimit', 'pasteblock'])('[EDIT-51] %s: a finger places what the mouse places, by tap or by a drag that carries the preview', (name) => {
+    const layout = (w: SandboxWorld) => [...w.state.objects.values()].map((o) => `${o.catalogId}@${o.position.x},${o.position.y}/${o.rotation}`).sort();
+    const touch = watch(HELP_SCENES[name]!, TOUCH);
+    expect(touch.steps.some((s) => s.keys)).toBe(false);
+    expect(layout(touch.world)).toEqual(layout(watch(HELP_SCENES[name]!).world));
+  });
+
+  it('[EDIT-28] rotate: the ring follows the turned footprint after each quarter turn', () => {
+    const { world, rings } = watch(HELP_SCENES.rotate!);
+    const cabin = world.objectAt('building-forest-cabin', 68, 98)!;
+    expect(rings.map((r) => [r[0]!.w, r[0]!.h])).toEqual([[5, 4], [4, 5], [5, 4]]);
+    expect(cabin.rotation).toBe(180);
+  });
+
+  it.each([MOUSE, TOUCH])('[EDIT-30] locked: the band catches the plaza and the trees, and the delete keeps only the plaza (%o)', (form) => {
+    const { world, rings, start } = watch(HELP_SCENES.locked!, form);
+    expect(rings.some((r) => r.length === 3)).toBe(true);
+    expect(laidSince(world, start).filter((o) => o.catalogId === 'tree-apple')).toHaveLength(0);
+    expect(world.state.objects.get(ANCHOR_LANDMARK.id)).toBeTruthy();
+  });
+
+  it('[GEN-07] maze: the dropped entrance inside the maze stands as a destination, the live marks wording it by its kind', () => {
+    const { words } = watch(HELP_SCENES.maze!);
+    expect(words).toContain('hole');
+    expect(words.at(-1)).toBe('target');
+  });
+
+  it('[EDIT-44] undo: a touch reader undoes with a two-finger tap and the loop ends as the mouse one does', () => {
+    const { steps, world } = watch(HELP_SCENES.undo!, TOUCH);
+    expect(steps.some((s) => Array.isArray(s.second))).toBe(true);
+    expect(steps.some((s) => s.keys)).toBe(false);
+    expect(world.state.cells[101]![73]!.terrain).toEqual(play(HELP_SCENES.undo!).world.state.cells[101]![73]!.terrain);
+  });
+
+  it.each(['welcome', 'camera', 'rotate', 'select', 'grouprotate', 'locked', 'region', 'noteselect'])(
+    '[EDIT-45] %s: the touch form lands the map the mouse form does, with no key-held beat',
+    (name) => {
+      const touch = watch(HELP_SCENES[name]!, TOUCH);
+      const mouse = watch(HELP_SCENES[name]!);
+      const layout = (w: SandboxWorld) => [...w.state.objects.values()].map((o) => `${o.catalogId}@${o.position.x},${o.position.y}/${o.rotation}`).sort();
+      expect(layout(touch.world)).toEqual(layout(mouse.world));
+      // A caption written for a mouse reads by finger through its touch reading (`device-readings.ts`).
+      const mouseOnly = /select_1$|select_ctrl$|rotate_1$|rotate_2$|camera_[123]$|welcome_1$|noteselect_[13]$/;
+      for (const s of touch.steps) {
+        if (s.capKey && mouseOnly.test(s.capKey)) expect(readingKey(s.capKey, { inputMode: 'touch', shape: 'landscape' }), s.capKey).toBe(`${s.capKey}_touch`);
+      }
+    },
+  );
+});
+
+describe('[UI-64] a finger pressing a selection verb presses the pictured control that runs it', () => {
+  const TOUCH: SceneForm = { touch: true, upright: false };
+
+  /** The pictured controls each step of `scene` glides to, with what the world held as it arrived. */
+  function arrivals(scene: HelpScene, form: SceneForm) {
+    const world = new SandboxWorld(scene.template);
+    const ctx: DemoCtx = { world, view: recorder().view };
+    const steps = scene.run(ctx, (key) => key, form);
+    const seen: Array<{ control: string; card: ReturnType<typeof selectionTarget>; latched: boolean; selected: number }> = [];
+    for (const step of steps) {
+      if (step.move && 'control' in step.move) {
+        // The live card's own rule: it stands for a selection it can act on while multi-select is not latched.
+        const card = world.multiSelectLatched ? null : selectionTarget(world.selection, world.state, false);
+        seen.push({ control: step.move.control, card, latched: world.multiSelectLatched, selected: world.selectedIds().length });
+      }
+      step.on?.(ctx);
+      step.during?.(ctx, 1);
+    }
+    return seen;
+  }
+
+  it('grouprotate: the finger lands on the card\'s Rotate while the card stands over the group', () => {
+    const seen = arrivals(HELP_SCENES.grouprotate!, TOUCH);
+    expect(seen.map((s) => s.control)).toEqual(['handle-rotate']);
+    expect(seen[0]!.card?.plural).toBe(true);
+    expect(seen[0]!.card?.rotatable).toBe(true);
+  });
+
+  it.each([
+    ['locked', ['multi-select-delete', 'multi-select-done']],
+    ['copypaste', ['multi-select-copy', 'multi-select-done']],
+    ['copydrag', ['multi-select-copy', 'multi-select-done']],
+  ])('[EDIT-43] %s: the finger lands on multi-select\'s own controls while the latch stands them', (name, controls) => {
+    const seen = arrivals(HELP_SCENES[name]!, TOUCH);
+    expect(seen.map((s) => s.control)).toEqual(controls);
+    for (const s of seen) expect(s.latched).toBe(true);
+    // Copy is offered for two or more (EDIT-53), and Delete for a group that holds something.
+    expect(seen[0]!.selected).toBeGreaterThanOrEqual(seen[0]!.control === 'multi-select-copy' ? 2 : 1);
+  });
+
+  it.each(['grouprotate', 'locked', 'copypaste', 'copydrag', 'rotate'])('%s: a mouse reader turns, copies and deletes by key, gliding to no pictured control', (name) => {
+    expect(arrivals(HELP_SCENES[name]!, MOUSE)).toEqual([]);
+  });
+});
+
+describe('copy, paste and placing many, on the editor\'s own code', () => {
+  const TOUCH_FORM: SceneForm = { touch: true, upright: false };
+  const count = (run: Run, id: string) => laidSince(run.world, run.start).filter((o) => o.catalogId === id).length;
+
+  it.each([MOUSE, TOUCH_FORM])('[EDIT-54] copypaste lands one whole copy with its top-left on the picked block (%o)', (form) => {
+    const run = play(HELP_SCENES.copypaste!, form);
+    expect(count(run, 'tree-apple')).toBe(2);
+    expect(count(run, 'flower-daisy')).toBe(4);
+    // The copy's outline starts at (65, 99); its top-left lands on the picked block (74, 101).
+    expect(run.world.objectAt('tree-apple', 75, 101)).toBeTruthy();
+    expect(run.world.objectAt('flower-daisy', 74, 102)).toBeTruthy();
+  });
+
+  it.each([MOUSE, TOUCH_FORM])('[EDIT-53] copypaste toasts what the copy took, and the paste that fits says nothing (%o)', (form) => {
+    const run = play(HELP_SCENES.copypaste!, form);
+    expect(run.rec.notices).toEqual([{ key: 'copy.copied', params: { n: 3 } }]);
+    expect(run.steps.some((s) => s.toastKey)).toBe(false);
+  });
+
+  it.each([MOUSE, TOUCH_FORM])('[EDIT-57] pasteblock lands the copy nearby when the picked block has no room, and says so (%o)', (form) => {
+    const run = play(HELP_SCENES.pasteblock!, form);
+    expect(count(run, 'tree-apple')).toBe(2);
+    expect(run.world.objectAt('flower-daisy', 72, 101)).toBeFalsy();
+    expect(run.rec.notices).toEqual([{ key: 'paste.nearby' }]);
+  });
+
+  it('[EDIT-60] copydrag drags out copies and leaves the originals', () => {
+    const run = play(HELP_SCENES.copydrag!);
+    expect(count(run, 'tree-apple')).toBe(3);
+    expect(run.world.objectAt('tree-apple', 66, 99)).toBeTruthy();
+  });
+
+  it('[EDIT-66] objpaint lays trees along the drag a Spacing apart, as one undo step', () => {
+    const run = play(HELP_SCENES.objpaint!);
+    const xs = laidSince(run.world, run.start).filter((o) => o.catalogId === 'tree-apple').map((o) => o.position.x).sort((a, b) => a - b);
+    expect(xs.length).toBeGreaterThan(3);
+    xs.slice(1).forEach((x, i) => expect(x - xs[i]!).toBeGreaterThanOrEqual(2));
+    expect(run.world.undo()).toBe(true);
+    expect(count(run, 'tree-apple')).toBe(0);
+  });
+
+  it('[EDIT-70] objmix lays the picked cards in turn along one stroke', () => {
+    const run = play(HELP_SCENES.objmix!);
+    const laid = laidSince(run.world, run.start).sort((a, b) => a.position.x - b.position.x).map((o) => o.catalogId);
+    expect(laid.length).toBeGreaterThan(3);
+    laid.forEach((id, i) => expect(id).toBe(i % 2 === 0 ? 'tree-apple' : 'flower-daisy'));
+  });
+
+  it('[EDIT-52] objlimit places the one cabin a map may hold, and its card is put down', () => {
+    const scene = HELP_SCENES.objlimit!;
+    const run = play(scene);
+    expect(getCatalogItem('building-forest-cabin')?.maxCount).toBe(1);
+    expect(count(run, 'building-forest-cabin')).toBe(1);
+    // The world put the card down itself, and the pictured shelf shows it put down.
+    expect(run.world.toolPicked).toBe(false);
+    expect(run.steps.at(-2)?.strip).toBeNull();
   });
 });

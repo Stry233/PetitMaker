@@ -23,7 +23,7 @@ const PICKER_ACCEPT = [
 
 /** The Import window's body: its title over the shared drop zone. Exported for the Help Center's
  *  import figure, which poses the same body inside the modal's own card. */
-export function ImportCardBody({ onClose, ...props }: ImportDropZoneProps & { onClose: () => void }) {
+function ImportCardBody({ onClose, ...props }: ImportDropZoneProps & { onClose: () => void }) {
   const t = useT();
   return (
     <>

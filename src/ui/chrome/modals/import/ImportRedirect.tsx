@@ -8,7 +8,7 @@ import { useEditorStore } from '../../../../state/store';
 import { ConfirmationContent, type ConfirmationContentProps } from '../../../primitives/ConfirmationContent';
 import { windowColumn } from '../../../primitives/Window';
 
-export interface ImportRedirectProps {
+interface ImportRedirectProps {
   /** The file as the import surfaces classified it, and where it belongs. */
   hand: HandedImport;
   /** Called once the file is handed on, before the windows change. */

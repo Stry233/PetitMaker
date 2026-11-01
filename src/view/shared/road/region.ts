@@ -364,7 +364,7 @@ const REGION_REACH = 2;
  * already carries thousands re-derives one surface instead of every surface on the map.
  *
  * A caller that cannot name what changed passes null for either and gets the full build. The
- * equivalence with the full build is pinned by `road-region-update.test.ts`.
+ * equivalence with the full build is pinned by `region-update.slow.test.ts`.
  */
 export function updateRoadRegions(
   prev: readonly RoadRegion[] | null,

@@ -101,7 +101,7 @@ export function flatReservation(
 
 /** The terrain plan a scenery pass raises, and the masks it reads: the land, the cells kept flat
  *  for streets and lots, and the cells an earlier pass already raised. */
-export interface RaiseGround {
+interface RaiseGround {
   t: TerrainPlan;
   grass: Uint8Array;
   flat: Uint8Array;

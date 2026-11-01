@@ -199,7 +199,7 @@ export function beautifyRoads(ctx: MacroContext, cells: readonly MacroCoord[], m
  *  miss a cell that already has a coating. `state/object-index`'s `roadByCell` is patched by every
  *  command-executor mutation regardless of which path placed it (`bumpObjectsVersion` fires inside
  *  `command-apply.ts`, not inside `tryPlace`), so it is the one answer that cannot be stale. */
-export function gateAlreadyPaved(state: GridState, rect: { x: number; y: number; w: number; h: number }, rotation: Rotation): boolean {
+function gateAlreadyPaved(state: GridState, rect: { x: number; y: number; w: number; h: number }, rotation: Rotation): boolean {
   const { roadByCell } = getObjectIndex(state);
   return gateTerminalCells(rect, rotation).some((c) => roadByCell.has(cellKey(c.x, c.y)) && exposedPavement(state, c.x, c.y));
 }

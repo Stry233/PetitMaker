@@ -283,7 +283,8 @@ function draw3dCard(p: Painter, rect: Rect): void {
   }
 }
 
-/** The heading sits outside the native-size raster so every code module keeps its exact pixels. */
+/** The heading sits outside the native-size raster so every code module keeps its exact pixels.
+ *  @public Reached from `scripts/internal/media/build-readme-figures.mts` inside the page. */
 export function paintCodeBand(
   ctx: CanvasRenderingContext2D, rect: Rect, assets: Pick<CompositionAssets, 'codeImg' | 'translate'>,
   S: number, FF = APP_FONT_FAMILY,

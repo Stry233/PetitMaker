@@ -2,11 +2,11 @@
 import type { I18nKey } from '../i18n/keys';
 
 /** The preset planning ids. A note carries one of these or a map's own custom tag. */
-export type TagId =
+type TagId =
   | 'homes' | 'shops' | 'workshop' | 'farm' | 'orchard' | 'ranch' | 'garden'
   | 'forest' | 'plaza' | 'landmark' | 'dock' | 'water' | 'entrance' | 'reserved';
 
-export interface AnnotationTag {
+interface AnnotationTag {
   id: TagId;
   labelKey: I18nKey;
   /** Retained for saved notes, omitted from the creation picker. */
@@ -37,7 +37,7 @@ export const ANNOTATION_TAGS: readonly AnnotationTag[] = [
 
 export const SELECTABLE_ANNOTATION_TAGS = ANNOTATION_TAGS.filter((tag) => !tag.legacy);
 
-export const TAG_IDS: readonly TagId[] = ANNOTATION_TAGS.map((t) => t.id);
+const TAG_IDS: readonly TagId[] = ANNOTATION_TAGS.map((t) => t.id);
 
 /** Whether a note wearing `tag` marks circulation. */
 export function isCirculationTag(tag: unknown): boolean {

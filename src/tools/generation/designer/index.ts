@@ -16,7 +16,5 @@
  * for a caller that reads the plans themselves.
  */
 export {
-  generateDesigned, planDesign, type DesignBundle, type DesignedContext, type DesignedOutcome, type DesignInput,
+  generateDesigned, planDesign, type DesignedContext, type DesignedOutcome,
 } from './pipeline';
-export type { CompositionPlan } from './composition/composition';
-export type { MovementLine } from './composition/movement-line';

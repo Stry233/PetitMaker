@@ -9,7 +9,7 @@ import { createSignal } from '../core/base/signal';
 const verdicts = new Map<string, boolean>();
 const changed = createSignal<number>(0);
 
-export type TextVerdict = 'approved' | 'refused' | 'unchecked';
+type TextVerdict = 'approved' | 'refused' | 'unchecked';
 
 /** The check's verdict on exactly `text`. */
 export function textVerdict(text: string): TextVerdict {

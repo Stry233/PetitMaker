@@ -17,7 +17,7 @@ export function wheelPush(event: WheelInput, page: number, zoom: number): WheelP
 }
 
 /** A sideways-dominant gesture's own travel, for rows that must apply it themselves. */
-export function wheelSideways(event: WheelInput, page: number, zoom: number): WheelPush | null {
+function wheelSideways(event: WheelInput, page: number, zoom: number): WheelPush | null {
   if (event.ctrlKey || Math.abs(event.deltaX) < Math.abs(event.deltaY)) return null;
   const by = toLocal(event.deltaX, event.deltaMode, page, zoom);
   return by === 0 ? null : { by };

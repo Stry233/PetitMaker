@@ -13,7 +13,7 @@ import { readBlob } from './read-blob';
 
 export type ImportKind = 'map' | 'planet' | 'video' | 'unknown';
 /** `classifyImportFile`'s decision with a map told apart as a JSON save or a share image. */
-export type ImportSource = 'map-save' | 'map-image' | 'planet' | 'video' | 'unknown';
+type ImportSource = 'map-save' | 'map-image' | 'planet' | 'video' | 'unknown';
 
 /** The recording containers the video picker offers by name as well as by type: macOS greys out
  *  files whose type it does not map to `video/*`, Matroska among them. */

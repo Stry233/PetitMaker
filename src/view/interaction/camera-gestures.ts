@@ -34,7 +34,7 @@ export function pinchZoom(camera: GestureCamera, e: WheelEvent): void {
 /** What a camera can do, as the verb functions ask it. */
 const capsOf = (cam: GestureCamera): CameraCaps => ({ canOrbit: !!cam.orbit });
 
-export interface CameraGestureHost {
+interface CameraGestureHost {
   /** The camera to drive, resolved per event; null while no view is live. */
   camera(): GestureCamera | null;
   /** Fired when the drag state changes, so the caller can drive the cursor. */

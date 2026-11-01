@@ -31,6 +31,8 @@ import { HELP_GROUPS, HELP_GROUP_TITLES, HELP_PAGES, HELP_PAGE_ORDER } from './c
 import type { HelpPageId } from './page-schema';
 import { PageView } from './PageView';
 import { FigureReadyContext } from './figures/figure-ready';
+import { FigureSightContext } from './figures/figure-scale';
+import { useObservedSize } from '../primitives/use-observed-size';
 import { searchHelp, type HelpHit } from './search';
 import { useReading, useReadingT } from '../design/reading';
 
@@ -77,6 +79,9 @@ export function HelpModal(props: WindowProps) {
   const [listed, setListed] = useState(false);
   const hits = useMemo<HelpHit[]>(() => (listed ? searchHelp(locale, query, reading) : []), [listed, locale, query, reading]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The reading area's height, which a miniature of a whole window stands within (UI-63).
+  const [sight, setSight] = useState(0);
+  useObservedSize(() => scrollRef.current, ([el]) => setSight((was) => (el && Math.abs(was - el.clientHeight) > 0.5 ? el.clientHeight : was)), []);
   const searchRef = useRef<HTMLDivElement>(null);
   // In one column the catalogue and the page each fill the body, one at a time.
   const [columns, bodyRef] = useWindowColumns();
@@ -233,20 +238,23 @@ export function HelpModal(props: WindowProps) {
                 exit={exiting ? undefined : { opacity: 0, y: -8, transition: framerMotion('surface.leave') }}
                 transition={framerMotion('surface.arrive')}
              >
-                <FigureReadyContext.Provider value={!!reduced || entered}>
+                <FigureReadyContext.Provider value={!!reduced || entered}><FigureSightContext.Provider value={sight}>
                   <PageView page={HELP_PAGES[page]} onGo={go} onReady={onPageReady} />
-                </FigureReadyContext.Provider>
+                </FigureSightContext.Provider></FigureReadyContext.Provider>
               </motion.div>
             </AnimatePresence>
           </div>
         );
+        const HelpTitle = showsPage ? 'span' : 'h2';
         return (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px 14px 24px', flex: 'none', ...(single ? { flexWrap: 'wrap' } : null) }}>
               {single && screen === 'page' && (
                 <WindowBack ref={backRef} label={t('help.back_to_pages')} onPress={() => setScreen('catalog')} />
               )}
-              <span style={{ ...roleFont('title'), color: INK }}>{t('modal.help_title')}</span>
+              {/* In one column the title gives way to the window's buttons, so they stay on its row in any language.
+                  A shown page's own h2 is the window's title heading; the page list alone has this one. */}
+              <HelpTitle title={single ? t('modal.help_title') : undefined} style={{ ...roleFont('title'), color: INK, margin: 0, ...(single ? { flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : null) }}>{t('modal.help_title')}</HelpTitle>
               {/* The auto margin pushes the pill to the row's right, beside the what's-this arm. In one
                   column the pill takes a row of its own under the title. */}
               <div style={single ? { flex: '1 0 100%', minWidth: 0, order: 1 } : { flex: '0 1 330px', marginLeft: 'auto' }}>
@@ -282,7 +290,7 @@ export function HelpModal(props: WindowProps) {
                 {...whatsThisName.bind}
                 aria-label={t('help.whats_this')}
                 onClick={() => { setWhatsThis(true); onClose(); }}
-                style={single ? { ...windowIconButton, marginLeft: 'auto' } : windowIconButton}
+                style={windowIconButton}
              >
                 <QuestionGlyph />
                 {whatsThisName.bubble}

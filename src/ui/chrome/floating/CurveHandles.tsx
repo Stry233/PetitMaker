@@ -23,6 +23,8 @@ import { clientPoint } from '../../../platform/device/viewport-space';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { getActiveView, onActiveViewChange, onProjectionChange } from '../../../view/active-view';
+import type { ActiveView } from '../../../tools/pointer/runtime';
+import type { CurveSessions } from '../../../tools/pointer/paint';
 import { curveArmingKeyOf, editorCurves, endCurveOnHistory } from '../../../editor/session/tool-wiring';
 import { useMapRevision } from '../../session/use-map-revision';
 import { splineCells } from '../../../core/grid/shapes';
@@ -47,8 +49,8 @@ import { useInteractionProfiles } from '../../design/input-mode';
  * fixed controls swell to cover the very shape they are meant to be adjusting once the map is small.
  * The floor is what keeps them grabbable, and they never grow past the sizes below.
  */
-export const GRAB = 30;
-export const KNOB = 18;
+const GRAB = 30;
+const KNOB = 18;
 const MIN_SCALE = 0.45;
 /** Every control gets at least this much clickable width, whatever it looks like. A tangent knob is
  *  a small dot by design — it must not also be a small target, and at low zoom it shrinks further.
@@ -99,7 +101,7 @@ const hitBox = (face: number): CSSProperties => {
 
 /** The visible dot: the same round, borderless, shadowed face the selection's corner buttons wear —
  *  this is a control the user grabs, not a technical vertex marker. */
-export const face = (size: number, fill: string): CSSProperties => ({
+const face = (size: number, fill: string): CSSProperties => ({
   width: size,
   height: size,
   borderRadius: '50%',
@@ -108,23 +110,27 @@ export const face = (size: number, fill: string): CSSProperties => ({
   pointerEvents: 'none',
 });
 
+/** Where a handle layer reads its curve and map: the curve sessions, the view whose overlay draws the
+ *  footprint and whose projection places the handles, and when to place them again. The live layer
+ *  reads the editor's; a Help figure hands in its own world's and renderer's. */
+export interface CurveHandleSource {
+  sessions: CurveSessions;
+  view: () => Pick<ActiveView, 'overlay' | 'projection'> | null;
+  /** Calls `tell` whenever the view may have moved or been swapped; returns the unsubscribe. */
+  watch: (tell: () => void) => () => void;
+  /** Bumps when the map under the footprint changed, so it repaints. */
+  revision: string | number;
+  /** The zoom the layer stands under, which projected screen px are divided by. */
+  zoom: number;
+}
+
 export function CurveHandles() {
-  const t = useT();
-  const profiles = useInteractionProfiles();
   const chrome = useChromeScale();
-  const reduced = useReducedMotionConfig();
   const eventBus = useEditorStore((s) => s.eventBus);
   const armingKey = useEditorStore(curveArmingKeyOf);
   useEffect(() => () => editorCurves.end(), []);
   const [, bump] = useState(0);
-  const [screen, setScreen] = useState<ScreenAnchor[]>([]);
-  const [zoomK, setZoomK] = useState(1);
-  const grab = useRef<Grab>(null);
-
-  // The session is a module singleton (it is owned by the tool, not by React), so re-render on its
-  // revision rather than holding a copy that could go stale mid-drag.
   useEffect(() => editorCurves.subscribe(() => bump((n) => n + 1)), []);
-
   const session = editorCurves.get();
   useEffect(() => {
     if (session?.armingKey !== undefined && session.armingKey !== armingKey) editorCurves.end();
@@ -132,30 +138,58 @@ export function CurveHandles() {
   useEffect(() => endCurveOnHistory(eventBus), [eventBus]);
   // The footprint repaints once in the frame after the map changes under it.
   const revision = useMapRevision(!!session?.footprint, 'frame');
+  const anchored = (session?.anchors.length ?? 0) > 0;
+  const watch = useCallback((tell: () => void) => {
+    const offView = onActiveViewChange(tell);
+    const offProjection = anchored ? onProjectionChange(eventBus, tell) : () => {};
+    return () => { offView(); offProjection(); };
+  }, [eventBus, anchored]);
+  const source = useMemo<CurveHandleSource>(
+    () => ({ sessions: editorCurves, view: getActiveView, watch, revision, zoom: chrome }),
+    [watch, revision, chrome],
+  );
+  return <CurveHandleLayer source={source} />;
+}
+
+/** The handles of the curve `source` holds open: the live controls in the editor, the same controls
+ *  pictured in a Help figure, where the layer fills its box and takes no input. */
+export function CurveHandleLayer({ source, pictured = false }: { source: CurveHandleSource; pictured?: boolean }) {
+  const t = useT();
+  const profiles = useInteractionProfiles();
+  const reduced = useReducedMotionConfig();
+  const { sessions, view, watch, revision, zoom } = source;
+  const [, bump] = useState(0);
+  const [screen, setScreen] = useState<ScreenAnchor[]>([]);
+  const [zoomK, setZoomK] = useState(1);
+  const grab = useRef<Grab>(null);
+
+  // The session is owned by the tool, not by React, so re-render on its revision rather than holding
+  // a copy that could go stale mid-drag.
+  useEffect(() => sessions.subscribe(() => bump((n) => n + 1)), [sessions]);
+
+  const session = sessions.get();
   const cells = useMemo(() => (session?.footprint ? splineCells(session.anchors, session.width) : null), [session]);
   useEffect(() => {
     if (!session?.footprint || !cells) return;
-    let overlay = getActiveView()?.overlay;
+    let overlay = view()?.overlay;
     const draw = () => {
-      const next = getActiveView()?.overlay;
+      const next = view()?.overlay;
       if (next !== overlay) overlay?.clearCurveFootprint();
       overlay = next;
       overlay?.showCurveFootprint(cellSet(session.grid, cells));
     };
     draw();
-    const offView = onActiveViewChange(draw);
+    const off = watch(draw);
     return () => {
-      offView();
+      off();
       overlay?.clearCurveFootprint();
     };
-  }, [session, cells, revision]);
-
-  const anchorCount = session?.anchors.length ?? 0;
+  }, [session, cells, revision, view, watch]);
 
   /** Project every anchor, and the two ends of its direction line, into screen px. */
   const reproject = useCallback(() => {
-    const live = editorCurves.get();
-    const proj = getActiveView()?.projection;
+    const live = sessions.get();
+    const proj = view()?.projection;
     if (!live || !proj) { setScreen([]); return; }
     setZoomK(handleScale(proj.cellToScreen(0, 0).scale));
     const handles = anchorHandles(live.anchors);
@@ -164,47 +198,44 @@ export function CurveHandles() {
     const shift = live.freeCoords ? { x: 0, y: 0 } : gridCellCentre(GRIDS[live.grid], { x: 0, y: 0 });
     const point = (x: number, y: number) => {
       const p = proj.cellToScreen(x + shift.x, y + shift.y);
-      return { x: p.x / chrome, y: p.y / chrome };
+      return { x: p.x / zoom, y: p.y / zoom };
     };
     setScreen(live.anchors.map((a, i) => ({
       ...point(a.x, a.y),
       out: point(a.x + handles[i]!.hx, a.y + handles[i]!.hy),
       into: point(a.x + handles[i]!.ihx, a.y + handles[i]!.ihy),
     })));
-  }, [chrome]);
+  }, [sessions, view, zoom]);
 
   useEffect(() => { reproject(); }, [session, reproject]);
-
-  useEffect(() => {
-    if (anchorCount === 0) { setScreen([]); return; }
-    return onProjectionChange(eventBus, reproject);
-  }, [anchorCount, eventBus, reproject]);
+  useEffect(() => watch(reproject), [watch, reproject]);
 
   // One window-level drag: the pointer routinely leaves a 18px target, and a capture on the button
-  // would fight the canvas underneath for the same events.
+  // would fight the canvas underneath for the same events. A pictured layer takes no input.
   useEffect(() => {
+    if (pictured) return undefined;
     // A free-coord session reads the drag at the half-cell precision its anchors live on.
     const cellOf = (e: PointerEvent) => {
-      const proj = getActiveView()?.projection;
+      const proj = view()?.projection;
       if (!proj) return undefined;
-      const live = editorCurves.get();
+      const live = sessions.get();
       if (!live) return undefined;
       const point = proj.screenToPoint(clientPoint(e).x, clientPoint(e).y);
       return live.freeCoords ? halfPoint(point) : cellAtPoint(point, live.grid);
     };
     const apply = (e: PointerEvent, commit: boolean) => {
       const g = grab.current;
-      const live = editorCurves.get();
+      const live = sessions.get();
       if (!g || !live) return;
       const cell = cellOf(e);
       if (!cell) return;
-      if (g.kind === 'anchor') { editorCurves.moveAnchor(g.index, cell.x, cell.y, commit); return; }
+      if (g.kind === 'anchor') { sessions.moveAnchor(g.index, cell.x, cell.y, commit); return; }
       const a = live.anchors[g.index];
       if (!a) return;
       // The knob's offset from its anchor is that side of the handle. Read the break key from the
       // event rather than at press time: pressing or releasing it mid-drag takes effect there and
       // then, the way it does in a drawing app.
-      editorCurves.setHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
+      sessions.setHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
         commit, mirror: !isCommandHeld('tool.break_handle'),
       });
     };
@@ -217,7 +248,7 @@ export function CurveHandles() {
     };
     const onCancel = () => {
       if (!grab.current) return;
-      grab.current = null; editorCurves.end(); reproject();
+      grab.current = null; sessions.end(); reproject();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -227,7 +258,7 @@ export function CurveHandles() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [reproject]);
+  }, [reproject, pictured, sessions, view]);
 
   const start = (index: number, kind: 'anchor' | 'out' | 'into') => (e: React.PointerEvent) => {
     // Stop the press reaching the canvas: down there means "dismiss the handles", which is exactly
@@ -241,7 +272,7 @@ export function CurveHandles() {
     <AnimatePresence>
       {screen.length > 0 && (
         <motion.div
-          {...helpTargetAttr('terrain', 'terrain-curve')}
+          {...(pictured ? { inert: '' } : helpTargetAttr('terrain', 'terrain-curve'))}
           key="curve-handles"
           data-testid="curve-handles"
           initial={{ opacity: 1 }}
@@ -250,8 +281,8 @@ export function CurveHandles() {
           // the only thing that happens.
           exit={reduced ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, transition: framerMotion('curve.fade') }}
           style={{
-            position: 'fixed', inset: 0, zIndex: z.canvasControls,
-            pointerEvents: 'none', zoom: chrome,
+            position: pictured ? 'absolute' : 'fixed', inset: 0, zIndex: pictured ? undefined : z.canvasControls,
+            pointerEvents: 'none', zoom,
           }}
         >
           {/* Every direction line in one full-screen svg. Not one per anchor: an svg sized to the

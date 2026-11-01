@@ -4,7 +4,7 @@
 import type { CatalogItem } from '../../../core/model/types';
 import { CATEGORY_BY_ID, type CategoryEntry } from '../../../config/catalog/categories';
 
-export type PlacedElement = NonNullable<CategoryEntry['stylizeLabel']>;
+type PlacedElement = NonNullable<CategoryEntry['stylizeLabel']>;
 
 /** `item`'s stylize element, or null for an unknown item or a category the illustration names not. */
 export function stylizeElementOf(item: Pick<CatalogItem, 'category'> | undefined | null): PlacedElement | null {

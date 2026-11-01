@@ -123,7 +123,7 @@ export function mapPictureFrame(state: Pick<GridState, 'template' | 'objects'>, 
 }
 
 /** What a picture of a map is, beyond its grid and its long side. */
-export interface MapPictureOptions {
+interface MapPictureOptions {
   /** Width over height of the picture, the map centred in sea; absent keeps the map's own shape. */
   aspect?: number;
   /** The cells to frame; absent frames the whole template. */

@@ -171,7 +171,7 @@ const MODE_ROW_DEPTH = MODE.label.gap + LABEL_INK_DEPTH * MODE.label.size;
 
 /** How far down the mode row's own ink reaches, in css px: the baseline plus the name under it.
  *  What anything standing below the row has to clear (`panel-frame.ts:PANEL_TOP`). */
-export const MODE_ROW_INK_BOTTOM = MODE_ROW_BASE + MODE_ROW_DEPTH;
+const MODE_ROW_INK_BOTTOM = MODE_ROW_BASE + MODE_ROW_DEPTH;
 
 /**
  * The assistant row's top, derived from the tightest state (a mode named, the assistant open): her ink
@@ -181,7 +181,7 @@ export const ASSISTANT_ROW_TOP = MODE_ROW_INK_BOTTOM + MODE.rowClearance
   - (MODE.height - ASSISTANT_BLOCK.selected.h * MODE_SCALE);
 
 /** Where a mode row stands across the window and the air between its blocks (`frame-plan.ts:FrameLayout.modeRow`). */
-export interface RowSpan { left: number; gap: number }
+interface RowSpan { left: number; gap: number }
 
 /** The landscape row's span. */
 const LANDSCAPE_SPAN: RowSpan = { left: MODE_ROW_LEFT, gap: MODE.gap };

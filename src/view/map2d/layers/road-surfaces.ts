@@ -22,7 +22,7 @@ import { FALLBACK_TINT } from '../../shared/icon/item-tint';
 import { drawBandWindow, drawRegion, fadeQuadsByWindow, roadFillTexture } from '../draw/road-surface';
 
 /** What the surfaces need from the object layer that holds them. */
-export interface RoadSurfaceHost {
+interface RoadSurfaceHost {
   /** The layer's root, destroyed with the world it stands in. */
   container(): PIXI.Container;
   requestRender(): void;

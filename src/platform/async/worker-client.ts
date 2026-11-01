@@ -43,7 +43,7 @@ interface WorkerClientOptions {
 }
 
 /** One request to a worker that takes `Req` and posts `Reply` messages; `R` is what it resolves to. */
-export interface WorkerRequest<Req, Reply, R> {
+interface WorkerRequest<Req, Reply, R> {
   message: Req;
   transfer?: Transferable[];
   signal?: AbortSignal;

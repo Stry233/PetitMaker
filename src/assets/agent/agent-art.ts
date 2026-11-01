@@ -20,7 +20,7 @@ for (const path in modules) {
 }
 
 /** The three PNG basenames shipped here: the character body and two badges. */
-export type CharacterArtId = 'base' | 'badge-idea' | 'badge-ask';
+type CharacterArtId = 'base' | 'badge-idea' | 'badge-ask';
 
 export function characterArt(id: CharacterArtId): string {
   const url = ART[id];

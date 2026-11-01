@@ -55,7 +55,7 @@ export const UNAVAILABLE = 0.35;
 
 /* ── Radii ───────────────────────────────────────────────── */
 
-/* The one corner scale. A literal radius outside `ui/design` snaps to a rung (`foundation-guards.test.ts`). */
+/* The one corner scale. A radius outside `ui/design` names a rung. */
 
 export const radii = {
   // A corner rounds against what is behind it, so a surface with nothing behind it rounds nothing.
@@ -78,8 +78,8 @@ export const radii = {
 
 /* ── Spacing ─────────────────────────────────────────────── */
 
-/** The lengths a gap, padding or margin may take, in css px: even steps to 20, then 4s and 8s. A
- *  literal off the scale fails `foundation-guards.test.ts` outside the declared drawing tables. */
+/** The lengths a gap, padding or margin may take, in css px: even steps to 20, then 4s and 8s;
+ *  only a drawing zone sets lengths off the scale. */
 export const SPACE = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64] as const;
 
 /*

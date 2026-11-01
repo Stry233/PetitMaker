@@ -15,7 +15,7 @@ import { bucketSpan } from '../../../core/grid/buckets';
 import { cellKey } from '../../../core/grid/rect';
 import { layerNumeral } from '../../../i18n/terms/layer-name';
 
-export interface NumberCell { x: number; y: number; label: string }
+interface NumberCell { x: number; y: number; label: string }
 
 /* ── Shared label glyph look ──────────────────────────────────────────────────
  * Both renderers draw the number labels onto a CanvasRenderingContext2D (the 2D

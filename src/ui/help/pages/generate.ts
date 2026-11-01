@@ -19,18 +19,18 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     entryKey: 'help.generate.entry',
     figure: { kind: 'surface', surface: 'generate-shelf', captionKey: 'help.generate.figcap' },
     sections: [
-      { kind: 'prose', anchor: 'generate-kinds', titleKey: 'help.generate.kinds_t', bodyKeys: ['help.generate.kinds_b1'], lite: false },
+      { kind: 'prose', anchor: 'generate-kinds', titleKey: 'help.generate.kinds_t', bodyKeys: ['help.generate.kinds_b1'], figure: { kind: 'reel', reel: 'generate' }, lite: false },
       { kind: 'prose', anchor: 'generate-scope', titleKey: 'help.generate.scope_t', bodyKeys: ['help.generate.scope_b1'], figure: { kind: 'demo', scene: 'scope' } },
       { kind: 'prose', anchor: 'generate-batch', titleKey: 'help.generate.batch_t', bodyKeys: ['help.generate.batch_b1'] },
       { kind: 'prose', anchor: 'generate-clear', titleKey: 'help.generate.clear_t', bodyKeys: ['help.generate.clear_b1'] },
       { kind: 'prose', anchor: 'generate-empty', titleKey: 'help.generate.empty_t', bodyKeys: ['help.generate.empty_b1'] },
+      { kind: 'keys', anchor: 'generate-keys', titleKey: 'help.share.keys_t', rows: [{ doKey: 'menu.generate', tokens: [{ kind: 'cmd', id: 'app.generate' }] }] },
       { kind: 'callout', bodyKey: 'help.generate.co1' },
     ],
     qa: [
       { qKey: 'help.generate.q1', aKey: 'help.generate.a1', lite: false },
       { qKey: 'help.generate.q2', aKey: 'help.generate.a2', lite: { aKey: 'help.generate.a2_lite' } },
       { qKey: 'help.generate.q3', aKey: 'help.generate.a3' },
-      { qKey: 'help.generate.q4', aKey: 'help.generate.a4' },
     ],
     seeAlso: ['gen-island', 'maze', 'gen-letter', 'gen-picture', 'candidates', 'region'],
   },
@@ -73,7 +73,6 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     qa: [
       { qKey: 'help.maze.q1', aKey: 'help.maze.a1' },
       { qKey: 'help.maze.q2', aKey: 'help.maze.a2' },
-      { qKey: 'help.maze.q3', aKey: 'help.maze.a3' },
       { qKey: 'help.maze.q4', aKey: 'help.maze.a4' },
     ],
     seeAlso: ['generate', 'candidates', 'region'],
@@ -153,7 +152,10 @@ export const GENERATE_PAGES: readonly HelpPage[] = [
     figure: { kind: 'demo', scene: 'region' },
     sections: [
       { kind: 'prose', anchor: 'region-open', titleKey: 'help.region.open_t', bodyKeys: ['help.region.open_b1'] },
-      { kind: 'prose', anchor: 'region-brushes', titleKey: 'help.region.brushes_t', bodyKeys: ['help.region.brushes_b1'], lite: { bodyKeys: ['lite.help_region'] } },
+      {
+        kind: 'prose', anchor: 'region-brushes', titleKey: 'help.region.brushes_t', bodyKeys: ['help.region.brushes_b1'], lite: { bodyKeys: ['lite.help_region'] },
+        figure: { kind: 'surface', surface: 'region-bar', captionKey: 'help.region.bar_figcap' },
+      },
       { kind: 'prose', anchor: 'region-ground', titleKey: 'help.region.ground_t', bodyKeys: ['help.region.ground_b1'], figure: { kind: 'demo', scene: 'ground' } },
       { kind: 'prose', anchor: 'region-move', titleKey: 'help.region.move_t', bodyKeys: ['help.region.move_b1'] },
       { kind: 'prose', anchor: 'region-undo', titleKey: 'help.region.undo_t', bodyKeys: ['help.region.undo_b1'] },

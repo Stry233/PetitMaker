@@ -23,7 +23,7 @@ export enum ItemCategory {
 }
 
 /** How a category is offered for placing one item at a time. Each rank orders one surface. */
-export interface CategoryPlacement {
+interface CategoryPlacement {
   /** Icon basename `iconUrl` resolves, shared by the Place menu and the shelf. */
   readonly icon: string;
   /** Id of the Place menu action that arms the category. */
@@ -99,7 +99,7 @@ export const CATEGORIES: readonly CategoryEntry[] = [
 
 export const CATEGORY_BY_ID: ReadonlyMap<CategoryId, CategoryEntry> = new Map(CATEGORIES.map((c) => [c.id, c]));
 
-export type PlacedCategory = CategoryEntry & { readonly placement: CategoryPlacement };
+type PlacedCategory = CategoryEntry & { readonly placement: CategoryPlacement };
 
 /** The categories placed item by item, ordered by the given surface's rank. */
 export function placedCategories(rank: 'menuRank' | 'shelfRank' | 'checklistRank'): PlacedCategory[] {

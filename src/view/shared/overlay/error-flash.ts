@@ -129,7 +129,7 @@ function resolveErrorFlashRects(errors: ValidationError[]): ErrorFlashRect[] {
 export type FlashKind = 'error' | 'commit';
 
 /** One flash to play: the cells and bodies to light, on their grids. */
-export interface FlashPlan { cells: GridCellRef[]; rects: ErrorFlashRect[] }
+interface FlashPlan { cells: GridCellRef[]; rects: ErrorFlashRect[] }
 
 /**
  * The flash policy both views play by. Each kind is latest-wins: a view drops the flash of that kind

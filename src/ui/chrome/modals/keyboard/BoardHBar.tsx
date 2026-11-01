@@ -7,7 +7,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { visualRect } from '../../../design/visual-rect';
 
 /** The board shrinks to the region down to this before it scrolls sideways. */
-export const BOARD_ZOOM_FLOOR = 0.75;
+const BOARD_ZOOM_FLOOR = 0.75;
 
 /** The zoom that fits the board into the room it has on both axes, never above 1 and never under the floor. */
 export function boardZoomFor(regionWidth: number, boardWidth: number, regionHeight = Infinity, boardHeight = 1): number {
@@ -16,11 +16,11 @@ export function boardZoomFor(regionWidth: number, boardWidth: number, regionHeig
   return Math.min(1, Math.max(BOARD_ZOOM_FLOOR, fit));
 }
 
-export const HBAR_H = 12;
+const HBAR_H = 12;
 // The visible pill: the cozy bar's 12px lane minus its 3px transparent inset each side.
-export const HBAR_THUMB = 6;
-export const HBAR_FILL = `var(--sb-thumb, ${rgbaOf(MUTED, 0.4)})`;
-export const HBAR_FILL_HOVER = `var(--sb-thumb-hover, ${rgbaOf(MUTED, 0.62)})`;
+const HBAR_THUMB = 6;
+const HBAR_FILL = `var(--sb-thumb, ${rgbaOf(MUTED, 0.4)})`;
+const HBAR_FILL_HOVER = `var(--sb-thumb-hover, ${rgbaOf(MUTED, 0.62)})`;
 /**
  * The board's horizontal bar: the region hides the platform bars (`pw-noscroll`) and the edge fade
  * says "more", but a fade cannot be grabbed — this draws a thumb over the same native scroller and

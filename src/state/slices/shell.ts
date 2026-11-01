@@ -121,7 +121,7 @@ export type TourPhase =
 export const FIRST_TOUR_PHASE: TourPhase = { kind: 'deck', card: 0 };
 
 /** Whether a Show me stands: a run is in one of its cards' Show me. */
-export function showMeStands(s: Pick<ShellSlice, 'tourRunning' | 'tourPhase'>): boolean {
+function showMeStands(s: Pick<ShellSlice, 'tourRunning' | 'tourPhase'>): boolean {
   return s.tourRunning && s.tourPhase.kind === 'show';
 }
 
@@ -138,7 +138,7 @@ export function notesOpenable(s: Pick<ShellSlice, 'tourRunning' | 'tourPhase'>):
   return !showMeStands(s);
 }
 
-export interface ContextMenuEntry { x: number; y: number; target: BlockRef; mode: InputMode }
+interface ContextMenuEntry { x: number; y: number; target: BlockRef; mode: InputMode }
 
 export interface ShellSlice {
   /** Which overlays are open; a keyboard command, an agent tool and a button open one with the same

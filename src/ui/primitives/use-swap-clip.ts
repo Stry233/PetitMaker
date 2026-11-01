@@ -8,7 +8,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 
-export interface SwapClip {
+interface SwapClip {
   /** Spread on the box the arriving element stands in, which the travel must not overflow. */
   clip: CSSProperties;
   /** Pass to the arriving element's `onAnimationComplete` (or its `transitionend`). */
@@ -19,7 +19,7 @@ export interface SwapClip {
  *  above or below (a chosen card's plate, a lifted card) stays drawn; `block`, for a box whose
  *  leaving content, taken out of the flow, may stand taller than what replaces it while the travel
  *  runs past its sides; or `both`. */
-export type ClipAxes = 'inline' | 'block' | 'both';
+type ClipAxes = 'inline' | 'block' | 'both';
 
 /** An engine without `overflow-x: clip` (Chrome before 90, Safari before 16) clips an inline clip on
  *  both axes and draws a block clip whole. */

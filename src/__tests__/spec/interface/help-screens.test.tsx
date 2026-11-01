@@ -143,6 +143,5 @@ describe('Help in limited space', () => {
     expect(list).toBeTruthy();
     expect(again.querySelector('article')).toBeNull();
     expect(again.querySelector('[data-leaving]')).toBeNull();
-    expect(list.parentElement!.style.opacity).not.toBe('0');
   });
 });

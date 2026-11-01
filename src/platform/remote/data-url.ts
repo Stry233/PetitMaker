@@ -1,5 +1,5 @@
 /** A base64 `data:` URL split into its two parts. */
-export interface DataUrlParts { mime: string; base64: string }
+interface DataUrlParts { mime: string; base64: string }
 
 /** A base64 data URL as its media type and payload, or null for any other string. */
 export function parseDataUrl(url: string): DataUrlParts | null {

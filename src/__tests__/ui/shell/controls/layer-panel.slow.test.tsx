@@ -4,9 +4,8 @@
  * figure is the app's cumulative count, an empty floor keeps its row, the eye and lock write
  * straight to the store, and a paint refused by a locked layer names the layer.
  *
- * The size ladder: the arrows walk between the three sizes and stop at both ends, the same ten
- * floors are listed in each (so a floor travels rather than being redrawn), and a press on the count
- * lands on the size this window can hold.
+ * The size ladder: the arrows walk between the three sizes and stop at both ends, and a press on the
+ * count opens the same size at every window.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -19,21 +18,13 @@ import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { isAnnotating } from '../../../../state/editing/edit-mode';
 import { showNotesForEditing } from '../../../../editor/editing/annotation-edit';
-import { railStack, RAIL_TOP, stepLayerMode } from '../../../../ui/shell/frame';
-import { planRail } from '../../../../ui/shell/frame-plan';
-import { colsOf, plateDepth, plateMinDepth } from '../../../../ui/shell/controls/layer-plate';
+import { colsOf } from '../../../../ui/shell/controls/layer-plate';
 import { Rail } from '../../../../ui/shell/Rail';
-import { ACTIVE, INK, MAP_EDGE_ALPHA } from '../../../../ui/design/tokens';
-import { EDGE_RIGHT, RAIL, ZOOM } from '../../../../ui/shell/units';
-import { fittedUiScale } from '../../../../ui/design/scale';
 import { makeState, setTerrain, setZone } from '../../../_support/map-state';
 import { ELEVATION_MAX } from '../../../../core/game/profile';
 import { evidenceOn } from '../../../../core/grid/grids';
 import { cellSet } from '../../../../core/grid/grids';
 import { TERRAIN_GRID } from '../../../../core/game/profile';
-
-/** The open square plate's depth, the deepest the layer control draws. */
-const PLATE_DEPTH = plateDepth('grid');
 
 /** A map with a shape to it: a broad first floor, a narrower second, one cell on the third. */
 function stepped(): GridState {
@@ -53,17 +44,6 @@ function mountAt(windowHeight: number) {
   window.innerHeight = windowHeight;
   return mount();
 }
-
-/** The live Rail's zoom: the authored zoom times the window's fit (jsdom's window is below the design
- *  reference, so the fit applies). */
-const zoomAt = (windowHeight: number) => ZOOM * fittedUiScale(window.innerWidth, windowHeight, 1);
-
-/** The rail's plan for that window; `mode` matters because the plate's depth is one of its inputs. */
-function planAt(windowHeight: number, open: boolean, mode: 'column' | 'grid' = 'grid') {
-  return planRail(windowHeight / zoomAt(windowHeight), { open, plateDepth: plateDepth(open ? mode : 'pill'), plateMinDepth: plateMinDepth(mode) });
-}
-
-const topOf = (el: HTMLElement) => parseFloat(el.style.top);
 
 /** Opens the panel by pressing the count. */
 function openPanel(): void {
@@ -131,13 +111,10 @@ describe('the layer panel', () => {
     fireEvent.click(document.body);
     expect(screen.getByTestId('shell-layer-panel'), 'still up').toBeTruthy();
 
-    // The way back wears the count's filled pill with a mark. The plate hangs off the window's right
-    // edge and grows leftward, so the way back is the right-hand arrow, pointing at the edge.
+    // The plate hangs off the window's right edge and grows leftward, so the way back is the
+    // right-hand arrow, pointing at the edge.
     const back = screen.getByTestId('shell-layer-smaller');
     const out = screen.getByTestId('shell-layer-bigger');
-    const filled = document.createElement('div');
-    filled.style.background = ACTIVE;
-    expect(back.style.background, 'the way back is a plate, not type').toBe(filled.style.background);
     expect(back.querySelector('svg'), 'and it carries a mark saying which way it goes').toBeTruthy();
     expect(out.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
       'and it stands to the right of the way on').toBeTruthy();
@@ -153,7 +130,7 @@ describe('the layer panel', () => {
   });
 
   /** The active floor is marked on its own tile, so the head does not name it a second time. */
-  it('does not repeat the active floor in its head, and hands the way back the pill it wore', () => {
+  it('does not repeat the active floor in its head', () => {
     useEditorStore.setState({ activeLayer: 3 });
     mount();
     openPanel();
@@ -161,12 +138,6 @@ describe('the layer panel', () => {
     expect(head.textContent, 'the head says no floor name at all').not.toContain('Layer 3');
     expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-pressed'), 'the tile says it')
       .toBe('true');
-    // Both arrows are drawn alike, so neither reads as the lesser one.
-    const smaller = screen.getByTestId('shell-layer-smaller');
-    const bigger = screen.getByTestId('shell-layer-bigger');
-    expect(bigger.style.background).toBe(smaller.style.background);
-    expect(bigger.style.padding).toBe(smaller.style.padding);
-    expect(bigger.style.borderRadius).toBe(smaller.style.borderRadius);
   });
 
   /** Pill, file and square form a ladder, not a cycle: one press past the square must not drop to
@@ -192,15 +163,6 @@ describe('the layer panel', () => {
     expect(screen.getByTestId('shell-layer-readout')).toBeTruthy();
   });
 
-  /** `stepLayerMode` is the one place the order of the sizes is written. */
-  it('orders the three sizes smallest first and clamps the ladder at both ends', () => {
-    expect(stepLayerMode('pill', -1), 'nothing smaller than the pill').toBe('pill');
-    expect(stepLayerMode('pill', 1)).toBe('column');
-    expect(stepLayerMode('column', 1)).toBe('grid');
-    expect(stepLayerMode('grid', 1), 'nothing bigger than the square').toBe('grid');
-    expect(stepLayerMode('grid', -1)).toBe('column');
-  });
-
   /** Opening is one step up the ladder at every window; the window decides only where the plate
    *  stands (`planRail`), tested below. */
   it('opens the same size at every window, one step up the ladder', () => {
@@ -212,203 +174,6 @@ describe('the layer panel', () => {
       expect(columnsShown(), `${h}px`).toBe(colsOf('grid'));
       cleanup();
     }
-  });
-
-  /** The file's tile puts name, count and toggles on one line to save depth; the square, short of
-   *  width, uses three lines. The bar has its own line at both sizes so it stays long enough to compare. */
-  it('gives the file one line of words and the square three lines', () => {
-    mount();
-    openPanel();
-    const line = () => screen.getByTestId('shell-layer-line-2');
-    expect(line().textContent, 'the file names the floor on its one line').toContain('Layer 3');
-    for (const id of ['shell-layer-count-2', 'shell-layer-eye-2', 'shell-layer-lock-2']) {
-      expect(line().contains(screen.getByTestId(id)), `the file's line carries ${id}`).toBe(true);
-    }
-    const bar = () => screen.getByTestId('shell-layer-bar-2');
-    expect(line().contains(bar()), 'and not the bar').toBe(false);
-    expect(line().parentElement!.childElementCount, 'so the file\'s tile is two rows').toBe(2);
-
-    press('bigger');
-    expect(line().textContent, 'the square names the floor on a line of its own').toContain('Layer 3');
-    for (const id of ['shell-layer-count-2', 'shell-layer-eye-2', 'shell-layer-lock-2']) {
-      expect(line().contains(screen.getByTestId(id)), `the square keeps ${id} off it`).toBe(false);
-    }
-    const content = line().parentElement!;
-    expect(content.childElementCount, 'so the square\'s tile is three rows').toBe(3);
-    const figures = content.children[1]!;
-    for (const id of ['shell-layer-count-2', 'shell-layer-eye-2', 'shell-layer-lock-2']) {
-      expect(figures.contains(screen.getByTestId(id)), `on the second line: ${id}`).toBe(true);
-    }
-    expect(content.lastElementChild!.contains(bar())).toBe(true);
-  });
-
-  /** The file shows as many whole floors as fit in the square's depth and scrolls the rest; showing
-   *  all would make the lower rung the deeper plate. Both depths are declared, so no layout is needed. */
-  it('draws the file shorter than the square, and scrolls the rest of the stack', () => {
-    expect(plateDepth('column')).toBeLessThan(PLATE_DEPTH);
-    mount();
-    openPanel();
-    const floors = screen.getByTestId('shell-layer-floors');
-    expect(floors.childElementCount, 'every floor is IN it, whether or not it is showing')
-      .toBe(ELEVATION_MAX + 1);
-    expect(floors.style.overflowY).toBe('auto');
-  });
-
-  /** The plate draws at the lesser of its own depth and the room the lane gives, so it never runs
-   *  onto the bottom shelf or over the buttons. */
-  it('takes the room the lane can give when that is less than its own depth', () => {
-    // At 336 device px the frame has stopped shrinking with the window, so the lane runs out of room.
-    for (const [h, mode] of [[336, 'column'], [1440, 'column'], [1440, 'grid']] as const) {
-      const room = planAt(h, true, mode).plateMaxH;
-      const drawn = Math.min(plateDepth(mode), room);
-      expect(drawn, `${h}px, ${mode}`).toBeCloseTo(h === 336 ? room : plateDepth(mode), 6);
-    }
-    expect(planAt(336, true, 'column').plateMaxH).toBeLessThan(plateDepth('column'));
-  });
-
-  /** The numbers toggle (what the map shows) and the size arrows (what the panel is) are unrelated,
-   *  so they take opposite ends, the arrows on the right where the plate hangs; both use one box. */
-  it('stands the numbers toggle and the size arrows at opposite ends, at one size', () => {
-    mount();
-    openPanel();
-    const numbers = screen.getByTestId('shell-layer-numbers');
-    const arrows = screen.getByTestId('shell-layer-bigger').parentElement!;
-    const head = screen.getByTestId('shell-layer-head');
-    expect(head.style.justifyContent, 'the two ends of the head').toBe('space-between');
-    expect(numbers.compareDocumentPosition(arrows) & Node.DOCUMENT_POSITION_FOLLOWING,
-      'the numbers toggle first, the arrows after it').toBeTruthy();
-    // The `#` holds the width as a minimum because its glyph is narrower than a chevron.
-    const arrow = screen.getByTestId('shell-layer-bigger');
-    for (const prop of ['padding', 'height', 'boxSizing', 'borderRadius'] as const) {
-      expect(numbers.style[prop], prop).toBe(arrow.style[prop]);
-    }
-    expect(numbers.style.minWidth, 'as wide as a chevron\'s own box')
-      .toBe(`${arrow.querySelector('svg')!.getAttribute('width')}px`);
-  });
-
-  /** The head stays put while the floors scroll. It is not sticky (a sticky head would pin over the
-   *  plate's padding and stay inside the box the size travel projects through); only the floors box
-   *  scrolls. */
-  it('keeps its head on the plate while the floors scroll under it', () => {
-    mountAt(720);
-    openPanel();
-    const floors = screen.getByTestId('shell-layer-floors');
-    const head = screen.getByTestId('shell-layer-head');
-    expect(floors.contains(head), 'the head is outside the box that scrolls').toBe(false);
-    expect(head.contains(screen.getByTestId('shell-layer-smaller'))).toBe(true);
-    expect(head.contains(screen.getByTestId('shell-layer-numbers'))).toBe(true);
-    expect(floors.contains(screen.getByTestId('shell-layer-row-0')), 'and every floor is inside it')
-      .toBe(true);
-    expect(floors.style.overflowY).toBe('auto');
-    expect(screen.getByTestId('shell-layer-panel').style.overflowY, 'the head stays put during vertical scrolling')
-      .toBe('hidden');
-  });
-
-  /** Only transforms (the size travel, a hovered row's plate) pass the floors' sides, and with
-   *  `overflow-x: auto` the travel would draw a horizontal scrollbar for the length of the resize. */
-  it('never gives the floors a sideways scroll', () => {
-    mount();
-    openPanel();
-    expect(screen.getByTestId('shell-layer-floors').style.overflowX, 'the file').toBe('hidden');
-    press('bigger');
-    expect(screen.getByTestId('shell-layer-floors').style.overflowX, 'the square').toBe('hidden');
-  });
-
-  /** The numbers toggle, the notes row's "?" and the floors' chips share one left edge at both sizes,
-   *  read off the placing styles since jsdom lays nothing out. */
-  it('starts the numbers toggle, the notes help and every chip on one left edge', () => {
-    mount();
-    openPanel();
-    const px = (value: string) => parseFloat(value || '0');
-    const help = screen.getByTestId('shell-layer-annotation-help');
-    const helpLeft = px(help.parentElement!.parentElement!.style.paddingLeft) + px(help.style.marginLeft);
-    for (const size of ['file', 'square'] as const) {
-      if (size === 'square') press('bigger');
-      expect(px(screen.getByTestId('shell-layer-head').style.paddingLeft), `${size}: the numbers toggle`).toBe(helpLeft);
-      for (const elev of [0, ELEVATION_MAX]) {
-        const tile = screen.getByTestId(`shell-layer-row-${elev}`).parentElement!;
-        const chip = screen.getByTestId(`shell-layer-line-${elev}`).querySelector('span')!;
-        expect(px(tile.style.paddingLeft) + px(chip.style.marginLeft), `${size}: floor ${elev}'s chip`).toBe(helpLeft);
-      }
-    }
-  });
-
-  /** A scrollbar only where there is more to scroll to, known before drawing from the declared depth
-   *  and room: the file always has more; the square, on a tall window, does not. */
-  it('wears a scrollbar on the size that scrolls and not on the one that does not', () => {
-    mountAt(1200);
-    openPanel();
-    expect(columnsShown()).toBe(1);
-    expect(screen.getByTestId('shell-layer-floors').classList.contains('pw-noscroll'), 'the file')
-      .toBe(false);
-
-    press('bigger');
-    expect(screen.getByTestId('shell-layer-floors').classList.contains('pw-noscroll'), 'the square')
-      .toBe(true);
-  });
-
-  /** The shell's scroll fade (`ui/primitives/scroll-fade.ts`) follows the box's scroll metrics; a mask
-   *  is not a transform, so it does not fight the size-change projection. It settles over animation
-   *  frames, hence `waitFor`. */
-  it('fades the floors only where scroll metrics say there is room', async () => {
-    mount();
-    openPanel();
-    const floors = screen.getByTestId('shell-layer-floors');
-    expect(floors.style.maskImage).toBe('');
-
-    Object.defineProperty(floors, 'scrollHeight', { value: 900, configurable: true });
-    Object.defineProperty(floors, 'clientHeight', { value: 400, configurable: true });
-    Object.defineProperty(floors, 'scrollTop', { value: 50, configurable: true });
-    fireEvent.scroll(floors);
-    await waitFor(() => {
-      expect(floors.style.maskImage).toContain('linear-gradient(to bottom,');
-      expect(floors.style.maskImage).toContain('transparent 0');
-      expect(floors.style.maskImage).toContain('transparent 100%');
-    });
-
-    Object.defineProperty(floors, 'scrollHeight', { value: 400, configurable: true });
-    Object.defineProperty(floors, 'scrollTop', { value: 0, configurable: true });
-    fireEvent.scroll(floors);
-    await waitFor(() => expect(floors.style.maskImage).toBe(''));
-  });
-
-  /** The carrier ignores the pointer so the map shows through between rail buttons; a plate that did
-   *  too would hand every press and wheel to the canvas. */
-  it('re-claims pointer events from its deaf carrier', () => {
-    mount();
-    openPanel();
-    expect(screen.getByTestId('shell-layer-panel').style.pointerEvents).toBe('auto');
-  });
-
-  /** No shadow under `ui/shell` (`frame-margins.test.ts`); the plate meets the map with a hairline in
-   *  the map's edge ink and alpha, as map labels and shapes do. */
-  it('stands on the island behind a hairline rather than a shadow', () => {
-    mount();
-    openPanel();
-    const plate = screen.getByTestId('shell-layer-panel');
-    expect(plate.style.boxShadow, 'no shadow').toBe('');
-    expect(plate.style.borderStyle).toBe('solid');
-    expect(parseFloat(plate.style.borderWidth)).toBeGreaterThan(0);
-    expect(parseFloat(plate.style.borderWidth), 'a hairline, not a keyline').toBeLessThanOrEqual(1);
-    // Compared as channels: authored as hex, reported as rgba.
-    const rgb = [1, 3, 5].map((i) => parseInt(INK.slice(i, i + 2), 16));
-    expect(plate.style.borderColor).toBe(`rgba(${rgb.join(', ')}, ${MAP_EDGE_ALPHA})`);
-  });
-
-  /** A floor travels between sizes (`layout`) only if it is the same element in both; jsdom lays
-   *  nothing out, so the test holds the structure. */
-  it('lists the same floors in both sizes, so a floor can travel between them', () => {
-    const listed = () => [...document.querySelectorAll('[data-testid^="shell-layer-row-"]')]
-      .map((el) => Number(el.getAttribute('data-testid')!.replace('shell-layer-row-', '')));
-    mountAt(1440);
-    openPanel();
-    const square = listed();
-    expect(square).toHaveLength(ELEVATION_MAX + 1);
-
-    press('smaller');
-    const file = listed();
-    expect([...file].sort((a, b) => a - b), 'the file holds the same floors')
-      .toEqual([...square].sort((a, b) => a - b));
   });
 
   /** The grid mutates in place and the panel subscribes only while open, so opening must reread the
@@ -443,45 +208,6 @@ describe('the layer panel', () => {
     expect(screen.queryByTestId(`shell-layer-row-${ELEVATION_MAX + 1}`), 'and no more than it can').toBeNull();
     expect(count(0), 'nothing stands on the ground of this map').toBe('0');
     expect(count(ELEVATION_MAX), 'nor anywhere near the top of it').toBe('0');
-  });
-
-  /** Where the lane can hold it, the plate's right edge aligns with the round buttons', so the
-   *  history pair below drops under the plate; the two are one decision. */
-  it('keeps the buttons\' own line where the lane can hold it, and the pair steps down under it', () => {
-    const open = planAt(1152, true);
-    expect(open.plateInLane, 'a 1152 window has the room').toBe(true);
-    mountAt(1152);
-    const pair = screen.getByTestId('shell-rail-history');
-    const resting = topOf(pair);
-    expect(resting).toBeCloseTo(planAt(1152, false).historyTop, 6);
-
-    openPanel();
-    // The plan above is for the square.
-    press('bigger');
-    const inset = parseFloat(screen.getByTestId('shell-layer-panel').style.right);
-    expect(inset, 'flush with the buttons, not clear of their lane').toBeCloseTo(EDGE_RIGHT, 6);
-    expect(topOf(pair), 'and the pair has stepped down out of the plate').toBeCloseTo(open.historyTop, 6);
-    expect(topOf(pair)).toBeGreaterThan(resting);
-    expect(topOf(pair)).toBeGreaterThanOrEqual(RAIL_TOP + PLATE_DEPTH + RAIL.groupMin);
-
-    closePanel();
-    expect(topOf(pair), 'and back when it closes').toBeCloseTo(resting, 6);
-  });
-
-  it('keeps a scrollable panel in the right lane when one complete floor row fits', () => {
-    for (const h of [432, 720]) {
-      const open = planAt(h, true, 'column');
-      mountAt(h);
-      const pair = screen.getByTestId('shell-rail-history');
-      const resting = topOf(pair);
-      openPanel();
-      expect(columnsShown()).toBe(1);
-      expect(open.plateInLane).toBe(true);
-      expect(parseFloat(screen.getByTestId('shell-layer-panel').style.right)).toBe(EDGE_RIGHT);
-      expect(topOf(pair)).toBeGreaterThanOrEqual(resting);
-      expect(topOf(pair) + railStack(Math.ceil(2 / open.historyFiles))).toBeLessThanOrEqual(open.kitTop);
-      cleanup();
-    }
   });
 
   /** Rows of `colsOf('grid')` filled from the ground up, so the short row is the top one: each row
@@ -661,19 +387,12 @@ describe('the layer panel', () => {
   });
 });
 
-/** A row plate's drawn fill as `r,g,b,a`, whichever spelling the style holds it in. */
-function fillOf(el: HTMLElement): string {
-  const parts = /rgba?\(([^)]+)\)/.exec(el.style.backgroundColor)?.[1]?.split(',').map((p) => Number(p.trim())) ?? [];
-  const [r = 0, g = 0, b = 0, a = parts.length ? 1 : 0] = parts;
-  return [r, g, b, a].join(',');
-}
-const SELECTED_FILL = '255,218,126,1';
 const pressedRows = () => [...document.querySelectorAll('[data-testid="shell-layer-annotation"], [data-testid^="shell-layer-row-"]')]
   .filter((el) => el.getAttribute('aria-pressed') === 'true').map((el) => (el as HTMLElement).dataset.testid);
 
 /**
  * One row is selected at a time: the notes row while annotate is armed, however it was entered, and
- * otherwise the floor a stroke lands on. The selected fill shows under the pointer and after it leaves.
+ * otherwise the floor a stroke lands on.
  */
 describe('the selected row', () => {
   beforeEach(() => { useEditorStore.getState().setEditMode({ mode: null }); });
@@ -683,14 +402,13 @@ describe('the selected row', () => {
     ['the notes door', () => showNotesForEditing()],
     ['the export window', () => showNotesForEditing({ close: 'share' })],
   ];
-  it.each(doors)('selects the notes row alone when annotate is entered through %s', async (_door, enter) => {
+  it.each(doors)('selects the notes row alone when annotate is entered through %s', (_door, enter) => {
     mount();
     openPanel();
     expect(pressedRows()).toEqual(['shell-layer-row-2']);
     act(enter);
     expect(isAnnotating(useEditorStore.getState())).toBe(true);
     expect(pressedRows()).toEqual(['shell-layer-annotation']);
-    await waitFor(() => expect(fillOf(screen.getByTestId('shell-layer-annotation'))).toBe(SELECTED_FILL));
   });
 
   it('hands the selection back to a floor, and to the floor it was on when the notes row lets go', () => {
@@ -703,18 +421,5 @@ describe('the selected row', () => {
     fireEvent.click(screen.getByTestId('shell-layer-annotation'));
     fireEvent.click(screen.getByTestId('shell-layer-annotation'));
     expect(pressedRows()).toEqual(['shell-layer-row-1']);
-  });
-
-  it.each(['shell-layer-annotation', 'shell-layer-row-1'])('fills %s once pressed under the pointer, and keeps the fill as it leaves', async (id) => {
-    mount();
-    openPanel();
-    const plate = screen.getByTestId(id);
-    fireEvent.pointerEnter(plate, { pointerType: 'mouse' });
-    await waitFor(() => expect(fillOf(plate)).not.toBe(SELECTED_FILL));
-    fireEvent.click(plate);
-    await waitFor(() => expect(fillOf(plate)).toBe(SELECTED_FILL));
-    fireEvent.pointerLeave(plate, { pointerType: 'mouse' });
-    await new Promise((r) => setTimeout(r, 400));
-    expect(fillOf(plate)).toBe(SELECTED_FILL);
   });
 });

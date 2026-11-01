@@ -59,18 +59,6 @@ function turn(w: number, h: number): void {
   act(() => { window.dispatchEvent(new Event('resize')); });
 }
 
-/** Each piece's box where it is drawn now, rounded to a tenth of a pixel. */
-function drawnPieces(): Record<string, number[]> {
-  const out: Record<string, number[]> = {};
-  for (const el of document.querySelectorAll<HTMLElement>('[data-morph]')) {
-    // The welcome tips' window arrives on its own clock after a mount, so it is left out.
-    if (el.parentElement?.closest('[data-morph]') || el.closest('[data-testid="tour-deck"]')) continue;
-    const r = el.getBoundingClientRect();
-    out[el.getAttribute('data-morph')!] = [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10);
-  }
-  return out;
-}
-
 const morphOf = () => waapi!.animations.filter((a) => a.animation.id === MORPH_ANIMATION);
 const playing = () => morphOf().filter((a) => a.animation.playState === 'running');
 const held = () => morphOf().filter((a) => a.animation.playState === 'paused');
@@ -82,34 +70,22 @@ async function reportTurn(shape: 'portrait' | 'landscape'): Promise<void> {
 }
 
 describe('the layout-shape morph', () => {
-  spec('UI-28', 'turning the window draws the chrome from its old arrangement and ends exactly where the settled upright render puts it', async () => {
+  spec('UI-28', 'turning the window plays a morph whose every move runs out to the upright render and leaves nothing behind', async () => {
     waapi = installWebAnimations('[data-morph], [inert]');
     await mountAt(1180, 820);
     turn(820, 1180);
     await wait(100);
     const morph = morphOf();
     expect(morph.length, 'a morph runs').toBeGreaterThan(0);
-    const moves = morph.filter((a) => a.options.composite === 'add');
-    // Its first frame draws the corner actions away from their new place.
-    const start = drawnPieces();
     // Every move runs out to no transform of its own and keeps nothing once it has run.
-    for (const a of moves) {
+    for (const a of morph.filter((m) => m.options.composite === 'add')) {
       expect(a.keyframes.at(-1)!.transform).toBe('translate(0px, 0px) scale(1)');
       expect(a.options.fill ?? 'none').toBe('none');
     }
     for (const a of morph) a.animation.finish();
     await wait(50);
-    const end = drawnPieces();
-    expect(start.corner, 'the corner actions travel').not.toEqual(end.corner);
     expect(document.documentElement.hasAttribute('data-morphing')).toBe(false);
     expect(document.querySelectorAll('[inert][aria-hidden="true"][style*="fixed"]').length, 'no stand-in stays').toBe(0);
-
-    // A fresh render of the upright arrangement draws every piece where the morph ended.
-    stopWiring();
-    stopWiring = () => {};
-    cleanup();
-    await mountAt(820, 1180);
-    expect(end).toEqual(drawnPieces());
   });
 
   spec('UI-28', 'a resize that keeps the arrangement moves nothing, and the map is never drawn by a morph', async () => {

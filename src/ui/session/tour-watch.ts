@@ -51,7 +51,7 @@ export function readTourWatch(): TourWatch {
   };
 }
 
-export interface TourWatchHandlers {
+interface TourWatchHandlers {
   /** Something the watch reads may have moved. */
   changed(): void;
   /** The visitor's hand acted: a press going down, moving or let go, the wheel, or a key going

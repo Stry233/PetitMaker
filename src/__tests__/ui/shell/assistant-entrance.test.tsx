@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The assistant's seat. The character is one element positioned `fixed` from the seat's measured rect
- * (`ui/agent/character/seat.ts`), and the frame anchors the panel's top-left to the same box, so:
- *  - no ancestor of the seat may carry a `transform` or `filter`, either of which becomes the fixed
- *    element's containing block (and her dust puff's offset parent);
- *  - the character's layer stands outside the frame's `zoom`, since a fixed element in a zoomed
- *    subtree would land at zoom times its measured position (as `narrow-viewport.test.tsx` argues).
- * jsdom lays nothing out, so this asserts which elements exist and what they carry.
+ * The assistant's character on the shell: one copy on screen with the panel open or shut, no selected
+ * splat on her block, and gone with the frame when the interface is put away. Where she stands is
+ * checked in a browser.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -57,12 +53,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the character's entrance", () => {
-  it('is a box in the assistant block, and the block draws no picture of its own there', () => {
-    mountShell();
-    const anchor = screen.getByTestId('entrance-plate-anchor');
-    expect(anchor.querySelector('img')).toBeNull();
-  });
-
   /** The panel is narrower than the splat, so a splat on this block would show from under its corner
    *  as a sixth mode. */
   it('wears no selected splat while the panel is open', async () => {
@@ -82,24 +72,6 @@ describe("the character's entrance", () => {
     expect(splats().filter((img) => block().contains(img))).toHaveLength(0);
   });
 
-  it('carries no transform or filter on any ancestor of it', () => {
-    mountShell();
-    for (let el: HTMLElement | null = screen.getByTestId('entrance-plate-anchor'); el && el !== document.body; el = el.parentElement) {
-      expect(el.style.transform, el.getAttribute('data-testid') ?? el.tagName).toBe('');
-      expect(el.style.filter, el.getAttribute('data-testid') ?? el.tagName).toBe('');
-    }
-  });
-
-  it('stands the character in a layer outside the frame\'s zoom', () => {
-    mountShell();
-    const layer = screen.getByTestId('character-layer');
-    for (let el = layer.parentElement; el; el = el.parentElement) {
-      expect(el.getAttribute('style') ?? '').not.toContain('zoom');
-    }
-    // The character and the chip at her shoulder take presses on their own boxes only.
-    expect(layer.style.pointerEvents).toBe('none');
-  });
-
   /** With the panel open the desk reserves her box rather than drawing a second copy. */
   it('is the only character on screen, panel open or shut', async () => {
     mountShell();
@@ -113,9 +85,10 @@ describe("the character's entrance", () => {
 
   it('goes away with the frame when the interface is put away', () => {
     mountShell();
-    expect(screen.getByTestId('character-layer').style.visibility).toBe('visible');
+    const shown = () => getComputedStyle(screen.getByTestId('character-layer')).visibility !== 'hidden';
+    expect(shown()).toBe(true);
     act(() => { fireEvent.click(screen.getByLabelText(translate('a11y.hide_ui'))); });
-    expect(screen.getByTestId('character-layer').style.visibility).toBe('hidden');
+    expect(shown()).toBe(false);
   });
 });
 

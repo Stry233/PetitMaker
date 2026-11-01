@@ -17,7 +17,7 @@ export type { StylizeListModels };
 /** How long the hands stay still before the key or the address is taken as settled. */
 const PROBE_DEBOUNCE_MS = 600;
 
-export type ModelsState = Exclude<DiscoveryState, 'refused'>;
+type ModelsState = Exclude<DiscoveryState, 'refused'>;
 
 export interface StylizeConnectionState {
   /** Whether the persisted settings and the sealed key have been read yet. */
@@ -51,7 +51,7 @@ export interface StylizeConnectionVerbs {
   verify: () => Promise<boolean>;
 }
 
-export interface StylizeConnectionController extends StylizeConnectionVerbs {
+interface StylizeConnectionController extends StylizeConnectionVerbs {
   get(): StylizeConnectionState;
   subscribe(listener: () => void): () => void;
   /** Reads the stored connection once; the returned function drops a read still in flight. */

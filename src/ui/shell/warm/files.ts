@@ -44,7 +44,7 @@ async function hasSimd(): Promise<boolean> {
 
 const playsWebm = (): boolean => playsVideo('video/webm');
 
-export interface WarmFiles {
+interface WarmFiles {
   /** Fetched with the schedule's counted items (inside the cold splash). */
   counted: string[];
   /** Fetched after them, one at a time, never holding the splash: the content check's code, runtime

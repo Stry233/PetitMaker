@@ -14,7 +14,7 @@ import { bodyRoute } from '../geometry/object-meshes';
 import { UP_AXIS, writeInstance, type DrawnSlot } from './object-layer';
 
 /** What the tweens read from the scene that holds them. */
-export interface ObjectMotionHost {
+interface ObjectMotionHost {
   /** Each instance that draws object `id`. */
   drawn(id: string): Iterable<DrawnSlot>;
   /** The live map. */

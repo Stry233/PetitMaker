@@ -12,6 +12,7 @@ import {
   SavePreview, SharePreview, ImportPreview, JsonPreview, ChecklistPreview, CandidatesPreview,
   SearchPreview,
 } from '../../../ui/help/figures/previews/share';
+import { CANDIDATES } from '../../../ui/shell/bars/generate/generate-shelf';
 import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/help/search-examples';
 
 vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
@@ -76,11 +77,11 @@ describe('save/share/search Help figures mount the real components', () => {
     await waitFor(() => expect(screen.getByTestId('checklist-copy-button')).toBeTruthy(), { timeout: 10_000 });
   }, 15_000);
 
-  it('CandidatesPreview mounts three real CandidateCards', () => {
+  it('CandidatesPreview mounts the generate shelf\'s real card row: the dealt cards and the own card', () => {
     mount(CandidatesPreview);
-    expect(screen.getByTestId('shell-candidate-4127')).toBeTruthy();
-    expect(screen.getByTestId('shell-candidate-90210')).toBeTruthy();
-    expect(screen.getByTestId('shell-candidate-5551')).toBeTruthy();
+    const row = screen.getByTestId('gen-cards-row');
+    expect(row.querySelectorAll('[data-testid^="shell-candidate-"]')).toHaveLength(CANDIDATES + 1);
+    expect(screen.getByTestId('shell-candidate-custom')).toBeTruthy();
   });
 
   it('SearchPreview mounts the real ObjectShelf and types the alias example into its own field, whose real ranking answers with its item', () => {

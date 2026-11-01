@@ -14,7 +14,7 @@
 export interface ScreenBounds { x: number; y: number; w: number; h: number }
 export interface ViewportSize { width: number; height: number }
 export interface Area { left: number; top: number; right: number; bottom: number }
-export interface CardSize {
+interface CardSize {
   /** Header row width and height. */
   w: number;
   h: number;
@@ -22,9 +22,9 @@ export interface CardSize {
   body: number;
 }
 
-export type CardSide = 'above' | 'below' | 'right' | 'left';
+type CardSide = 'above' | 'below' | 'right' | 'left';
 
-export type CardPlacement =
+type CardPlacement =
   | { visible: false }
   | {
     visible: true;
@@ -39,7 +39,7 @@ export type CardPlacement =
   };
 
 /** A placement that shows the card. */
-export type ShownPlacement = Extract<CardPlacement, { visible: true }>;
+type ShownPlacement = Extract<CardPlacement, { visible: true }>;
 
 /** Clear air between the selection and the header, in visual px. */
 const CARD_GAP = 14;
@@ -47,7 +47,7 @@ const CARD_GAP = 14;
 const CARD_MARGIN = 8;
 
 /** The widest header the clear area holds, in visual px. */
-export function headerRoom(area: Area, margin = CARD_MARGIN): number {
+function headerRoom(area: Area, margin = CARD_MARGIN): number {
   return area.right - area.left - 2 * margin;
 }
 
@@ -115,7 +115,7 @@ export function placeSelectionCard(
 }
 
 /** The header row's parts, in visual px: the name at its natural width (up to its longest), and the rest. */
-export interface HeaderParts { title: number; others: number }
+interface HeaderParts { title: number; others: number }
 
 /**
  * Places the card with its name fitted to the room: placed at the name's natural width, the area
@@ -150,7 +150,7 @@ function tailX(cx: number, left: number, width: number): number {
 
 /** The readings that decide whether the card re-reads its place: who is selected, where they stand,
  *  how they face, where the camera is, and the frame the card is drawn in. */
-export interface PlaceSignature {
+interface PlaceSignature {
   members: string;
   positions: string;
   rotations: string;

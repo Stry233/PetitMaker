@@ -113,7 +113,7 @@ export type ContentArming =
 
 /** What object mode has armed: an item card (or several, `picks`), a planting card or the eraser, one
  *  at a time. The shelf has no tool row, so there is no brush, trim or figure here. */
-export type ObjectArming =
+type ObjectArming =
   /** `picks` holds two or more items in the order they were picked, `itemId` the first of them. */
   | { kind: 'item'; itemId: string; picks?: readonly string[] }
   | { kind: 'macro'; macro: string }

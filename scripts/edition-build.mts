@@ -14,6 +14,7 @@ export const liteAliases = [
   { find: /^.*\/glyph\/decode-async$/, replacement: resolve('src/io/share/glyph/decode-async-lite.ts') },
   { find: /^.*\/record-compress$/, replacement: resolve('src/io/storage/record-compress-lite.ts') },
   { find: /^.*\/candidate-pool$/, replacement: resolve('src/tools/generation/run/candidate-pool-lite.ts') },
+  { find: /^.*\/scene-world-builder$/, replacement: resolve('src/ui/help/figures/scenes/scene-world-builder-lite.ts') },
   { find: /^.*\/planet\/PlanetImportWindow$/, replacement: resolve('src/ui/lite/planet-import-window.tsx') },
   { find: /^.*\/clipper-loader$/, replacement: resolve('src/view/shared/road/clipper-loader-lite.ts') },
 ];

@@ -91,7 +91,7 @@ const CURVE_HANDLES: readonly [HandleRect, HandleRect] = [
 ];
 
 /** One drawn layer of a glyph, at its design rect. */
-export interface ArtPart {
+interface ArtPart {
   src: string;
   x: number;
   y: number;
@@ -99,7 +99,7 @@ export interface ArtPart {
   h: number;
 }
 
-export interface ToolCell {
+interface ToolCell {
   id: string;
   /** The toolbar tool and figure this cell stands for: what the row shows active when it is posed. */
   shows: { tool: BuildTool; shape?: BuildShape };

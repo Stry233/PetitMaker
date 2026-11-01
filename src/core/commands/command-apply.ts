@@ -30,7 +30,7 @@ import { PLACEMENT_GRID, TERRAIN_GRID } from '../game/profile';
  */
 /** The objects one history step took off the map and put on it, each as it stood. An object
  *  edited in place is in both, under one id. */
-export interface ObjectOps { removed: PlacedObject[]; added: PlacedObject[] }
+interface ObjectOps { removed: PlacedObject[]; added: PlacedObject[] }
 
 export interface HistoryEntry {
   cmd: Command;

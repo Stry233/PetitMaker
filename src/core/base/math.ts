@@ -23,7 +23,7 @@ export const smoothstep = (e0: number, e1: number, v: number): number => {
 
 /** How a median of an even count is taken from the two middle values: their mean, the lower or the
  *  upper (the value at index `n >> 1` of the sorted values). */
-export type EvenMedian = 'mean' | 'lower' | 'upper';
+type EvenMedian = 'mean' | 'lower' | 'upper';
 
 /** The median of `values[0 .. n)`, `n >= 1`, reordering them in place by quickselect; `even` says how
  *  an even count takes it. */

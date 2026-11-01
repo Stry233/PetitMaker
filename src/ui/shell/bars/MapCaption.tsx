@@ -17,6 +17,7 @@ export function MapCaption({ top, centre, span, motionProps, style, children, ..
 } & Record<`data-${string}`, string | boolean>) {
   return (
     <motion.span
+      data-map-caption
       {...attrs}
       {...motionProps}
       style={{

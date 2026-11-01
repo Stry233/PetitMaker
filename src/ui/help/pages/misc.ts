@@ -70,16 +70,12 @@ export const MISC_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'faq-water', titleKey: 'help.faq.water_t', bodyKeys: ['help.faq.water_b1'] },
       { kind: 'prose', anchor: 'faq-span', titleKey: 'help.faq.span_t', bodyKeys: ['help.faq.span_b1'] },
       { kind: 'prose', anchor: 'faq-revert', titleKey: 'help.faq.revert_t', bodyKeys: ['help.faq.revert_b1'] },
-      { kind: 'prose', anchor: 'faq-undo', titleKey: 'help.faq.undo_t', bodyKeys: ['help.faq.undo_b1'] },
       { kind: 'callout', bodyKey: 'help.faq.co1' },
     ],
     qa: [
-      { qKey: 'help.faq.q1', aKey: 'help.faq.a1' },
       { qKey: 'help.faq.q2', aKey: 'help.faq.a2' },
-      { qKey: 'help.faq.q3', aKey: 'help.faq.a3' },
-      { qKey: 'help.faq.q4', aKey: 'help.faq.a4' },
       { qKey: 'help.faq.q5', aKey: 'help.faq.a5' },
     ],
-    seeAlso: ['terrain', 'objects', 'undo'],
+    seeAlso: ['terrain', 'objects', 'select', 'undo'],
   },
 ];

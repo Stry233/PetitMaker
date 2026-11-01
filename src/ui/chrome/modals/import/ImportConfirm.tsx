@@ -49,7 +49,8 @@ export function ImportConfirm({ preview, name, replacing, busy, onConfirm, onCan
   const title = preview.notes?.title ?? name;
   return (
     <div data-testid="import-confirm" style={{ ...windowColumn, gap: 12 }}>
-      <div style={{ ...windowTitle, flex: 'none' }}>{t('import.confirm_title')}</div>
+      {/* The confirmation stands in for the window's whole body, so its title is the window's heading. */}
+      <h2 style={{ ...windowTitle, flex: 'none', margin: 0 }}>{t('import.confirm_title')}</h2>
       <WindowBody contentStyle={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div data-testid="import-picture" style={pictureStage}>
           <PlanetPreview template={preview.state.template} state={preview.state} />

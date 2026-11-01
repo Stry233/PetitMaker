@@ -7,7 +7,7 @@ import react from '@vitejs/plugin-react';
 import { transformHomepage } from './scripts/site-html.mts';
 import { STAMP_PATH, resolveBuildInfo, resolveVersion, unstampedMessage } from './scripts/build-info-core.mts';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleReportPlugin } from './scripts/bundle-report-plugin.mts';
 import { WORKER_FILES_TOKEN, assetSizeManifest, moderationDir, moderationFingerprint, workerFileCollector, workerFileInjector } from './scripts/warm-build.mts';
@@ -66,6 +66,8 @@ function pkgVersion(): string {
 }
 
 /** The repository root, with forward slashes, for the root-anchored serving rules below. */
+/** Top-level paths whose changes reload the dev server. */
+const WATCHED = ['src', 'public', 'index.html', 'app.html', 'scripts', 'security'];
 const ROOT = fileURLToPath(new URL('.', import.meta.url)).replace(/\\/g, '/').replace(/\/$/, '');
 
 /**
@@ -174,7 +176,10 @@ export default defineConfig(({ mode, command }) => {
        * paths, so they are anchored at the root: a checkout that is itself a nested worktree still
        * watches its own files.
        */
-      watch: { ignored: ['.claude', '.superpowers', 'artifacts'].map((dir) => `${ROOT}/${dir}/**`) },
+      // Reloads only follow the app's own sources; every other top-level tree (worktrees, scratch,
+      // tooling environments, reference media) is unwatched, since a few servers watching the whole
+      // tree exhausted the inotify limit. Unwatched files still serve and import.
+      watch: { ignored: (path: string) => { const rel = relative(ROOT, path); return rel !== '' && !rel.startsWith('..') && !WATCHED.some((top) => rel === top || rel.startsWith(`${top}/`)); } },
       fs: { deny: SERVE_DENY },
     },
     define: {

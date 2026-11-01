@@ -11,7 +11,7 @@ import { groundConvexCornerInWater } from './silhouette';
 import { isInnerCorner } from './cut-validator';
 
 /** An outer cut a corner offers: a block's convex corner, or a ground islet's corner poking into water. */
-export type OuterCutSite = 'block' | 'islet';
+type OuterCutSite = 'block' | 'islet';
 
 /**
  * The outer cut each corner of (x, y) offers, or null. A real block, or a fillet with a real base

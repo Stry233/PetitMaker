@@ -80,7 +80,7 @@ export function parseSeed(raw: string): number | null {
 }
 
 /** Richness as a caller holds it: a percentage, the engine taking a 0..1 fraction. */
-export const RICHNESS_PERCENT_MAX = RECIPE_RANGES.richness.max * 100;
+const RICHNESS_PERCENT_MAX = RECIPE_RANGES.richness.max * 100;
 
 export interface KindSettings {
   kind: GenerateKind;

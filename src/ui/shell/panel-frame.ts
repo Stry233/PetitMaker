@@ -168,7 +168,7 @@ const WIDE_LEAST_H = Math.max(
 export const ARRANGEMENT_ROOM: ArrangementRoom = { uprightLeastW: UPRIGHT_LEAST_W * ZOOM, wideLeastH: WIDE_LEAST_H * ZOOM };
 
 /** How the frame is sized: at touch mode's sizes, and for the upright arrangement. */
-export interface FrameSizing { touch?: boolean; upright?: boolean }
+interface FrameSizing { touch?: boolean; upright?: boolean }
 
 /** The frame's zoom: `ZOOM` times the one scale (`design/scale-model.ts:uiScaleOf`) for a `vw` by
  *  `vh` window whose reference is widened by `refWiden`, at `sizing`. */
@@ -189,7 +189,7 @@ export function dockStrip(aside: number, vh: number, depth?: number): DockRef {
 }
 
 /** The frame's zoom beside the dock strip `strip`, at `sizing`. */
-export function frameZoomBeside(vw: number, vh: number, uiZoom: number, strip: DockRef, sizing: FrameSizing = {}): number {
+function frameZoomBeside(vw: number, vh: number, uiZoom: number, strip: DockRef, sizing: FrameSizing = {}): number {
   const room = besideDock(vw, vh, strip);
   return frameZoomFor(room.vw, room.vh, uiZoom, room.widen, sizing);
 }
@@ -273,7 +273,7 @@ export function bottomDockFloor(zoom: number, vh: number): number {
 }
 
 /** The bottom dock's height in css px with the sheet `aside` of the way off it. */
-export function bottomDockPx(aside: number, depth: number, vh: number): number {
+function bottomDockPx(aside: number, depth: number, vh: number): number {
   return aside * depth * vh;
 }
 

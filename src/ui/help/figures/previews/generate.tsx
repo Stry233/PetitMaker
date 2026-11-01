@@ -169,6 +169,9 @@ export function PictureStencilPreview() {
   );
 }
 
+/** The narrowest a comparison build stands before its row wraps. */
+const SHOT_LEAST_W = 100;
+
 /** One comparison slot: a build to run and the chip that names what was varied. */
 interface ShotSlot { id: string; label: string; build: () => Promise<string | null> }
 
@@ -192,18 +195,19 @@ function ShotRow({ slots, height }: { slots: ReadonlyArray<ShotSlot>; height: nu
     return () => { live = false; };
   }, [slots, inView]);
   return (
-    <PreviewFrame height={height}>
+    // A narrow column wraps the row rather than squeezing each build and its chip below reading size.
+    <PreviewFrame height={height * slots.length} fit>
       {/* Full width, stated: the frame centers its child with shrink-to-fit sizing, and a row
-          without a width would collapse the percent-sized figures (and their images) with it.
+          without a width would collapse the flexible figures (and their images) with it.
           The image caps at the row's height so any drawn aspect fits above its chip. */}
       {/* The ref rides the row rather than the frame: PreviewFrame keeps no forwarded ref. */}
-      <div ref={hostRef} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', justifyContent: 'center', width: '100%' }}>
+      <div ref={hostRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start', justifyContent: 'center', width: '100%' }}>
         {slots.map((slot, i) => (
-          <figure key={slot.id} style={{ margin: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: `${Math.floor(92 / slots.length)}%` }}>
+          <figure key={slot.id} style={{ margin: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: `1 1 ${SHOT_LEAST_W}px`, maxWidth: `${Math.floor(96 / slots.length)}%`, minWidth: SHOT_LEAST_W }}>
             {shots[i]
               ? <img src={shots[i]!} alt="" draggable={false} style={{ maxWidth: '100%', maxHeight: height - 52, borderRadius: 8 }} />
               : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 90 }}><LoadingDots color={PLATE_INK} /></span>}
-            <figcaption style={figureCaption({ role: 'chip', padding: '3px 10px', nowrap: true })}>{slot.label}</figcaption>
+            <figcaption style={{ ...figureCaption({ role: 'chip', padding: '3px 10px' }), textAlign: 'center' }}>{slot.label}</figcaption>
           </figure>
         ))}
       </div>
@@ -339,7 +343,7 @@ function GenerateShelfPreview({ kind }: { kind?: 'maze' | 'island' }) {
   const inView = useInView(hostRef);
   return (
     <div ref={hostRef} style={{ width: '100%' }}>
-      <PreviewFrame height={230} zoom={0.62}>
+      <PreviewFrame height={371}>
         {inView && <GenerateShelf {...(kind ? { initialKind: kind } : {})} />}
       </PreviewFrame>
     </div>

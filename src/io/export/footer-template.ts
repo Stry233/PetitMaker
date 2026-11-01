@@ -6,7 +6,7 @@
  */
 import type { I18nKey } from '../../i18n/keys';
 
-export interface FooterToken { id: string; labelKey: I18nKey }
+interface FooterToken { id: string; labelKey: I18nKey }
 
 /** The fill token id — everything after it is right-aligned. */
 export const FOOTER_FILL = 'fill';
@@ -37,7 +37,7 @@ export function formatFooterDate(d: Date = new Date()): string {
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 }
 
-export type FooterSeg = { t: 'text'; v: string } | { t: 'token'; id: string };
+type FooterSeg = { t: 'text'; v: string } | { t: 'token'; id: string };
 
 /** Parse a template into ordered segments (literal text + tokens, incl. {fill}). */
 export function parseFooter(tpl: string): FooterSeg[] {

@@ -31,7 +31,7 @@ import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
  * a colour boundary, so the outermost cell of a feature is the one whose placement is refused — and a
  * mark on the inside reads as the feature rather than as a fringe of it.
  */
-export interface Feature {
+interface Feature {
   cells: number[];
   /** The picture's own mean colour over the feature. */
   rgb: number;
@@ -206,7 +206,7 @@ function surround(
 
 /** One feature realized: the item that says its colour, the cells it may be said on, and how many of
  *  them the budget affords. */
-export interface FeatureMark {
+interface FeatureMark {
   catalogId: string;
   /**
    * Every cell of the feature, innermost first — the order the caller must try them in.

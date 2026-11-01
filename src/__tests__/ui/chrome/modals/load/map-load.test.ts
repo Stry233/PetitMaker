@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { bumpObjectsVersion } from '../../../../../core/model/grid-model';
 import { getMapStats } from '../../../../../state/map-stats';
 import {
-  allChunkLoads, chunkLoad, chunkName, MAP_LOAD_SHOWN,
+  allChunkLoads, chunkLoad,
 } from '../../../../../ui/chrome/modals/load/map-load';
 import { makeObject, makeState } from '../../../../_support/map-state';
-import { chunkColumnLabel, chunkRowLabel } from '../../../../../core/grid/map-chunks';
-import { CHUNK_LOAD_ENABLED, CHUNK_SIZE } from '../../../../../core/game/profile';
+import { chunkColumnLabel, chunkName, chunkRowLabel } from '../../../../../core/grid/map-chunks';
+import { CHUNK_SIZE } from '../../../../../core/game/profile';
 
 
 describe('a region\'s name', () => {
@@ -44,9 +44,8 @@ describe('what a region carries', () => {
   it('reads a region holding nothing as empty rather than as absent', () => {
     const state = makeState(CHUNK_SIZE, CHUNK_SIZE);
     const empty = chunkLoad(getMapStats(state), 0, 0);
-    expect(empty).not.toBeNull();
-    expect(empty!.value).toBe(0);
-    expect(empty!.objects).toBe(0);
+    expect(empty.value).toBe(0);
+    expect(empty.objects).toBe(0);
   });
 
   /** The window's question is where there is room, so a list of only the busy regions has no map
@@ -66,12 +65,5 @@ describe('what a region carries', () => {
     expect(rows[0]!.name).toBe('A1');
     expect(rows[12]!.name).toBe('A13');
     expect(rows[155]!.name).toBe('L13');
-  });
-});
-
-describe('published regional load readings', () => {
-  it('shows measured loads in production', () => {
-    expect(CHUNK_LOAD_ENABLED).toBe(true);
-    expect(MAP_LOAD_SHOWN).toBe(true);
   });
 });

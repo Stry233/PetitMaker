@@ -29,9 +29,9 @@ import { resolveReducedMotion, useOsReducedMotion } from '../../../session/use-m
  * constants), so the toggles and the quality trio show their effect on the
  * thing itself rather than naming it. One drawing shared by all five tiles:
  * a pond with a sand rim, a stepped mountain, the plaza, the rest grass. */
-export const MAP_CELL = 12;
-export const MAP_W = 10 * MAP_CELL;
-export const MAP_H = 7 * MAP_CELL;
+const MAP_CELL = 12;
+const MAP_W = 10 * MAP_CELL;
+const MAP_H = 7 * MAP_CELL;
 const GRASS = ZONE_COLORS[CellZone.Grass]!;
 const SEA = WATER_COLOR;
 const SAND = ZONE_COLORS[CellZone.Beach]!;
@@ -39,10 +39,10 @@ const SAND = ZONE_COLORS[CellZone.Beach]!;
 const PLAZA = templateAnchor(DEFAULT_MAP)?.color ?? GRASS;
 const POND: Array<[number, number]> = [[0, 4], [1, 4], [0, 5], [1, 5], [2, 5], [0, 6], [1, 6], [2, 6]];
 const RIM: Array<[number, number]> = [[0, 3], [1, 3], [2, 3], [2, 4], [3, 4], [3, 5], [3, 6]];
-export const MOUNT_1: Array<[number, number]> = [[6, 0], [7, 0], [8, 0], [9, 0], [6, 1], [7, 1], [8, 1], [9, 1], [7, 2], [8, 2], [9, 2]];
-export const MOUNT_2: Array<[number, number]> = [[7, 0], [8, 0], [9, 0], [8, 1], [9, 1]];
-export const MOUNT_3: Array<[number, number]> = [[9, 0], [9, 1]];
-export const PLAZA_CELLS: Array<[number, number]> = [[4, 2], [5, 2], [4, 3], [5, 3]];
+const MOUNT_1: Array<[number, number]> = [[6, 0], [7, 0], [8, 0], [9, 0], [6, 1], [7, 1], [8, 1], [9, 1], [7, 2], [8, 2], [9, 2]];
+const MOUNT_2: Array<[number, number]> = [[7, 0], [8, 0], [9, 0], [8, 1], [9, 1]];
+const MOUNT_3: Array<[number, number]> = [[9, 0], [9, 1]];
+const PLAZA_CELLS: Array<[number, number]> = [[4, 2], [5, 2], [4, 3], [5, 3]];
 
 function cells(at: Array<[number, number]>, fill: string): ReactNode {
   return at.map(([x, y]) => (
@@ -50,7 +50,7 @@ function cells(at: Array<[number, number]>, fill: string): ReactNode {
   ));
 }
 
-export function MapBase(): ReactNode {
+function MapBase(): ReactNode {
   return (
     <>
       <rect width={MAP_W} height={MAP_H} fill={GRASS} />
@@ -115,10 +115,10 @@ export function ChunkOverlay({ on }: { on: boolean }): ReactNode {
 }
 
 // Matching camera frames expose model detail and shadows; Auto combines the two device profiles.
-export const QUALITY_FULL_URL = iconUrl('settings-quality-full');
-export const QUALITY_LITE_URL = iconUrl('settings-quality-lite');
+const QUALITY_FULL_URL = iconUrl('settings-quality-full');
+const QUALITY_LITE_URL = iconUrl('settings-quality-lite');
 
-export const qualityImg = (clip?: 'left' | 'right'): CSSProperties => ({
+const qualityImg = (clip?: 'left' | 'right'): CSSProperties => ({
   position: 'absolute',
   inset: 0,
   width: '100%',
@@ -180,7 +180,7 @@ export const capStyle: CSSProperties = {
   color: skin.plateInk,
 };
 
-export const capDot = (on: boolean): CSSProperties => ({
+const capDot = (on: boolean): CSSProperties => ({
   width: 8,
   height: 8,
   borderRadius: radii.pill,

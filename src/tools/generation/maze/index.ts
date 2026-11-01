@@ -15,5 +15,4 @@
  * why), so `generateMaze` does not cross this door: a caller runs a maze through the generation door.
  */
 export { defaultMazeGates, latticeField, mazeFootprint, type MazeFootprint } from './maze-generator';
-export { MAZE_MAX_ELEVATION } from '../recipe';
-export { onRing, resolveEnd, type MazeEnd, type MazeField } from './maze-endpoints';
+export { onRing, resolveEnd, type MazeEnd } from './maze-endpoints';

@@ -11,6 +11,11 @@ import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { Rail } from '../../../../ui/shell/Rail';
 import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
+import { setToastPresenter } from '../../../../platform/channels/toast-bus';
+import { createExecutor } from '../../../../state/executor';
+import { createDefaultRegistry } from '../../../../rules';
+import { makeState } from '../../../_support/map-state';
+import { CommandType, TerrainType } from '../../../../core/model/types';
 
 const gl = vi.hoisted(() => ({ webgl2: true }));
 vi.mock('../../../../platform/device/device-quality', async (orig) => ({
@@ -18,19 +23,20 @@ vi.mock('../../../../platform/device/device-quality', async (orig) => ({
   hasWebGL2: () => gl.webgl2,
 }));
 
-const toast = vi.hoisted(() => ({ show: vi.fn() }));
-vi.mock('../../../../platform/channels/toast-bus', async (orig) => ({ ...(await orig<object>()), showToast: (...args: unknown[]) => toast.show(...args) }));
+const toast = { show: vi.fn() };
+let releaseToasts: (() => void) | null = null;
 
 const toggle = () => screen.getByLabelText('Switch view');
 
 beforeEach(() => {
   window.innerHeight = 900;
   toast.show.mockClear();
+  releaseToasts = setToastPresenter(toast.show);
   useEditorStore.setState({
     locale: 'en', eventBus: new EventBus<EditorEvents>(), gridState: null, viewMode: '2d', uiZoom: 1,
   });
 });
-afterEach(() => { cleanup(); gl.webgl2 = true; });
+afterEach(() => { cleanup(); gl.webgl2 = true; releaseToasts?.(); });
 
 function mount() {
   return render(<I18nProvider><Rail hidden={false} onHide={() => {}} /></I18nProvider>);
@@ -71,20 +77,22 @@ describe('the history pair while a region is painted', () => {
   const redo = () => screen.getByLabelText('Redo');
 
   it('steps the region, never the map', () => {
-    const executor = { undo: vi.fn(), redo: vi.fn(), canUndo: () => false, canRedo: () => false, attachAside: () => {} };
+    const state = makeState();
+    const executor = createExecutor(state, createDefaultRegistry());
+    executor.execute({ type: CommandType.PaintTerrain, cells: [{ x: 5, y: 5 }], terrainType: TerrainType.Mountain, elevation: 1 });
+    const built = () => state.cells[5]![5]!.terrain?.type;
+    expect(built(), 'the map has an edit to undo').toBe(TerrainType.Mountain);
     const painted = [{ x: 2, y: 3 }];
-    // `INVALID STORE SEED:` a stub executor that only records whether the map's history was stepped.
     useEditorStore.setState({
-      selectingRegion: true, commandExecutor: executor as never, region: painted, regionUndoLane: [[]], regionRedoLane: [],
+      gridState: state, selectingRegion: true, commandExecutor: executor, region: painted, regionUndoLane: [[]], regionRedoLane: [],
     });
     mount();
     expect(redo()).toHaveProperty('disabled', true);
     fireEvent.click(undo());
     expect(useEditorStore.getState().region).toEqual([]);
-    expect(executor.undo).not.toHaveBeenCalled();
+    expect(built(), 'the map kept its edit').toBe(TerrainType.Mountain);
     fireEvent.click(redo());
     expect(useEditorStore.getState().region).toEqual(painted);
-    expect(executor.redo).not.toHaveBeenCalled();
-    useEditorStore.setState({ selectingRegion: false, commandExecutor: null, region: [], regionUndoLane: [], regionRedoLane: [] });
+    useEditorStore.setState({ selectingRegion: false, commandExecutor: null, gridState: null, region: [], regionUndoLane: [], regionRedoLane: [] });
   });
 });

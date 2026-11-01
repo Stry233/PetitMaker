@@ -7,6 +7,9 @@ import type { TokenSpec } from './hints/catalogue';
 import type { ProviderId } from '../../agent/panel';
 import type { TextKey } from '../../i18n/keys';
 import type { EditionVariant } from '../../platform/build/edition';
+import type { TourKind } from '../chrome/tour/deck';
+import type { InputMode } from '../../platform/device/input-mode';
+import type { LayoutShape } from '../../platform/device/layout-shape';
 
 /** A Help entry with its offline-edition variant: `lite: false` leaves it out there, and an object
  *  replaces those fields (`platform/build/edition.ts:forEdition`). */
@@ -15,8 +18,8 @@ type Editioned<T> = T & EditionVariant<Omit<T, 'kind'>>;
 export type HelpGroupId = 'start' | 'build' | 'generate' | 'plan' | 'share' | 'agent' | 'misc';
 
 export type HelpPageId =
-  | 'welcome' | 'frame' | 'camera' | 'tour'
-  | 'terrain' | 'trim' | 'objects' | 'search' | 'select' | 'smart'
+  | 'welcome' | 'frame' | 'camera' | 'touch' | 'tour'
+  | 'terrain' | 'trim' | 'objects' | 'search' | 'select' | 'copy' | 'smart'
   | 'generate' | 'gen-island' | 'maze' | 'gen-letter' | 'gen-picture' | 'candidates' | 'region'
   | 'notes' | 'layers' | 'load' | 'undo'
   | 'save' | 'share' | 'json' | 'checklist' | 'planet'
@@ -59,13 +62,21 @@ type HelpQA = Editioned<{
   aKey: TextKey;
 }>;
 
+/** The input mode and shape a figure pictures where it is not the reader's own: a figure about touch
+ *  mode or the upright layout. Absent, a figure pictures the reader's form. */
+interface FigureForm { inputMode?: InputMode; shape?: LayoutShape }
+
 /** A demo narrates itself (the animated caption inside the canvas), so only a surface figure
  *  carries a static caption — a second line under a demo said the same thing twice. */
-type HelpFigure =
+type HelpFigure = (
   | { kind: 'demo'; scene: string }
+  /** The welcome tips' recording of `reel`, in the reader's locale and form, where it shows exactly
+   *  what the section explains; `fallback` stands where no recording ships (the offline edition). */
+  | { kind: 'reel'; reel: TourKind; fallback?: Exclude<HelpFigure, { kind: 'reel' }> }
   /** Several small demos side by side, each with its own label line. */
   | { kind: 'demos'; scenes: readonly { scene: string; labelKey: TextKey }[] }
-  | { kind: 'surface'; surface: string; captionKey: TextKey };
+  | { kind: 'surface'; surface: string; captionKey: TextKey }
+) & { form?: FigureForm };
 
 /** A page-level verb: the one live door a page offers beside its prose. */
 interface HelpAction {

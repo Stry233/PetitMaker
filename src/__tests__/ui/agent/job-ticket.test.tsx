@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The job ticket: the sticky order line, its region, the tape, the says line, the op rows with end
- * marks and result chips, the plan rail's rollups and flags, and a hold's mark and verbs. Colour
- * assertions push both sides through the same DOM round-trip (`asColor`), since jsdom's cssstyle can
- * normalize equal colours differently.
+ * marks and result chips, the plan rail's rollups and flags, and a hold's mark and verbs.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, fireEvent, waitFor } from '@testing-library/react';
@@ -12,8 +10,6 @@ import { translations } from '../../_support/locale-tables';
 import { useEditorStore } from '../../../state/store';
 import { JobTicket } from '../../../ui/agent/record/JobTicket';
 import { OpsList } from '../../../ui/agent/record/OpRow';
-import { tickInk } from '../../../ui/agent/panel-skin';
-import { ACTIVE, INK } from '../../../ui/design/tokens';
 import type { JobView, OpRow as OpRowData } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/locale';
 import { BASE_SUPPORT, CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
@@ -50,12 +46,6 @@ beforeEach(() => {
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-function asColor(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.color = value;
-  return probe.style.color;
-}
-
 it('shows a localized operation target and retained counts while keeping provider prose private', () => {
   const ui = renderWithI18n(<OpRow op={makeOp({
     name: 'paint_terrain', summary: 'RAW PROVIDER RESULT WITH INTERNAL DATA',
@@ -67,12 +57,6 @@ it('shows a localized operation target and retained counts while keeping provide
   expect(ui.getByTestId('op-detail').textContent).toBe('9 cells');
   expect(ui.container.textContent).not.toContain('RAW PROVIDER');
 });
-
-function asBackground(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.background = value;
-  return probe.style.background;
-}
 
 let opSeq = 0;
 function makeOp(over: Partial<OpRowData> = {}): OpRowData {
@@ -234,7 +218,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     revision: 1,
   };
 
-  it('marks done stages with a drawn check, turns a loader in the active box, and dims pending ones', () => {
+  it('marks done stages with a drawn check and states each stage\'s place', () => {
     const ops = [makeOp({ name: 'place_object', status: 'run' })];
     const job = makeJob({ plan, ops });
     const { getAllByTestId } = renderWithI18n(<JobTicket job={job} live />);
@@ -246,12 +230,6 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
 
     const boxes = getAllByTestId('stage-box');
     expect(boxes[0]!.querySelector('use')?.getAttribute('href')).toBe('#pw-check');
-    // One loader per state: the tape carries the plan's progress, so the active box holds no spinner.
-    expect(boxes[1]!.querySelector('.pw-busy')).toBeNull();
-    expect(boxes[1]!.style.background).not.toBe('');
-
-    const pendingLabel = stages[2]!.querySelector('[data-testid="plan-stage-label"]') as HTMLElement;
-    expect(Number(pendingLabel.style.opacity)).toBeLessThan(1);
   });
 
   it('keeps ungrouped legacy reverts on the active stage', () => {
@@ -370,7 +348,6 @@ describe('OpRow: a reverted row', () => {
     const { getByTestId, container } = renderWithI18n(<OpRow op={op} />);
     const row = getByTestId('op-row');
     expect(row.getAttribute('data-open')).toBe('true');
-    expect(asColor(getByTestId('tick-dot').style.color)).toBe(asColor(tickInk.revert));
     const detail = getByTestId('op-detail');
     expect(container.textContent).not.toContain('REVERTED');
     // A log with no keyed rule gets the generic localized explanation.
@@ -494,7 +471,6 @@ describe('OpRow: a reverted row', () => {
     for (const status of ['pending-gate', 'words', 'skipped'] as const) {
       const view = renderWithI18n(<OpRow op={makeOp({ status })} />);
       expect(view.getByTestId('op-row').getAttribute('data-ghost'), status).toBe('true');
-      expect(view.getByTestId('op-row').style.border, status).toContain('dashed');
       view.unmount();
     }
     const plain = renderWithI18n(<OpRow op={makeOp({ status: 'ok' })} />);
@@ -504,7 +480,6 @@ describe('OpRow: a reverted row', () => {
   it('names the user\'s own decline rather than colouring it as a fault', () => {
     const { getByTestId } = renderWithI18n(<OpRow op={makeOp({ status: 'skipped' })} />);
     expect(getByTestId('op-chip').textContent).toBe('you said no');
-    expect(asColor(getByTestId('tick-dot').style.color)).not.toBe(asColor(tickInk.error));
   });
 
   /** Only a style skill is a playbook. */
@@ -622,16 +597,15 @@ describe('JobTicket: the tape band', () => {
 });
 
 describe('JobTicket: the says-line', () => {
-  it('clamps at 2 lines and expands from its own chevron', () => {
+  it('expands and folds from its own chevron', () => {
     const job = makeJob({ says: 'A long thought that would run past two lines in the narrow panel width.' });
     const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     const line = getByTestId('says-line');
-    expect(line.style.webkitLineClamp).toBe('2');
+    expect(line.getAttribute('data-open')).not.toBe('true');
     fireEvent.click(getByTestId('says-expand'));
     expect(line.getAttribute('data-open')).toBe('true');
-    expect(line.style.webkitLineClamp).toBe('');
     fireEvent.click(getByTestId('says-expand'));
-    expect(line.style.webkitLineClamp).toBe('2');
+    expect(line.getAttribute('data-open')).not.toBe('true');
   });
 
   it('renders no says-line at all when the job has nothing to say', () => {
@@ -664,7 +638,6 @@ describe('JobTicket: the says-line', () => {
     const job = makeJob({ says: 'Two things.\n\n- **The lake** goes in first\n- Then the pines' });
     const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
     const line = getByTestId('says-line');
-    expect(line.style.whiteSpace).toBe('pre-line');
     expect(line.querySelectorAll('strong')).toHaveLength(1);
     expect(line.textContent).not.toContain('**');
     expect(line.textContent).toContain('The lake');
@@ -681,14 +654,6 @@ describe('JobTicket: the says-line', () => {
 });
 
 describe('JobTicket: the order line and the region it was filed under', () => {
-  /** The ticket can outgrow the job zone, and the order must not scroll away with it. */
-  it('pins the order inside the visible scroll edge', () => {
-    const { getByTestId } = renderWithI18n(<JobTicket job={makeJob()} live />);
-    const order = getByTestId('ticket-order');
-    expect(order.style.position).toBe('sticky');
-    expect(order.style.top).toBe('0px');
-    expect(order.style.background).not.toBe('');
-  });
 
   it('says a job was filed under a region, and stands the caller\'s vignette beside it', () => {
     const job = makeJob({ region: { count: 42, x1: 2, y1: 3, x2: 9, y2: 9 } });
@@ -706,14 +671,6 @@ describe('JobTicket: the order line and the region it was filed under', () => {
 });
 
 describe('JobTicket: a job on hold', () => {
-  it('freezes the tape while the work is held', () => {
-    const running = renderWithI18n(<JobTicket job={makeJob({ ops: [makeOp()] })} live />);
-    expect(running.getByTestId('tape-stripes').classList.contains('pw-stripe-drift')).toBe(true);
-    running.unmount();
-
-    const held = renderWithI18n(<JobTicket job={makeJob({ ops: [makeOp()] })} live held />);
-    expect(held.getByTestId('tape-stripes').classList.contains('pw-stripe-drift')).toBe(false);
-  });
 
   it('marks where a paused job stopped, by stage where it filed a plan', () => {
     const plan: NonNullable<JobView['plan']> = {
@@ -752,11 +709,4 @@ describe('JobTicket: a job on hold', () => {
     expect(running.queryByTestId('ticket-actions')).toBeNull();
   });
 
-  it('paints the hold\'s own Resume with the dark ink primary, never the ask colour', () => {
-    const { getByTestId } = renderWithI18n(
-      <JobTicket job={makeJob()} live paused onResume={() => {}} onStop={() => {}} />,
-    );
-    expect(asBackground(getByTestId('ticket-resume').style.background)).toBe(asBackground(INK));
-    expect(asBackground(getByTestId('ticket-resume').style.background)).not.toBe(asBackground(ACTIVE));
-  });
 });

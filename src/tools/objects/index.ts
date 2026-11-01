@@ -10,13 +10,12 @@
  */
 export { moveObject, rotateObject, peelTerrain, type RotateResult } from './actions';
 export {
-  groupMembers, groupBounds, moveGroup, planGroupMove, rotateGroup, deleteGroup,
+  groupBounds, moveGroup, rotateGroup, deleteGroup,
   type DeleteGroupResult, type QuarterTurn,
 } from './group-actions';
 export type { GroupRotation } from './group-rotation';
 export { candidateObject } from './candidate';
-export { BatchSlots, type BatchSlot, type BatchLayout } from './batch-slots';
 export {
-  copyArrangement, arrangementOf, planPaste, findOpenPaste, pasteArrangement, pasteAt,
-  type CopyResult, type PasteAim, type PasteDoor, type PasteOutcome, type PastePlan, type PasteResult,
+  copyArrangement, arrangementOf, pasteArrangement, pasteAt, pasteKeyAim,
+  type CopyResult, type PasteAim, type PasteDoor, type PasteOutcome, type PasteResult,
 } from './arrangement';

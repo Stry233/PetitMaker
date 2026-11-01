@@ -60,7 +60,7 @@ export const DECODE_QUEUE = 4;
 const WINDOW = 4 << 20;
 
 /** The decoder configuration of `track`. */
-export function decoderConfig(track: VideoTrack): VideoDecoderConfig {
+function decoderConfig(track: VideoTrack): VideoDecoderConfig {
   return {
     codec: track.codec,
     codedWidth: track.codedWidth,
@@ -162,7 +162,7 @@ class SampleReader {
 
 /** Receives a drawn frame, valid only during the call, and its presentation time in seconds;
  *  returning false stops decoding. */
-export type DrawnFrameSink = (frame: RgbaImage, time: number) => boolean | void;
+type DrawnFrameSink = (frame: RgbaImage, time: number) => boolean | void;
 
 interface Run {
   /** Decode-order sample ranges [from, to), each starting at a key frame. */
@@ -173,7 +173,7 @@ interface Run {
   readonly options: DecodeOptions;
 }
 
-export interface DecodeOptions {
+interface DecodeOptions {
   readonly signal?: AbortSignal;
   /** Awaited before each chunk is decoded: the consumer's backpressure. */
   readonly hold?: () => void | Promise<void>;

@@ -13,10 +13,12 @@ import type { GridId } from '../../../core/grid/grids';
 import type { MacroChannel, MacroOffThread } from '../../macros/context';
 import { CurveSessions, type CurveChannel } from '../paint/curve-session';
 import type { AnnotationChannels, AnnotationEditVerbs } from '../annotate/channel';
+import type { MacroPressChannel } from '../macros/tool-context';
+import { PAGE_CLOCK, type HoldClock } from '../macros/hold-clock';
 
 /** The feature channels a host carries beside the base contract, each declared by the feature that
  *  reads it; a tool names the ones it reads in its context type. */
-export type ToolChannels = MacroChannel & AnnotationChannels & CurveChannel;
+export type ToolChannels = MacroChannel & MacroPressChannel & AnnotationChannels & CurveChannel;
 
 /** The context the tool manager hands every tool: the base context and every channel. */
 export type HostedToolContext = ToolContext & ToolChannels;
@@ -40,6 +42,10 @@ export interface ToolHostDeps {
   offThread?: MacroOffThread;
   /** The editor's curve adjust phase; absent, the host keeps its own. */
   curve?: CurveSessions;
+  /** What a held Smart Build press ticks on; absent, the page's timers. */
+  holdClock?: HoldClock;
+  /** Seeds dealt to the Smart Build tool (`MacroPressChannel.dealSeed`); absent, none. */
+  dealSeed?: MacroPressChannel['dealSeed'];
 }
 
 const noop = (): void => {};
@@ -82,6 +88,8 @@ export function createToolHost(deps: ToolHostDeps): ToolHost & ToolChannels {
     plopObject: (id) => deps.view?.()?.plopObject(id),
     reportGroundClipped: deps.reportGroundClipped,
     macroContext: { state, executor, registry, offThread: deps.offThread },
+    holdClock: deps.holdClock ?? PAGE_CLOCK,
+    dealSeed: deps.dealSeed,
     annotationEdit: deps.annotationEdit ?? HEADLESS_ANNOTATION_EDIT,
     tagLabel: deps.tagLabel ?? ((tag) => tag),
     curve: deps.curve ?? new CurveSessions(),

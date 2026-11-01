@@ -10,7 +10,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     titleKey: 'help.terrain.title',
     ledeKey: 'help.terrain.lede',
     entryKey: 'help.terrain.entry',
-    figure: { kind: 'demo', scene: 'terrain' },
+    figure: { kind: 'reel', reel: 'shape', fallback: { kind: 'demo', scene: 'terrain' } },
     sections: [
       {
         kind: 'prose', anchor: 'terrain-brush', titleKey: 'help.terrain.brush_t', bodyKeys: ['help.terrain.brush_b1', 'help.terrain.tools_b1'],
@@ -29,7 +29,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         figure: { kind: 'demo', scene: 'lineridge' },
       },
       {
-        kind: 'prose', anchor: 'terrain-curve', titleKey: 'help.terrain.curve_t', bodyKeys: ['help.terrain.curve_b1'],
+        kind: 'prose', anchor: 'terrain-curve', titleKey: 'help.terrain.curve_t', bodyKeys: ['help.terrain.curve_b1', 'help.terrain.curve_b2'],
         figure: { kind: 'demo', scene: 'curvebank' },
       },
       {
@@ -65,12 +65,12 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'terrain-road', titleKey: 'help.terrain.road_t', bodyKeys: ['help.terrain.road_b1', 'help.terrain.road_b2'],
         figure: { kind: 'demo', scene: 'road' },
       },
+      { kind: 'prose', anchor: 'terrain-prints', titleKey: 'help.terrain.prints_t', bodyKeys: ['help.terrain.prints_b1'] },
     ],
     qa: [
       { qKey: 'help.terrain.q1', aKey: 'help.terrain.a1' },
       { qKey: 'help.terrain.q2', aKey: 'help.terrain.a2' },
       { qKey: 'help.terrain.q3', aKey: 'help.terrain.a3' },
-      { qKey: 'help.terrain.q4', aKey: 'help.terrain.a4' },
       { qKey: 'help.terrain.q5', aKey: 'help.terrain.a5' },
     ],
     seeAlso: ['trim', 'smart', 'undo', 'shortcuts'],
@@ -99,8 +99,6 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     ],
     qa: [
       { qKey: 'help.trim.q1', aKey: 'help.trim.a1' },
-      { qKey: 'help.trim.q2', aKey: 'help.trim.a2' },
-      { qKey: 'help.trim.q3', aKey: 'help.trim.a3' },
       { qKey: 'help.trim.q4', aKey: 'help.trim.a4' },
     ],
     seeAlso: ['terrain', 'undo', 'shortcuts'],
@@ -111,15 +109,36 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     titleKey: 'help.objects.title',
     ledeKey: 'help.objects.lede',
     entryKey: 'help.objects.entry',
-    figure: { kind: 'demo', scene: 'objects' },
+    figure: { kind: 'reel', reel: 'objects', fallback: { kind: 'demo', scene: 'objects' } },
     sections: [
       { kind: 'prose', anchor: 'objects-tabs', titleKey: 'help.objects.tabs_t', bodyKeys: ['help.objects.tabs_b1'], figure: { kind: 'surface', surface: 'object-shelf', captionKey: 'help.objects.shelf_figcap' } },
-      { kind: 'prose', anchor: 'objects-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
+      { kind: 'prose', anchor: 'objects-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.objects.pick_b1'] },
       {
         kind: 'prose', anchor: 'objects-place', titleKey: 'help.objects.place_t', bodyKeys: ['help.objects.place_b1', 'help.objects.place_b2', 'help.objects.place_b3'],
         figure: { kind: 'demo', scene: 'spacing' },
       },
-      { kind: 'prose', anchor: 'objects-batch', titleKey: 'help.objects.batch_t', bodyKeys: ['help.objects.batch_b1', 'help.objects.batch_b2', 'help.objects.batch_b3'] },
+      {
+        kind: 'prose', anchor: 'objects-limit', titleKey: 'help.objects.limit_t', bodyKeys: ['help.objects.limit_b1'],
+        figure: { kind: 'demo', scene: 'objlimit' },
+      },
+      {
+        kind: 'prose', anchor: 'objects-batch', titleKey: 'help.objects.batch_t', bodyKeys: ['help.objects.batch_b1', 'help.objects.batch_b2'],
+        figure: { kind: 'demo', scene: 'objpaint' },
+      },
+      {
+        kind: 'prose', anchor: 'objects-brush', titleKey: 'help.objects.brush_t',
+        bodyKeys: ['help.objects.brush_b1', 'help.objects.brush_b2', 'help.objects.brush_b3'],
+        figure: { kind: 'surface', surface: 'object-brush', captionKey: 'help.objects.brush_figcap' },
+      },
+      { kind: 'keys', anchor: 'objects-brush-keys', titleKey: 'help.share.keys_t', rows: [
+        { doKey: 'objects.place', tokens: [{ kind: 'cmd', id: 'tool.brush' }] },
+        { doKey: 'objects.paint', tokens: [{ kind: 'cmd', id: 'tool.erase' }] },
+        { doKey: 'terrain.shapes', tokens: [{ kind: 'cmd', id: 'tool.shape_cycle' }] },
+      ] },
+      {
+        kind: 'prose', anchor: 'objects-mix', titleKey: 'help.objects.mix_t', bodyKeys: ['help.objects.batch_b3'],
+        figure: { kind: 'demo', scene: 'objmix' },
+      },
       {
         kind: 'prose', anchor: 'objects-rotate', titleKey: 'help.objects.rotate_t', bodyKeys: ['help.objects.rotate_b1'],
         figure: { kind: 'demo', scene: 'rotate' },
@@ -131,7 +150,6 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       },
       {
         kind: 'prose', anchor: 'objects-planting', titleKey: 'help.objects.planting_t', bodyKeys: ['help.objects.planting_b1'],
-        figure: { kind: 'demo', scene: 'smartpatch' },
       },
       { kind: 'prose', anchor: 'objects-houses', titleKey: 'help.objects.houses_t', bodyKeys: ['help.objects.houses_b1', 'help.objects.houses_b2', 'help.objects.houses_b3'] },
       { kind: 'callout', bodyKey: 'help.objects.co1' },
@@ -143,7 +161,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       { qKey: 'help.objects.q4', aKey: 'help.objects.a4' },
       { qKey: 'help.objects.q5', aKey: 'help.objects.a5' },
     ],
-    seeAlso: ['search', 'select', 'smart', 'faq'],
+    seeAlso: ['search', 'select', 'copy', 'smart', 'faq'],
   },
   {
     id: 'search',
@@ -163,7 +181,6 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       { qKey: 'help.search.q1', aKey: 'help.search.a1' },
       { qKey: 'help.search.q2', aKey: 'help.search.a2' },
       { qKey: 'help.search.q3', aKey: 'help.search.a3' },
-      { qKey: 'help.search.q4', aKey: 'help.search.a4' },
     ],
     seeAlso: ['objects', 'select', 'smart'],
   },
@@ -179,7 +196,7 @@ export const BUILD_PAGES: readonly HelpPage[] = [
       { kind: 'prose', anchor: 'select-pick', titleKey: 'help.select.pick_t', bodyKeys: ['help.select.pick_b1'] },
       { kind: 'prose', anchor: 'select-multi', titleKey: 'help.select.multi_t', bodyKeys: ['help.select.multi_b1'] },
       { kind: 'prose', anchor: 'select-group', titleKey: 'help.select.group_t', bodyKeys: ['help.select.group_b1', 'help.select.move3d_b1'] },
-      { kind: 'prose', anchor: 'select-copy', titleKey: 'help.select.copy_t', bodyKeys: ['help.select.copy_b1', 'help.select.copy_b2', 'help.select.copy_b3'] },
+      { kind: 'prose', anchor: 'select-kinds', titleKey: 'help.select.kinds_t', bodyKeys: ['help.select.kinds_b1'] },
       {
         kind: 'prose', anchor: 'select-rotate', titleKey: 'help.select.rotate_t', bodyKeys: ['help.select.rotate_b1'],
         figure: { kind: 'demo', scene: 'grouprotate' },
@@ -196,15 +213,45 @@ export const BUILD_PAGES: readonly HelpPage[] = [
         kind: 'prose', anchor: 'select-locked', titleKey: 'help.select.locked_t', bodyKeys: ['help.select.locked_b1'],
         figure: { kind: 'demo', scene: 'locked' },
       },
+      { kind: 'keys', anchor: 'select-keys', titleKey: 'help.share.keys_t', rows: [
+        { doKey: 'shortcut.rotate_cw', tokens: [{ kind: 'cmd', id: 'selection.rotate_cw' }] },
+        { doKey: 'shortcut.delete', tokens: [{ kind: 'cmd', id: 'selection.delete' }] },
+      ] },
     ],
     qa: [
       { qKey: 'help.select.q1', aKey: 'help.select.a1' },
       { qKey: 'help.select.q2', aKey: 'help.select.a2' },
       { qKey: 'help.select.q3', aKey: 'help.select.a3' },
       { qKey: 'help.select.q4', aKey: 'help.select.a4' },
-      { qKey: 'help.select.q5', aKey: 'help.select.a5' },
     ],
-    seeAlso: ['objects', 'undo', 'shortcuts'],
+    seeAlso: ['copy', 'objects', 'undo', 'shortcuts'],
+  },
+  {
+    id: 'copy',
+    group: 'build',
+    titleKey: 'help.select.copy_t',
+    ledeKey: 'help.copy.lede',
+    entryKey: 'help.copy.entry',
+    figure: { kind: 'demo', scene: 'copypaste' },
+    sections: [
+      { kind: 'prose', anchor: 'copy-copy', titleKey: 'help.copy.copy_t', bodyKeys: ['help.select.copy_b1'] },
+      { kind: 'prose', anchor: 'copy-paste', titleKey: 'help.copy.paste_t', bodyKeys: ['help.select.copy_b2'], figure: { kind: 'demo', scene: 'pasteblock' } },
+      { kind: 'prose', anchor: 'copy-drag', titleKey: 'help.copy.drag_t', bodyKeys: ['help.copy.drag_b1'], figure: { kind: 'demo', scene: 'copydrag' } },
+      { kind: 'prose', anchor: 'copy-fit', titleKey: 'help.copy.fit_t', bodyKeys: ['help.select.copy_b3'] },
+      { kind: 'prose', anchor: 'copy-pick', titleKey: 'help.copy.pick_t', bodyKeys: ['help.copy.pick_b1'] },
+      { kind: 'prose', anchor: 'copy-off', titleKey: 'help.copy.off_t', bodyKeys: ['help.copy.off_b1'] },
+      { kind: 'keys', anchor: 'copy-keys', titleKey: 'help.share.keys_t', rows: [
+        { doKey: 'shortcut.copy', tokens: [{ kind: 'cmd', id: 'selection.copy' }] },
+        { doKey: 'shortcut.cut', tokens: [{ kind: 'cmd', id: 'selection.cut' }] },
+        { doKey: 'shortcut.paste', tokens: [{ kind: 'cmd', id: 'selection.paste' }] },
+      ] },
+    ],
+    qa: [
+      { qKey: 'help.copy.q1', aKey: 'help.copy.a1' },
+      { qKey: 'help.copy.q2', aKey: 'help.copy.a2' },
+      { qKey: 'help.copy.q3', aKey: 'help.copy.a3' },
+    ],
+    seeAlso: ['select', 'objects', 'undo', 'planet'],
   },
   {
     id: 'smart',
@@ -241,9 +288,6 @@ export const BUILD_PAGES: readonly HelpPage[] = [
     qa: [
       { qKey: 'help.smart.q1', aKey: 'help.smart.a1' },
       { qKey: 'help.smart.q2', aKey: 'help.smart.a2' },
-      { qKey: 'help.smart.q3', aKey: 'help.smart.a3' },
-      { qKey: 'help.smart.q4', aKey: 'help.smart.a4' },
-      { qKey: 'help.smart.q5', aKey: 'help.smart.a5' },
     ],
     seeAlso: ['terrain', 'objects', 'region', 'undo'],
   },

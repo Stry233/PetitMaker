@@ -36,7 +36,7 @@ export interface FormalRun { cells: ReadonlySet<number>; mirror: Mirror }
  * reading is looking for: a walk that ends somewhere rather than in grass. Each group is one mark,
  * or a mark and its mirror image where the mark stands in a formally composed run.
  */
-export interface EndGround {
+interface EndGround {
   surface: Int8Array;
   open: Uint8Array;
   W: number;

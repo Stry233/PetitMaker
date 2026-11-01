@@ -19,7 +19,7 @@ const CHAIN_DOUBLE_CLICK_MS = GESTURE_TIMING.pc.doubleTapMs;
 const same = (a: MacroCoord, b: MacroCoord): boolean => a.x === b.x && a.y === b.y;
 
 /** What a release did to the chain: finished it (the caller lays `points`), or left it standing. */
-export type ChainRelease = 'finish' | 'standing';
+type ChainRelease = 'finish' | 'standing';
 
 /**
  * A chain of anchors a curve runs through. A press drops an anchor, or picks up one already placed

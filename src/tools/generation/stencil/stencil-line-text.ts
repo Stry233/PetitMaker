@@ -5,7 +5,7 @@ import type { TextGridModel } from './stencil-text-grid';
 import { sharpLineCorners, joinLinePaths, symmetricLinePaths, routeLineExtrema, simplifyStrokePath, simplifyLinePaths, walkLinePath, type LinePath, type LinePoint } from './stencil-line-path';
 
 /** Font metrics use the same em size for every glyph, including detached marks and descenders. */
-export interface StrokeGlyph {
+interface StrokeGlyph {
   model: TextGridModel;
   ascent: number;
   descent: number;

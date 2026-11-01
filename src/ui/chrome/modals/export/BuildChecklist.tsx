@@ -81,7 +81,7 @@ function ItemIcon({ icon, color }: { icon?: string; color?: string }) {
 
 /** One row of the checklist: icon, name, count. What a shelf card lists and what the Help
  *  Center's built-pieces figure stands are the same row, drawn once. */
-export function ChecklistItemRow({ icon, color, name, countText, testId }: {
+function ChecklistItemRow({ icon, color, name, countText, testId }: {
   icon?: string; color?: string; name: string; countText: string; testId?: string;
 }) {
   return (

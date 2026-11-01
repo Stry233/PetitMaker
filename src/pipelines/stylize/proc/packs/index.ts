@@ -9,8 +9,7 @@ import { coloredpencilPack } from './coloredpencil';
 import { NEURAL_PACKS } from './neural';
 import type { ProcPack } from './types';
 
-export type { ProcPack, ProcPackId, ProcPackMeta } from './types';
-export { PROC_PACK_META, isProcPackId, procPackMeta } from './manifest';
+export { PROC_PACK_META, isProcPackId } from './manifest';
 
 const PROC_PACKS: readonly ProcPack[] = [aquarellePack, coloredpencilPack, ...NEURAL_PACKS];
 

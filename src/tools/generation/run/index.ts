@@ -13,6 +13,6 @@ export { CANCELLED, normalizeRegion, procSource, recipeOf, runScope } from './ge
 export { buildCandidate, cachedCandidate, generateCandidate, peekCandidate, type Candidate } from './candidates';
 export { poolAvailable, warmPool, runMacroBuildInPool, runPreviewInPool } from './candidate-pool';
 export {
-  requestTransferPreview, type TransferPreview, type TransferPreviewRequest,
+  requestTransferPreview, type TransferPreview,
 } from './planet-preview';
 export { PLANET_CANVAS_ID_PREFIX } from './planet-canvas';

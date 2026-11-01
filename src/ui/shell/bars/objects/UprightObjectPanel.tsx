@@ -363,6 +363,7 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
               onStep={(direction) => askedGrid.emit(stepGrid(-direction * (cellH + UPRIGHT_GRID.gap) / 2))}
               plate="dark"
               testId="shell-shelf-handle"
+              helpTarget={{ page: 'touch', anchor: 'touch-upright' }}
               // The head's row stands over the strip's foot and keeps its presses, so a fingertip's reach grows
               // from the grip up over the map past the panel's edge, closed where the panel stands drawn so
               // near its most that the top row is in that reach.

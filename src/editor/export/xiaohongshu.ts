@@ -1,7 +1,6 @@
 // The share picture's delivery inside the Xiaohongshu (RedNote) container (`io/export/xiaohongshu-share.ts`).
 import { sendXiaohongshuImage, xiaohongshuImageActionAvailable, type XiaohongshuImageAction } from '../../io/export/xiaohongshu-share';
 
-export type { XiaohongshuImageAction };
 export { xiaohongshuImageActionAvailable };
 
 /** Sends the exported picture to the album or a new note. */

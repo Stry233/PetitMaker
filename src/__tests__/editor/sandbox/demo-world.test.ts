@@ -2,7 +2,7 @@
  *  validity, drawn through the same overlay calls, for span items above all. */
 import { describe, expect, it } from 'vitest';
 import { SandboxWorld } from '../../../editor/sandbox/demo-world';
-import { HELP_SCENES } from '../../../ui/help/figures/scenes';
+import { HELP_SCENES, sceneWorld } from '../../../ui/help/figures/scenes';
 import { BRIDGE, CABIN, RAMP, TREE } from '../../../ui/help/figures/scenes/common';
 import { ObjectPlacerTool } from '../../../tools/pointer/objects/object-placer';
 import { HEADLESS_OVERLAY } from '../../../tools/pointer/runtime/host';
@@ -28,8 +28,8 @@ function recordingOverlay(): { overlay: ToolOverlay; calls: unknown[][] } {
 /** The objects figure's world: its walled pond, before any step runs. */
 function pondWorld(): SandboxWorld {
   const scene = HELP_SCENES.objects!;
-  const world = new SandboxWorld(scene.template);
-  scene.run({ world, view: {} as never }, (key) => key);
+  const world = sceneWorld(scene);
+  scene.run({ world, view: {} as never }, (key) => key, { touch: false, upright: false });
   return world;
 }
 

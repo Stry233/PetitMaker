@@ -35,7 +35,7 @@ export interface BodyOutlineLook {
 
 /** What outlines project through: the camera and canvas size, the clock the fades run on and the
  *  model quality whose bodies they trace. */
-export interface BodyOutlineView {
+interface BodyOutlineView {
   camera?: THREE.Camera | undefined;
   viewport?: (() => { width: number; height: number }) | undefined;
   nowMs?: () => number;
@@ -43,7 +43,7 @@ export interface BodyOutlineView {
 }
 
 /** Where a moved object stood while a move preview runs: a dashed white contour over a faint fill. */
-export const MOVE_ORIGIN_LOOK: BodyOutlineLook = {
+const MOVE_ORIGIN_LOOK: BodyOutlineLook = {
   stroke: 0xffffff, opacity: .95, width: 3, dash: DASHED_CONTOUR, fill: 0xe8f4ff, fillOpacity: .14, name: 'move-origin',
 };
 const CLIP_PLANES = [

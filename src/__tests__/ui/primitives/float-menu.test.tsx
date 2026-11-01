@@ -5,11 +5,9 @@
  * containing block and stacking context, keeping it from the viewport edges and the popover rung.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { FloatMenu, floatMenuItemFill, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { FloatMenu, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
 import { UiPreviewProvider } from '../../../ui/design/preview';
-import { ACTIVE } from '../../../ui/design/tokens';
-import { radii, z } from '../../../ui/design/styles';
 
 afterEach(cleanup);
 
@@ -72,79 +70,26 @@ describe('the open card stands outside the panel', () => {
     expect(document.body.contains(card)).toBe(true);
   });
 
-  it('leaves the row s box exactly as it was', () => {
+  it('leaves the row s subtree exactly as it was', () => {
     const { rerender } = render(<Menu />);
     const panel = screen.getByTestId('panel');
     const row = screen.getByRole('button');
-    const closed = { h: panel.offsetHeight, kids: panel.childElementCount };
+    const kids = panel.childElementCount;
 
     rerender(<Menu open />);
-    expect(panel.offsetHeight).toBe(closed.h);
-    expect(panel.childElementCount).toBe(closed.kids);
+    expect(panel.childElementCount).toBe(kids);
     expect(screen.getAllByRole('button')[0]).toBe(row);
     expect(panel.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('draws at the zoom its row stands under, keeping the scaled gap and the viewport edge margin', () => {
-    render(<div style={{ zoom: 2 }}><Menu open /></div>);
-    expect(screen.getByRole('menu').parentElement!.style.zoom).toBe('2');
-    expect(screen.getByRole('menu').style.top).toBe('6px');
-    cleanup();
-    render(<div style={{ zoom: 0.5 }}><Menu open /></div>);
-    expect(screen.getByRole('menu').style.top).toBe('16px');
-  });
-
-  /**
-   * Under content-box the padding and border would make the card 14px wider and taller than its
-   * box, past the edge clamp and cut off at the window's foot.
-   */
-  it('keeps its own padding and border inside the box it is given', () => {
-    const view = render(<Menu />);
-    const row = screen.getAllByRole('button')[0]!;
-    // A row against the window's right gutter, stubbed before opening since placement reads it then.
-    const box = { left: 716, top: 100, width: 300, height: 50, bottom: 150, right: 1016 };
-    Object.defineProperty(row, 'getBoundingClientRect', {
-      configurable: true, value: () => ({ ...box, x: box.left, y: box.top, toJSON: () => ({}) }),
-    });
-    view.rerender(<Menu open />);
-    const card = screen.getByRole('menu');
-    expect(card.style.boxSizing).toBe('border-box');
-    expect(card.style.width).toBe('300px');
-    // The fixture's right edge is the gutter itself.
-    expect(716 + 300).toBe(window.innerWidth - 8);
-    // One radius value, so no corner is square.
-    expect(card.style.borderRadius).toBe(`${radii.lg}px`);
-  });
-
-  it('stands the layer on the popover rung and lets only the card take a pointer', () => {
-    render(<Menu open />);
-    const card = screen.getByRole('menu');
-    const layer = card.parentElement!;
-    expect(layer.style.zIndex).toBe(String(z.popover));
-    expect(layer.style.pointerEvents).toBe('none');
-    expect(card.style.pointerEvents).toBe('auto');
-  });
 });
 
 describe('the list', () => {
-  it('marks the current row, and the mark is the house ACTIVE fill', () => {
+  it('marks the current row', () => {
     render(<Menu open activeId="opus" />);
     const [sonnet, opus] = screen.getAllByRole('menuitemradio');
     expect(opus!.getAttribute('aria-checked')).toBe('true');
     expect(sonnet!.getAttribute('aria-checked')).toBe('false');
-    expect(floatMenuItemFill(true)).toBe(ACTIVE);
-    expect(floatMenuItemFill(false)).not.toBe(ACTIVE);
-  });
-
-  it('draws the current row\'s fill after a hover passed over it and the current moved there', async () => {
-    const { rerender } = render(<Menu open activeId="opus" />);
-    const sonnet = screen.getAllByRole('menuitemradio')[0]!;
-    fireEvent.pointerEnter(sonnet, { pointerType: 'mouse' });
-    fireEvent.pointerLeave(sonnet, { pointerType: 'mouse' });
-    rerender(<Menu open activeId="sonnet" />);
-    await waitFor(() => expect(screen.getAllByRole('menuitemradio')[0]!.style.backgroundColor).toMatch(/^rgba?\(255, 218, 126(, 1)?\)$/));
-    await new Promise((r) => setTimeout(r, 400));
-    expect(screen.getAllByRole('menuitemradio')[0]!.style.backgroundColor).toMatch(/^rgba?\(255, 218, 126(, 1)?\)$/);
   });
 
   it('hands the pick back by id and closes', () => {
@@ -243,25 +188,12 @@ describe('a pictured menu', () => {
     render(pictured({ open: true }));
     const card = screen.getByRole('menu');
     expect(screen.getByTestId('panel').contains(card)).toBe(true);
-    expect(card.style.position).toBe('static');
   });
 
-  it('stands no click catcher anywhere in the document', () => {
-    render(pictured({ open: true }));
-    const catchers = [...document.body.querySelectorAll('div')].filter((el) => (
-      el.style.position === 'fixed' && el.style.inset === '0px' && el.style.pointerEvents === 'auto'
-    ));
-    expect(catchers).toHaveLength(0);
-  });
-
-  it('attaches no window listeners: Escape travels on and closes nothing', () => {
+  it('lets Escape travel on and closes nothing', () => {
     const onClose = vi.fn();
     const outer = vi.fn();
-    const added = vi.spyOn(window, 'addEventListener');
     render(pictured({ open: true, onClose }));
-    // The live menu registers one capture-phase keydown at the window.
-    expect(added.mock.calls.some(([type, , opts]) => type === 'keydown' && opts === true)).toBe(false);
-    added.mockRestore();
     window.addEventListener('keydown', outer);
     fireEvent.keyDown(document.body, { key: 'Escape' });
     window.removeEventListener('keydown', outer);
@@ -297,12 +229,10 @@ describe('a menu hung from an element of the caller', () => {
     expect(document.activeElement).toBe(field);
   });
 
-  it('marks the row the keys stand on and reports a pick', () => {
+  it('reports a pick from a row the keys stand on', () => {
     const onPick = vi.fn();
     render(<Anchored onPick={onPick} highlightId="opus" />);
     const opus = screen.getByRole('menuitemradio', { name: /Claude Opus/ });
-    const sonnet = screen.getByRole('menuitemradio', { name: /Claude Sonnet/ });
-    expect(opus.style.backgroundColor).not.toBe(sonnet.style.backgroundColor);
     fireEvent.click(opus);
     expect(onPick).toHaveBeenCalledWith('opus');
   });

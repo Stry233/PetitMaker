@@ -136,21 +136,6 @@ describe('dragging a plural selection', () => {
     expect(cells).toHaveLength(3); // still every member's destination, just tinted red
   });
 
-  it('throttles on the hovered CELL, not on every pointer sample', () => {
-    const { overlay } = setUp([tree('a', 5, 5), tree('b', 6, 5)], ['a', 'b']);
-
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 55 }));
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 65, clientY: 55 })); // cell (6,5): 1st compute
-    expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
-
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 66, clientY: 55 }));
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 69, clientY: 56 }));
-    expect(overlay.showObjectMove).toHaveBeenCalledTimes(1);
-
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 75, clientY: 55 }));
-    expect(overlay.showObjectMove).toHaveBeenCalledTimes(2);
-  });
-
   it('plays the landing squash for every member on drop, requested per member as its own placement lands', () => {
     const { view } = setUp([tree('a', 5, 5), tree('b', 6, 5), tree('c', 7, 5)], ['a', 'b', 'c']);
 

@@ -42,7 +42,7 @@ export const inGroup: CSSProperties = { pointerEvents: 'auto' };
 /** How much bigger a button draws itself while the pointer is on it, taken from the hover every
  *  other button in the app answers with (`styles.ts:pressable`) rather than restated, so the rail
  *  acknowledges a pointer by the same amount the modals and the mode blocks do. */
-export const HOVER_SCALE = pressable.whileHover.scale;
+const HOVER_SCALE = pressable.whileHover.scale;
 /** Rail cells and groups glide between discrete reflows on the rail's own reflow motion, or ride a scale
  *  glide a refold happens in (`useLocalReflow`). `drawnY` is where a group stands that the live rail
  *  writer has moved since the last render. */

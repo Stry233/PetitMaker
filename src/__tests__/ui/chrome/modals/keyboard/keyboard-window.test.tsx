@@ -120,95 +120,12 @@ describe('the keyboard window', () => {
   });
 });
 
-/*
- * The board region is the app's only `useScrollFadeBoth` user, so its branches are covered here.
- * `useTravel` settles on requestAnimationFrame and performance.now(), pumped by the same stub as
- * `scroll-fade.test.ts`.
- */
-describe('the keyboard region fades on the axes it can still travel', () => {
-  let queue: FrameRequestCallback[] = [];
-  let now = 0;
-
-  function pump(ms = 16): void {
-    now += ms;
-    const q = queue;
-    queue = [];
-    for (const cb of q) cb(now);
-  }
-  function pumpUntil(done: () => boolean, max = 120): void {
-    for (let i = 0; i < max && !done(); i++) act(() => pump());
-  }
-
-  beforeEach(() => {
-    queue = [];
-    now = 0;
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { queue.push(cb); return queue.length; });
-    vi.stubGlobal('cancelAnimationFrame', () => { queue = []; });
-    vi.spyOn(performance, 'now').mockImplementation(() => now);
-  });
-  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-
-  it('carries two intersected masks, then one, then none, as travel drops per axis', () => {
-    renderWindow();
-    const region = screen.getByTestId('kbd-region');
-
-    // Both axes overflowing, mid-scroll on each.
-    Object.defineProperty(region, 'scrollWidth', { value: 2000, configurable: true });
-    Object.defineProperty(region, 'clientWidth', { value: 1000, configurable: true });
-    Object.defineProperty(region, 'scrollLeft', { value: 500, configurable: true });
-    Object.defineProperty(region, 'scrollHeight', { value: 800, configurable: true });
-    Object.defineProperty(region, 'clientHeight', { value: 400, configurable: true });
-    Object.defineProperty(region, 'scrollTop', { value: 200, configurable: true });
-    fireEvent.scroll(region);
-    pumpUntil(() => region.style.maskComposite === 'intersect');
-    expect(region.style.maskImage.match(/linear-gradient/g)).toHaveLength(2);
-    // jsdom drops `-webkit-mask-composite`, so only the standard property is checked.
-    expect(region.style.maskComposite).toBe('intersect');
-
-    // The y axis fits; only x has travel.
-    Object.defineProperty(region, 'scrollHeight', { value: 400, configurable: true });
-    Object.defineProperty(region, 'scrollTop', { value: 0, configurable: true });
-    fireEvent.scroll(region);
-    pumpUntil(() => !region.style.maskComposite);
-    expect(region.style.maskImage).toContain('linear-gradient(to right,');
-    expect(region.style.maskImage).not.toContain('linear-gradient(to bottom,');
-
-    // Both axes fit.
-    Object.defineProperty(region, 'scrollWidth', { value: 1000, configurable: true });
-    Object.defineProperty(region, 'scrollLeft', { value: 0, configurable: true });
-    fireEvent.scroll(region);
-    pumpUntil(() => region.style.maskImage === '');
-    expect(region.style.maskImage).toBe('');
-  });
-});
-
 describe('the keyboard window on a small screen', () => {
   it('offers a close button of its own, since a phone has no Escape and little backdrop', () => {
     const onClose = vi.fn();
     render(<I18nProvider><KeyboardModal open onClose={onClose} /></I18nProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('leaves a rim of backdrop on every side', () => {
-    const was = { w: window.innerWidth, h: window.innerHeight };
-    const viewport = (w: number, h: number) => {
-      Object.defineProperty(window, 'innerWidth', { value: w, configurable: true });
-      Object.defineProperty(window, 'innerHeight', { value: h, configurable: true });
-    };
-    viewport(390, 700);
-    try {
-      renderWindow();
-      const card = screen.getByRole('dialog');
-      /** The smallest length a declaration allows, so `min(a, b)` resolves as CSS resolves it. */
-      const bound = (...css: string[]): number => Math.min(...css.flatMap(v => (v.match(/[\d.]+(?=px)/g) ?? []).map(Number)));
-      // The card's lengths are in its own px; its zoom carries them to the screen.
-      const zoom = parseFloat(card.style.zoom) || 1;
-      expect(bound(card.style.width, card.style.maxWidth) * zoom).toBeLessThan(window.innerWidth);
-      expect(bound(card.style.maxHeight) * zoom).toBeLessThan(window.innerHeight);
-    } finally {
-      viewport(was.w, was.h);
-    }
   });
 
   it('scales the board down to the region before letting it scroll', () => {

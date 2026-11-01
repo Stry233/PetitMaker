@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import type { BuildMode } from '../../../state/editing/edit-mode';
 import { footReserve, PANEL_TOP, panelMaxHeight, panelTop } from '../../../ui/shell/panel-frame';
 import { EDGE_TOP, ZOOM } from '../../../ui/shell/units';
-import { GATE_BORROW, JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../../../ui/agent/PanelShell';
+import { GATE_BORROW, JOB_ZONE_FLOOR, PINNED_HEIGHT } from '../../../ui/agent/desk/plate';
 import { resolveCss } from './_resolve-css';
 
 /** The panel's pinned furniture plus the least job zone, from the constants `PanelColumn` uses. */

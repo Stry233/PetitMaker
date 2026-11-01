@@ -1,7 +1,8 @@
 /*
  * The maze's two ends on the map and the drag that moves one. Where an end is dropped decides what it is
  * (`maze-endpoints.ts`): a hole on the maze's own wall, a place to reach anywhere else, which the mark
- * says. Portalled to the body, where the projection's screen coordinates are already right.
+ * says. Portalled to the body, where the projection's screen coordinates are already right; a Help
+ * figure hands in its own map's projection instead (`PicturedMap`) and the marks stand in its box.
  */
 import { clientPoint } from '../../../../platform/device/viewport-space';
 import { useCallback, useEffect, useRef } from 'react';
@@ -10,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { readableWeight } from '../../../design/text-weight';
 import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { getActiveView, onProjectionChange } from '../../../../view/active-view';
+import type { ViewProjection } from '../../../../tools/pointer/runtime';
 import type { MacroCoord } from '../../../../core/model/types';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
@@ -24,11 +26,11 @@ import type { I18nKey } from '../../../../i18n/keys';
 
 /** Smallest a mark may draw at, in css px: below this the character stops being readable and the
  *  mark stops doing its one job. */
-export const MIN_PX = 26;
+const MIN_PX = 26;
 
 /** The mark's face at a given size (css px): fill, ink, weight and the size's own ratios. The one
  *  place both the live drag marker and the Help Center's still figure draw a gate pill from. */
-export function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperties {
+function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperties {
   return {
     background: ACTIVE,
     color: PLATE_INK,
@@ -45,15 +47,24 @@ export function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperti
 
 export type EndId = 'entrance' | 'exit';
 
+/** A map the marks stand on other than the live one: a Help figure's, whose projection answers in
+ *  the px of the box the marks are mounted in. They take no input there. */
+interface PicturedMap {
+  projection: () => ViewProjection | null;
+  /** Calls `tell` whenever the projection may have moved; returns the unsubscribe. */
+  watch: (tell: () => void) => () => void;
+}
+
 export interface MazeEnds {
   entrance: MazeEnd | null;
   exit: MazeEnd | null;
 }
 
-function Marker({ end, text, testId, onMove }: {
+function Marker({ end, text, testId, onMove, pictured }: {
   end: MazeEnd;
   text: string;
   testId: string;
+  pictured?: PicturedMap;
   /** A cell the pointer is over: `false` while the drag is still running, `true` on the drop. */
   onMove: (cell: MacroCoord, dropped: boolean) => void;
 }) {
@@ -64,7 +75,7 @@ function Marker({ end, text, testId, onMove }: {
 
   const place = useCallback(() => {
     const el = ref.current;
-    const projection = getActiveView()?.projection;
+    const projection = pictured ? pictured.projection() : getActiveView()?.projection;
     if (!el) return;
     if (!projection) { el.style.display = 'none'; return; }
     const tl = projection.cellToScreen(end.cell.x, end.cell.y);
@@ -80,12 +91,12 @@ function Marker({ end, text, testId, onMove }: {
     // Measured after the text has its size, so the pill is centred on its cell by its own width.
     const w = el.offsetWidth;
     el.style.left = `${tl.x + (br.x - tl.x) / 2 - w / 2}px`;
-  }, [end.cell.x, end.cell.y, dpr, dense]);
+  }, [end.cell.x, end.cell.y, dpr, dense, pictured]);
 
   useEffect(() => {
     place();
-    return onProjectionChange(eventBus, place, { cells: false });
-  }, [eventBus, place]);
+    return pictured ? pictured.watch(place) : onProjectionChange(eventBus, place, { cells: false });
+  }, [eventBus, place, pictured]);
 
   /*
    * The drag is followed on the window from the press: synthetic pointers cannot claim a capture, and a state
@@ -128,17 +139,17 @@ function Marker({ end, text, testId, onMove }: {
       data-testid={testId}
       data-cell={cellKey(end.cell.x, end.cell.y)}
       data-kind={end.kind}
-      {...helpTargetAttr('maze')}
+      {...(pictured ? { inert: '' } : helpTargetAttr('maze'))}
       role="button"
       aria-label={text}
       tabIndex={-1}
-      onPointerDown={startDrag}
+      onPointerDown={pictured ? undefined : startDrag}
       style={{
         // The face (fill, ink, font, size ratios) is `place()`'s to draw, from `gateMarkStyle`,
         // once it knows the cell's projected size; this is the shell before that first measurement.
-        position: 'fixed', left: 0, top: 0, display: 'none',
+        position: pictured ? 'absolute' : 'fixed', left: 0, top: 0, display: 'none',
         alignItems: 'center', justifyContent: 'center',
-        zIndex: z.canvasControls, cursor: cursors.clickable, touchAction: 'none',
+        zIndex: pictured ? undefined : z.canvasControls, cursor: cursors.clickable, touchAction: 'none', pointerEvents: pictured ? 'none' : undefined,
       }}
     >
       {text}
@@ -146,16 +157,17 @@ function Marker({ end, text, testId, onMove }: {
   );
 }
 
-export function MazeEndpoints({ ends, onMove }: {
+export function MazeEndpoints({ ends, onMove, pictured }: {
   ends: MazeEnds | null;
   onMove: (which: EndId, cell: MacroCoord, dropped: boolean) => void;
+  pictured?: PicturedMap;
 }) {
   const t = useT();
   if (!ends || typeof document === 'undefined') return null;
   // A hole is a way through and a destination is a place to arrive at, so each mark says which its
   // own end turned out to be rather than both wearing the word the request used.
   const word = (end: MazeEnd, hole: I18nKey): string => t(end.kind === 'hole' ? hole : 'generate.gate_to');
-  return createPortal(
+  const marks = (
     <>
       {ends.entrance ? (
         <Marker
@@ -163,6 +175,7 @@ export function MazeEndpoints({ ends, onMove }: {
           text={word(ends.entrance, 'generate.gate_in')}
           testId="shell-gate-entrance"
           onMove={(cell, dropped) => onMove('entrance', cell, dropped)}
+          pictured={pictured}
         />
       ) : null}
       {ends.exit ? (
@@ -171,9 +184,10 @@ export function MazeEndpoints({ ends, onMove }: {
           text={word(ends.exit, 'generate.gate_out')}
           testId="shell-gate-exit"
           onMove={(cell, dropped) => onMove('exit', cell, dropped)}
+          pictured={pictured}
         />
       ) : null}
-    </>,
-    document.body,
+    </>
   );
+  return pictured ? marks : createPortal(marks, document.body);
 }

@@ -43,8 +43,3 @@ export function useVisitorEngaged(armed: boolean): boolean {
   }, [armed]);
   return armed && (surfaces || edited);
 }
-
-/** Tests only: forget what the shell published. */
-export function __resetEngagement(): void {
-  open.emit(false);
-}

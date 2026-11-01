@@ -81,7 +81,7 @@ const TIER_DRAWS = 12;
  * seed-derived community across the disc. Water is excluded. Empty randomized draws retry within a
  * bounded budget so narrow terrace bands are not mistaken for unplantable ground.
  */
-export function plantPatchTiers(ctx: MacroContext, input: PatchInput & { cells: MacroCoord[] }): number {
+function plantPatchTiers(ctx: MacroContext, input: PatchInput & { cells: MacroCoord[] }): number {
   const { state, executor, registry } = ctx;
   const laid = objectsChanged(state);
   const analysis = analyzeTerrain(state, input.cells);

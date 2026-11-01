@@ -54,7 +54,7 @@ const choiceArt: CSSProperties = { width: 52, height: 52, borderRadius: '50%', b
 const choiceTag: CSSProperties = { ...windowChip('inset'), position: 'absolute', top: 10, insetInlineEnd: 10, padding: '2px 10px' };
 const titleTag: CSSProperties = { ...windowChip('plate'), padding: '2px 10px', marginInlineStart: 10, verticalAlign: 'middle', whiteSpace: 'nowrap' };
 
-export interface PlanetImportWindowProps extends WindowProps {
+interface PlanetImportWindowProps extends WindowProps {
   /** From a planet file: Change Planet's file picker, opened inside this press. */
   onPickFile?: () => void;
   /** Opens the planet read from a video; false when the planet editor could not open, which keeps

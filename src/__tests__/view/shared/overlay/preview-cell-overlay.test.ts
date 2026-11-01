@@ -24,8 +24,9 @@ vi.mock('../../../../view/shared/overlay/preview-cell-raster', () => ({
 import { OverlayLayer } from '../../../../view/map2d/layers/overlay-layer';
 import { TILE_SIZE, TERRAIN_GRID_OFFSET_PX } from '../../../../view/map2d/geometry/world';
 import {
-  PREVIEW_CELL_ART, PREVIEW_ICON_ART, PREVIEW_PALETTES, previewDots,
+  PREVIEW_CELL_ART, PREVIEW_ICON_ART, previewDots,
 } from '../../../../view/shared/overlay/preview-cell';
+import { PREVIEW_PALETTES } from '../../../../view/shared/overlay/preview-cell-art';
 import { mixedCellSet } from '../../../../core/grid/grids';
 import { overlayPart } from '../../../_support/overlay-parts';
 import { washColor } from '../../../../view/shared/overlay/preview-cell';

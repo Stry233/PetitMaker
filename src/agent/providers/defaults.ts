@@ -14,7 +14,7 @@ export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 /** The public model capability catalog (Models.dev); fetched without credentials. */
 export const MODEL_CATALOG_URL = 'https://models.dev/api.json';
 
-export interface ProviderMeta {
+interface ProviderMeta {
   id: ProviderId;
   /** Canonical English name; reader-facing names use i18n. */
   name: string;

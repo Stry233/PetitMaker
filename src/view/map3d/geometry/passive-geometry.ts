@@ -16,7 +16,7 @@ import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 
 const NUMBER_LIFT = 0.03;
 
-export interface NumberQuads { positions: number[]; uvs: number[]; index: number[] }
+interface NumberQuads { positions: number[]; uvs: number[]; index: number[] }
 
 /** Per-labeled-cell quads with UVs into a BUCKET_SIZE×BUCKET_SIZE label atlas
  *  (cell (x,y) maps to its own atlas slot; the canvas painter draws each label

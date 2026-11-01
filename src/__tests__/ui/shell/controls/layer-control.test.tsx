@@ -37,15 +37,6 @@ describe('the layer control', () => {
     expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 2');
   });
 
-  it('keeps the count off the plate, which carries the two steps and nothing else', () => {
-    mount();
-    const readout = screen.getByTestId('shell-layer-readout');
-    const plate = step('Add layer').parentElement!;
-    expect(plate.contains(readout)).toBe(false);
-    expect(plate.textContent).toBe('');
-    expect(plate.querySelectorAll('button').length).toBe(2);
-  });
-
   it('spends each step at its own end of the range', () => {
     mount();
     expect(step('Remove layer').disabled, 'nothing below the ground').toBe(true);

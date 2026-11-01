@@ -182,7 +182,7 @@ export function OutcomeStamp({ outcome, rewound = false }: { outcome: JobOutcome
 }
 
 /** Counts from zero on mount, or renders the final value immediately under reduced motion. */
-export function CountUp({ value }: { value: number }) {
+function CountUp({ value }: { value: number }) {
   const reduced = useReducedMotionConfig() === true;
   const [shown, setShown] = useState(() => (reduced ? value : 0));
 

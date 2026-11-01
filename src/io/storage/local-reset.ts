@@ -9,6 +9,7 @@
  * exactly localStorage.clear() semantics.
  */
 import { deleteVault } from '../../platform/storage/vault';
+import { deleteFigureCache } from '../../platform/storage/figure-cache';
 import type { Autosave } from './autosave';
 
 /** The wipe half, separated from the reload so it is unit-testable. The owed autosave (its debounce,
@@ -28,6 +29,7 @@ export async function wipeLocalData(autosave: Autosave): Promise<void> {
     /* ditto */
   }
   await deleteVault().catch(() => {});
+  await deleteFigureCache().catch(() => {});
 }
 
 export async function resetAllLocalData(autosave: Autosave): Promise<void> {

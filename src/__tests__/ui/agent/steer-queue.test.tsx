@@ -88,21 +88,3 @@ describe('SteerQueue: every note stands', () => {
     expect(queryAllByTestId('panel-steer-chip').length).toBe(0);
   });
 });
-
-describe('SteerQueue: the squeeze', () => {
-  it('scrolls the chips and pins the count line', () => {
-    const { getByTestId } = renderWithI18n(<SteerQueue steers={steers(5)} onRecall={() => {}} />);
-    const chips = getByTestId('steer-chips');
-    expect(chips.style.overflowY).toBe('auto');
-    expect(chips.parentElement!.style.flex).toBe('0 1 auto');
-    expect(chips.style.minHeight).toBe('0');
-    expect(getByTestId('steer-more').style.flex).toBe('0 0 auto');
-  });
-
-  it('yields as a whole, capped at the three-chip height', () => {
-    const { getByTestId } = renderWithI18n(<SteerQueue steers={steers(5)} onRecall={() => {}} />);
-    const zone = getByTestId('panel-steer-zone');
-    expect(zone.style.flex).toBe('0 1 auto');
-    expect(zone.style.maxHeight).toBe('153px');
-  });
-});

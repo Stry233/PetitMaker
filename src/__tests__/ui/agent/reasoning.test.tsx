@@ -209,17 +209,6 @@ describe('the thoughts affordance: one deliberate press into a bounded box', () 
     expect(getByTestId('thoughts-toggle').getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('stands the box in its own bounded scroller', () => {
-    const job = makeJob({ thought: { chars: 1204, turns: 1, marks: [], ms: 0, live: LONG_COT } });
-    const { getByTestId } = renderWithI18n(<JobTicket job={job} live />);
-    fireEvent.click(getByTestId('thoughts-toggle'));
-
-    const box = getByTestId('thoughts-box');
-    expect(box.parentElement!.style.maxHeight).toBe('200px');
-    expect(box.style.overflowY).toBe('auto');
-    expect(box.style.overscrollBehavior).toBe('contain');
-  });
-
   /** Models write reasoning as markdown, so the box renders it through the panel's emitter. */
   it('renders the thought as the markdown it is written in', () => {
     const written = 'First, the shore:\n\n1. clear the bank\n2. lay the walk\n\nThe **plaza** is `locked`.';

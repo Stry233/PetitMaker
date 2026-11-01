@@ -11,7 +11,7 @@ export type { ReviewProgress, ReviewResult, TextPart };
 export type ReviewIssue = Exclude<ReviewResult, { allowed: true }> | 'unavailable' | 'too-long';
 
 /** What a running check reports while it is the current one. */
-export interface TextReviewListener {
+interface TextReviewListener {
   progress(progress: ReviewProgress): void;
   settled(result: ReviewResult): void;
   failed(issue: 'unavailable' | 'too-long'): void;

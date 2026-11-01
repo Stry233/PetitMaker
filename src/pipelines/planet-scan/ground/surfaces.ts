@@ -449,7 +449,7 @@ export function nameSurfaces(centres: Float64Array, raster: SurfaceRaster): Uint
 
 /** The ground a raster's regions read: each pixel's surface and the class its region's colour
  *  stands for there; -1 where unseen. */
-export interface GroundRegions {
+interface GroundRegions {
   readonly surface: Int8Array;
   readonly look: Int8Array;
 }
@@ -635,7 +635,7 @@ function objectClasses(runs: ObjectRuns): Int8Array {
 }
 
 /** Votes per pixel: sea and grass shares, and the share of an object standing on the sea. */
-export interface SurfaceVotes {
+interface SurfaceVotes {
   readonly sea: Float32Array;
   readonly grass: Float32Array;
   /** Where a region in another surface's colour stands on the sea (a deck): the sea votes read it as

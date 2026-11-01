@@ -4,14 +4,14 @@ import { isTextEntry } from '../input/text-entry';
 
 export type InputMode = 'pc' | 'touch';
 
-export type InputSample =
+type InputSample =
   | { kind: 'pointerdown'; pointerType: string }
   | { kind: 'pointerup'; pointersDown: number }
   | { kind: 'mousemove'; fromTouch: boolean }
   | { kind: 'wheel' }
   | { kind: 'key'; key: string; inTextField: boolean };
 
-export interface InputEnv {
+interface InputEnv {
   /** `(any-pointer: fine)` matches. */
   anyFine: boolean;
   maxTouchPoints: number;
@@ -159,12 +159,20 @@ export function watchInputMode(onChange: (mode: InputMode) => void, initial: Inp
   const onVisibility = (): void => {
     if (document.visibilityState === 'hidden') release();
   };
-  for (const [type, fn] of handlers) window.addEventListener(type, fn as EventListener, { capture: true, passive: true });
+  // An inert subtree takes no input from the reader, so an event aimed into one was dispatched by a
+  // script (Help's pictured interface presses its own controls) and says nothing about the device.
+  const fromReader = (fn: (e: never) => void) => (e: Event): void => {
+    const target = e.target;
+    if (typeof Element !== 'undefined' && target instanceof Element && target.closest('[inert]')) return;
+    (fn as (e: Event) => void)(e);
+  };
+  const listening = handlers.map(([type, fn]) => [type, fromReader(fn)] as const);
+  for (const [type, fn] of listening) window.addEventListener(type, fn, { capture: true, passive: true });
   window.addEventListener('blur', release);
   document.addEventListener('visibilitychange', onVisibility);
   return () => {
     endWait();
-    for (const [type, fn] of handlers) window.removeEventListener(type, fn as EventListener, { capture: true });
+    for (const [type, fn] of listening) window.removeEventListener(type, fn, { capture: true });
     window.removeEventListener('blur', release);
     document.removeEventListener('visibilitychange', onVisibility);
   };

@@ -12,10 +12,10 @@ import type { CornerTrim, Corners } from './types';
 import { SIDE_DELTA, type Side } from '../grid/directions';
 
 export type CornerPos = 'TL' | 'TR' | 'BL' | 'BR';
-export type CornerCompass = 'NW' | 'NE' | 'SW' | 'SE';
+type CornerCompass = 'NW' | 'NE' | 'SW' | 'SE';
 type Offset = readonly [number, number];
 
-export interface CornerAdjacency {
+interface CornerAdjacency {
   readonly pos: CornerPos;
   readonly compass: CornerCompass;
   /** The two cell sides the corner lies on, the north or south side first. */

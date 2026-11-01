@@ -9,9 +9,9 @@ import type { HandedImport } from '../../../../state/slices/shell';
 import { commitImport, routeImport, type ImportRouting, type PendingMap } from '../../../../editor/session/import-flow';
 import { declineRestoreOffer } from '../../../session/restore-offer';
 
-export type { ImportRouting, PendingMap };
+export type { ImportRouting };
 
-export interface ImportFlowOptions {
+interface ImportFlowOptions {
   routing: ImportRouting;
   /** Reads a video this surface takes itself. */
   onVideo?: (file: File) => void;
@@ -21,7 +21,7 @@ export interface ImportFlowOptions {
   onCommitted?: () => void;
 }
 
-export interface ImportFlow {
+interface ImportFlow {
   /** A file is being classified or decoded. */
   busy: boolean;
   pending: PendingMap | null;

@@ -61,7 +61,7 @@ function statKeyFor(job: JobView): I18nKey | null {
 /** Why a record may not be rolled back from here, which is also which group it stands in. The two
  *  are different facts and the list says them separately: one is proven elsewhere, the other is
  *  merely unproven, and a record that may well be this map's must not be told it is not. */
-export type Blocked = 'other-map' | 'unknown-map';
+type Blocked = 'other-map' | 'unknown-map';
 
 const BLOCKED_KEY: Record<Blocked, I18nKey> = {
   'other-map': 'agent.history_other_map',

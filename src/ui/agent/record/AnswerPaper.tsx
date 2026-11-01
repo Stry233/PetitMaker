@@ -23,8 +23,6 @@ import { useT } from '../../../i18n/context';
 import type { JobView } from '../../../agent/panel';
 import type { I18nKey } from '../../../i18n/keys';
 
-export { isAnswerJob } from '../derive/terminal';
-
 /** What the paper's quiet stamp says the job was. */
 type AnswerStamp = 'answered' | 'asking' | 'ended';
 

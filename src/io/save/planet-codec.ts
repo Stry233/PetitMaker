@@ -16,7 +16,7 @@ const READABLE_PLANET_FILE_VERSIONS: readonly unknown[] = [1, PLANET_FILE_VERSIO
 export const PLANET_NAME_MAX = 24;
 
 
-export interface SerializedLandmark { id: string; x: number; y: number; width: number; height: number; rotation?: Rotation }
+interface SerializedLandmark { id: string; x: number; y: number; width: number; height: number; rotation?: Rotation }
 
 export interface SerializedTemplate {
   id: string;

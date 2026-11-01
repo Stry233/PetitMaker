@@ -81,15 +81,16 @@ describe('assistant previews', () => {
     fetchSpy.mockRestore();
   });
 
-  it('mounts AgentSetupDetectPreview with the real key field, masked, and the screen\'s own provider face', () => {
+  it('mounts AgentSetupDetectPreview as the real setup screen with a shaped key pasted and its provider read', () => {
     setStoreState({ locale: 'en' });
     mount(<AgentSetupDetectPreview />);
+    expect(screen.getByTestId('setup-screen').getAttribute('data-phase')).toBe('key');
     const input = screen.getByTestId('setup-key-input') as HTMLInputElement;
     expect(input.type).toBe('password');
     const face = screen.getByTestId('setup-prov-face');
     expect(face.getAttribute('data-provider')).toBe('claude');
     expect(screen.getByText('Anthropic')).toBeTruthy();
-    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(label('agent.setup_row_sofar'));
+    expect(screen.getByTestId('setup-prov-sub').textContent).toBe(label('agent.setup_row_checking'));
   });
 
   it('mounts AgentOversightPreview as the manage card\'s own three-level control with its caption', () => {
@@ -98,7 +99,7 @@ describe('assistant previews', () => {
     for (const key of ['agent.oversight_strict', 'agent.oversight_checkpoint', 'agent.oversight_yolo']) {
       expect(screen.getByText(label(key))).toBeTruthy();
     }
-    expect(screen.getByText(label('agent.oversight_checkpoint_caption'))).toBeTruthy();
+    expect(screen.getByTestId('manage-oversight-caption').textContent).toBe(label('agent.oversight_checkpoint_caption'));
   });
 
   it('mounts AgentSteerPreview as the panel mid-run: two op rows and the queued note inside it', () => {

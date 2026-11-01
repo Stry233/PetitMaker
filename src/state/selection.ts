@@ -73,7 +73,7 @@ export function narrowToCatalog(sel: readonly BlockRef[], state: GridState, cata
 }
 
 /** What a plural selection holds: its members, its kinds by count (most first) and its load. */
-export interface GroupSummary {
+interface GroupSummary {
   count: number;
   kinds: { catalogId: string; n: number }[];
   load: number;
@@ -94,7 +94,7 @@ export function groupSummary(state: GridState, ids: readonly string[]): GroupSum
 }
 
 /** What one selected object is: its footprint, its load and how many of its item the map holds. */
-export interface ObjectSummary {
+interface ObjectSummary {
   size: { w: number; h: number };
   load: number;
   loadUnknown: boolean | undefined;

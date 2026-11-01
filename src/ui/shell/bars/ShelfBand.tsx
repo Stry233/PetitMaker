@@ -16,7 +16,7 @@ import { PLATE_BAND } from '../units';
 export const BAR_PANEL_DRAG_VAR = '--bar-panel-drag';
 
 /** Marks the upright bar's band, whose top edge the panels standing on it clip to while it moves. */
-export const BAR_BAND_ATTR = 'data-bar-band';
+const BAR_BAND_ATTR = 'data-bar-band';
 
 /** Marks a panel standing on the upright band (`bar-panel.tsx:useBarSurface`'s root). */
 const BAR_PANEL_SELECTOR = '[data-bar-panel]';

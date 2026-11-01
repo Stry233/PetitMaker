@@ -113,7 +113,7 @@ function RowBlock({
   /** A panel trigger's disclosure state; null for a block that is a plain action (the stack's front). */
   expanded?: boolean | null;
   tourTarget?: TourTargetId;
-  helpTarget?: HelpPageId;
+  helpTarget?: HelpPageId | { page: HelpPageId; anchor: string };
   /** A box drawn in place of the art: the assistant's, where the live character stands. */
   slot?: ReactNode;
   /** Another task holds the map; a press still switches to this mode, which ends that task. */
@@ -152,7 +152,7 @@ function RowBlock({
       interaction="tile"
       {...(piece !== undefined ? morph : {})}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
-      {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
+      {...(helpTarget ? (typeof helpTarget === 'string' ? helpTargetAttr(helpTarget) : helpTargetAttr(helpTarget.page, helpTarget.anchor)) : {})}
       aria-label={label ?? t(art.labelKey)}
       {...(expanded === undefined ? { 'aria-pressed': on } : expanded === null ? {} : { 'aria-expanded': expanded })}
       onClick={onPress}
@@ -235,7 +235,7 @@ function ModeTiles({ modes, mode, row, dimmed, onPick }: {
             }}>
             <RowBlock art={art} piece={`mode-${art.id}`} on={mode === art.id} named={flat} captionFade={fade} centre={blockCentre(i, row)} dimmed={dimmed} shown={at.shown}
               {...(folded ? {} : { tourTarget: `mode:${art.id}` as const })}
-              {...(front ? { label: t('mode.deck_show'), expanded: null } : { helpTarget: art.helpTarget })}
+              {...(front ? { label: t('mode.deck_show'), expanded: null, helpTarget: { page: 'frame', anchor: 'frame-fold' } } : { helpTarget: art.helpTarget })}
               onPress={front ? () => setOpen(true) : () => { if (open) setOpen(false); onPick(art.id); }} />
           </div>
         );

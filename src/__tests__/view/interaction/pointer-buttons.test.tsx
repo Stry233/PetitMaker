@@ -6,7 +6,7 @@
  * against a view that can orbit (the 3D editor) and one that cannot (2D, where the
  * same gesture pans).
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../../view/interaction/use-pointer-interaction';
@@ -19,26 +19,38 @@ import { useEditorStore } from '../../../state/store';
 import { makeState } from '../../_support/map-state';
 import { armedEditMode } from '../../_support/store';
 
-function makeView(canOrbit: boolean) {
+/** Where a camera double has been moved: the summed pan, the summed orbit and the zoom factor. */
+interface CameraMoves { pan: { x: number; y: number }; orbit: { x: number; y: number }; zoom: number }
+
+function makeCamera(canOrbit: boolean): { camera: GestureCamera; moved: CameraMoves } {
+  const moved: CameraMoves = { pan: { x: 0, y: 0 }, orbit: { x: 0, y: 0 }, zoom: 1 };
   const camera = {
-    pan: vi.fn(), zoomStep: vi.fn(), zoomBy: vi.fn(),
-    ...(canOrbit ? { orbit: vi.fn() } : {}),
-  };
+    pan: (dx: number, dy: number) => { moved.pan.x += dx; moved.pan.y += dy; },
+    zoomStep: () => {},
+    zoomBy: (factor: number) => { moved.zoom *= factor; },
+    ...(canOrbit ? { orbit: (dx: number, dy: number) => { moved.orbit.x += dx; moved.orbit.y += dy; } } : {}),
+  } as unknown as GestureCamera;
+  return { camera, moved };
+}
+
+function makeView(canOrbit: boolean) {
+  const { camera, moved } = makeCamera(canOrbit);
+  const noop = () => {};
   const overlay = {
-    showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(),
-    showSelection: vi.fn(), clearSelection: vi.fn(),
-    showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
-    showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(),
+    showGhost: noop, showGhostSpans: noop, clearGhost: noop, showSelection: noop, clearSelection: noop,
+    showHover: noop, clearHover: noop, flashCommit: noop, showBuildableRegion: noop, clearBuildableRegion: noop,
   };
   const view = {
     projection: {
       screenToPoint: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
-            cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
+      cellToScreen: (x: number, y: number) => ({ x: x * 10, y: y * 10, scale: 1 }),
     },
-    overlay, camera, 
+    overlay, camera,
   } as unknown as ActiveView;
-  return { view, camera, overlay };
+  return { view, moved };
 }
+
+const still = { x: 0, y: 0 };
 
 function Host() {
   const ref = useRef<HTMLDivElement>(null);
@@ -114,20 +126,20 @@ describe('pointer machine: middle button navigates like right', () => {
   });
 
   it.each([['middle', MIDDLE], ['right', RIGHT]] as const)('%s-drag orbits a view that can orbit', (_name, button) => {
-    const { view, camera } = makeView(true);
+    const { view, moved } = makeView(true);
     setActiveView(view);
     dragWith(mount(), button, 30, 12);
 
-    expect(camera.orbit).toHaveBeenCalledWith(30, 12);
-    expect(camera.pan).not.toHaveBeenCalled();
+    expect(moved.orbit).toEqual({ x: 30, y: 12 });
+    expect(moved.pan).toEqual(still);
   });
 
   it.each([['middle', MIDDLE], ['right', RIGHT]] as const)('%s-drag pans a view that cannot orbit', (_name, button) => {
-    const { view, camera } = makeView(false);
+    const { view, moved } = makeView(false);
     setActiveView(view);
     dragWith(mount(), button, 30, 12);
 
-    expect(camera.pan).toHaveBeenCalledWith(-30, -12);
+    expect(moved.pan).toEqual({ x: -30, y: -12 });
   });
 
   it.each([['middle', MIDDLE], ['right', RIGHT]] as const)('%s-tap opens the context menu', (_name, button) => {
@@ -168,16 +180,17 @@ describe('pointer machine: middle button navigates like right', () => {
   });
 
   it('leaves the left button on the tool, not the camera', () => {
-    const { view, camera } = makeView(true);
+    const { view, moved } = makeView(true);
     setActiveView(view);
     dragWith(mount(), 0, 30, 12);
 
-    expect(camera.orbit).not.toHaveBeenCalled();
+    expect(moved.orbit).toEqual(still);
+    expect(moved.pan).toEqual(still);
   });
 
   it('pans a left drag while the pan-drag key is held, even over a tool that would otherwise draw', () => {
     useEditorStore.setState({ ...armedEditMode({ tool: ToolType.TerrainBrush }) });
-    const { view, camera } = makeView(true);
+    const { view, moved } = makeView(true);
     setActiveView(view);
     const el = mount();
     setPanKeyHeld(true);
@@ -190,8 +203,8 @@ describe('pointer machine: middle button navigates like right', () => {
       setPanKeyHeld(false);
     }
 
-    expect(camera.pan).toHaveBeenCalledWith(-30, -12);
-    expect(camera.orbit).not.toHaveBeenCalled();
+    expect(moved.pan).toEqual({ x: -30, y: -12 });
+    expect(moved.orbit).toEqual(still);
   });
 });
 
@@ -207,16 +220,16 @@ describe('camera-only surface: fingers', () => {
   afterEach(cleanup);
 
   it('slides with one finger and pinches with two, as the editor does', () => {
-    const camera = { pan: vi.fn(), zoomStep: vi.fn(), zoomBy: vi.fn() };
+    const { camera, moved } = makeCamera(false);
     const el = render(<CameraHost camera={camera} />).getByTestId('camera-preview');
     el.dispatchEvent(finger('pointerdown', 1, 100, 100));
     window.dispatchEvent(finger('pointermove', 1, 110, 104));
-    expect(camera.pan).toHaveBeenCalled();
-    expect(camera.zoomBy).not.toHaveBeenCalled();
+    expect(moved.pan).not.toEqual(still);
+    expect(moved.zoom).toBe(1);
 
     el.dispatchEvent(finger('pointerdown', 2, 200, 100));
     window.dispatchEvent(finger('pointermove', 2, 240, 100));
-    expect(camera.zoomBy).toHaveBeenCalled();
+    expect(moved.zoom, 'spreading two fingers zooms in').toBeGreaterThan(1);
     window.dispatchEvent(finger('pointerup', 2, 240, 100));
     window.dispatchEvent(finger('pointerup', 1, 110, 104));
   });

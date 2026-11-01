@@ -6,7 +6,7 @@ import type { MacroCoord } from '../../../core/model/types';
 import { cellKey } from '../../../core/grid/rect';
 
 export const FIGURE_SHAPES = ['heart', 'ring', 'crescent'] as const;
-export type FigureShape = (typeof FIGURE_SHAPES)[number];
+type FigureShape = (typeof FIGURE_SHAPES)[number];
 
 /** The figure's cells, mirror-symmetric where the shape is (heart, ring): the right half is the
  *  left half reflected, so no freehand lobe can bulge. All shapes are centered on (cx,cy). */

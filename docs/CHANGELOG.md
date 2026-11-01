@@ -4,6 +4,23 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.916] - 2026-10-31
+
+### Added
+
+- Added Help pages on touch and the upright layout, and on copy and paste.
+- Added videos to Help that show each step, so you can follow along.
+
+### Changed
+
+- With touch or the upright layout, Help's pictures show the interface as it looks on your screen. Before, they always showed the mouse layout on a wide screen.
+
+### Fixed
+
+- Fixed text in windows and panels being too small in a tall, narrow browser window used with a mouse.
+- Fixed the welcome tips showing an empty frame with no sign of loading while a demonstration loads on a slow connection.
+- Fixed screen readers announcing some windows without their title.
+
 ## [2.0.673] - 2026-10-31
 
 ### Added

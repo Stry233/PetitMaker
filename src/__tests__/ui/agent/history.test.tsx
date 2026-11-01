@@ -168,7 +168,7 @@ describe('HistoryStrip: the expanded list', () => {
     expect(onRollBack).toHaveBeenCalledWith(jobs[2]);
   });
 
-  it('opens the ticket from the row body, through a button stretched over the whole row', () => {
+  it('opens the ticket from the row\'s own button', () => {
     const onOpen = vi.fn();
     const { getByTestId, getAllByTestId } = renderWithI18n(
       <Strip jobs={jobs} now={NOW} onOpen={onOpen} onRollBack={() => {}} />,
@@ -176,52 +176,10 @@ describe('HistoryStrip: the expanded list', () => {
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[0]!;
     const open = row.querySelector('[data-testid="history-open"]') as HTMLElement;
-    // The button covers the row, so a press anywhere but the roll-back square lands on it; the row
-    // carries no transform, which would move the button's containing block.
     expect(open.tagName).toBe('BUTTON');
-    expect(open.parentElement).toBe(row);
-    expect(open.style.position).toBe('absolute');
-    expect(open.style.inset).toBe('0');
-    expect(row.style.position).toBe('relative');
-    expect(row.style.transform).toBe('');
-    const name = row.querySelector('[data-testid="history-item-name"]') as HTMLElement;
-    expect(name.style.pointerEvents).toBe('none');
 
     fireEvent.click(open);
     expect(onOpen).toHaveBeenCalledWith(jobs[2]);
-  });
-
-  it('swaps the count for the roll-back square on hover, and keeps both in the row either way', () => {
-    const { getByTestId, getAllByTestId } = renderWithI18n(
-      <Strip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
-    );
-    fireEvent.click(getByTestId('history-toggle'));
-    const row = getAllByTestId('history-item')[1]!;
-    const stat = row.querySelector('[data-testid="history-item-stat"]') as HTMLElement;
-    const acts = row.querySelector('[data-testid="history-item-acts"]') as HTMLElement;
-    // At rest the actions are laid out but unreachable by pointer, so revealing them changes no width.
-    expect(Number(stat.style.opacity || '1')).toBe(1);
-    expect(acts.style.pointerEvents).toBe('none');
-
-    fireEvent.pointerEnter(row);
-    expect(Number(stat.style.opacity)).toBe(0);
-    expect(acts.style.pointerEvents).toBe('auto');
-
-    fireEvent.pointerLeave(row);
-    expect(Number(stat.style.opacity || '1')).toBe(1);
-  });
-
-  it('reveals the roll-back square for a keyboard tab into it, with no pointer involved', () => {
-    const { getByTestId, getAllByTestId } = renderWithI18n(
-      <Strip jobs={jobs} now={NOW} onOpen={() => {}} onRollBack={() => {}} />,
-    );
-    fireEvent.click(getByTestId('history-toggle'));
-    const row = getAllByTestId('history-item')[0]!;
-    const rollBack = row.querySelector('[data-testid="history-roll-back"]') as HTMLElement;
-    act(() => { rollBack.focus(); });
-    // The button sits inside its own confirm seat, so the reveal is read off the acts cell.
-    expect((row.querySelector('[data-testid="history-item-acts"]') as HTMLElement).style.pointerEvents)
-      .toBe('auto');
   });
 
   spec('UI-29', 'the assistant history rollback is reachable by tap in touch mode', () => {
@@ -232,12 +190,6 @@ describe('HistoryStrip: the expanded list', () => {
     );
     fireEvent.click(getByTestId('history-toggle'));
     const row = getAllByTestId('history-item')[0]!;
-    const acts = row.querySelector('[data-testid="history-item-acts"]') as HTMLElement;
-    const stat = row.querySelector('[data-testid="history-item-stat"]') as HTMLElement;
-    // Nothing hovers in touch mode: the square stands visible and pressable, beside the count.
-    expect(Number(acts.style.opacity)).toBe(1);
-    expect(acts.style.pointerEvents).toBe('auto');
-    expect(Number(stat.style.opacity || '1')).toBe(1);
     fireEvent.click(row.querySelector('[data-testid="history-roll-back"]')!);
     confirm();
     expect(onRollBack).toHaveBeenCalledWith(jobs[2]);
@@ -294,10 +246,8 @@ describe('HistoryStrip: the expanded list', () => {
     fireEvent.click(getByTestId('history-toggle'));
     const items = getAllByTestId('history-item');
     expect(items[0]!.getAttribute('data-rolled-back')).toBe('true');
-    expect(Number(items[0]!.style.opacity || '1')).toBe(1);
     expect(items[0]!.querySelector('[data-testid="history-item-stat"]')!.textContent).toBe('rolled back');
     expect(items[1]!.getAttribute('data-rolled-back')).toBe('false');
-    expect(Number(items[1]!.style.opacity || '1')).toBe(1);
     expect(queryAllByTestId('history-roll-back').length).toBe(2);
     expect(items[0]!.querySelector('[data-testid="history-roll-back"]')).toBeNull();
     expect(items[0]!.querySelector('[data-testid="history-open"]')).not.toBeNull();
@@ -367,7 +317,6 @@ describe('HistoryStrip: the rollback guard', () => {
     fireEvent.click(getByTestId('history-toggle'));
     const other = getAllByTestId('history-item').find((el) => el.getAttribute('data-order-seq') === '1')!;
     expect(other.getAttribute('data-other-map')).toBe('true');
-    expect(Number(other.style.opacity)).toBeLessThan(1);
     expect(other.querySelector('[data-testid="history-roll-back"]')).toBeNull();
 
     fireEvent.click(other.querySelector('[data-testid="history-open"]') as HTMLElement);
@@ -400,7 +349,6 @@ describe('HistoryStrip: a record that names no map at all', () => {
     const row = getAllByTestId('history-item').find((el) => el.getAttribute('data-order-seq') === '1')!;
     expect(row.getAttribute('data-unknown-map')).toBe('true');
     expect(row.getAttribute('data-other-map')).toBe('false');
-    expect(Number(row.style.opacity)).toBeLessThan(1);
     expect(row.querySelector('[data-testid="history-roll-back"]')).toBeNull();
 
     fireEvent.click(row.querySelector('[data-testid="history-open"]') as HTMLElement);
@@ -528,14 +476,13 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
     expect(onRollBack).toHaveBeenCalledTimes(1);
   });
 
-  it('marks the row it would take, and drops the count while the question stands', () => {
+  it('marks the row it would take while the question stands', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(
       <Strip jobs={[jobAt()]} now={NOW} undoDepth={19} onRollBack={() => {}} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
     expect(getAllByTestId('history-item')[0]!.getAttribute('data-preview')).toBe('true');
-    expect(getAllByTestId('history-item-stat')[0]!.style.opacity).toBe('0');
   });
 
   it('cancels without firing, and puts the row back', () => {

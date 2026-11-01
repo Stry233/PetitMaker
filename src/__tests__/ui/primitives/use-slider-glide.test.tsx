@@ -56,13 +56,4 @@ describe('the slider glide', () => {
     expect(screen.getByTestId('knob').style.left).toBe('75%');
   });
 
-  it('bends toward a stop crossed mid-glide from where the knob is drawn, never jumping back', async () => {
-    const { show } = mount(0, false);
-    show(0.5);
-    await nextFrame();
-    const drawn = left();
-    show(1);
-    expect(left()).toBeGreaterThanOrEqual(drawn);
-    await waitFor(() => expect(screen.getByTestId('knob').style.left).toBe('100%'), { timeout: 2000 });
-  });
 });

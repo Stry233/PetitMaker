@@ -36,7 +36,7 @@ function Svg({ size = 17, children }: IconProps & { children: React.ReactNode })
 }
 
 // privacy — shield with a check
-export const PrivacyIcon = (p: IconProps) => (
+const PrivacyIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 3 5 6v5.5c0 4.2 2.9 7.2 7 8.5 4.1-1.3 7-4.3 7-8.5V6l-7-3Z" />
     <path d="m9.2 11.7 2 2 3.6-3.8" />
@@ -44,7 +44,7 @@ export const PrivacyIcon = (p: IconProps) => (
 );
 
 // terms — a document with text lines
-export const TermsIcon = (p: IconProps) => (
+const TermsIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M13.5 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V8l-5-5Z" />
     <path d="M13.5 3v4A1.5 1.5 0 0 0 15 8.5h3.5" />
@@ -53,7 +53,7 @@ export const TermsIcon = (p: IconProps) => (
 );
 
 // license — a balance / scales
-export const LicenseIcon = (p: IconProps) => (
+const LicenseIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 4v16M7 20h10" />
     <path d="M5 7h14M8 5.5 5 7l7-1.5L19 7l-3-1.5" />
@@ -62,7 +62,7 @@ export const LicenseIcon = (p: IconProps) => (
 );
 
 // third-party — a package / box
-export const ThirdPartyIcon = (p: IconProps) => (
+const ThirdPartyIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 3.2 4.5 7.1v9.8L12 20.8l7.5-3.9V7.1L12 3.2Z" />
     <path d="M4.7 7.2 12 11l7.3-3.8M12 11v9.6" />
@@ -71,7 +71,7 @@ export const ThirdPartyIcon = (p: IconProps) => (
 );
 
 // asset-licenses — a painter's palette
-export const AssetLicensesIcon = (p: IconProps) => (
+const AssetLicensesIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 3.5c-4.7 0-8.5 3.5-8.5 8s3.8 6.7 6 6.7c1.4 0 1.8-1 1.4-1.9-.5-1 .2-2.1 1.4-2.1H15c3 0 5.5-2.1 5.5-5.2 0-3.4-3.8-5.5-8.5-5.5Z" />
     <circle cx="7.5" cy="10.5" r="1" />
@@ -81,7 +81,7 @@ export const AssetLicensesIcon = (p: IconProps) => (
 );
 
 // about — info circle (used for the "open the About page" grid row)
-export const AboutIcon = (p: IconProps) => (
+const AboutIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="8.5" />
     <path d="M12 11v5" />
@@ -90,7 +90,7 @@ export const AboutIcon = (p: IconProps) => (
 );
 
 // security — a padlock
-export const SecurityIcon = (p: IconProps) => (
+const SecurityIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="4.5" y="10.5" width="15" height="10" rx="2.2" />
     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
@@ -99,7 +99,7 @@ export const SecurityIcon = (p: IconProps) => (
 );
 
 // contact — an envelope
-export const ContactIcon = (p: IconProps) => (
+const ContactIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3.5" y="5.5" width="17" height="13" rx="2.2" />
     <path d="m4.5 7 6.4 5a1.8 1.8 0 0 0 2.2 0l6.4-5" />
@@ -107,7 +107,7 @@ export const ContactIcon = (p: IconProps) => (
 );
 
 // changelog — a clock
-export const ChangelogIcon = (p: IconProps) => (
+const ChangelogIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="8.5" />
     <path d="M12 7.5V12l3 2" />

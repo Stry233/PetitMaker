@@ -26,7 +26,6 @@ describe('ramp help dimensions', () => {
         expect(table['help.objects.ramp_b1']).toContain(`{${token}}`);
       }
       expect(table['help.fig.ramp_1']).toContain('{rampDrop}');
-      expect(table['help.faq.span_b1']).toContain('{rampDrop}');
     }
   });
 });

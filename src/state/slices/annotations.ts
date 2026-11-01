@@ -1,7 +1,8 @@
 /** Annotation data and drafts share gesture history, independently of terrain edits. */
-import { laneRecord, laneStep, type HistoryLane } from '../history-lane';
+import type { HistoryLane } from '../history-lane';
+import { flippedNotes, keptNotes, recordNotes, repointedMeasure, stepNotes, toolForDraft, type NoteSnapshot } from '../note-lane';
 import type { StateCreator } from 'zustand';
-import { CUSTOM_TAG_MAX, annotationsOf, flipMeasures, generateCustomTagId, isEmptyNote, isMeasureSpan, keepCustomTags, mergeZones, withTag, withoutTagsOn, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag, type ZoneTextSize } from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, annotationsOf, generateCustomTagId, isEmptyNote, keepCustomTags, mergeZones, withTag, withoutTagsOn, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag, type ZoneTextSize } from '../../core/model/annotations';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { DEFAULT_TAG } from '../../config/annotation-tags';
 import { type AnnotationTool } from '../editing/vocabulary';
@@ -103,21 +104,17 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
    *  standing notes to the other. False when there is nothing to restore. */
   function travel(dir: 'undo' | 'redo'): boolean {
     const d = data();
-    const lane = annotationLane(get());
-    if (!d || lane[dir].length === 0) return false;
-    const step = laneStep(lane, snapshot(d, get().annotationDraft), dir)!;
-    const restored = JSON.parse(step.restored) as AnnotationSnapshot;
+    const step = d && stepNotes(annotationLane(get()), d, get().annotationDraft, dir);
+    if (!step) return false;
+    const { draft } = step;
     set((s) => ({
       annotationUndoLane: [...step.lane.undo],
       annotationRedoLane: [...step.lane.redo],
       annotationSelection: [],
-      annotationDraft: restored.draft,
-      ...(restored.draft ? { annotationTool: restored.draft.kind === 'zone' && s.annotationTool === 'erase' ? 'erase' as const : restored.draft.kind } : {}),
+      annotationDraft: draft,
+      ...(draft ? { annotationTool: toolForDraft(draft, s.annotationTool) } : {}),
       annotationHistoryEpoch: s.annotationHistoryEpoch + 1,
     }));
-    d.items = restored.items;
-    if (restored.customTags?.length) d.customTags = restored.customTags;
-    else delete d.customTags;
     bump();
     return true;
   }
@@ -168,12 +165,12 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     },
     discardAnnotationDraft: () => {
       const d = data();
-      const current = JSON.stringify(d ? kept(d) : kept({ items: [] }));
+      const current = JSON.stringify(d ? keptNotes(d) : keptNotes({ items: [] }));
       const clean = (lane: string[]) => {
         const result: string[] = [];
         let last = current;
         for (const entry of [...lane].reverse()) {
-          const notes = JSON.stringify(kept(JSON.parse(entry) as AnnotationSnapshot));
+          const notes = JSON.stringify(keptNotes(JSON.parse(entry) as NoteSnapshot));
           if (notes !== last) result.unshift(JSON.stringify({ ...JSON.parse(notes), draft: null }));
           last = notes;
         }
@@ -282,23 +279,20 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     },
     setMeasurementPoints: (id, points, beginStroke) => {
       const d = data();
-      const note = d?.items.find(n => n.id === id);
-      if (!d || d.locked || !d.visible || note?.kind !== 'measure') return false;
-      if (!isMeasureSpan(points)) return false;
-      if (points.every((p, i) => p.x === note.points[i]!.x && p.y === note.points[i]!.y)) return false;
+      const moved = d && repointedMeasure(d, id, points);
+      if (!moved) return false;
       if (beginStroke) get().beginAnnotationStroke();
       get().applyAnnotationEdit(d => {
-        d.items = d.items.map(n => n.id === id ? { ...note, points } : n);
+        d.items = d.items.map(n => n.id === id ? moved : n);
       });
       return true;
     },
     flipMeasurements: (ids) => {
       const d = data();
-      if (!d || d.locked || !d.visible) return;
-      const selected = new Set(ids);
-      if (!d.items.some(n => n.kind === 'measure' && selected.has(n.id))) return;
+      const flipped = d && flippedNotes(d, ids);
+      if (!flipped) return;
       get().beginAnnotationStroke();
-      get().applyAnnotationEdit(d => { d.items = flipMeasures(d.items, selected); });
+      get().applyAnnotationEdit(d => { d.items = flipped; });
     },
     updateAnnotation: (id, patch) => {
       get().beginAnnotationStroke();
@@ -334,7 +328,7 @@ function strokeFields(
   s: Pick<AnnotationsSlice, 'annotationUndoLane' | 'annotationRedoLane' | 'annotationDraft'>,
   d: AnnotationsState,
 ): Pick<AnnotationsSlice, 'annotationUndoLane' | 'annotationRedoLane'> {
-  const lane = laneRecord(annotationLane(s), snapshot(d, s.annotationDraft));
+  const lane = recordNotes(annotationLane(s), d, s.annotationDraft);
   return { annotationUndoLane: [...lane.undo], annotationRedoLane: [] };
 }
 
@@ -370,19 +364,3 @@ export const ANNOTATION_SESSION_RESET = {
   annotationUndoLane: [] as string[],
   annotationRedoLane: [] as string[],
 } as const;
-
-interface AnnotationSnapshot {
-  items: MapAnnotation[];
-  /** Absent in an entry with no custom tags. */
-  customTags?: CustomTag[];
-  draft: MapAnnotation | null;
-}
-
-/** What a lane entry restores besides the draft. */
-function kept(d: Pick<AnnotationsState, 'items' | 'customTags'>): Omit<AnnotationSnapshot, 'draft'> {
-  return { items: d.items, ...(d.customTags?.length ? { customTags: d.customTags } : {}) };
-}
-
-function snapshot(d: Pick<AnnotationsState, 'items' | 'customTags'>, draft: MapAnnotation | null): string {
-  return JSON.stringify({ ...kept(d), draft });
-}

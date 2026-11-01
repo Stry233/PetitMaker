@@ -21,7 +21,7 @@ import type { HistoryEntry } from '../../../core/commands/command-apply';
 import type { CommandSink } from '../../../core/model/command-sink';
 
 /** What a restore must reach. */
-export interface RestoreTarget {
+interface RestoreTarget {
   /** Cells to put back, with the terrain each must hold. */
   readonly cells: Iterable<{ readonly x: number; readonly y: number; readonly terrain: TerrainCell | null }>;
   /** What each object in scope must be; an in-scope id missing here must not exist. */
@@ -38,7 +38,7 @@ function canonical(obj: PlacedObject | undefined): string {
 
 /** The commands that turn `current` into `target`: object removals, erasures, paints stacked up from
  *  each cell's standing surface, silhouettes, then object placements. */
-export function restoreCommands(current: GridState, target: RestoreTarget): Command[] {
+function restoreCommands(current: GridState, target: RestoreTarget): Command[] {
   const commands: Command[] = [], replacements: Command[] = [];
   for (const [id, obj] of current.objects) {
     if (target.scope && !target.scope.has(id)) continue;

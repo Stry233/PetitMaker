@@ -225,7 +225,7 @@ interface RampSite {
  *  A candidate anchor is a cell whose realSurface elevation is `e` (the high side)
  *  and has a cardinal neighbor whose realSurface is `e - heightDrop.layers` (the low
  *  side). We validate with the registry's pre-command rules so the same placement
- *  constraints the placement ghost uses (flat, noFloat, zone, etc.) are applied
+ *  constraints the placement ghost uses (flat, zone, etc.) are applied
  *  without touching state. */
 function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): RampSite[] {
   const state = deps.getState();

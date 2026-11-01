@@ -6,8 +6,6 @@ import { bytesToDataUrl, MAX_IMAGE_BYTES, sniffImageType } from './image-respons
 import { StylizeError } from './types';
 import { concatBytes } from '../../../core/base/bytes';
 
-export { MAX_IMAGE_BYTES } from './image-response';
-
 function isHttps(url: string): boolean {
   try {
     const parsed = new URL(url);

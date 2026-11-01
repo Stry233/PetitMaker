@@ -10,10 +10,9 @@ import { jobRunningIn, useAgentSession } from './session/store';
 
 export { jobRunningIn, panelView, useAgentSession } from './session/store';
 export {
-  connectionGaps, connectionReady, effortKey, isConnected, providerForSavedKey, providerRegion, runnerSettings,
-  setLiveJobStop, useAgentConnection, type AgentConnectionState, type ArmedConnection,
+  connectionGaps, connectionReady, effortKey, isConnected, runnerSettings,
+  useAgentConnection, type ArmedConnection,
 } from './connection/store';
-export { forgetRoster, forgetRosters, rememberedRoster, rememberRoster, rosterKey } from './connection/model-roster';
 
 /** Reads the saved provider, model, supervision and key status, as the page opens. */
 export function hydrateAssistantConnection(): Promise<void> {

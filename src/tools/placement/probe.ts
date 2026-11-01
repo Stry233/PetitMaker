@@ -12,7 +12,7 @@ import { surfaceElevationAt } from '../../state/object-geometry';
  *  The live map is never written and its versions never move; one view serves every probe until
  *  the map, or the set taken off, changes, so its object index and statistics are built once per
  *  drag. */
-export interface ProbeView { view: GridState; scope: StrokeScope }
+interface ProbeView { view: GridState; scope: StrokeScope }
 
 export function probeWithout(state: GridState, objects: readonly PlacedObject[]): ProbeView {
   const key = `${mapVersionKey(state)}|${state.objects.size}|${objects.map((o) => o.id).join(',')}`;

@@ -44,8 +44,6 @@ import type { SetupFace } from './connection/setup-parts';
 import { SteerQueue } from './composer/SteerQueue';
 import { useFollowNewest } from './hooks/use-follow-newest';
 
-export { GATE_BORROW, JOB_ZONE_FLOOR, knobCarry, PANEL_RADIUS, PINNED_HEIGHT, plateVariants } from './desk/plate';
-
 /** The composer's guidance while a cleared key holds the job. */
 const KEY_CLEARED_COMPOSER = { key: 'agent.composer_disconnected', off: true } as const;
 
@@ -54,9 +52,6 @@ const NONE_FILED: ReadonlySet<number> = new Set();
 
 /** No ask deck open. */
 const NO_DECKS: ReadonlySet<string> = new Set();
-
-
-export type { PanelShellProps };
 
 export function PanelShell({ panel, connection, records = {}, region: area = {}, dock = {}, verbs, pictures = {} }: PanelShellProps) {
   const { view, open = true, visit = 0, now, maxHeight, hosted = false } = panel;

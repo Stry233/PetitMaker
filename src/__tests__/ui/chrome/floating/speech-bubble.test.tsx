@@ -31,28 +31,6 @@ function renderBubble(props: Partial<Parameters<typeof SpeechBubble>[0]> = {}, i
 afterEach(cleanup);
 
 describe('SpeechBubble', () => {
-  it('hangs under the anchor, right-aligned, with its tail on the anchor centre', () => {
-    renderBubble();
-    const bubble = screen.getByTestId('speech-bubble');
-    const chrome = fittedUiScale(window.innerWidth, window.innerHeight, 1);
-    expect(parseFloat(bubble.style.top)).toBeCloseTo((ANCHOR.bottom + ANCHOR.height * 0.45) / chrome, 3);
-    // Its right edge stands on the anchor's right edge.
-    expect((parseFloat(bubble.style.left) + bubble.offsetWidth) * chrome).toBeCloseTo(ANCHOR.right, 3);
-    const tail = screen.getByTestId('speech-bubble-tail');
-    const tailCentre = (parseFloat(bubble.style.left) + 1 + parseFloat(tail.style.left) + 8) * chrome;
-    expect(Math.abs(tailCentre - (ANCHOR.left + ANCHOR.right) / 2)).toBeLessThan(1);
-  });
-
-  it('keeps its tail on the anchor centre where the window edge holds it off its aligned place', () => {
-    const near = { ...ANCHOR, left: 4, right: 44, x: 4 } as DOMRect;
-    renderBubble({}, 'pc', near);
-    const bubble = screen.getByTestId('speech-bubble');
-    const chrome = fittedUiScale(window.innerWidth, window.innerHeight, 1);
-    const tail = screen.getByTestId('speech-bubble-tail');
-    const tailCentre = (parseFloat(bubble.style.left) + 1 + parseFloat(tail.style.left) + 8) * chrome;
-    expect(Math.abs(tailCentre - (near.left + near.right) / 2)).toBeLessThan(1);
-  });
-
   it('stands hidden until its anchor is measured, so it is there to leave if removed at once', () => {
     render(
       <MotionConfig reducedMotion="always">

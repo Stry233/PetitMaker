@@ -22,7 +22,6 @@ import { planStreets } from './streets/streets';
 import type { StreetPlan } from './streets/model';
 import { sculptTerrain, type TerrainSculpt } from './terrain/terrain-sculpt';
 import type { DesignInput, DesignPlan } from './types';
-export type { DesignInput } from './types';
 import type { PlanetKind } from '../recipe';
 import { pavableMask, plantableSurface } from '../../reading/surface';
 
@@ -89,7 +88,7 @@ export interface DesignedOutcome {
 }
 
 /** Every pure plan a designed run builds from, in the order the stages produce them. */
-export interface DesignBundle {
+interface DesignBundle {
   composition: CompositionPlan;
   line: MovementLine;
   streets: StreetPlan;

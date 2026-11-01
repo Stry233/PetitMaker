@@ -78,7 +78,7 @@ export interface FirstPassReading {
   readonly worldMeasured?: boolean;
 }
 
-export interface ScanSessionOptions {
+interface ScanSessionOptions {
   /** The recording's framing (`survey.ts:surveyFraming`): the calibrated one by default, null where
    *  the survey found no window to read. */
   readonly framing?: ScanFraming | null;
@@ -138,7 +138,7 @@ export class FramePrep {
 }
 
 /** What `solveTracked` solved, and what its revisit passes found. */
-export interface TrackedSolve {
+interface TrackedSolve {
   readonly solution: ScanSolution;
   readonly slips: ChunkSlips;
   /** The lost steps the frames' own lines placed (`lattice.ts:bridgeLostSteps`), as edge indices. */

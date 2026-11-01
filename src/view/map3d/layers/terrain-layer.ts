@@ -65,7 +65,7 @@ export function shadeFall(geo: THREE.BufferGeometry, deep: readonly [number, num
 }
 
 /** What the chunks read from the scene that holds them. */
-export interface TerrainChunksHost {
+interface TerrainChunksHost {
   readonly scene: THREE.Scene;
   /** The state the mesher consumes: the live map, or its peel view while layers are hidden. */
   meshState(): GridState;

@@ -12,14 +12,14 @@
 import type { GridState } from '../core/model/types';
 import type { CameraAngle } from '../state/view-camera';
 
-export type MapCaptureContent = 'map' | 'complete' | 'notes' | 'grid';
+type MapCaptureContent = 'map' | 'complete' | 'notes' | 'grid';
 
 /** An inclusive rect of saved cells; the capture clamps it to the map. */
-export interface CaptureCellRect { x1: number; y1: number; x2: number; y2: number }
+interface CaptureCellRect { x1: number; y1: number; x2: number; y2: number }
 
 /** One export tile in px relative to the whole map's capture frame (its sea margin or terrain bleed
  *  included), rendered at `resolution`. */
-export interface CaptureTile { region: { x: number; y: number; w: number; h: number }; resolution: number }
+interface CaptureTile { region: { x: number; y: number; w: number; h: number }; resolution: number }
 
 export interface MapCaptureOptions {
   /** Longest side of the picture in px, clamped to the GPU's texture limit; 1024 when omitted. A

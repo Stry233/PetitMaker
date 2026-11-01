@@ -64,7 +64,7 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
   return (
     <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} size="panel" width={530}
       cardStyle={{ ...windowFrame, minHeight: 0 }} ariaLabel={t('export.notice.title')}>
-      <WindowHeader title={<h2 style={{ margin: 0, font: 'inherit' }}>{t('export.notice.title')}</h2>} reserve
+      <WindowHeader title={t('export.notice.title')} reserve
         close={{ label: t('hint.close'), onPress: () => onDecision(false) }} style={{ marginBottom: 16, flex: '0 0 auto' }} />
       <WindowBody ref={content} onGeometry={(g) => setAtEnd(showsEnd(g))} tabIndex={0} role="region" aria-label={t('export.notice.title')}
         style={{ flex: '0 1 auto', ...roleFont('body'), lineHeight: 1.65, color: skin.plateInk }}>

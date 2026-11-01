@@ -18,7 +18,7 @@ This folder states what PetitMaker does, one requirement at a time, in words a p
 
 Each requirement is one line: `- **<ID>** <one or two sentences>.`, optionally ending with `Source:` and where the requirement comes from (a rule id, a file format, the game, or an owner ruling with its date). A requirement says what can be observed, never how the code achieves it.
 
-Ids are permanent. A requirement that no longer holds stays in place as `- **<ID>** (retired YYYY-MM-DD) <what replaced it>.`, and a new requirement takes the next free number.
+Ids are permanent. A requirement that no longer holds stays in place as `- **<ID>** (retired YYYY-MM-DD) <what replaced it>.`. A new numbered requirement is written in its branch as `<PREFIX>-NEW-<NAME>` (`UI-NEW-BRUSH-HINT`) and cited by that name; merging into main gives it the next free number and rewrites its citations, and a placeholder is never pushed unnumbered.
 
 ## Tests
 

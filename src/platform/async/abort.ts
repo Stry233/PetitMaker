@@ -25,7 +25,7 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
 
 /** A controller that aborts with its parent. `dispose` detaches it from the parent (and stops a
  *  deadline) without aborting it; call it once the work the controller guards has settled. */
-export interface LinkedController {
+interface LinkedController {
   readonly signal: AbortSignal;
   abort(): void;
   dispose(): void;

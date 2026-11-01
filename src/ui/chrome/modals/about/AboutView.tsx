@@ -40,7 +40,7 @@ const GRID_DOCS: DocId[] = DOC_ROWS.filter(inEdition).map((row) => row.id);
 /** Whether About may drill into `id`: in the offline edition, only a document it carries. */
 export const opensDoc = (id: DocId): boolean => inEdition(DOC_ROWS.find((row) => row.id === id) ?? { lite: false });
 
-export interface AboutViewProps {
+interface AboutViewProps {
   wide: boolean;
   onOpenDoc: (id: DocId) => void;
   /** Each document row, so Back can return focus to the row that opened the document. */

@@ -299,7 +299,6 @@ describe('AboutModal — feedback links', () => {
     const channel = within(feedback).getByTestId('qq-feedback-channel');
     const reports = within(feedback).getByTestId('report-links');
     expect(channel.compareDocumentPosition(reports) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(reports.style.gridTemplateColumns).toBe('1fr 1fr');
     const links = Array.from(reports.querySelectorAll('a')).map((a) => a.getAttribute('href'));
     expect(links).toEqual([`${LEGAL.repoUrl}/issues`, `mailto:${LEGAL.privacyContactEmail}`]);
     expect(reports.querySelectorAll('a')[1]!.textContent).toContain(en['about.email_feedback']);

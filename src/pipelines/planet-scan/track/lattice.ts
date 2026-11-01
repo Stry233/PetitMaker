@@ -14,7 +14,7 @@ import type { GreyImage } from '../types';
 const L = SCAN_PROFILE.lattice;
 
 /** A run's line profiles. Sample `i` sits `i * step` rectified pixels from the tile's origin. */
-export interface LineProfiles {
+interface LineProfiles {
   /** Vertical-line strength per tile column. */
   readonly x: Float32Array;
   /** Horizontal-line strength per tile row. */
@@ -24,7 +24,7 @@ export interface LineProfiles {
 }
 
 /** A comb `phase + n * period` fitted to a profile. Units are profile samples. */
-export interface CombFit {
+interface CombFit {
   /** Where the first line sits, in [0, period). */
   readonly phase: number;
   /** Mean comb-tooth height over the profile's standard deviation. */
@@ -187,7 +187,7 @@ export function fitComb(
 
 /** The lattice seen by one still run: where its lines sit, in rectified pixels from the tile's
  *  origin, per axis; null on an axis whose lines are too faint or irregular to pin. */
-export interface RunLattice {
+interface RunLattice {
   readonly x: number | null;
   readonly y: number | null;
 }
@@ -294,7 +294,7 @@ export function latticePins(runs: readonly RunProfiles[], period: LatticePeriod 
 }
 
 /** A still run placed on the solved path: its tile origin in scan coordinates and its weight. */
-export interface PlacedRun {
+interface PlacedRun {
   readonly x: number;
   readonly y: number;
   readonly frames: number;
@@ -302,7 +302,7 @@ export interface PlacedRun {
 }
 
 /** The scan's lattice on one axis, in the path's rectified pixel coordinates. */
-export interface AxisLattice {
+interface AxisLattice {
   /** Lines sit at `phase + n * period`; phase in [0, period). */
   readonly phase: number;
   /** Lines located along the scan. */
@@ -314,7 +314,7 @@ export interface AxisLattice {
   readonly score: number;
 }
 
-export interface ScanLattice {
+interface ScanLattice {
   readonly x: AxisLattice | null;
   readonly y: AxisLattice | null;
   readonly period: LatticePeriod;
@@ -403,7 +403,7 @@ export function fitScanLattice(runs: readonly PlacedRun[], period: LatticePeriod
 }
 
 /** How the still runs' lines fit when their period may differ from the calibrated one. */
-export interface PeriodScale {
+interface PeriodScale {
   /** The median, over run axes whose lines fit some period, of the best-fitting period's scale to
    *  the calibrated one; 1 when none fits. */
   readonly scale: number;

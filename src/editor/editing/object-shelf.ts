@@ -1,5 +1,5 @@
 /** What the object shelf's presses and category choice do to what is armed. */
-import type { CategoryId } from '../../core/model/types';
+import type { CategoryId, GridState, PlacedObject } from '../../core/model/types';
 import type { KernelEvents } from '../../core/commands/events';
 import type { MacroId } from '../../tools/macros';
 import { getCatalogItem } from '../../state/catalog';
@@ -18,6 +18,14 @@ export function disarmOutsideCategory(category: CategoryId): void {
   else if (macro && macro !== macroForShelfCategory(category)) s.setEditMode({ mode: 'object', arm: { kind: 'none' } });
 }
 
+/** Whether a map change that `added` these objects placed armed item `itemId` up to its limit
+ *  (`maxCount`, V-PLACE-MAX), so nothing of it is left to place. */
+export function placingFilledCap(state: GridState, itemId: string | null, added: readonly PlacedObject[] | undefined): boolean {
+  const cap = itemId ? getCatalogItem(itemId)?.maxCount : undefined;
+  if (cap === undefined || !added?.some((o) => o.catalogId === itemId)) return false;
+  return (getObjectIndex(state).countByCatalog.get(itemId!) ?? 0) >= cap;
+}
+
 /**
  * Puts down the armed item once the map holds as many of it as it may (`maxCount`, V-PLACE-MAX): a
  * placement that used the last of its cap leaves nothing to place next, whether a click or a drop
@@ -27,10 +35,7 @@ export function watchCappedArming(): () => void {
   const bus = useEditorStore.getState().eventBus;
   const check = ({ added }: KernelEvents['objects-changed']): void => {
     const s = useEditorStore.getState();
-    const itemId = armedItemOf(s);
-    const cap = itemId ? getCatalogItem(itemId)?.maxCount : undefined;
-    if (cap === undefined || !s.gridState || !added?.some((o) => o.catalogId === itemId)) return;
-    if ((getObjectIndex(s.gridState).countByCatalog.get(itemId!) ?? 0) >= cap) s.setEditMode({ arm: { kind: 'none' } });
+    if (s.gridState && placingFilledCap(s.gridState, armedItemOf(s), added)) s.setEditMode({ arm: { kind: 'none' } });
   };
   bus.on('objects-changed', check);
   return () => bus.off('objects-changed', check);
@@ -66,7 +71,7 @@ export function toggleItemPick(itemId: string): void {
 
 /** The pointer carrying a card: its id, the element holding its capture, and what to tell the card
  *  when the carry ends, however it ends. */
-export interface CardHold {
+interface CardHold {
   pointerId: number;
   surface: HTMLElement | null;
   onEnd: () => void;

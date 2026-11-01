@@ -50,7 +50,7 @@ export function recordTourOffered(version: number): void {
 }
 
 /** What a visit's start does: run the tour, waive it (record it offered without running), or nothing. */
-export type FirstLaunch = 'run' | 'waive' | 'none';
+type FirstLaunch = 'run' | 'waive' | 'none';
 
 /** A browser never offered any tour but holding a saved map used the editor before tours existed, so
  *  it is waived; one offered an older tour runs the current one once, saved map or not. */

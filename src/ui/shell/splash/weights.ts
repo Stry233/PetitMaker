@@ -10,7 +10,7 @@ import { withDeadline } from '../../../platform/async/abort';
  *  answers, so a stalled request must not hold the art. */
 const MANIFEST_WAIT_MS = 3000;
 
-export type ItemKind = 'art' | 'font' | 'file' | 'code';
+type ItemKind = 'art' | 'font' | 'file' | 'code';
 
 /** Byte weights for an item the manifest does not list: the median size of each kind in a 2026-10
  *  web build. A code item is a warm loader whose chunk graph the manifest cannot attribute. */
@@ -22,7 +22,7 @@ export const FALLBACK_BYTES: Readonly<Record<ItemKind, number>> = {
 };
 
 /** Bytes an item of `kind` at `url` weighs. */
-export type Weigh = (kind: ItemKind, url?: string) => number;
+type Weigh = (kind: ItemKind, url?: string) => number;
 
 /** The manifest's key for `url`: its path under the page's base. */
 function manifestKey(url: string): string {

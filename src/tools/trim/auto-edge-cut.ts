@@ -385,7 +385,7 @@ export function edgeCutGeneratedTerrain(ctx: EdgeCutCtx, terrainCells: MacroCoor
 
 /** Options of a chosen edge-cut pass. `fillLowerBlocks` fillets a real block lower than the mass that
  *  wraps its notch, as the stroke path does; generation leaves it off to stay reject-free. */
-export interface EdgeCutPassOptions { readonly fillLowerBlocks?: boolean }
+interface EdgeCutPassOptions { readonly fillLowerBlocks?: boolean }
 
 /** The generation pass with the corner choice handed in — what the stencil generators run. The
  *  chooser is consulted only at corners the validators have already offered. */

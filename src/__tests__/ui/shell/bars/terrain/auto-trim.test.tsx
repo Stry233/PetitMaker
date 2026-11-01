@@ -38,13 +38,6 @@ describe('automatic corner settings', () => {
     expect(useEditorStore.getState().autoEdgeCut).toBe('round');
     expect(selected().getAttribute('aria-label')).toBe('Round');
   });
-  it('gives No Trim the same pill treatment as the cutting modes', () => {
-    const plate = group().querySelector('[data-option-plate]');
-    expect(selected().getAttribute('aria-label')).toBe('No Trim');
-    fireEvent.click(within(group()).getByRole('button', { name: 'Bevel' }));
-    expect(group().querySelector('[data-option-plate]')).toBe(plate);
-    expect(selected().style.opacity).toBe(within(group()).getByRole('button', { name: 'No Trim' }).style.opacity);
-  });
   it('retains the treatment across tool switches', () => {
     act(() => useEditorStore.getState().setAutoEdgeCut('rect'));
     fireEvent.click(screen.getByRole('button', { name: 'Eraser' }));

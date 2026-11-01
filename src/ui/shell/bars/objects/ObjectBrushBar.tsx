@@ -5,6 +5,7 @@
  */
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
+import { useUiPreviewPose } from '../../../design/preview';
 import { OBJECT_SPACING, type ObjectBrush } from '../../../../state/editing/vocabulary';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { QUAD, TEXT } from '../../units';
@@ -26,9 +27,12 @@ const BRUSHES = [
 
 export function ObjectBrushBar({ onDone }: { onDone: () => void }) {
   const t = useT();
-  const brush = useEditorStore((s) => s.objectBrush);
+  const posed = useUiPreviewPose()?.objectBrush;
+  const liveBrush = useEditorStore((s) => s.objectBrush);
+  const brush = posed?.brush ?? liveBrush;
   const setBrush = useEditorStore((s) => s.setObjectBrush);
-  const shape = useEditorStore((s) => s.objectPaintShape);
+  const liveShape = useEditorStore((s) => s.objectPaintShape);
+  const shape = posed?.shape ?? liveShape;
   const setShape = useEditorStore((s) => s.setObjectPaintShape);
   const painting = brush === 'paint';
   const active = BRUSHES.findIndex((b) => b.id === brush);
@@ -38,7 +42,7 @@ export function ObjectBrushBar({ onDone }: { onDone: () => void }) {
       active={brush === id} centre={toolPillCentre(index, active)} onSelect={() => setBrush(id)} />,
   }));
   return <ToolbarHost testId="shell-object-brush" mapEdge={false} tone="dark" spec={{
-    frameAttrs: helpTargetAttr('objects'),
+    frameAttrs: helpTargetAttr('objects', 'objects-batch'),
     rows: [],
     pills,
     activePill: `brush-${brush}`,
@@ -55,7 +59,9 @@ export function ObjectBrushBar({ onDone }: { onDone: () => void }) {
 /** The spacing slider, in the size slider's place and on its stops, named under it as the shape group is. */
 function Spacing() {
   const t = useT();
-  const spacing = useEditorStore((s) => s.objectPaintSpacing);
+  const posed = useUiPreviewPose()?.objectBrush;
+  const liveSpacing = useEditorStore((s) => s.objectPaintSpacing);
+  const spacing = posed?.spacing ?? liveSpacing;
   const setSpacing = useEditorStore((s) => s.setObjectPaintSpacing);
   const label = t('objects.spacing');
   // A root of its own, so the slider's lift stays inside the box the caption is measured from.

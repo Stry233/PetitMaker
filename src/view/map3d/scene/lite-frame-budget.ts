@@ -1,8 +1,8 @@
-export type BudgetAction = 'increase' | 'reduce' | 'fallback' | null;
+type BudgetAction = 'increase' | 'reduce' | 'fallback' | null;
 
 /** What the scene does after a frame: render larger or smaller (`scale` changed), switch to the lite
  *  materials, or give up on 3D. */
-export type BudgetStep = 'increase' | 'reduce' | 'enter-lite' | 'fallback' | null;
+type BudgetStep = 'increase' | 'reduce' | 'enter-lite' | 'fallback' | null;
 
 /** A frame over either count is crowding the device whatever its timing. */
 const RESOURCE_LIMIT = { calls: 100, triangles: 100_000 };

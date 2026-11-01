@@ -6,7 +6,7 @@
  * Both are facts only the machine knows, so they cannot be unit-tested through a tool. These
  * drive the real handlers over a real container element and read the resolved CSS back off it.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../../view/interaction/use-pointer-interaction';
@@ -24,15 +24,16 @@ import { setStoreState, armedEditMode } from '../../_support/store';
 
 /** `canOrbit` is the one camera capability that differs between the two views. */
 function makeView(opts: { canOrbit?: boolean } = {}) {
+  /** The summed distance the camera has been panned. */
+  const panned = { x: 0, y: 0 };
+  const noop = () => {};
   const camera = {
-    pan: vi.fn(), zoomStep: vi.fn(), zoomBy: vi.fn(),
-    ...(opts.canOrbit ? { orbit: vi.fn() } : {}),
+    pan: (dx: number, dy: number) => { panned.x += dx; panned.y += dy; }, zoomStep: noop, zoomBy: noop,
+    ...(opts.canOrbit ? { orbit: noop } : {}),
   };
   const overlay = {
-    showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost: vi.fn(),
-    showSelection: vi.fn(), clearSelection: vi.fn(),
-    showHover: vi.fn(), clearHover: vi.fn(), flashCommit: vi.fn(),
-    showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn(),
+    showGhost: noop, showGhostSpans: noop, clearGhost: noop, showSelection: noop, clearSelection: noop,
+    showHover: noop, clearHover: noop, flashCommit: noop, showBuildableRegion: noop, clearBuildableRegion: noop,
   };
   const view = {
     projection: {
@@ -41,7 +42,7 @@ function makeView(opts: { canOrbit?: boolean } = {}) {
     },
     overlay, camera,
   } as unknown as ActiveView;
-  return { view, camera, overlay };
+  return { view, panned };
 }
 
 function Host() {
@@ -80,16 +81,15 @@ afterEach(() => { cleanup(); setActiveView(null); __resetCursorController(); });
 
 describe('every path that pans keeps the move cursor', () => {
   it.each([['2D', false], ['3D', true]])('holds it for the %s move-tool left drag, which the machine pans once', (_name, canOrbit) => {
-    const { view, camera } = makeView({ canOrbit });
+    const { view, panned } = makeView({ canOrbit });
     setActiveView(view);
     const el = mount('move');
 
     el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 100, clientY: 100 }));
     expect(el.style.cursor).toBe(cursorCss('move'));
-    // One owner of the pan: the machine, in both views.
+    // One owner of the pan, the machine, in both views: the map follows the pointer exactly.
     window.dispatchEvent(pointer('pointermove', { button: 0, buttons: 1, clientX: 130, clientY: 100 }));
-    expect(camera.pan).toHaveBeenCalledTimes(1);
-    expect(camera.pan).toHaveBeenCalledWith(-30, 0);
+    expect(panned).toEqual({ x: -30, y: 0 });
 
     window.dispatchEvent(pointer('pointerup', { button: 0, buttons: 0, clientX: 130, clientY: 100 }));
     expect(el.style.cursor).toBe(cursorCss('move'));

@@ -20,7 +20,7 @@ import { fnv1a32 } from '../../../core/base/hash';
 import { blurField } from '../../../core/base/fields';
 import type { Bitmap } from './watercolorize';
 
-export interface PencilizeOptions {
+interface PencilizeOptions {
   seed: number;
   /** Radians at image position (px). Supplied from map structure where the caller has it. */
   orientation?: (x: number, y: number) => number;

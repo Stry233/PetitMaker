@@ -17,7 +17,7 @@ export interface StrokeFinishCtx extends EdgeCutCtx {
   registry: RuleDispatcher;
 }
 
-export interface StrokeFinish {
+interface StrokeFinish {
   stroke: Stroke;
   /** The terrain cells the stroke painted, and the road tiles it laid. */
   terrainCells: MacroCoord[];
@@ -31,7 +31,7 @@ export interface StrokeFinish {
   layerVisibility?: Readonly<Record<number, boolean>>;
 }
 
-export interface StrokeOutcome {
+interface StrokeOutcome {
   violations: ValidationError[];
   /** Whether anything of the stroke survived the rules, read before the trim sweep. */
   committed: boolean;

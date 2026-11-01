@@ -73,7 +73,7 @@ interface Slab { rect: Rect; land: number }
  * surface, and two pieces that do not touch are two surfaces — and a piece too small to compose on
  * is folded into the neighbour it shares the most boundary with.
  */
-export interface PlateCut {
+interface PlateCut {
   /** The land's bounding box, and roughly how many plates it is cut into. */
   box: Rect;
   target: number;

@@ -69,7 +69,7 @@ export type KeyAction =
 
 /** A key in a context: what it does there, if anything, and the label it shows when that differs
  *  from the command's own. */
-export interface ContextKey {
+interface ContextKey {
   action?: KeyAction;
   label?: I18nKey;
 }

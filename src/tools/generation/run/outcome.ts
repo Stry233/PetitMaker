@@ -35,7 +35,7 @@ export interface Outcome {
 /** One generator's own report. */
 export type OutcomeDetail = MazeDetail | StencilDetail;
 
-export interface MazeDetail {
+interface MazeDetail {
   kind: 'maze';
   /** Where the gates landed after snapping to the border ring. A caller that marks them cannot use
    *  the coordinates it passed in, which need not sit on the border. */

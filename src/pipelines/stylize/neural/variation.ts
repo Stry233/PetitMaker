@@ -8,7 +8,7 @@
  * medium comes back different. Pure maths, browser-free, so the mapping is testable.
  */
 
-export interface Variation {
+interface Variation {
   flipX: boolean;
   flipY: boolean;
   /** The map's size inside the frame relative to its full fit, below 1 so a shift stays inside. */

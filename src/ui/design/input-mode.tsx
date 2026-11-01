@@ -39,6 +39,17 @@ export function InputModeProvider({ inputMode, shape = 'landscape', children }: 
   return <DeviceFactsContext.Provider value={value}>{children}</DeviceFactsContext.Provider>;
 }
 
+/** A pictured subtree standing in another input mode or shape than the live one (a Help figure about
+ *  touch mode or the upright layout): its components read the posed facts, while the page's own
+ *  sizing, which only the app root seats, stays the live one's. Absent fields keep the live ones. */
+export function PosedDeviceFacts({ inputMode, shape, children }: { inputMode?: InputMode; shape?: LayoutShape; children: ReactNode }) {
+  const live = useContext(DeviceFactsContext);
+  const next = inputMode ?? live.inputMode;
+  const nextShape = shape ?? live.shape;
+  const value = useMemo<DeviceFacts>(() => ({ inputMode: next, shape: nextShape }), [next, nextShape]);
+  return <DeviceFactsContext.Provider value={value}>{children}</DeviceFactsContext.Provider>;
+}
+
 /** Whether the interface is in its touch mode. */
 export function useTouchMode(): boolean {
   return useContext(DeviceFactsContext).inputMode === 'touch';

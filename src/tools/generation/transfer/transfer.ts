@@ -119,7 +119,7 @@ export function hasCarriableContent(state: GridState): boolean {
 }
 
 /** A transfer's arrival on a detached map, before anything is installed. */
-export interface BuiltTransfer {
+interface BuiltTransfer {
   dest: GridState;
   registry: RuleRegistry;
   offset: MacroCoord;

@@ -26,9 +26,9 @@ function endpointOwed(a: { provider: ProviderId; customBaseUrl: string }): boole
 /** Setup entry point selected by a repair action. */
 export type SetupEntry = 'key' | 'chooser' | 'endpoint';
 
-export type SetupPhase = 'key' | 'custom' | 'checking' | 'manage';
+type SetupPhase = 'key' | 'custom' | 'checking' | 'manage';
 
-export interface KeyReadingState {
+interface KeyReadingState {
   phase: SetupPhase;
   keyDraft: string;
   /** The key masks while unfocused and remains visible while editing. */
@@ -51,8 +51,10 @@ export interface KeyReadingState {
   gate: Exclude<KeyDestination, 'endpoint'>;
 }
 
-export interface KeyReadingOptions {
+interface KeyReadingOptions {
   entry: SetupEntry;
+  /** A key standing in the field as just pasted, at the key step (a Help figure's pose); read once. */
+  pasted?: string;
   listModels: ListModels;
   onManage?: () => void;
   onLeave?: () => void;
@@ -60,13 +62,13 @@ export interface KeyReadingOptions {
   pictured: boolean;
 }
 
-export interface KeyReading {
+interface KeyReading {
   get(): KeyReadingState;
   subscribe(listener: () => void): () => void;
   /** Starts hearing the connection store and the idle timer; returns the stop. */
   start(): () => void;
   /** The newest callbacks, listing source and preview flag. */
-  setOptions(options: Omit<KeyReadingOptions, 'entry'>): void;
+  setOptions(options: Omit<KeyReadingOptions, 'entry' | 'pasted'>): void;
   setPhase(phase: SetupPhase): void;
   setRowOpen(open: boolean): void;
   /** Immediately follows the same destination table used by idle advance. */
@@ -89,16 +91,17 @@ export interface KeyReading {
 const conn = (): AgentConnectionState => useAgentConnection.getState();
 
 export function createKeyReading(initial: KeyReadingOptions): KeyReading {
-  let options: Omit<KeyReadingOptions, 'entry'> = initial;
-  const { entry } = initial;
+  let options: Omit<KeyReadingOptions, 'entry' | 'pasted'> = initial;
+  const { entry, pasted } = initial;
   /** Restore missing addresses directly; existing credentials resume validation. */
   let phase: SetupPhase = (() => {
+    if (pasted !== undefined) return 'key';
     if (entry === 'endpoint') return 'custom';
     if (entry === 'chooser') return 'key';
     const gaps = connectionGaps(conn());
     return gaps.includes('key') || gaps.length === 0 ? 'key' : gaps.includes('endpoint') ? 'custom' : 'checking';
   })();
-  let keyDraft = phase === 'custom' ? runnerSettings({ ...conn(), provider: 'custom' }).apiKey : '';
+  let keyDraft = pasted ?? (phase === 'custom' ? runnerSettings({ ...conn(), provider: 'custom' }).apiKey : '');
   let keyMasked = keyDraft.length > 0;
   /** Tracks field focus for password-manager fills that arrive without focus events. */
   let keyFocused = false;

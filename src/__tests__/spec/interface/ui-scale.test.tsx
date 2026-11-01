@@ -246,6 +246,18 @@ describe('the interface scale per input mode', () => {
     expect(frameAt(832, 328, wide)).toBeCloseTo(frameAt(384, 776, upright), 9);
   });
 
+  spec('UI-34', 'in PC mode an upright tablet-sized window draws the chrome at the size a wide window of room does', () => {
+    const chromeAt = (w: number, h: number, shape: LayoutShape) => {
+      resizeTo(w, h);
+      const pc = ({ children }: { children: ReactNode }) => <InputModeProvider inputMode="pc" shape={shape}><I18nProvider>{children}</I18nProvider></InputModeProvider>;
+      const scale = renderHook(() => useChromeScale(), { wrapper: pc }).result.current;
+      cleanup();
+      return scale;
+    };
+    expect(chromeAt(1280, 800, 'landscape')).toBe(1);
+    expect(chromeAt(820, 1180, 'portrait')).toBe(chromeAt(1280, 800, 'landscape'));
+  });
+
   spec('UI-34', 'at the touch default an upright phone draws its rail buttons under a fingertip\'s size, each still answering a 44 px fingertip', () => {
     resizeTo(384, 832);
     switchTo('touch');

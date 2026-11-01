@@ -38,8 +38,10 @@ export const plateButton: CSSProperties = {
 
 /** A plate's body on the map's top edge: the cream plate drawn behind one row of `PLATE_ROW`, which
  *  holds `children` `gap` px apart inside `padding`. */
-export function PlateBody({ bodyRef, testId, gap, padding, style, children }: {
+export function PlateBody({ bodyRef, testId, gap, padding, style, edge = true, children }: {
   bodyRef?: Ref<HTMLDivElement>;
+  /** False for a pictured plate, which bounds no live map area. */
+  edge?: boolean;
   testId?: string;
   gap: number;
   padding: string;
@@ -47,7 +49,7 @@ export function PlateBody({ bodyRef, testId, gap, padding, style, children }: {
   children: ReactNode;
 }) {
   return (
-    <div ref={bodyRef} data-testid={testId} {...mapEdgeAttr('top')}
+    <div ref={bodyRef} data-testid={testId} {...(edge ? mapEdgeAttr('top') : {})}
       style={{ position: 'relative', fontFamily: font.family, color: INK, pointerEvents: 'auto', maxWidth: '100%', ...style }}>
       <ShapeEdge style={{ position: 'absolute', inset: 0 }}>
         <span style={{ position: 'absolute', inset: 0, background: PLATE, borderRadius: (PLATE_ROW / 2) * (isWebKitEngine() ? 2 : 1) }} />
@@ -86,14 +88,21 @@ export function MapPlate({ title, testId, motionProps, children }: {
       style={{
         ...layer, top, ...across, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: z.panel,
       }}>
-      <PlateBody gap={GAP} padding={`0 ${PAD}px 0 ${SEGMENT_PAD + PAD}px`}>
-        <span style={{ ...roleFont('head'), color: PLATE_INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          {title}
-        </span>
-        <span aria-hidden style={plateRule} />
-        {children}
-      </PlateBody>
+      <PlateTitled title={title}>{children}</PlateTitled>
     </motion.div>,
     document.body,
+  );
+}
+
+/** A map plate's face: its title, a rule and `children`; `pictured` in a Help figure. */
+export function PlateTitled({ title, pictured = false, children }: { title: string; pictured?: boolean; children: ReactNode }) {
+  return (
+    <PlateBody edge={!pictured} gap={GAP} padding={`0 ${PAD}px 0 ${SEGMENT_PAD + PAD}px`}>
+      <span style={{ ...roleFont('head'), color: PLATE_INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+        {title}
+      </span>
+      <span aria-hidden style={plateRule} />
+      {children}
+    </PlateBody>
   );
 }

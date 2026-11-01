@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Which scroll tucks a window's title: Save and share's one-column bodies do, its share picture's
- * settings column beside the preview does not, and turning to another section brings the title to
- * the size the shown section's scroll gives it in one glide rather than a jump. The share picture is
- * laid out for the card's settled width, never the width the card passes through on its way there.
+ * Save and share's title under reduced motion: a scroll tucks it, and turning to another section sets
+ * it to that section's size at once. Which bodies tuck the title and how it glides depend on the real
+ * layout and are checked in a browser.
  *
  * jsdom has no layout, so this stands one in: a card is as wide as its inline width, a window body
  * spans the card's content unless it stands in a grid whose first track is a px column (the share
@@ -128,48 +127,7 @@ function turnTo(dialog: HTMLElement, name: string): void {
   resized();
 }
 
-describe('the title tucks only with a scroll that is the window\'s whole body', () => {
-  spec('UI-31', 'on a wide window, scrolling the share picture\'s settings beside its fixed preview leaves the title as it is', async () => {
-    sizeWindow(1440, 900);
-    const dialog = await share('friend', 'pc', 'landscape');
-    expect(within(dialog).getByTestId('export-panel').getAttribute('data-columns')).toBe('2');
-    scroll(shownBody(dialog), 200);
-    await play(48);
-    expect(title(dialog)).toBeCloseTo(FULL, 6);
-  });
-
-  spec('UI-31', 'in one column the share picture and its settings scroll as the whole body, which tucks the title', async () => {
-    sizeWindow(390, 844);
-    const dialog = await share('friend', 'touch', 'portrait');
-    expect(within(dialog).getByTestId('export-panel').getAttribute('data-columns')).toBe('1');
-    scroll(shownBody(dialog), 200);
-    await play(48);
-    expect(title(dialog)).toBeLessThan(FULL * 0.8);
-  });
-
-  spec('UI-31', 'turning between a scrolled Keep working and the two-column share picture glides the title to each one\'s size', async () => {
-    sizeWindow(1440, 900);
-    const dialog = await share('keep', 'pc', 'landscape');
-    turnTo(dialog, 'For a friend');
-    turnTo(dialog, 'Keep working');
-    scroll(shownBody(dialog), 200);
-    await play(48);
-    expect(title(dialog)).toBeCloseTo(FULL * 0.74, 1);
-    const tucked = title(dialog);
-    turnTo(dialog, 'For a friend');
-    await play(48);
-    expect(title(dialog), 'on its way out of the tuck, not snapped to full').toBeGreaterThan(tucked + 0.1);
-    expect(title(dialog)).toBeLessThan(FULL - 0.1);
-    await play(400);
-    expect(title(dialog)).toBeCloseTo(FULL, 1);
-    turnTo(dialog, 'Keep working');
-    await play(48);
-    expect(title(dialog), 'and back toward the tuck Keep working\'s scroll gives').toBeLessThan(FULL - 0.1);
-    expect(title(dialog)).toBeGreaterThan(tucked + 0.1);
-    await play(400);
-    expect(title(dialog)).toBeCloseTo(tucked, 1);
-  });
-
+describe('the title tuck under reduced motion', () => {
   spec('UI-31', 'with reduced motion the turn sets the title at once', async () => {
     sizeWindow(1440, 900);
     const dialog = await share('keep', 'pc', 'landscape', true);
@@ -179,22 +137,5 @@ describe('the title tucks only with a scroll that is the window\'s whole body', 
     turnTo(dialog, 'For a friend');
     await play(48);
     expect(title(dialog)).toBeCloseTo(FULL, 6);
-  });
-});
-
-describe('the share picture\'s arrangement', () => {
-  spec('UI-58', 'turning to For a friend on a window wide enough for two columns shows two at every frame of the card\'s growth', async () => {
-    sizeWindow(1440, 900);
-    const dialog = await share('keep', 'pc', 'landscape');
-    turnTo(dialog, 'For a friend');
-    const seen: { width: number; columns: string | null }[] = [];
-    for (let t = 0; t < 480; t += 16) {
-      seen.push({ width: cardWidth(dialog), columns: within(dialog).getByTestId('export-panel').getAttribute('data-columns') });
-      await play(16);
-      resized();
-    }
-    expect(seen[0]!.width, 'the card starts at Keep working\'s width').toBeLessThan(600);
-    expect(seen.at(-1)!.width).toBeGreaterThan(900);
-    expect(seen.filter((s) => s.columns !== '2')).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@ import type { Placement } from '../frame/framing';
 import type { RgbaImage } from '../types';
 
 /** Draws a frame placed at `at` (`framing.ts`); the image it returns is valid until the next draw. */
-export type FrameScaler = (frame: VideoFrame, at: Placement) => RgbaImage;
+type FrameScaler = (frame: VideoFrame, at: Placement) => RgbaImage;
 
 /** The most taps a side the box filter takes: enough for an 8K frame. */
 const MAX_TAPS = 8;

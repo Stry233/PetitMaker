@@ -90,7 +90,7 @@ interface ContextMenuRow {
 }
 
 /** What a finger's menu offers on an object beyond what every menu does, from the selection card's rules. */
-export interface TouchMenuOffers { pickable: boolean; movable: boolean }
+interface TouchMenuOffers { pickable: boolean; movable: boolean }
 
 
 const PC: readonly InputMode[] = ['pc'];
@@ -136,7 +136,7 @@ export function terrainMenuRows(t: Resolver, isGround: boolean, paste = false, t
 
 /** The head of a finger's menu: the object's picture and name over a rule. Nothing hovers in touch
  *  mode, so a long name wraps in full rather than ending in an ellipsis. */
-function MenuHeader({ item, name }: { item: ReturnType<typeof getCatalogItem>; name: string }) {
+export function MenuHeader({ item, name }: { item: ReturnType<typeof getCatalogItem>; name: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 10px', marginBottom: 4, borderBottom: `1px solid ${LINE}` }}>
       <Thumb {...(item?.icon ? { src: iconUrl(item.icon) } : {})} {...(item?.color ? { color: item.color } : {})} />
@@ -165,7 +165,7 @@ export function ContextMenuFace({ rows, onPick, style, anchor, zoom = 1, onDismi
   const pressedHere = useRef(false);
   useEffect(() => { pressedHere.current = false; }, [anchor?.x, anchor?.y]);
   return (
-    <motion.div ref={floating.ref} {...floating.piece} role="menu" tabIndex={-1} {...helpTargetAttr('select')} data-context-menu {...anim}
+    <motion.div ref={floating.ref} {...floating.piece} role="menu" tabIndex={-1} {...helpTargetAttr('select', 'select-menu')} data-context-menu {...anim}
       onPointerDownCapture={() => { pressedHere.current = true; }}
       style={{ ...menuStyle, ...style, ...(anchor ? floating.style : {}) }}>
       {header}

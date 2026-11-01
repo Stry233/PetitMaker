@@ -8,8 +8,6 @@ import { createRunnerHost, type PanelRunner } from '../../../agent/panel-runtime
 import { useEditorStore } from '../../../state/store';
 import { useLocale } from '../../../i18n/context';
 
-export type { PanelRunner };
-
 export function usePanelRunner(armed: ArmedConnection, model: string, connected: boolean): PanelRunner | null {
   const [host] = useState(createRunnerHost);
   const executor = useEditorStore((s) => s.commandExecutor);

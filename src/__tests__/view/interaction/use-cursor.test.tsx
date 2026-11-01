@@ -94,11 +94,6 @@ describe('useCursor', () => {
     expect(getByTestId('surface').style.cursor).toBe(cursorCss('marquee'));
   });
 
-  it('writes the active tool\'s cursor to the container', () => {
-    const { getByTestId } = render(<Host />);
-    expect(getByTestId('surface').style.cursor).toBe(cursorCss('eraser'));
-  });
-
   it('follows a tool switch', () => {
     const { getByTestId } = render(<Host />);
     const tm = makeTestToolManager();

@@ -5,9 +5,9 @@ import { isAbortError, withDeadline } from '../../../platform/async/abort';
 import { StylizeError, type DialectConfig } from './types';
 
 /** Where the key rides: an OpenAI-style bearer token, or Google's `x-goog-api-key` header. */
-export type KeyHeader = 'bearer' | 'goog';
+type KeyHeader = 'bearer' | 'goog';
 
-export interface HttpCall {
+interface HttpCall {
   auth?: KeyHeader;
   /** A JSON body; the call is a POST. */
   json?: unknown;
@@ -48,7 +48,7 @@ export async function requestJson(cfg: DialectConfig, path: string, call: HttpCa
   return json;
 }
 
-export interface ModelListing {
+interface ModelListing {
   auth?: KeyHeader;
   /** The reply field holding the model rows. */
   field: string;

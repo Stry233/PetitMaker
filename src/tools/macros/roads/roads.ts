@@ -40,7 +40,7 @@ import { cellKey, mapGrid } from '../../../core/grid/rect';
  *  genuinely different places to cross rather than neighbours. */
 const PRESS_PORTALS_PER_PAIR = 8;
 
-export interface RoadNetworkInput {
+interface RoadNetworkInput {
   seed: number;
   /** Catalog id of the road tile to pave with; the map's own learned style (else the pool's first
    *  entry) when absent or unknown. */

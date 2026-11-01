@@ -14,7 +14,7 @@ async function confirmed(evaluate: () => Provisional<boolean>): Promise<boolean>
 }
 
 /** `unavailable` when the close-reading budget runs out before every line is read. */
-export type LetterCheck = 'blocked' | 'clear' | 'unavailable';
+type LetterCheck = 'blocked' | 'clear' | 'unavailable';
 
 /** `progress` is called whenever the OCR engine reports progress, so the caller can tell a slow
  *  check from a stalled one. */

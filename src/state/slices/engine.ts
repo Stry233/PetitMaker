@@ -73,7 +73,7 @@ export interface EngineSlice {
 }
 
 /** How a selection write meets the undo history. */
-export interface SelectionWrite {
+interface SelectionWrite {
   /** False for a write that is no step of its own. */
   record?: boolean;
   /** Also picks this cell (`pickedCell`), as a press on mountain or water does; dropped with a

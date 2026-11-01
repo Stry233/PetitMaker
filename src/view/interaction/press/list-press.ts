@@ -26,7 +26,7 @@ export interface ListPressFacts {
 
 /** `wait`: undecided, keep listening. `carry`: the entry is in the hand. `scroll`: the press is the
  *  list's to scroll, and nothing it does later carries the entry. */
-export type ListPressOutcome = 'wait' | 'carry' | 'scroll';
+type ListPressOutcome = 'wait' | 'carry' | 'scroll';
 
 /** The hold time `timingFor(f).holdMs` lifts the entry; a touch press, which pans what it lands
  *  on, scrolls once it moves past its drag threshold before that. */

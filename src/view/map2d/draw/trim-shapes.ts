@@ -21,7 +21,7 @@ export const QUADRANT_OFFSETS: readonly [number, number][] = [
 const FAN_STEPS_2D = 12;
 
 /** How a trimmed block fills: its colour and alpha, and whether its fans take the inner (fillet) winding. */
-export interface TrimFill { color: number; alpha: number; patchOnly: boolean }
+interface TrimFill { color: number; alpha: number; patchOnly: boolean }
 
 function drawTrimmedCorner(g: PIXI.Graphics, state: CornerTrim, quad: Quadrant, fill: TrimFill): void {
   if (state === 'empty') return;

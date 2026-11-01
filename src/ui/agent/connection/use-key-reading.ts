@@ -7,8 +7,10 @@ import { createKeyReading, type ListModels, type SetupEntry } from '../../../age
 import { useAgentConnection } from '../../../agent/boot';
 import { useEndpointDraft } from '../hooks/use-endpoint-draft';
 
-export function useKeyReading({ entry, listModels, onManage, onLeave, focusKey, pictured }: {
+export function useKeyReading({ entry, pasted, listModels, onManage, onLeave, focusKey, pictured }: {
   entry: SetupEntry;
+  /** A key standing pasted in the field as the screen opens. */
+  pasted?: string;
   listModels: ListModels;
   onManage?: () => void;
   onLeave?: () => void;
@@ -18,7 +20,7 @@ export function useKeyReading({ entry, listModels, onManage, onLeave, focusKey, 
 }) {
   const settings = useAgentConnection();
   const [reading] = useState(() => createKeyReading({
-    entry, listModels, pictured, ...(onManage ? { onManage } : {}), ...(onLeave ? { onLeave } : {}),
+    entry, listModels, pictured, ...(pasted !== undefined ? { pasted } : {}), ...(onManage ? { onManage } : {}), ...(onLeave ? { onLeave } : {}),
   }));
   useLayoutEffect(() => {
     reading.setOptions({ listModels, pictured, ...(onManage ? { onManage } : {}), ...(onLeave ? { onLeave } : {}) });

@@ -64,16 +64,19 @@ export function besideDock(vw: number, vh: number, dock: DockRef): { vw: number;
 /**
  * 1 at or above `FIT_REF`, the tighter axis's share below it, never under `FIT_FLOOR`. `refWiden` widens
  * the reference window, which is how a strip taken from the window is paid for: the interface fits
- * into what is left at one factor, the strip included, `fit = vw / (FIT_REF.w + refWiden)`.
+ * into what is left at one factor, the strip included, `fit = vw / (FIT_REF.w + refWiden)`. The
+ * upright arrangement was not judged at the reference's width, so `upright` fits the height alone and
+ * leaves the width to the workspace minimum (`fittedUiScale`).
  */
-export function frameFit(vw: number, vh: number, refWiden = 0): number {
-  return Math.max(FIT_FLOOR, Math.min(1, vw / (FIT_REF.w + refWiden), vh / FIT_REF.h));
+export function frameFit(vw: number, vh: number, refWiden = 0, upright = false): number {
+  const across = upright ? 1 : vw / (FIT_REF.w + refWiden);
+  return Math.max(FIT_FLOOR, Math.min(1, across, vh / FIT_REF.h));
 }
 
 /** The fit times the UI zoom, within the workspace the window must leave (`MIN_UI_ROOM`). */
-export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0): number {
+export function fittedUiScale(vw: number, vh: number, uiZoom: number, refWiden = 0, upright = false): number {
   return Math.min(
-    frameFit(vw, vh, refWiden * uiZoom) * uiZoom,
+    frameFit(vw, vh, refWiden * uiZoom, upright) * uiZoom,
     vw / (MIN_UI_ROOM.w + refWiden),
     vh / MIN_UI_ROOM.h,
   );
@@ -94,14 +97,15 @@ function touchLineOf(view: ScaleView): number {
 }
 
 /**
- * The one scale, in chrome terms: the fit times the UI zoom within the workspace minimum. Touch mode
- * keeps it on or over the touch line and bounds the whole by the arrangement's room, so every step of
- * the UI zoom changes every surface alike until the room stops them all together.
+ * The one scale, in chrome terms: the fit times the UI zoom within the workspace minimum, an upright
+ * PC window fitting by its height alone. Touch mode keeps the reference fit in both arrangements, stays
+ * on or over the touch line and bounds the whole by the arrangement's room, so every step of the UI
+ * zoom changes every surface alike until the room stops them all together.
  */
 export function uiScaleOf(view: ScaleView): number {
   const { vw, vh, widen } = besideDock(view.vw, view.vh, view.dock);
+  if (!view.touch) return fittedUiScale(vw, vh, view.uiZoom, widen, view.upright);
   const fitted = fittedUiScale(vw, vh, view.uiZoom, widen);
-  if (!view.touch) return fitted;
   const capped = view.room ? Math.min(fitted, arrangementCap(vw, vh, widen, view.upright, view.room)) : fitted;
   return Math.max(capped, touchLineOf(view));
 }

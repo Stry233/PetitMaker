@@ -19,7 +19,7 @@ import type { MacroCoord, Rotation } from '../base/coords';
 import type { CellZone, GroundZone, SandZone } from '../game/zones';
 
 // --- Coordinate Types ---
-export type { MacroCoord, Brand, BucketCoord, RegionCoord, Rotation } from '../base/coords';
+export type { MacroCoord, BucketCoord, RegionCoord, Rotation } from '../base/coords';
 export { ROTATIONS, turnRotation } from '../base/coords';
 // --- Terrain Enum ---
 export enum TerrainType { None = 0, Mountain = 1, Water = 2 }
@@ -91,7 +91,6 @@ export type CategoryId = string;
 
 export type PlacementTrait =
   | { type: 'flat' }
-  | { type: 'noFloat' }
   | { type: 'waterSpan'; min: number; max: number }
   | { type: 'heightDrop'; layers: number }
   | { type: 'surfaceCoating'; layer?: number }
@@ -231,7 +230,7 @@ export interface ObjectsDelta {
 
 /** The fields of a map that live only in the session: no save, share code or export carries them,
  *  and each copy of a map says which of them it keeps. */
-export interface MapSessionFields {
+interface MapSessionFields {
   /** Session policy, copied to previews and workers. */
   ignoreChunkLoad?: boolean;
   /** What the mutation that produced `objectsVersion` changed, when the mutator knows: it lets the

@@ -3,12 +3,12 @@
 // shorter history depth and the 3D card's cell shape.
 export {
   EXPORT_PRESETS, RESOLUTION_KEYS, isImportable,
-  type ExportOptions, type ExportPreset, type ResolutionKey,
+  type ExportOptions, 
 } from './types';
 export { CARD_3D_CELL_ASPECT, RESOLUTION_WIDTHS } from './compose';
 export {
   DEFAULT_FOOTER, FOOTER_FILL, FOOTER_TOKENS, formatFooterDate, parseFooter,
-  type FooterSeg, type FooterToken,
+  
 } from './footer-template';
 export { DEFAULT_EXPORT_OPTIONS } from './options-store';
 

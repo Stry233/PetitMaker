@@ -85,6 +85,13 @@ describe('the one scale', () => {
     }
   });
 
+  it('in PC mode fits an upright window by its height, the width bounded only by the workspace minimum', () => {
+    expect(uiScaleOf(viewOf(820, 1180, false, 1))).toBe(1);
+    expect(uiScaleOf(viewOf(820, 1180, false, 1.1))).toBeCloseTo(1.1, 9);
+    expect(uiScaleOf(viewOf(600, 1000, false, 1))).toBeCloseTo(600 / MIN_UI_ROOM.w, 9);
+    expect(uiScaleOf(viewOf(1180, 820, false, 1)), 'a wide window keeps the reference width').toBeCloseTo(1180 / FIT_REF.w, 9);
+  });
+
   it('in touch mode draws on the touch line where the window is small, as on a phone', () => {
     expect(uiScaleOf(viewOf(412, 915, true, 1))).toBeCloseTo(TOUCH_LINE, 9);
     expect(uiScaleOf(viewOf(412, 915, true, 1.25))).toBeCloseTo(TOUCH_LINE * 1.25, 9);

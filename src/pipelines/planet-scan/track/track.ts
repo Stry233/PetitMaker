@@ -225,7 +225,7 @@ export interface TrackProbe {
 }
 
 /** Tracking tuning. */
-export interface TrackerOptions {
+interface TrackerOptions {
   /** Rectified pixels per tile pixel. */
   readonly step?: number;
 }

@@ -21,6 +21,7 @@ import {
 import { CANDIDATES, CONTRAST, CORRIDOR, MIN_ELEVATION, RICHNESS, SEED_DIGITS, STENCIL_MIN_SIDE, TEXT_MAX_CHARS } from '../shell/bars/generate/generate-shelf';
 import { DRAWN_SEED_MAX, MAZE_MAX_ELEVATION } from '../../tools/generation/facts';
 import { BRUSH_SIZE } from '../../state/editing/edit-mode';
+import { OBJECT_SPACING } from '../../state/editing/vocabulary';
 import { RECENT_HISTORY_STEPS } from '../../io/export/facts';
 import { TOUCH_UI_ZOOM_DEFAULT, TOUCH_WIDE_UI_ZOOM_DEFAULT, UI_ZOOM_DEFAULT, UI_ZOOM_MAX, UI_ZOOM_MIN } from '../../platform/storage/prefs';
 import { scaleLattice, UI_SCALE_STEP } from '../design/scale';
@@ -121,6 +122,8 @@ export function helpFacts(locale: Locale = 'en'): HelpFacts {
     drawnSeedDigits: String(DRAWN_SEED_MAX - 1).length,
     brushMin: BRUSH_SIZE.min,
     brushMax: BRUSH_SIZE.max,
+    objectSpacingMin: OBJECT_SPACING.min,
+    objectSpacingMax: OBJECT_SPACING.max,
     recentSteps: RECENT_HISTORY_STEPS,
     uiScaleMin: percent(UI_ZOOM_MIN),
     uiScaleStep: percent(UI_SCALE_STEP),

@@ -19,7 +19,7 @@ export const VIDEO_GETS = ['planet.video_get_ground', 'planet.video_get_editor',
 export const VIDEO_ADDS = ['planet.video_add_terrain', 'planet.video_add_objects', 'planet.video_add_unseen'] as const;
 
 /** One fix: its copy, the Help anchor it stands at, and the refusals it answers. */
-export interface VideoFix {
+interface VideoFix {
   readonly key: I18nKey;
   readonly anchor: `planet-video-fix-${string}`;
   readonly failures: readonly ImportFailure[];

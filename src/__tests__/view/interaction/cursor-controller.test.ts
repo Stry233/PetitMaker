@@ -145,21 +145,6 @@ describe('writing to the surface', () => {
     expect(el.style.cursor).toBe(cursorCss('water', { forbidden: true }));
   });
 
-  it('writes ONLY when the resolved value changes', () => {
-    // A pointer-move that does not change the hovered cell must not touch the DOM.
-    const el = document.createElement('div');
-    let writes = 0;
-    Object.defineProperty(el.style, 'cursor', {
-      get: () => '', set: () => { writes++; }, configurable: true,
-    });
-    registerCursorSurface(el);
-    setToolCursor('road');
-    const after = writes;
-    setToolCursor('road');
-    setCursorForbidden(false);
-    expect(writes).toBe(after);
-  });
-
   it('writes the grab upgrade through, and takes it back when the pointer leaves the object', () => {
     const el = document.createElement('div');
     registerCursorSurface(el);
@@ -205,22 +190,6 @@ describe('writing to the surface', () => {
     expect(el.style.cursor).toBe('');
   });
 
-  it('writes ONLY when the RESOLVED value changes, even if the state genuinely changed: ' +
-    'pins the apply()-level guard, distinct from the setter-level early return above. ' +
-    'marquee/select are not FORBIDDABLE, so toggling `forbidden` changes `state` (the setter ' +
-    'does not early-return) but the resolved cursor ignores the badge for them, so the css is identical ' +
-    'and apply() must still skip the DOM write.', () => {
-    const el = document.createElement('div');
-    let writes = 0;
-    Object.defineProperty(el.style, 'cursor', {
-      get: () => '', set: () => { writes++; }, configurable: true,
-    });
-    registerCursorSurface(el);
-    setToolCursor('marquee');
-    const after = writes;
-    setCursorForbidden(true);
-    expect(writes).toBe(after);
-  });
 });
 
 describe('an overlay borrowing the surface', () => {

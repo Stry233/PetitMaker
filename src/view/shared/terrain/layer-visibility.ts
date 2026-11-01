@@ -24,7 +24,7 @@ function renderTier(elevation: number, hidden: ReadonlySet<number>): number | nu
 }
 
 /** One draw pass of a cell: the kept shape at `tier` with per-corner backing. */
-export interface BlockPass {
+interface BlockPass {
   corners: Corners | undefined;
   tier: number;
   backing: readonly (CutBacking | null)[];
@@ -32,7 +32,7 @@ export interface BlockPass {
 
 /** Everything drawCell needs to paint one cell: the base block pass plus, for a
  *  Γ patch, the fillet pass at its cosmetic tier. Null = nothing to draw. */
-export interface CellRenderSpec {
+interface CellRenderSpec {
   base: BlockPass | null;
   fillet: { corners: Corners; tier: number } | null;
 }

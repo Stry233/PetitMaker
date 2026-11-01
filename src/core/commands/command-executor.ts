@@ -105,7 +105,7 @@ export interface HistoryAside<T = unknown> {
 
 /** A change of the aside alone, standing above the first `at` map entries of its stack: `before`
  *  is what undo writes and `after` what redo writes, each refreshed as the step is crossed. */
-export interface AsideStep {
+interface AsideStep {
   readonly at: number;
   readonly before: unknown;
   readonly after: unknown;

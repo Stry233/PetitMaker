@@ -355,7 +355,7 @@ function waterTone(palette: readonly { rgb: number }[]): number {
   return (top + next) / 2;
 }
 
-export interface StencilColorOptions {
+interface StencilColorOptions {
   /** The ramp's depth: how many greens the picture may be told in. */
   maxElevation: number;
   /** How much of the picture's tonal range spreads across the palette; 1 leaves it alone. */
@@ -711,7 +711,7 @@ function missAt(palette: readonly { rgb: number }[], rgb: number): number {
   return colorDistance(rgb, nearest.rgb);
 }
 
-export interface StencilDecorOptions {
+interface StencilDecorOptions {
   /** The objects this run laid, which a mark may replace. */
   replaceable?: ReadonlySet<string>;
   /** The palette the primary material was told in, which a mark is measured against. */

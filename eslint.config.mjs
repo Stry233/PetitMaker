@@ -34,6 +34,11 @@ export default defineConfig(
       'react-hooks/exhaustive-deps': 'error',
       // More than five positional arguments is a call site nobody can read; pass an options object.
       'max-params': ['error', 5],
+      // A bridge one canvas's mount effect publishes makes every view command depend on that canvas.
+      'no-restricted-syntax': ['error', {
+        selector: 'MemberExpression[property.name=/^__petit/]',
+        message: 'Reach the view through editor/host, never a window.__petit* bridge.',
+      }],
       // Code only: comments, strings, templates, URLs and regular expressions may run longer.
       'max-len': ['error', {
         code: 160,

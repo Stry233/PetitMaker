@@ -15,7 +15,7 @@ import { AnchorChain } from '../paint/gestures';
 import { cellKey } from '../../../core/grid/rect';
 
 /** What the brush reads and writes, supplied by the editor that mounts it. */
-export interface RegionBrushPort {
+interface RegionBrushPort {
   tool(): RegionTool;
   /** What the screen that armed region selection asks of the brush. */
   request(): RegionRequest;

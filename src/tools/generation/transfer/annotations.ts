@@ -7,7 +7,7 @@ import { HALVES, movedNote, zoneHalfCells, zoneWithHalfCells, type AnnotationsSt
 import type { MacroCoord, MapTemplate } from '../../../core/model/types';
 
 /** The notes as they arrive, and the destination cells of every note or zone cell left behind. */
-export interface CarriedNotes {
+interface CarriedNotes {
   /** Absent when the source had none. */
   annotations?: AnnotationsState;
   lost: MacroCoord[];

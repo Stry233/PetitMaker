@@ -5,7 +5,7 @@ import { GateBlock } from './GateBlock';
 import { OptionPick, optionAskFrom } from './OptionPick';
 import { PlanGate } from './PlanGate';
 
-export type GateAnswer = (gateId: string, answer: 'allow' | 'skip' | 'words', words?: string) => void;
+type GateAnswer = (gateId: string, answer: 'allow' | 'skip' | 'words', words?: string) => void;
 
 /** Whether the current job's asks draw any card at all. */
 export function asksStand(view: PanelView): boolean {

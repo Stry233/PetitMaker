@@ -4,6 +4,7 @@ import type { GridState, MacroCoord } from '../../../../core/model/types';
 import type { StencilPlan } from '../../../../tools/generation/recipe';
 import type { PlanInputs } from '../../../../tools/generation/stencil';
 import type { Candidate } from '../../../../editor/operations';
+import type { EditContext } from '../../../../core/commands/edit-context';
 import { previewBatch, previewOwn, shotFrameFor, type BatchSettings, type Shot, type StencilInputs } from '../../../../editor/editing/generate-batch';
 import { CANDIDATES, batchSeeds, isStencilKind } from '../../../../tools/generation/facts';
 import { CARD } from './generate-shelf';
@@ -31,13 +32,15 @@ interface PreviewOptions {
   recipeKey: string;
   forgetApplied: () => void;
   clearFailed: () => void;
+  /** The map the cards build against where it is not the live editor's (a Help figure's sandbox). */
+  kit?: EditContext;
 }
 
 /** Holds the batch's and the own card's pictures for the shelf; `editor/editing/generate-batch.ts`
  *  builds, restores and cancels them. */
 export function useGeneratePreviews({
   gridState, region, selectingRegion, settings, base, customSeed, hand, ownSample,
-  fontsReady, ownFontsReady, planInputs, wordFits, fits, recipeKey, forgetApplied, clearFailed,
+  fontsReady, ownFontsReady, planInputs, wordFits, fits, recipeKey, forgetApplied, clearFailed, kit,
 }: PreviewOptions) {
   const ignoreLoad = useEditorStore((s) => !!s.gridState?.ignoreChunkLoad);
   const [shots, setShots] = useState<Shot[]>(() => Array(CANDIDATES).fill(undefined));
@@ -59,6 +62,7 @@ export function useGeneratePreviews({
   const runBatch = useEffectEvent(() => previewBatch({
     stencil, fits, ready: !!gridState && !selectingRegion, fontsReady, hand, seeds, base, settings, scope, planInputs, wordFits,
     shotFrame, shotSize: SHOT_SIZE, plans: plansRef, candidates: candidatesRef, setShots, setPreviewing, forgetApplied, clearFailed,
+    ...(kit ? { kit } : {}),
   }));
   useEffect(() => runBatch(), [previewKey, gridState, region, selectingRegion, fontsReady, forgetApplied, clearFailed]);
 
@@ -67,6 +71,7 @@ export function useGeneratePreviews({
   const runOwn = useEffectEvent(() => previewOwn({
     stencil, fits, ready: !!gridState && !selectingRegion, ownFontsReady, ownSample, customSeed, base, settings, scope, planInputs, wordFits,
     shotFrame, shotSize: SHOT_SIZE, plans: plansRef, own: customRef, setCustomShot, setCustomPending,
+    ...(kit ? { kit } : {}),
   }));
   useEffect(() => runOwn(), [recipeKey, ignoreLoad, customSeed, ownKey, gridState, region, selectingRegion, ownFontsReady]);
 

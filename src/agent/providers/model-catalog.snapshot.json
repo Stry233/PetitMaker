@@ -1,4 +1,4 @@
-{"takenAt":"2026-10-31","providers":{
+{"takenAt":"2026-11-01","providers":{
  "claude":{
   "claude-fable-5":{"name":"Claude Fable 5","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
   "claude-fable-5-1":{"name":"Claude Fable 5.1","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["low","medium","high","xhigh","max"],"context":1000000,"maxOutput":128000},
@@ -194,7 +194,7 @@
   "deepseek/deepseek-v4-flash-0731":{"name":"DeepSeek V4 Flash 0731","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":943718},
   "deepseek/deepseek-v4-flash-vision-exp":{"name":"DeepSeek V4 Flash Vision Exp","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":262144},
   "deepseek/deepseek-v4-pro":{"name":"DeepSeek V4 Pro","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["none","high","xhigh"],"context":1048576,"maxOutput":393216},
-  "deepseek/deepseek-v4-pro-0813":{"name":"DeepSeek V4 Pro 0813","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":393216},
+  "deepseek/deepseek-v4-pro-0813":{"name":"DeepSeek V4 Pro 0813","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":943718},
   "deepseek/deepseek-v4.1-flash":{"name":"DeepSeek V4.1 Flash","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":943718},
   "deepseek/deepseek-v4.1-flash-1017":{"name":"DeepSeek V4.1 Flash 1017","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["none","low","high","max"],"context":1048576,"maxOutput":393216},
   "dots-studio/dots-3-note-preview:free":{"name":"Dots3-Note Preview (free)","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"context":512000,"maxOutput":460800},
@@ -281,7 +281,7 @@
   "mistralai/mistral-large":{"name":"Mistral Large","tools":true,"input":["text","pdf"],"output":["text"],"reasoning":false,"context":128000,"maxOutput":102400},
   "mistralai/mistral-large-2407":{"name":"Mistral Large 2407","tools":true,"input":["text","pdf"],"output":["text"],"reasoning":false,"context":131072,"maxOutput":104857},
   "mistralai/mistral-large-2512":{"name":"Mistral Large 3","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":false,"context":262144,"maxOutput":209715},
-  "mistralai/mistral-large-4-0":{"name":"Mistral Large 4","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["none","high"],"context":1048576,"maxOutput":262144},
+  "mistralai/mistral-large-4-0":{"name":"Mistral Large 4","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":1048576,"maxOutput":262144},
   "mistralai/mistral-medium-3":{"name":"Mistral Medium 3","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":false,"context":131072,"maxOutput":104857},
   "mistralai/mistral-medium-3-5":{"name":"Mistral Medium 3.5","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"efforts":["none","high"],"context":262144,"maxOutput":209715},
   "mistralai/mistral-medium-3.1":{"name":"Mistral Medium 3.1","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":false,"context":131072,"maxOutput":104857},
@@ -374,7 +374,7 @@
   "openai/gpt-audio-mini":{"name":"GPT-Audio Mini","tools":true,"input":["text","audio"],"output":["text","audio"],"reasoning":false,"context":128000,"maxOutput":16384},
   "openai/gpt-chat-latest":{"name":"GPT Chat Latest","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":false,"context":400000,"maxOutput":128000},
   "openai/gpt-oss-120b":{"name":"GPT OSS 120B","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":131072,"maxOutput":65536},
-  "openai/gpt-oss-20b":{"name":"GPT OSS 20B","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":131072,"maxOutput":32768},
+  "openai/gpt-oss-20b":{"name":"GPT OSS 20B","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":131072,"maxOutput":117964},
   "openai/gpt-oss-safeguard-20b":{"name":"GPT OSS Safeguard 20B","tools":true,"input":["text"],"output":["text"],"reasoning":true,"efforts":["low","medium","high"],"context":131072,"maxOutput":65536},
   "openai/o3":{"name":"o3","tools":true,"input":["text","image","pdf"],"output":["text"],"reasoning":true,"context":200000,"maxOutput":100000},
   "openai/o3-pro":{"name":"o3-pro","tools":true,"input":["text","pdf","image"],"output":["text"],"reasoning":true,"context":200000,"maxOutput":100000},
@@ -391,10 +391,6 @@
   "perplexity/sonar-pro":{"name":"Sonar Pro","tools":false,"input":["text","image"],"output":["text"],"reasoning":false,"context":200000,"maxOutput":8000},
   "perplexity/sonar-pro-search":{"name":"Sonar Pro Search","tools":false,"input":["text","image"],"output":["text"],"reasoning":true,"context":200000,"maxOutput":8000},
   "perplexity/sonar-reasoning-pro":{"name":"Sonar Reasoning Pro","tools":false,"input":["text","image"],"output":["text"],"reasoning":true,"context":128000,"maxOutput":115200},
-  "poolside/laguna-s-2.1":{"name":"Laguna S 2.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":1048576,"maxOutput":131072},
-  "poolside/laguna-s-2.1:free":{"name":"Laguna S 2.1 (free)","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":32768},
-  "poolside/laguna-xs-2.1":{"name":"Laguna XS 2.1","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":32768},
-  "poolside/laguna-xs-2.1:free":{"name":"Laguna XS 2.1 (free)","tools":true,"input":["text"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":32768},
   "prism-ml/ternary-bonsai-2-27b":{"name":"Ternary Bonsai 2 27B","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"efforts":["none","medium","xhigh"],"context":262144,"maxOutput":32768},
   "prism-ml/ternary-bonsai-2-9b":{"name":"Ternary Bonsai 2 9B","tools":true,"input":["text","image"],"output":["text"],"reasoning":true,"context":262144,"maxOutput":65536},
   "qwen/qwen-2.5-72b-instruct":{"name":"Qwen2.5 72B Instruct","tools":true,"input":["text"],"output":["text"],"reasoning":false,"context":32768,"maxOutput":16384},

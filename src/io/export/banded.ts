@@ -36,7 +36,7 @@ function canvasSurface(w: number, h: number): BandSurface {
   };
 }
 
-export interface RenderBandedArgs {
+interface RenderBandedArgs {
   width: number;
   height: number;
   limits: CanvasLimits;

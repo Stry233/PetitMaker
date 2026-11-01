@@ -10,8 +10,6 @@ import type { ProcView } from '../draw';
 import type { Bitmap } from '../watercolorize';
 import type { ProcPackMeta } from './manifest';
 
-export type { ProcPackId, ProcPackMeta } from './manifest';
-
 export interface ProcPack extends ProcPackMeta {
   draw(ctx: CanvasRenderingContext2D, fields: ProcFields, view: ProcView): void;
   /** A pack whose medium needs the event loop draws through this

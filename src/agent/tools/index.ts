@@ -3,7 +3,6 @@ export {
   TOOLS, TOOL_FACTS,
   checkToolArgs, executeToolCall, wireSchemas,
 } from './registry';
-export { TOOL_NAMES, isToolName, type ToolName } from './names';
+export { TOOL_NAMES } from './names';
 export { buildMapContext } from './inspect';
 export type { AgentToolDeps } from './deps';
-export type { ToolCall, ToolOutcome, ToolResult, ToolSchema, ToolSpec } from './spec';

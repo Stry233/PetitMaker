@@ -37,8 +37,6 @@ interface Base {
   duration?: number;
   /** Repeats a tween for as long as its state remains active. */
   loop?: true;
-  /** A burst inside this window produces one settled beat rather than N stacked. Milliseconds. */
-  coalesce?: number;
   /** Maximum travel in CSS pixels, or a fraction for scale and opacity. Required for ambient motion. */
   amplitude?: number;
   amplitudeUnit?: 'px' | 'scale' | 'opacity';
@@ -240,8 +238,6 @@ export const MOTIONS = {
   'help.figure.fade': { tier: 'inform', curve: 'ease', duration: 0.2, says: 'the figure shows this mark now' },
   /** A Help figure's pictured pointer glides to its next target. */
   'help.figure.pointer': { tier: 'inform', curve: 'fade', duration: 0.6, says: 'the pointer moves to the next control' },
-  /** A Help demo's side card arrives beside its map. */
-  'help.figure.card': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'the demo shows this card now' },
   /** In a window too narrow for two columns, the page list and the chosen page each fill Help; the
    *  page arrives from the end side and the list from the start side, `amplitude` px away. */
   'help.screen': { tier: 'inform', curve: 'ease', duration: 0.24, amplitude: 24, says: 'the window now shows the page list or the chosen page' },
@@ -797,4 +793,3 @@ export type MotionId = keyof typeof MOTIONS;
 export type SampleMotionId = { [K in MotionId]: (typeof MOTIONS)[K]['tier'] extends 'sample' ? K : never }[MotionId];
 
 export { CURVES } from './curves';
-export type { CurveId } from './curves';

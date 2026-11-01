@@ -3,4 +3,4 @@
  * another planet, laid over by their anchor landmarks, on a detached `GridState` that reaches no live
  * editor, so the generation worker runs the carry preview.
  */
-export { anchorOffset, buildTransfer, hasCarriableContent, type BuiltTransfer, type TransferCounts } from './transfer';
+export { anchorOffset, buildTransfer, hasCarriableContent, type TransferCounts } from './transfer';

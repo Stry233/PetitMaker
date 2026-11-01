@@ -26,9 +26,9 @@ import { activeToolOf } from '../../../state/editing/edit-mode';
  * what the press facts and the box read beside the tool. The map epoch stands for in-place map
  * mutations; the tool epoch waits for the canvas tool to catch up with the store.
  */
-export type HoverInputs = readonly unknown[];
+type HoverInputs = readonly unknown[];
 
-export function hoverInputs(
+function hoverInputs(
   s: EditorStore, mapEpoch: number, toolEpoch: number, multiSelectHeld: boolean,
 ): HoverInputs {
   return [
@@ -49,7 +49,7 @@ export function sameHoverInputs(a: HoverInputs | null, b: HoverInputs): boolean 
  *  structurally; the resampler constructs one from the last known screen position for a pointer
  *  that never moved but whose cell (or ghost orientation) did — the camera panned under it, or the
  *  armed item's rotation flipped — since there is no real event to read at that moment. */
-export type PointerSample = { clientX: number; clientY: number; pointerType: string; target: EventTarget | null };
+type PointerSample = { clientX: number; clientY: number; pointerType: string; target: EventTarget | null };
 
 /** Turns every positional cursor fact off. */
 export function clearCursorFacts(): void {

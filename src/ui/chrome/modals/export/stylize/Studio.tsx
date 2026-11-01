@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../../../../i18n/context';
 import { host } from '../../../../../editor/host/host';
+import type { GridState } from '../../../../../core/model/types';
+import { renderThumbnail } from '../../../../../view/map2d/capture/thumbnail';
 import { CUSTOM_DIRECTION_ID, STYLE_PACKS, isProcPackId, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
 import {
   StylizeStudioJobs, loadProcRenderer, retainNeuralRuntime, runEngine, storedStylizeInputs,
@@ -40,11 +42,16 @@ interface StudioProps {
   onDone: () => void;
   run?: RunStylize;
   captureOriginal?: () => string | null;
+  /** The map the original is drawn from where it is not the live one (a Help figure's); absent, the
+   *  live map's view is captured. */
+  subject?: GridState;
   /** Injectable local renderer module. */
   procRenderer?: typeof loadProcRenderer;
 }
 
-export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runEngine, captureOriginal, procRenderer = loadProcRenderer }: StudioProps) {
+export function Studio({
+  dialect, cfg, connected, onSettings, onDone, run = runEngine, captureOriginal, subject, procRenderer = loadProcRenderer,
+}: StudioProps) {
   const t = useT();
   const [jobs] = useState(() => new StylizeStudioJobs());
   useEffect(() => () => jobs.dispose(), [jobs]);
@@ -60,8 +67,17 @@ export function Studio({ dialect, cfg, connected, onSettings, onDone, run = runE
   const abortRef = useRef<AbortController | null>(null);
 
   // Capture the original once so comparison stays fixed throughout this studio session.
-  const capture = captureOriginal ?? (() => host.capture2dImage({ maxPx: dialect?.maxEdge ?? 2048, annotations: false }));
-  const [originalSrc] = useState(capture);
+  const maxPx = dialect?.maxEdge ?? 2048;
+  const capture = captureOriginal ?? (() => (subject ? null : host.capture2dImage({ maxPx, annotations: false })));
+  const [originalSrc, setOriginalSrc] = useState(capture);
+  // A map that is not the live one is drawn off the stage by the live renderer, without its notes.
+  const [subjectShot] = useState(() => (subject && !captureOriginal ? renderThumbnail(subject, maxPx, { notes: null }) : null));
+  useEffect(() => {
+    if (!subjectShot) return undefined;
+    let live = true;
+    void subjectShot.then((png) => { if (live) setOriginalSrc(png); });
+    return () => { live = false; };
+  }, [subjectShot]);
 
   // Closing the window cancels its active generation.
   useEffect(retainNeuralRuntime, []);

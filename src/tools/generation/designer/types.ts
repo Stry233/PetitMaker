@@ -23,7 +23,7 @@ export type { AnchorKind, Direction };
 
 // The theme vocabulary is read off the theme library (`themes.ts`).
 export type {
-  ThemeFamily, ThemeId, FoodLeisureTheme, NatureTheme, ViewpointTheme, CultureTheme, ProductionTheme,
+  ThemeId, FoodLeisureTheme, NatureTheme, ViewpointTheme, CultureTheme, ProductionTheme,
 } from './themes';
 import type { ThemeRef } from './themes';
 

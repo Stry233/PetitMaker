@@ -16,7 +16,7 @@ import { pasteOffered } from '../../../state/clipboard';
 
 /** What is under the pointer at one screen position, resolved once: the hover probe reads it for
  *  its box and its change key, and builds the press facts from it without picking again. */
-export interface PointerProbe {
+interface PointerProbe {
   view: ActiveView;
   store: EditorStore;
   gridState: GridState;

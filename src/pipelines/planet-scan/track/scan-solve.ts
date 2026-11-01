@@ -13,7 +13,7 @@ import { SCAN_PROFILE } from '../profile';
 // the content the tracked shifts followed moves s tile pixels per path pixel between frames.
 
 /** The lattice on one axis, in path coordinates. */
-export interface AxisLatticeModel {
+interface AxisLatticeModel {
   /** One chunk, in path and tile pixels alike: the calibrated chunk size. */
   readonly period: number;
   /** The path solve divided the tracked shifts by this; 1 unless the pin mode is `scaled`. */
@@ -55,7 +55,7 @@ export interface ScanSolution {
 
 /** The lattice of `cells` cells a chunk on the axes `x` and `y`: the solve's, or one rebuilt from its
  *  axes where it cannot travel, as into a worker, since its mappings are functions. */
-export function latticeModel(cells: number, x: AxisLatticeModel | null, y: AxisLatticeModel | null): LatticeModel {
+function latticeModel(cells: number, x: AxisLatticeModel | null, y: AxisLatticeModel | null): LatticeModel {
   const need = (a: AxisLatticeModel | null, name: string): AxisLatticeModel => {
     if (!a) throw new Error(`the scan has no lattice on ${name}`);
     return a;

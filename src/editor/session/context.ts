@@ -40,7 +40,7 @@ export function editorEventBus(): EventBus<EditorEvents> {
 }
 
 /** Opens `template` as the live map. The mechanism `newMap` calls. */
-export function installMap(template: MapTemplate, registry: RuleRegistry): void {
+function installMap(template: MapTemplate, registry: RuleRegistry): void {
   useEditorStore.getState().initMap(template, registry);
 }
 
@@ -76,7 +76,7 @@ export function parkLiveEditor(camera2d: ParkedEditor['camera2d'], camera3d: Par
  * its landmarks movable, with the assistant folded away, since a planet session draws without it.
  * All or nothing: a throw puts `session.parked` back as the live map and rethrows.
  */
-export function installPlanetCanvas(template: MapTemplate, registry: RuleRegistry, session: PlanetSession): void {
+function installPlanetCanvas(template: MapTemplate, registry: RuleRegistry, session: PlanetSession): void {
   try {
     batchStore(() => {
       const store = useEditorStore.getState();

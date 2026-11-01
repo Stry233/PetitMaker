@@ -16,5 +16,3 @@
  */
 export { clearForRun, generateTerrain, type GenerateResult } from './generate';
 export { clearAllObjects, clearAllTerrain } from './terrain-plan/clear';
-export { isPrintGeneration } from './stencil/print-clear';
-export type { GenerationContext, MapWriter } from './terrain-plan/types';

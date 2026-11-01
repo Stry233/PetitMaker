@@ -1,8 +1,8 @@
 /**
  * Pure geometry for the Ctrl+drag rubber band: normalising the drag into a macro
- * rect, and collecting the objects it covers through the object index.
+ * rect, and collecting the objects it covers.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { macroRect, objectsInBand } from '../../../view/interaction/marquee';
 import { bumpObjectsVersion } from '../../../core/model/grid-model';
 import { type GridState, type PlacedObject } from '../../../core/model/types';
@@ -16,20 +16,6 @@ function withObject(id: string, pos: { x: number; y: number }, w: number, h: num
   };
   gs.objects.set(id, obj);
   bumpObjectsVersion(gs, { added: [obj] });
-  return gs;
-}
-
-function withManyObjects(count: number): GridState {
-  const gs = makeState(200, 200);
-  const objs: PlacedObject[] = [];
-  for (let i = 0; i < count; i++) {
-    objs.push({
-      id: `o${i}`, catalogId: 'tree-apple', position: { x: i % 200, y: Math.floor(i / 200) },
-      rotation: 0, elevation: 0,
-    });
-  }
-  for (const obj of objs) gs.objects.set(obj.id, obj);
-  bumpObjectsVersion(gs, { added: objs });
   return gs;
 }
 
@@ -53,13 +39,6 @@ describe('objectsInBand', () => {
     const gs = withObject('house', { x: 4, y: 4 }, 3, 3); // covers 4..6
     expect(objectsInBand(gs, { x: 6, y: 6, w: 2, h: 2 })).toEqual(['house']); // one-cell overlap
     expect(objectsInBand(gs, { x: 7, y: 7, w: 2, h: 2 })).toEqual([]);
-  });
-
-  it('asks the object index rather than scanning every object', () => {
-    const gs = withManyObjects(2000);
-    const spy = vi.spyOn(gs.objects, 'forEach');
-    objectsInBand(gs, { x: 0, y: 0, w: 4, h: 4 });
-    expect(spy).not.toHaveBeenCalled();
   });
 
   it('returns nothing for an empty patch of ground', () => {

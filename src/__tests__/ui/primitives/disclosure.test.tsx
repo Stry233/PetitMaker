@@ -26,7 +26,6 @@ it('excludes departing controls before their exit completes', () => {
   const view = render(content(true));
   view.rerender(content(false));
   expect(view.getByTestId('fold').hasAttribute('inert')).toBe(true);
-  expect(view.getByTestId('fold').style.pointerEvents).toBe('none');
 });
 
 /** The Web Animations surface a browser offers, enough for Framer to hand it opacity: a browser

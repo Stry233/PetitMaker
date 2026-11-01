@@ -22,7 +22,7 @@ export interface AdapterConfig {
  * to download), as an adapter whose turn is one error event. The order is already on the log, so a
  * throw would leave the job with no end; the loop settles this like any endpoint refusal.
  */
-export function refusingAdapter(message: string): Adapter {
+function refusingAdapter(message: string): Adapter {
   const error = classify({ message });
   return {
     async *stream() { yield { t: 'error' as const, error }; },

@@ -17,7 +17,7 @@ import { useUiPreview } from '../design/preview';
 import { effectiveZoom, visualRect, type VisualRect } from '../design/visual-rect';
 
 /** The attribute naming a piece; a piece inside another piece moves with it and is not one itself. */
-export const MORPH_ATTR = 'data-morph';
+const MORPH_ATTR = 'data-morph';
 /** The `id` every animation of a morph carries. */
 export const MORPH_ANIMATION = 'shape-morph';
 /** On the root from the first measure to the second, so no CSS transition inside a piece starts on
@@ -40,7 +40,7 @@ export const MORPH_PIECE_ATTR = 'data-morph-piece';
 
 /** On a container of pieces that draws nothing of its own (a rail group): its own transitions hold
  *  still between the measures as a piece's do, so the morph alone carries its pieces. */
-export const MORPH_GROUP_ATTR = 'data-morph-group';
+const MORPH_GROUP_ATTR = 'data-morph-group';
 
 /** What a container of pieces wears (`MORPH_GROUP_ATTR`); a pictured subtree marks nothing. */
 export function useMorphGroup(): { [MORPH_GROUP_ATTR]?: '' } {
@@ -70,7 +70,7 @@ export const MORPH_SHAPE_ATTR = 'data-morph-shape';
 /** On a piece whose content re-flows between arrangements: its old content fades out where it stood,
  *  carried with the piece, as the new fades in, so no part of it is seen to jump. A piece of any shape
  *  but `fill` and the default re-flows without saying so. */
-export const MORPH_REFLOW_ATTR = 'data-morph-reflow';
+const MORPH_REFLOW_ATTR = 'data-morph-reflow';
 
 /** What a piece's root wears: its id, unique on the page, its `shape` where it has one, and whether
  *  its content `reflows` where its shape does not say so. A pictured subtree marks nothing. */
@@ -598,7 +598,7 @@ function shownContent(scope: Scope): Map<string, { el: HTMLElement; clip: Elemen
 
 /** A morph confined to one element: its pieces wear `MORPH_PIECE_ATTR`, and its passes neither end
  *  the page's nor tell its followers. */
-export interface MorphScope {
+interface MorphScope {
   /** Measures the pieces in `root`, those outside its own box (scrolled out of view) left to arrive. */
   measure(root: HTMLElement): MorphFirst;
   /** Plays a pass, which settles once it has run or a later pass or `stop` ended it. */
@@ -990,7 +990,7 @@ async function allFinished(started: Animation[]): Promise<void> {
 }
 
 /** The progress `x` of a CSS easing, for `cubic-bezier()` and `linear`; null for any other. */
-export function easingAt(css: string, x: number): number | null {
+function easingAt(css: string, x: number): number | null {
   if (css === 'linear') return x;
   const m = /^cubic-bezier\(([^,]+),([^,]+),([^,]+),([^)]+)\)$/.exec(css.replace(/\s+/g, ''));
   if (!m) return null;

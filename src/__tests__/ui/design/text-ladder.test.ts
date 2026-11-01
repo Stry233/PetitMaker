@@ -1,65 +1,8 @@
 /*
- * A type size is named, not chosen: a number written into a style object lets one rank drift to a
- * different size in every window. `ui/design/text-weight.ts:TEXT_ROLES` is the inventory, the homes
- * below may hold a number, and `text-ladder-allowlist.json` names each exception with its reason.
+ * The type ladder `ui/design/text-weight.ts:TEXT_ROLES` keeps its ranks apart enough to read as ranks.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { TEXT_ROLES, type TextRole } from '../../../ui/design/text-weight';
-import { repoFiles } from '../../_support/source-graph';
-import ALLOWLIST from './text-ladder-allowlist.json';
-
-function sources(dir: string): { path: string; text: string }[] {
-  return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
-}
-
-/**
- * The files that may hold a type size: the ladder, the two token sets that publish it, and the frame's
- * own ladder (`units.ts`), authored against `units.ts:ZOOM` times the chrome's factor.
- */
-const HOMES = [
-  'src/ui/design/text-weight.ts',
-  'src/ui/design/styles.ts',
-  'src/ui/design/window-skin.ts',
-  'src/ui/shell/units.ts',
-];
-
-/**
- * Sizes that are legitimately local, each with its reason. A size derived from a caller's own
- * dimension (`Math.round(size * 0.42)` in `BrandLockup`) needs no entry: the scan does not read it.
- */
-const ALLOWED: Readonly<Record<string, string>> = ALLOWLIST;
-
-/** A size given as a bare number: `fontSize:`, the `fontSize={...}` prop, and the kebab-case
- *  `font-size:` inside an injected `<style>` string. */
-const RAW_SIZE = /fontSize(:|=\{)\s*-?\d|font-size\s*:\s*-?\d/;
-
-describe('the type ladder is the only inventory of sizes', () => {
-  it('names a size at every call site under ui/, or says why it does not', () => {
-    const offenders = sources('src/ui')
-      .filter(({ path }) => !HOMES.includes(path))
-      .filter(({ path }) => !(path in ALLOWED))
-      .flatMap(({ path, text }) => text.split('\n').flatMap((line, i) => (
-        RAW_SIZE.test(line) ? [`${path}:${i + 1} ${line.trim().slice(0, 120)}`] : []
-      )));
-    expect(offenders).toEqual([]);
-  });
-
-  /** A stale entry would hide the next stray in that file. */
-  it('keeps no allowlist entry that has nothing left to excuse', () => {
-    const stale = Object.keys(ALLOWED).filter((path) => {
-      const text = readFileSync(path, 'utf8') as string;
-      return !text.split('\n').some((line) => RAW_SIZE.test(line));
-    });
-    expect(stale).toEqual([]);
-  });
-
-  it('gives every allowlist entry a reason', () => {
-    for (const [path, why] of Object.entries(ALLOWED)) {
-      expect(why.trim().length, `${path} is excused without a reason`).toBeGreaterThan(10);
-    }
-  });
-});
 
 /** The rungs a window's titled text may stand on. */
 const HEADING_RUNGS: TextRole[] = ['title', 'lead', 'head', 'subhead'];

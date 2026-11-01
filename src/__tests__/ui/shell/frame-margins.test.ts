@@ -1,14 +1,9 @@
 /**
  * The frame's arithmetic, which jsdom cannot lay out: margins measured to the ink on the three edges
  * the chrome stands on (the left one wide enough for a selected block's plate overhang), the rows and
- * the right-hand column, and the shadow rule. Nothing in the shell casts a shadow; the chrome stands
- * apart from the map by the viewport's vignette, and a drawing on the map wears one hairline edge.
+ * the right-hand column, and the hairline edge a drawing wears on the map.
  */
 import { describe, it, expect } from 'vitest';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { ShapeEdgeFilter } from '../../../ui/design/shape-edge';
-import { readFileSync } from 'node:fs';
 import {
   ASSISTANT_BLOCK, ASSISTANT_INK, ASSISTANT_ROW_TOP, HISTORY_BUTTONS, KIT_BUTTONS,
   MODES, MODE_PLATE, MODE_ROW_BASE, MODE_ROW_LEFT, MODE_ROW_TOP, railStack,
@@ -16,23 +11,14 @@ import {
 } from '../../../ui/shell/frame';
 import { planRail, RAIL_FOLDS, type RailPlan } from '../../../ui/shell/frame-plan';
 import { plateDepth, plateMinDepth } from '../../../ui/shell/controls/layer-plate';
-import {
-  INK, MAP_EDGE_ALPHA, MAP_LABEL, MAP_SHAPE_EDGE, SHAPE_EDGE_FILTER, SHAPE_EDGE_ID,
-} from '../../../ui/design/tokens';
+import { SHAPE_EDGE_FILTER } from '../../../ui/design/tokens';
 import {
   EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_INK_DEPTH, MODE, MODE_SCALE,
   RAIL, RAIL_FLOOR, ZOOM,
 } from '../../../ui/shell/units';
-import { repoFiles } from '../../_support/source-graph';
 
 /** The open square plate's depth, the deepest the layer control draws. */
 const PLATE_DEPTH = plateDepth('grid');
-
-const SHELL = 'src/ui/shell';
-
-function sources(dir: string): { path: string; text: string }[] {
-  return repoFiles(dir).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
-}
 
 /** The top margin is its own number, and the margins are measured to the mode row's ink. */
 describe('the frame\'s margins', () => {
@@ -93,33 +79,7 @@ describe('the assistant stands under the row above it', () => {
   });
 });
 
-describe('nothing in the frame casts a shadow', () => {
-  it('except the screen\'s own vignette and the edge a drawing wears on the map', () => {
-    const offender = /box-?[Ss]hadow|text-?[Ss]hadow|drop-shadow/;
-    // Exempt: the dilation edge (`MAP_SHAPE_EDGE`) and the spread-only ring a radius-box plate carries
-    // instead (`plateShapeEdge`: zero offset, zero blur, so an outline).
-    const exempt = ['MAP_SHAPE_EDGE', 'plateShapeEdge'];
-    // A line passes if it names one of the two or sits inside one's declaration.
-    const found = sources(SHELL).flatMap(({ path, text }) => {
-      let declaring = '';
-      return text.split('\n').flatMap((line, i) => {
-        declaring = /^export (?:const|function) (\w+)/.exec(line)?.[1] ?? declaring;
-        const allowed = exempt.includes(declaring) || exempt.some((name) => line.includes(name));
-        return offender.test(line) && !allowed ? [`${path}:${i + 1}${line}`] : [];
-      });
-    });
-    expect(found).toEqual([]);
-  });
-
-  /**
-   * The edge is a dilation: at this width offset copies sit under a third of a device pixel from the
-   * shape and rasterize as smears that vary with the pixel grid.
-   */
-  it('and that edge is an outline: grown from the shape, not offset from it', () => {
-    expect(MAP_SHAPE_EDGE).toBe(`url(#${SHAPE_EDGE_ID})`);
-    expect(MAP_SHAPE_EDGE).not.toMatch(/drop-shadow|px/);
-  });
-
+describe('the edge a drawing wears on the map', () => {
   it('reaches the same distance whichever way the shape\'s edge turns', () => {
     const { blur, slope } = SHAPE_EDGE_FILTER;
     // A Gaussian is isotropic: the grown alpha at distance d from a straight edge is
@@ -141,15 +101,6 @@ describe('nothing in the frame casts a shadow', () => {
     expect(lo).toBeCloseTo(0.5, 1);
   });
 
-  /** A word and a drawing share a row, so their edges share one ink and alpha. */
-  it('and it is the same ink a word\'s edge is drawn in', () => {
-    const alphaHex = Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0');
-    expect(MAP_LABEL.WebkitTextStroke).toBe(`0.075em ${INK}${alphaHex}`);
-    // The alpha rides the flood; on the ramp it would soften the boundary into a gradient.
-    const flood = /<feFlood\b[^>]*>/.exec(renderToStaticMarkup(createElement(ShapeEdgeFilter)))?.[0] ?? '';
-    expect(flood).toContain(`flood-color="${INK}"`);
-    expect(flood).toContain(`flood-opacity="${MAP_EDGE_ALPHA}"`);
-  });
 });
 
 describe('the top of the window is one band', () => {

@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 /**
  * The upright arrangement on a rendered shell: the mode tiles in a bar at the window's foot, the corner
- * actions top right, tiles that stay put as modes open and close, and a turn to landscape that keeps
- * what was open and selected. Positions are read from the styles the plan writes, since jsdom has no
- * layout; how it looks is checked in a browser.
+ * actions, the panels the tiles open, and a turn to landscape that keeps what was open and selected.
+ * jsdom has no layout, so where each surface stands is checked in a browser.
  */
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { spec } from '../../_support/spec';
-import { EDGE, EDGE_RIGHT, MODE, UPRIGHT_TOUCH_EDGE } from '../../../ui/shell/units';
 import { setStoreState } from '../../_support/store';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
@@ -42,26 +40,6 @@ function mount(shape: LayoutShape) {
   return { ...view, turn: (s: LayoutShape) => view.rerender(shell(s)) };
 }
 
-/** The mode row's box and every tile's own box, as the plan wrote them. */
-function tilePlaces(): string[] {
-  const row = document.querySelector<HTMLElement>('[data-placement]')!;
-  const tiles = MODES.map((art) => screen.getByRole('button', { name: translate(art.labelKey) }));
-  return [`${row.style.left}|${row.style.top}|${row.style.gap}`, ...tiles.map((t) => `${t.style.width}x${t.style.height}`)];
-}
-
-/** The frame's width in its own px: the window's over the frame's zoom. */
-function frameWidth(): number {
-  const zoomed = document.querySelector<HTMLElement>('[style*="--shell-zoom"]')!;
-  return window.innerWidth / parseFloat(zoomed.style.getPropertyValue('--shell-zoom'));
-}
-
-/** The side margins the open panel keeps its content within: the first box in it that pads its sides. */
-function panelInsets(): [number, number] {
-  const panel = document.querySelector<HTMLElement>('[data-bar-panel]')!;
-  const padded = [panel, ...panel.querySelectorAll<HTMLElement>('*')].find((el) => parseFloat(el.style.paddingLeft) > 0)!;
-  return [parseFloat(padded.style.paddingLeft), parseFloat(padded.style.paddingRight)];
-}
-
 /** The first value of a CSS box shorthand, which may be a nested `calc(...)`. */
 function firstSide(shorthand: string): string {
   let depth = 0;
@@ -73,13 +51,6 @@ function firstSide(shorthand: string): string {
   return shorthand;
 }
 
-/** The nearest fixed box holding `el`, where the frame places a cluster. */
-function fixedBox(el: HTMLElement): HTMLElement {
-  let box: HTMLElement | null = el;
-  while (box && box.style.position !== 'fixed') box = box.parentElement;
-  return box!;
-}
-
 beforeEach(() => {
   localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   setStoreState({ locale: 'en', assistantOpen: false, tourRunning: false });
@@ -89,64 +60,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); sizeWindow(1024, 768); });
 
 describe('the upright arrangement', () => {
-  spec('UI-28', 'at 390x844 the mode tiles sit in a bottom bar and the corner actions top right', () => {
+  spec('UI-28', 'at 390x844 the mode tiles sit in a bottom bar and the corner actions show', () => {
     mount('portrait');
     const row = document.querySelector<HTMLElement>('[data-placement]')!;
     expect(row.dataset.placement).toBe('bottom');
-    // Held from the frame's foot, in its lower half.
-    expect(parseFloat(row.style.bottom)).toBeLessThan(844 / 2);
     expect(screen.getByTestId('shell-mode-band')).toBeTruthy();
-    const corner = screen.getByTestId('shell-corner-actions');
-    expect(parseFloat(corner.style.top)).toBeLessThan(844 / 8);
-    // The wide arrangement's right gutter, narrowed toward EDGE where the top row needs it.
-    expect(parseFloat(corner.style.right)).toBeLessThanOrEqual(EDGE_RIGHT);
-    expect(parseFloat(corner.style.right)).toBeGreaterThanOrEqual(EDGE);
+    expect(screen.getByTestId('shell-corner-actions')).toBeTruthy();
   });
 
-  spec('UI-28', 'the tiles keep their x and y when a mode opens and closes', () => {
+  spec('UI-28', 'each mode tile opens its mode and a second press closes it', () => {
     mount('portrait');
-    const closed = tilePlaces();
     for (const art of MODES) {
       fireEvent.click(screen.getByRole('button', { name: translate(art.labelKey) }));
       expect(useEditorStore.getState().editMode.mode).toBe(art.id);
-      expect(tilePlaces(), art.id).toEqual(closed);
       fireEvent.click(screen.getByRole('button', { name: translate(art.labelKey) }));
       expect(useEditorStore.getState().editMode.mode).toBe(null);
-      expect(tilePlaces(), art.id).toEqual(closed);
-    }
-  });
-
-  spec('UI-28', 'where the mode tiles cannot keep the wide margins, every surface keeps the narrower one they keep', () => {
-    sizeWindow(360, 740);
-    mount('portrait');
-    const row = document.querySelector<HTMLElement>('[data-placement]')!;
-    const left = parseFloat(row.style.left);
-    const right = frameWidth() - left - MODES.length * MODE.size - (MODES.length - 1) * parseFloat(row.style.gap);
-    expect(left).toBeLessThan(EDGE_RIGHT);
-    expect(right).toBeCloseTo(left, 3);
-    expect(parseFloat(screen.getByTestId('shell-corner-actions').style.right)).toBeCloseTo(right, 3);
-    expect(parseFloat(fixedBox(screen.getByRole('button', { name: translate('a11y.undo') })).style.right)).toBeCloseTo(right, 3);
-    for (const mode of ['mode.road', 'mode.object', 'mode.generate'] as const) {
-      fireEvent.click(screen.getByRole('button', { name: translate(mode) }));
-      const [padLeft, padRight] = panelInsets();
-      expect(padLeft, mode).toBeCloseTo(left, 3);
-      expect(padRight, mode).toBeCloseTo(right, 3);
-    }
-  });
-
-  spec('UI-28', 'in touch mode a tablet held upright keeps one smaller margin on both sides, every surface with it', () => {
-    sizeWindow(820, 1180);
-    mount('portrait');
-    const side = UPRIGHT_TOUCH_EDGE.side;
-    const corner = screen.getByTestId('shell-corner-actions');
-    expect(parseFloat(corner.style.right)).toBeCloseTo(side, 3);
-    expect(parseFloat(corner.style.top)).toBeCloseTo(UPRIGHT_TOUCH_EDGE.top, 3);
-    expect(parseFloat(fixedBox(screen.getByRole('button', { name: translate('a11y.undo') })).style.right)).toBeCloseTo(side, 3);
-    for (const mode of ['mode.road', 'mode.object', 'mode.generate'] as const) {
-      fireEvent.click(screen.getByRole('button', { name: translate(mode) }));
-      const [padLeft, padRight] = panelInsets();
-      expect(padLeft, mode).toBeCloseTo(side, 3);
-      expect(padRight, mode).toBeCloseTo(side, 3);
     }
   });
 

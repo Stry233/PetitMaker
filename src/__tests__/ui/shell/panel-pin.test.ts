@@ -4,7 +4,7 @@
  * disagree about how big the window is.
  */
 import { describe, it, expect } from 'vitest';
-import { FIT_FLOOR, FIT_REF, fittedUiScale } from '../../../ui/design/scale';
+import { FIT_FLOOR, FIT_REF, fittedUiScale } from '../../../ui/design/scale-model';
 import {
   DOCK_CHROME_W, DOCK_PARALLAX, dockDrift,
   hasPinRoom, PANEL_COLUMN_W, PINNED_COLUMN_W, PINNED_DOCK_REF_W, PINNED_PANEL,

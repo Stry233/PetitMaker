@@ -14,7 +14,7 @@ export interface NamedPlanetEntry {
   template: Pick<MapTemplate, 'id'>;
 }
 
-export type PlanetNameStatus = 'approved' | 'pending' | 'refused';
+type PlanetNameStatus = 'approved' | 'pending' | 'refused';
 
 /**
  * The entry among `entries` that names a map's planet. A copy shares its original's shape and so

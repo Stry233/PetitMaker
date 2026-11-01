@@ -33,6 +33,8 @@ export class MacroTool implements Tool<GridId, MacroToolContext> {
   }
 
   private armedNow(ctx: MacroToolContext): MacroId | null {
+    const dealt = ctx.dealSeed?.() ?? null;
+    if (dealt !== null) this.seed = dealt;
     if (this.epoch !== ctx.arming.armingEpoch) {
       this.planting.finish(); this.drag.cancel(ctx); this.mountain.cancel(ctx); this.planting.clearGhost(ctx); this.epoch = ctx.arming.armingEpoch;
     }

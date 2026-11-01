@@ -22,7 +22,7 @@ export interface JsonSections extends Record<JsonSectionKey, boolean> {
 /** Which optional sections the open map can carry at all. */
 export type JsonSectionAvailability = Record<SectionNeed, boolean>;
 
-export type JsonSectionAction =
+type JsonSectionAction =
   | { type: 'toggle'; key: JsonSectionKey }
   | { type: 'set'; key: JsonSectionKey; on: boolean }
   | { type: 'depth'; depth: HistoryDepth };

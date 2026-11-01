@@ -7,5 +7,5 @@
  * the manual corner tool is `tools/pointer/edge-cut/`. Both views draw the ghost's trimmed shape. Peers
  * import these files directly.
  */
-export { edgeCutGeneratedTerrain, edgeCutGeneratedRoads, edgeCutTerrainWith, type CornerChooser } from './auto-edge-cut';
+export { edgeCutGeneratedTerrain, edgeCutGeneratedRoads } from './auto-edge-cut';
 export { shapeOfSpans, type TrimmedCell } from './trim-preview';

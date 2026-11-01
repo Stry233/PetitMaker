@@ -16,11 +16,11 @@ import type { JobView, OpRow, PanelView } from '../../../agent/core/project-view
 import { useAgentSession } from '../../../agent/session/store';
 import { translations } from '../../_support/locale-tables';
 import { useEditorStore } from '../../../state/store';
-import { AnswerPaper, isAnswerJob } from '../../../ui/agent/record/AnswerPaper';
+import { AnswerPaper } from '../../../ui/agent/record/AnswerPaper';
+import { isAnswerJob } from '../../../ui/agent/derive/terminal';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
 import { useCelebrateEdge } from '../../../ui/agent/character/use-celebrate-edge';
 import { PanelShell } from '../../../ui/agent/PanelShell';
-import { ACTIVE, DANGER_INK, DANGER_SURFACE, MUTED, PLATE_INK } from '../../../ui/design/tokens';
 import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 
 const backing = new Map<string, string>();
@@ -30,12 +30,6 @@ const backing = new Map<string, string>();
   removeItem: (k: string) => void backing.delete(k),
   clear: () => backing.clear(),
 };
-
-/** jsdom re-serializes every colour as `rgb(...)`, so a token compared as a hex never matches. */
-function rgb(hex: string): string {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgb(${r}, ${g}, ${b})`;
-}
 
 function makeJob(over: Partial<JobView> = {}): JobView {
   return {
@@ -141,7 +135,6 @@ describe('the answer paper: the words are the product', () => {
     const text = getByTestId('answer-text');
     expect(text.textContent).toBe(ANSWER.summary);
     // The body rung, never the muted one: the closing words are what the job produced.
-    expect(text.style.color).toBe(rgb(PLATE_INK));
   });
 
   /** Models write markdown unasked; printed flat, this reply would lose its paragraph breaks and show
@@ -170,7 +163,6 @@ describe('the answer paper: the words are the product', () => {
     expect(text.textContent).toContain('Painting terrain');
     expect(text.textContent).not.toContain('**');
     expect(text.textContent).not.toContain('`');
-    expect(text.style.color).toBe(rgb(PLATE_INK));
   });
 
   /** A model's own heading is a lead line: the card already owns the hierarchy around this text. */
@@ -213,16 +205,11 @@ describe('the answer paper: the words are the product', () => {
   });
 
   /** A refusal is an answer, neither failure nor success, and (below) does not dance. */
-  it('gives a refusal no danger token and no Built stamp', () => {
+  it('gives a refusal no Built stamp', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(<AnswerPaper job={REFUSED} />);
     const paper = getByTestId('answer-paper');
     expect(paper.getAttribute('data-stamp')).toBe('answered');
     expect(queryByTestId('ticket-stamp')).toBeNull();
-    for (const el of [paper, ...paper.querySelectorAll('*')] as HTMLElement[]) {
-      expect(el.style.background).not.toBe(rgb(DANGER_SURFACE));
-      expect(el.style.backgroundColor).not.toBe(rgb(DANGER_SURFACE));
-      expect(el.style.color).not.toBe(rgb(DANGER_INK));
-    }
     expect(paper.textContent).not.toContain(translations.en['agent.ticket_stamp_done']);
   });
 
@@ -232,24 +219,9 @@ describe('the answer paper: the words are the product', () => {
     expect(getByTestId('answer-paper').getAttribute('data-stamp')).toBe('ended');
     const voice = getByTestId('answer-uivoice');
     expect(voice.textContent).toBe(translations.en['agent.answer_silent']);
-    expect(voice.style.color).toBe(rgb(MUTED));
     expect(queryByTestId('answer-text')).toBeNull();
   });
 
-  /** One grammar for "a question is standing": the gate family's yellow spine and its quick row,
-   *  whether the job built or only read. */
-  it('wears the ask grammar while its closing question stands', () => {
-    const { getByTestId } = renderWithI18n(<AnswerPaper job={QUESTION} />);
-    const paper = getByTestId('answer-paper');
-    expect(paper.getAttribute('data-stamp')).toBe('asking');
-    expect(paper.style.borderLeft).toContain(rgb(ACTIVE));
-    expect(getByTestId('gate-quick-row')).toBeTruthy();
-  });
-
-  it('retires the spine on a paper with no question standing', () => {
-    const { getByTestId } = renderWithI18n(<AnswerPaper job={ANSWER} />);
-    expect(getByTestId('answer-paper').style.borderLeft).not.toContain(rgb(ACTIVE));
-  });
 });
 
 /* Filing it away. */

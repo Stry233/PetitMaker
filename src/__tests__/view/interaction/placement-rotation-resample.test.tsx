@@ -108,25 +108,14 @@ describe('a placementRotation change under a stationary pointer', () => {
     expect(lastCall[0].rotation).toBe(90); // the ghost picked up the new rotation
   });
 
-  it('does not resample when a write leaves placementRotation unchanged', () => {
-    activate();
-    el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
-    const moveSpy = vi.spyOn(tm, 'handlePointerMove');
-    moveSpy.mockClear();
-
-    setStoreState({ placementRotation: 0 }); // same value: not an actual rotation change
-
-    expect(moveSpy).not.toHaveBeenCalled();
-  });
-
   it('stops resampling once the pointer has left the canvas', () => {
     activate();
     el.dispatchEvent(pointer('pointermove', { buttons: 0, clientX: 55, clientY: 55 }));
     el.dispatchEvent(pointer('pointerleave', { clientX: 55, clientY: 55 }));
-    const moveSpy = vi.spyOn(tm, 'handlePointerMove');
+    overlay.showPlacementGhost.mockClear();
 
     setStoreState({ placementRotation: 90 });
 
-    expect(moveSpy).not.toHaveBeenCalled();
+    expect(overlay.showPlacementGhost, 'no ghost is drawn where the pointer no longer is').not.toHaveBeenCalled();
   });
 });

@@ -9,7 +9,7 @@ import { stepfunImagesDialect } from './stepfun-images';
 import type { DialectId, StylizeDialect } from './types';
 
 export * from './types';
-export { classify, scrub, toStylizeStatus } from './errors';
+export { toStylizeStatus } from './errors';
 
 export const DIALECTS: Record<DialectId, StylizeDialect> = {
   gemini: geminiDialect,

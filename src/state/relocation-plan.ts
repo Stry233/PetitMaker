@@ -25,11 +25,11 @@ import { objectRect, surfaceElevationAt } from './object-geometry';
 import { entriesCovering, entriesNear, getObjectIndex } from './object-index';
 
 /** How far from the spot its shift points it to an object may be planned, in cells. */
-export const RELOCATION_RADIUS = 16;
+const RELOCATION_RADIUS = 16;
 
 /** An object to plan for, and the shift its first tries follow: the move of the landmark it made
  *  room for, in cells, or none when that is unknown. */
-export interface RelocationItem { object: PlacedObject; shift: MacroCoord }
+interface RelocationItem { object: PlacedObject; shift: MacroCoord }
 
 /**
  * Where the plan puts one object. `pattern-shift`: the object's whole pattern (`patternsOf`) moves
@@ -45,7 +45,7 @@ export type RelocationProposal =
   | { kind: 'no-place' };
 
 /** One object's plan; `group` indexes the members that land together, in plan order. */
-export interface PlannedMove { id: string; group: number; proposal: RelocationProposal }
+interface PlannedMove { id: string; group: number; proposal: RelocationProposal }
 
 /** The plan, in the order it lands. It may move objects beside the items: their pattern's members. */
 export interface RelocationPlan { moves: PlannedMove[] }
@@ -421,7 +421,7 @@ interface Pattern { members: PlacedObject[]; taken: PlacedObject[] }
  * neighbours of other items stay. Patterns come in the order of their first taken object, and each
  * lists its solids before its coatings, so a coating lands after whatever stands on it.
  */
-export function patternsOf(state: GridState, taken: readonly PlacedObject[]): Pattern[] {
+function patternsOf(state: GridState, taken: readonly PlacedObject[]): Pattern[] {
   const isTaken = new Set(taken.map((o) => o.id));
   const index = getObjectIndex(state);
   const seen = new Set<string>();

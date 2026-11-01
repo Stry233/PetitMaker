@@ -46,7 +46,7 @@ const hex = (color: string): number => {
   return Number.isFinite(n) ? n : 0xffffff;
 };
 
-export interface AnnotationDrawOpts extends AnnotationDrawBase {
+interface AnnotationDrawOpts extends AnnotationDrawBase {
   selectionIds: readonly string[];
   /** `annotationInkScale(template)`, handed in because the layer draws data, not a grid. */
   inkScale: number;
@@ -124,6 +124,19 @@ export class AnnotationLayer {
     this.lineCells = next;
     for (const node of this.nodes.values()) for (const restroke of node.restroke) restroke(next);
     this.requestRender();
+  }
+
+  /** Every fade ends where it is heading now: arriving notes stand whole, leaving ones are gone. */
+  settleFades(): void {
+    for (const [id, node] of [...this.nodes]) if (node.fade) this.settleFade(id, node, node.fade.to);
+    this.requestRender();
+  }
+
+  /** The box the drawn notes cover, labels and chips included, in 2D world px; null with none. */
+  inkExtent(): { x: number; y: number; width: number; height: number } | null {
+    if (this.nodes.size === 0) return null;
+    const b = this.container.getLocalBounds();
+    return b.width > 0 && b.height > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
   }
 
   destroy(): void {
@@ -230,7 +243,7 @@ export class AnnotationLayer {
 export type Restroke = (lineCells: number) => void;
 
 /** How a label body inks: the text scale, the line width in cells, and where its line graphics register for restroking. */
-export interface LabelInk { inkScale: number; lineCells: number; restroke: Restroke[] }
+interface LabelInk { inkScale: number; lineCells: number; restroke: Restroke[] }
 
 /** A graphic of annotation lines, painted at `lineCells` and registered for restroking. */
 function lineGraphic(paint: (g: PIXI.Graphics, w: number) => void, lineCells: number, restroke: Restroke[]): PIXI.Graphics {

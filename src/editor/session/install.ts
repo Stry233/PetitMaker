@@ -35,7 +35,7 @@ export function prepareEditor(): void {
 }
 
 /** What the session reads from the presentation layer. */
-export interface EditorSessionOptions {
+interface EditorSessionOptions {
   /** The planet frame flash's length, which the motion registry declares. */
   frameFlashMs: number;
 }

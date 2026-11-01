@@ -1,65 +1,62 @@
-/** The Help Center's trim scenes: one corner, several at once, a notch, and a road's corners. */
-import { trimRoadCommand } from '../../../../core/model/command-build';
-import { TerrainType, type Corners } from '../../../../core/model/types';
-import { validateCut } from '../../../../core/domain/edge-cut/cut-validator';
-import { CORNER_INDEX, SQUARE_CORNERS } from '../../../../core/model/corners';
-import { CANONICAL_ROAD_STATES, canonicalToActual, cornersMatch, detectRoadConn } from '../../../../core/domain/edge-cut/road-cut-states';
-import { roadLookup } from '../../../../state/object-index';
-import { SandboxWorld } from '../../../../editor/sandbox/demo-world';
-import { rect, ROAD_TILE, type Stage, type SceneStep, trimCmd, type HelpScene } from './common';
+/** The Help Center's trim scenes: one corner, several at once, a notch, and a road's corners, each
+ *  click pressed through the world's live corner trim at the pictured pointer. */
+import { TerrainType } from '../../../../core/model/types';
+import { Hand, pickTool, rect, ROAD_TILE, TRIM, type Stage, type SceneStep, type HelpScene } from './common';
 import type { TextKey } from '../../../../i18n/keys';
 
 
+/** The stage the trim figures share with the page's lead: close enough that one corner reads. */
+const TRIM_STAGE: Stage = { x1: 66, y1: 98, x2: 79, y2: 105, tile: 26 };
+
+/** One click where the hand stands, captioned `capKey` when a beat names one. */
+function click(hand: Hand, capKey: TextKey | null | undefined, settle: number): SceneStep[] {
+  return [hand.press({ ...(capKey === undefined ? {} : { capKey }), dur: 170 }), hand.release({ dur: settle })];
+}
+
 const trim: HelpScene = {
-  stage: { x1: 66, y1: 98, x2: 79, y2: 105, tile: 26 },
+  stage: TRIM_STAGE,
+  plot: { x1: 71, y1: 100, x2: 72, y2: 101 },
   strip: { kind: 'tools', active: 'draw' },
-  run: ({ world }) => {
+  run: ({ world }, _t, form) => {
     world.beginStroke();
     const block = rect(71, 100, 72, 101);
     world.paint(block, TerrainType.Mountain, 1);
     world.paint(block, TerrainType.Mountain, 2);
     world.commit();
+    const hand = new Hand(form);
+    // The block's south-east vertex: the corner the trim cycles is the one the pointer is on.
     return [
-      { move: { strip: 2 }, pointer: 'clickable', dur: 550 },
-      { press: true, tool: 'trim', dur: 500 },
-      { press: false, capKey: 'help.fig.trim_1', move: [72.9, 101.9], pointer: 'edge-cut', dur: 550 },
-      { press: true, dur: 160, on: ({ world: w }) => { w.execute(trimCmd(w, 72, 101, CORNER_INDEX.BR, 1)); } },
-      { press: false, dur: 800 },
-      { capKey: 'help.fig.trim_2', press: true, dur: 160, on: ({ world: w }) => { w.execute(trimCmd(w, 72, 101, CORNER_INDEX.BR, 2)); } },
-      { press: false, dur: 800 },
-      { capKey: 'help.fig.trim_3', press: true, dur: 160, on: ({ world: w }) => { w.execute(trimCmd(w, 72, 101, CORNER_INDEX.BR, 0)); } },
-      { press: false, dur: 900 },
+      hand.strip(2, { pointer: 'clickable', dur: 550 }),
+      { press: true, tool: 'trim', dur: 500, on: (c) => pickTool(c, TRIM) },
+      hand.glide(72.5, 101.5, { press: false, capKey: 'help.fig.trim_1', pointer: 'edge-cut', dur: 550 }),
+      ...click(hand, undefined, 800),
+      ...click(hand, 'help.fig.trim_2', 800),
+      ...click(hand, 'help.fig.trim_3', 900),
     ];
   },
 };
 
-/** The stage both trim figures share with the page's lead: close enough that one corner reads. */
-const TRIM_STAGE: Stage = { x1: 66, y1: 98, x2: 79, y2: 105, tile: 26 };
-
-/** A diagonal pinch: two blocks meeting corner to corner, so one intersection carries two cut
- *  sites. Every click here goes through the real tool (`SandboxWorld.trimClick`), which is what makes
- *  the combinations the figure walks the live cycle's own. */
+/** A diagonal pinch: two blocks meeting corner to corner, so one vertex carries two cut sites and
+ *  each click steps the tool's own odometer over both. */
 const trimmulti: HelpScene = {
   stage: TRIM_STAGE,
-  run: ({ world }) => {
+  plot: { x1: 68, y1: 99, x2: 71, y2: 102 },
+  run: (ctx, _t, form) => {
+    const { world } = ctx;
     world.beginStroke();
     world.paint(rect(68, 99, 69, 100), TerrainType.Mountain, 1);
     world.commit();
     world.beginStroke();
     world.paint(rect(70, 101, 71, 102), TerrainType.Mountain, 1);
     world.commit();
-    // The vertex the two blocks share: the tool gathers both their corners there.
-    const pinch = { x: 69, y: 100 };
-    const click = (capKey: TextKey | null): SceneStep[] => [
-      { capKey, press: true, dur: 170, on: ({ world: w }) => { w.trimClick(pinch.x, pinch.y); } },
-      { press: false, dur: 850 },
-    ];
+    pickTool(ctx, TRIM);
+    const hand = new Hand(form);
     return [
-      { capKey: 'help.fig.trimmulti_1', move: [pinch.x + 0.9, pinch.y + 0.9], pointer: 'edge-cut', dur: 700 },
-      ...click('help.fig.trimmulti_2'),
-      ...click(null),
-      ...click('help.fig.trimmulti_3'),
-      ...click(null),
+      hand.glide(69.5, 100.5, { capKey: 'help.fig.trimmulti_1', pointer: 'edge-cut', dur: 700 }),
+      ...click(hand, 'help.fig.trimmulti_2', 850),
+      ...click(hand, null, 850),
+      ...click(hand, 'help.fig.trimmulti_3', 850),
+      ...click(hand, null, 850),
       { dur: 900 },
     ];
   },
@@ -69,7 +66,9 @@ const trimmulti: HelpScene = {
  *  what it leaves in the hollow is a cosmetic patch rather than ground to build on. */
 const trimnotch: HelpScene = {
   stage: TRIM_STAGE,
-  run: ({ world }) => {
+  plot: { x1: 72, y1: 99, x2: 74, y2: 101 },
+  run: (ctx, _t, form) => {
+    const { world } = ctx;
     world.beginStroke();
     world.paint(rect(72, 99, 74, 101), TerrainType.Mountain, 1);
     world.commit();
@@ -77,58 +76,34 @@ const trimnotch: HelpScene = {
     world.beginStroke();
     world.paint([{ x: 72, y: 99 }, { x: 73, y: 99 }, { x: 74, y: 99 }, { x: 72, y: 100 }, { x: 72, y: 101 }], TerrainType.Mountain, 2);
     world.commit();
-    const notch = { x: 72, y: 99 };
+    pickTool(ctx, TRIM);
+    const hand = new Hand(form);
+    // The hollow's north-west vertex, where the L's inside angle meets it.
     return [
-      { capKey: 'help.fig.trimnotch_1', move: [notch.x + 0.9, notch.y + 0.9], pointer: 'edge-cut', dur: 750 },
-      { press: true, dur: 170, on: ({ world: w }) => { w.trimClick(notch.x, notch.y); } },
-      { press: false, capKey: 'help.fig.trimnotch_2', dur: 1300 },
-      { press: true, dur: 170, on: ({ world: w }) => { w.trimClick(notch.x, notch.y); } },
-      { press: false, capKey: 'help.fig.trimnotch_3', dur: 1800 },
+      hand.glide(72.5, 99.5, { capKey: 'help.fig.trimnotch_1', pointer: 'edge-cut', dur: 750 }),
+      ...click(hand, 'help.fig.trimnotch_2', 1300),
+      ...click(hand, 'help.fig.trimnotch_3', 1800),
     ];
   },
 };
 
-/** The next cut for a connected road tile, exactly as the live tool cycles it: the canonical
- *  state table walked in order, each candidate held to `validateCut` for the tile's own seam, the
- *  first legal one landed as the command (`afterCorners` stays canonical; the renderer rotates by
- *  connection side). */
-function roadTrimClick(world: SandboxWorld, tile: { x: number; y: number }): void {
-  const roads = roadLookup(world.state);
-  const roadObj = roads(tile.x, tile.y);
-  if (!roadObj) return;
-  const conn = detectRoadConn(roads, roadObj);
-  let currentIdx = 0;
-  for (let i = 0; i < CANONICAL_ROAD_STATES.length; i++) {
-    if (cornersMatch(roadObj.corners, CANONICAL_ROAD_STATES[i])) { currentIdx = i; break; }
-  }
-  for (let i = 1; i < CANONICAL_ROAD_STATES.length; i++) {
-    const nextIdx = (currentIdx + i) % CANONICAL_ROAD_STATES.length;
-    const canonical = CANONICAL_ROAD_STATES[nextIdx];
-    const corners: Corners = canonical ? [...canonical] : [...SQUARE_CORNERS];
-    if (!validateCut(world.state, roads, { x: tile.x, y: tile.y }, 'road', canonicalToActual(corners, conn))) continue;
-    world.execute(trimRoadCommand(roadObj, tile.x, tile.y, corners));
-    return;
-  }
-}
-
 const roadtrim: HelpScene = {
-  stage: { x1: 66, y1: 98, x2: 79, y2: 105, tile: 26 },
+  stage: TRIM_STAGE,
+  plot: { x1: 71, y1: 101, x2: 73, y2: 101 },
   strip: { kind: 'tools', active: 'draw', surface: 'road' },
-  run: ({ world }) => {
+  run: ({ world }, _t, form) => {
     world.place(ROAD_TILE, 71, 101);
     world.place(ROAD_TILE, 72, 101);
     world.place(ROAD_TILE, 73, 101);
-    const end = { x: 73, y: 101 };
+    const hand = new Hand(form);
+    // On the street's east end tile: the tool cycles that tile through the cuts its junction allows.
     return [
-      { move: { strip: 2 }, pointer: 'clickable', dur: 550 },
-      { press: true, tool: 'trim', dur: 500 },
-      { press: false, capKey: 'help.fig.roadtrim_1', move: [73.9, 101.9], pointer: 'edge-cut', dur: 550 },
-      { press: true, dur: 160, on: ({ world: w }) => { roadTrimClick(w, end); } },
-      { press: false, dur: 900 },
-      { capKey: 'help.fig.roadtrim_2', press: true, dur: 160, on: ({ world: w }) => { roadTrimClick(w, end); } },
-      { press: false, dur: 900 },
-      { capKey: 'help.fig.roadtrim_3', press: true, dur: 160, on: ({ world: w }) => { roadTrimClick(w, end); } },
-      { press: false, dur: 1100 },
+      hand.strip(2, { pointer: 'clickable', dur: 550 }),
+      { press: true, tool: 'trim', dur: 500, on: (c) => pickTool(c, TRIM) },
+      hand.glide(73.7, 101.5, { press: false, capKey: 'help.fig.roadtrim_1', pointer: 'edge-cut', dur: 550 }),
+      ...click(hand, undefined, 900),
+      ...click(hand, 'help.fig.roadtrim_2', 900),
+      ...click(hand, 'help.fig.roadtrim_3', 1100),
     ];
   },
 };

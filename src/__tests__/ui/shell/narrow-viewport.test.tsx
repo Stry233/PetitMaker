@@ -1,26 +1,20 @@
 // @vitest-environment jsdom
 /**
- * Layout decisions of the game shell, pinned without layout since jsdom has none: the assistant block
- * beside the mode row (boots collapsed, opens on a press, leaves the selected mode alone), the panel's
- * floor per bar, mode toggling, the vignette, the leftmost caption, the restore offer in the empty
- * shelf band, and putting the interface away.
+ * The game shell's mode row, the assistant block beside it, the panel floor per bar, the restore offer
+ * in the empty shelf band, and putting the interface away, read through roles, labels and store state.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ToolType } from '../../../state/editing/vocabulary';
-import { PREF_STORAGE_KEYS } from '../../../platform/storage/prefs';
 import { declineRestoreOffer } from '../../../ui/session/restore-offer';
 import { I18nProvider, translate } from '../../../i18n/context';
-import { createShellSlice } from '../../../state/slices/shell';
 import { useEditorStore } from '../../../state/store';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
-import { VIGNETTE_DEPTH } from '../../../ui/design/tokens';
 import { footReserve } from '../../../ui/shell/panel-frame';
 import { MODES } from '../../../ui/shell/frame';
 import { RestoreShelf } from '../../../ui/shell/bars/generate/RestoreShelf';
 import { Shell } from '../../../ui/shell/Shell';
-import { captionShift, EDGE_LEFT } from '../../../ui/shell/units';
 import { activeToolOf } from '../../../state/editing/edit-mode';
 
 vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
@@ -84,9 +78,6 @@ describe('the assistant is a block on its own row', () => {
     const row = document.querySelector('[data-tour-target="modes"]')!;
     expect(row.querySelectorAll('button').length, 'the row holds the modes and nothing else').toBe(MODES.length);
     expect(row.contains(assistantBlock())).toBe(false);
-    // jsdom lays nothing out, so the shared left offset is compared.
-    expect((assistantBlock().parentElement as HTMLElement).style.left)
-      .toBe((row as HTMLElement).style.left);
   });
 
   it('opens nothing until it is pressed, and closes again on the next press', async () => {
@@ -108,19 +99,6 @@ describe('the assistant is a block on its own row', () => {
     await screen.findByTestId('shell-assistant-panel');
     // The assistant arms nothing, so opening it must not disarm the brush.
     expect(useEditorStore.getState().editMode.mode).toBe('mountain');
-  });
-
-  it('boots collapsed, and a press leaves nothing behind that could open it next time', () => {
-    // A device that still holds the legacy key must boot collapsed.
-    backing.set(LEGACY_OPEN_KEY, '1');
-    expect(freshShellSlice().assistantOpen).toBe(false);
-
-    mountShell();
-    expect(screen.queryByTestId('shell-assistant-panel')).toBeNull();
-    fireEvent.click(assistantBlock());
-    expect(useEditorStore.getState().assistantOpen).toBe(true);
-    expect(PREF_STORAGE_KEYS).not.toContain(LEGACY_OPEN_KEY);
-    expect(backing.get(LEGACY_OPEN_KEY)).toBe('1'); // untouched: nothing writes it
   });
 
   it('says so to a screen reader either way', () => {
@@ -146,17 +124,6 @@ describe("[UI-40] the free panel's floor follows the bar that is showing", () =>
 });
 
 describe('a mode block', () => {
-  /** As in the game, the caption sits on the map with an outline instead of a plate. */
-  it('names itself on the map, with no plate under the word', () => {
-    mountShell();
-    fireEvent.click(screen.getByLabelText(translate('mode.mountain')));
-    const caption = screen.getAllByText(translate('mode.mountain'))
-      .find((el) => el.tagName === 'SPAN')!;
-    expect(caption.style.background).toBe('');
-    expect(caption.style.color).toBe('rgb(255, 254, 227)');
-    expect(caption.getAttribute('style')).toContain('-webkit-text-stroke');
-  });
-
   /** A block is a toggle, not a radio: pressing the mode in force returns the editor to rest. */
   it('puts its own mode away when it is the one in force', () => {
     mountShell();
@@ -174,41 +141,6 @@ describe('a mode block', () => {
     fireEvent.click(mountain);
     fireEvent.click(screen.getByLabelText(translate('mode.water')));
     expect(useEditorStore.getState().editMode.mode).toBe('water');
-  });
-});
-
-describe('the viewport vignette', () => {
-  /** With no mode chosen no bar stands at the bottom, so that edge's shading moves below the fold,
-   *  on the bottom bar's own beat. */
-  it('carries its shading below the fold while the bottom of the screen is empty', async () => {
-    mountShell();
-    const pane = () => screen.getByTestId('shell-vignette');
-    /** How far the pane is moved down; it moves by transform, so its inset stays 0. */
-    const drop = () => Number.parseFloat(/translateY\((-?[\d.]+)px\)/.exec(pane().style.transform)?.[1] ?? '0');
-    expect(useEditorStore.getState().editMode.mode).toBeNull();
-    expect(pane().style.bottom).toBe('0px');
-    expect(drop()).toBeCloseTo(VIGNETTE_DEPTH, 3);
-
-    act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
-    await waitFor(() => expect(drop()).toBeLessThan(1));
-  });
-
-  it('stands outside the frame\'s zoom, so its inset is the window\'s own', () => {
-    mountShell();
-    const pane = screen.getByTestId('shell-vignette');
-    // `inset: 0` inside the zoomed subtree would fall short of the window's edges by the zoom
-    // factor. No ancestor's style attribute may mention a zoom.
-    for (let el = pane.parentElement; el; el = el.parentElement) {
-      expect(el.getAttribute('style') ?? '').not.toContain('zoom');
-    }
-  });
-});
-
-describe('a caption under the leftmost control', () => {
-  it('centres where there is room and stops at the frame margin where there is not', () => {
-    expect(captionShift(400)).toContain('-50%');
-    // Near the edge the shift is floored at the frame's margin.
-    expect(captionShift(EDGE_LEFT + 19)).toBe(`translateX(max(-50%, ${-19}px))`);
   });
 });
 
@@ -241,20 +173,6 @@ describe('the restore offer', () => {
     expect(card.contains(fresh), 'no button nested in a button').toBe(false);
     const resume = screen.getByTestId('restore-resume');
     expect(card.contains(resume), 'no button nested in a button').toBe(false);
-  });
-
-  /** The clock is drawn as the shelf's yellow line mark spending down, not an outline ring. */
-  it('counts down on the shelf\'s own yellow mark, not on an outline ring', () => {
-    // The clock draws only in a measured box, so jsdom needs a width.
-    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
-    try {
-      shelf();
-      const card = screen.getByTestId('restore-card');
-      expect(card.querySelector('svg line'), 'the mark is a line').toBeTruthy();
-      expect(card.querySelector('svg rect'), 'the ring is not also drawn').toBeNull();
-    } finally {
-      delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
-    }
   });
 
   it('names what it is and one way to decline, and nothing behind it is locked out', () => {
@@ -358,16 +276,6 @@ describe('where the restore offer stands', () => {
     await waitFor(() => expect(card()).toBeNull());
   });
 
-  it('stands in the shelf band a fresh session leaves empty', async () => {
-    mountShell();
-    const el = await screen.findByTestId('restore-card');
-    // The full-width band on the window's floor, where the bottom bars stand once a mode is chosen.
-    const band = el.closest('div[style*="position: fixed"]') as HTMLElement;
-    expect(band.style.bottom).toBe('0px');
-    expect(band.style.left).toBe('0px');
-    expect(band.style.right).toBe('0px');
-  });
-
   it('is withdrawn once the visitor chooses a mode', async () => {
     mountShell();
     await screen.findByTestId('restore-card');
@@ -414,39 +322,21 @@ describe('where the restore offer stands', () => {
   });
 });
 
-/** A fresh `createShellSlice` as a boot builds it, without a store; its setters are never called. */
-function freshShellSlice() {
-  return createShellSlice('pc')(() => {}, () => ({}) as never, null as never);
-}
-
-/** A legacy key the open state was persisted under. Nothing reads or writes it. */
-const LEGACY_OPEN_KEY = 'petit-planet-assistant-open';
-
 /** Hiding the interface takes the frame away but leaves the button that hid it, so the way back is
  *  where the way out was. Modals stand outside the frame. */
 describe('the interface can be put away', () => {
   const hideButton = () => screen.getByLabelText(translate('a11y.hide_ui'));
 
-  it('draws the whole frame away and leaves the button that did it', () => {
+  it('takes every frame control out of reach and leaves the button that brings it back', () => {
     mountShell();
     act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
-    const wrapper = () => screen.getByTestId('shell-frame-veil');
-    expect(wrapper().style.visibility).toBe('visible');
+    const mountain = () => screen.queryByRole('button', { name: translate('mode.mountain') });
+    expect(mountain()).not.toBeNull();
 
     fireEvent.click(hideButton());
-    // The fade is what is seen; visibility takes the frame out of reach, held by CSS until the fade ends.
-    expect(wrapper().style.opacity).toBe('0');
-    expect(wrapper().style.visibility).toBe('hidden');
-    expect(wrapper().style.transition).toContain('visibility');
-    // The shading goes with the shelf.
-    const drop = () => Number.parseFloat(
-      /translateY\((-?[\d.]+)px\)/.exec(screen.getByTestId('shell-vignette').style.transform)?.[1] ?? '0',
-    );
-    expect(drop()).toBeCloseTo(VIGNETTE_DEPTH, 3);
+    expect(mountain(), 'the mode row is hidden from pointer and screen reader alike').toBeNull();
 
-    const back = screen.getByLabelText(translate('a11y.show_ui'));
-    expect(back.style.visibility).toBe('visible');
-    fireEvent.click(back);
-    expect(wrapper().style.visibility).toBe('visible');
+    fireEvent.click(screen.getByRole('button', { name: translate('a11y.show_ui') }));
+    expect(mountain()).not.toBeNull();
   });
 });

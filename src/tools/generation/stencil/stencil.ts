@@ -60,7 +60,7 @@ export const COVERAGE_ON = 128;
 export const TOUCHED_INK = COVERAGE_ON / 4;
 
 /** What kind of shape the characters are, which is what decides how much room the strokes need. */
-export type Script = 'simple' | 'dense' | 'picture';
+type Script = 'simple' | 'dense' | 'picture';
 
 /**
  * Ideographs, kana and hangul pack many strokes into one square; a picture (emoji, symbols drawn in

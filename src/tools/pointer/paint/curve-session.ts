@@ -18,7 +18,7 @@ import type { GridId } from '../../../core/grid/grids';
 import type { ToolContext } from '../runtime/types';
 import type { ToolArming } from '../../../state/editing/arming';
 
-export interface CurveSession {
+interface CurveSession {
   /** The anchors, in the order they were placed. */
   anchors: CurveAnchor[];
   /** Brush width the curve was painted at — the handles scale with it. */
@@ -40,7 +40,7 @@ export interface CurveSession {
 }
 
 /** What the session needs from whoever owns the curve. */
-export interface CurveSessionHost {
+interface CurveSessionHost {
   /** Show where the curve would go, without touching the map — every frame of a drag. */
   preview(anchors: CurveAnchor[]): void;
   /** Re-lay the curve at these anchors, as one undoable step. */

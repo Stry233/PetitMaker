@@ -86,7 +86,7 @@ const dreamingAt = (b: number): number => (b === 0 ? 0 : (b + 2) % DREAMS.length
 const STIR_GAP_MS = 1500;
 
 /** Returns the tallest cyclic window of natural row heights, including gaps, or 0 until measured. */
-export function boardHeight(poolHeights: readonly number[]): number {
+function boardHeight(poolHeights: readonly number[]): number {
   if (poolHeights.length < SHOWN) return 0;
   let tallest = 0;
   for (let start = 0; start < poolHeights.length; start++) {

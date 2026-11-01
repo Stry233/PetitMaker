@@ -7,7 +7,7 @@
 import type { TextField } from './policy';
 import { reviewText, ReviewWorkerLease } from './reviewer';
 
-export interface BackgroundReviewSpec<T> {
+interface BackgroundReviewSpec<T> {
   field: TextField;
   /** The next item awaiting a check whose key is not in `tried`, or undefined when none is left.
    *  Asked again after every check, so an item settled meanwhile drops out. */
@@ -16,7 +16,7 @@ export interface BackgroundReviewSpec<T> {
   settle(item: T, allowed: boolean | null): void;
 }
 
-export interface BackgroundReview {
+interface BackgroundReview {
   /** Checks every pending item; a call during a run checks again once that run ends. */
   run(): Promise<void>;
   /** Forgets which items this review has tried; for tests that reuse texts. */

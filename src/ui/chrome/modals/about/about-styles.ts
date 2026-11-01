@@ -14,7 +14,7 @@ export const brandBand: CSSProperties = {
 };
 
 /** How far the About window's close button stands in from the card's top and end edges, in css px. */
-export const ABOUT_CLOSE_INSET = 16;
+const ABOUT_CLOSE_INSET = 16;
 /** The wide layout's side padding, in css px. */
 export const ABOUT_WIDE_PAD_X = 32;
 /** The stacked layout's top padding, in css px. */

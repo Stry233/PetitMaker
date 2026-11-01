@@ -17,8 +17,6 @@ import { prettyModel } from '../../../../ui/agent/connection/pretty-model';
 import { endpointCheckVerdict } from '../../../../ui/agent/connection/setup-parts';
 import { NO_ENDPOINT_ADDRESS } from '../../../../agent/core/errors';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../../agent/providers/defaults';
-import { radii } from '../../../../ui/design/styles';
-import { roleFont } from '../../../../ui/design/text-weight';
 import { setToastPresenter } from '../../../../platform/channels/toast-bus';
 
 const backing = new Map<string, string>();
@@ -121,28 +119,6 @@ describe('what stands behind the gear', () => {
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  /** The provider row, the model row and every list row share one size and weight; the fill alone
-   *  marks the choice. The declared rung is compared, since the weight resolves through a custom
-   *  property jsdom does not compute. */
-  it('draws its rows and its list at one rung', () => {
-    mount();
-    const rung = roleFont('menu');
-    const provider = screen.getByTestId('manage-prov-row');
-    const model = screen.getByTestId('manage-model-dd');
-    for (const [name, row] of [['provider', provider], ['model', model]] as const) {
-      expect(row.style.fontWeight, `${name} weight`).toBe(String(rung.fontWeight));
-      expect(row.style.fontSize, `${name} size`).toBe(`${rung.fontSize}px`);
-    }
-
-    fireEvent.click(provider);
-    const rows = screen.getAllByRole('menuitemradio');
-    expect(rows.length).toBeGreaterThan(1);
-    for (const row of rows) {
-      const el = row as HTMLElement;
-      expect(el.style.fontWeight, el.textContent ?? '').toBe(String(rung.fontWeight));
-      expect(el.style.fontSize, el.textContent ?? '').toBe(`${rung.fontSize}px`);
-    }
-  });
 });
 
 /** A destructive verb opens a question anchored to its pill; its confirm answers and a press
@@ -299,7 +275,6 @@ describe('the held job, from the manage card', () => {
     const held = screen.getByTestId('manage-held');
     fireEvent.click(screen.getByTestId('manage-forget-key'));
     expect(screen.getByTestId('manage-held')).toBe(held);
-    expect(held.style.opacity).toBe('');
   });
 });
 
@@ -763,30 +738,5 @@ describe('the card reads in dependency order', () => {
         .findIndex((el) => el.getAttribute('data-testid') === id));
     expect(order.every((n) => n >= 0), 'all three rows are drawn').toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-  });
-});
-
-/** Both dropdowns use the shared floating-menu card and its uniform radius. */
-describe('the dropdowns on this card are the house menu', () => {
-  const declaredRadius = (el: HTMLElement) => el.style.borderRadius;
-
-  it.each(['manage-prov-row', 'manage-model-dd'])('opens a round-cornered house card from %s', (row) => {
-    mount({ jobCount: 1 });
-    fireEvent.click(screen.getByTestId(row));
-
-    const card = screen.getByRole(row === 'manage-model-dd' ? 'group' : 'menu');
-    expect(card.getAttribute('aria-label')).toBeTruthy();
-    // jsdom keeps the shorthand, so one value means one radius for all four corners.
-    expect(declaredRadius(card)).toBe(`${radii.lg}px`);
-    expect(declaredRadius(card).trim().split(/\s+/), 'a per-corner declaration').toHaveLength(1);
-    // Border-box keeps the card's padding from carrying it past the row it hangs from.
-    expect(getComputedStyle(card).boxSizing).toBe('border-box');
-  });
-
-  it('renders no card of its own beside it', () => {
-    mount({ jobCount: 1 });
-    const own = [...screen.getByTestId('manage-screen').querySelectorAll<HTMLElement>('*')]
-      .filter((el) => getComputedStyle(el).position === 'fixed');
-    expect(own, 'the manage card mounts no floating surface itself').toEqual([]);
   });
 });

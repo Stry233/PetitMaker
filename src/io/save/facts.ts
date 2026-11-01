@@ -3,7 +3,6 @@ import type { I18nKey } from '../../i18n/keys';
 import type { SectionKey } from './sections';
 
 export { PLANET_NAME_MAX } from './planet-codec';
-export { CURRENT_VERSION } from './format/types';
 
 /** What each optional section of the JSON export is called, in the export window and in a warning
  *  that names a section the import could not restore. */

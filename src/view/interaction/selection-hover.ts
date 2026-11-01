@@ -56,7 +56,7 @@ export function pointerTarget(gs: GridState, point: MapPoint, meshHitId?: string
   return { hit, centre, terrain, pick };
 }
 
-export interface HoverBox {
+interface HoverBox {
   x: number;
   y: number;
   w: number;

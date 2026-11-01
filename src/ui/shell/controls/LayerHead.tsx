@@ -76,7 +76,9 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
   useLayoutEffect(() => {
     const box = buttonRef.current?.offsetWidth ?? 0;
     const name = nameRef.current?.scrollWidth ?? 0;
-    setNumbers((was) => (was.box === box && was.name === name ? was : { box, name }));
+    // Under a fractional ancestor zoom (a Help figure shrunk to its column) a reading can step a px
+    // back and forth between renders; a px either way is the same reading, so the loop settles.
+    setNumbers((was) => (Math.abs(was.box - box) <= 1 && Math.abs(was.name - name) <= 1 ? was : { box, name }));
   });
   return (
     <ActionButton

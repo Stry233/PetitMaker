@@ -9,14 +9,18 @@
  * a membership change or a new size re-reads its place. A group rotation removes every member before
  * placing any back, so the card keeps its place for the whole operation. While the camera moves the
  * card follows and keeps its side of the selection.
+ *
+ * A Help figure pictures the same card over its own world (`SelectionCardSource`): it stands in the
+ * figure's box, takes no input, and its actions do nothing.
  */
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getCell } from '../../../core/model/grid-model';
 import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
 import { TerrainType, type GridState, type Rotation } from '../../../core/model/types';
-import { groupSummary, narrowToCatalog, objectSummary, selectedObjectIds } from '../../../state/selection';
+import { groupSummary, narrowToCatalog, objectSummary, selectedObjectIds, type BlockRef } from '../../../state/selection';
 import { getActiveView } from '../../../view/active-view';
+import type { ActiveView } from '../../../tools/pointer/runtime';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
 import { formatLoad } from '../../../i18n/load';
@@ -28,6 +32,7 @@ import {
 } from '../../../editor/editing/group-edit';
 import { useGlidingChromeLift } from '../../primitives/chrome-layer';
 import { useInteractionProfiles, useTouchMode } from '../../design/input-mode';
+import { useSurfaceZoom } from '../../design/scale';
 import { cursors, font, radii, z } from '../../design/styles';
 import { INK, INSET, LINE, PLATE, PLATE_INK, ERROR } from '../../design/tokens';
 import { ShapeEdge, isWebKitEngine } from '../../design/shape-edge';
@@ -41,7 +46,8 @@ import { copyAllowed } from '../../../state/clipboard';
 import { MODE_ICONS } from '../../design/mode-icons';
 import { layerName } from '../../../i18n/terms/layer-name';
 import { helpTargetAttr } from '../../session/help-targets';
-import { facingAngle, TITLE_MAX, useSelectionCardPlace } from './use-selection-card-place';
+import { facingAngle, TITLE_MAX, TITLE_MIN, useSelectionCardPlace, type CardPlaceSource } from './use-selection-card-place';
+import type { Area, ViewportSize } from './selection-card-layout';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useMapRevision } from '../../session/use-map-revision';
@@ -61,6 +67,8 @@ const THUMB = 36;
 const TAIL = 14;
 const FACINGS = ['0', '90', '180', '270'] as const;
 type Facing = typeof FACINGS[number];
+
+const noop = () => {};
 
 const btnReset: CSSProperties = { border: 'none', padding: 0, margin: 0, background: 'transparent', fontFamily: font.family, cursor: cursors.clickable, WebkitTapHighlightColor: 'transparent' };
 
@@ -99,34 +107,93 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SelectionCard() {
+/** A map the card stands on other than the live one: a Help figure's world and view. The card stands
+ *  absolute in the box `frame` measures, inert, at the live card's size or the share of it `share`
+ *  asks. */
+export interface SelectionCardSource {
+  /** The selection, its map and touch multi-select's latch, read live when the card places itself. */
+  read: () => { selection: readonly BlockRef[]; gridState: GridState | null; latched: boolean };
+  /** The view whose projection places the card, answering in the box's px. */
+  view: () => Pick<ActiveView, 'projection'> | null;
+  /** The box's size and the part of it the map stands clear in, in the box's px. */
+  frame: () => { viewport: ViewportSize; area: Area };
+  /** Calls `tell` whenever the card may have to be placed again; returns the unsubscribe. */
+  watch: (tell: (cause?: string) => void) => () => void;
+  /** Bumps when the selection or the map under it changed, so the card says it again. */
+  revision: string | number;
+  /** The share of the live size the card draws at whose header, its name cut shortest, is
+   *  `least` px wide at the live size: a figure narrower than the live card shrinks it to fit. */
+  share: (least: number) => number;
+}
+
+export function SelectionCard({ source }: { source?: SelectionCardSource } = {}) {
   const t = useT();
-  const selection = useEditorStore((s) => s.selection);
-  const gridState = useEditorStore((s) => s.gridState);
+  const liveSelection = useEditorStore((s) => s.selection);
+  const liveGrid = useEditorStore((s) => s.gridState);
   const locale = useLocale();
-  useMapRevision(selection.length > 0, 'frame');
-  const inSession = useEditorStore((s) => !!s.planetSession);
+  useMapRevision(!source && liveSelection.length > 0, 'frame');
+  const liveSession = useEditorStore((s) => !!s.planetSession);
   // Multi-select carries its actions on its own bar (`shell/bars/selection/MultiSelectBar.tsx`).
-  const latched = useEditorStore((s) => s.multiSelectLatched);
-  const target = latched ? null : selectionTarget(selection, gridState, inSession);
+  const liveLatched = useEditorStore((s) => s.multiSelectLatched);
+  const pictured = source?.read();
+  const selection = pictured ? pictured.selection : liveSelection;
+  const gridState = pictured ? pictured.gridState : liveGrid;
+  const latched = pictured ? pictured.latched : liveLatched;
+  // A figure's world stands in no planet session.
+  const target = latched ? null : selectionTarget(selection, gridState, pictured ? false : liveSession);
 
   return (
     <AnimatePresence>
       {target && gridState && (
-        <CardBody key={target.key} target={target} gs={gridState} t={t} locale={locale} />
+        <CardBody key={target.key} target={target} gs={gridState} t={t} locale={locale} source={source} />
       )}
     </AnimatePresence>
   );
 }
 
-function CardBody({ target, gs, t, locale }: {
+/** The placement source for a pictured card: `source`'s world, read through its latest props. */
+function usePicturedPlace(source: SelectionCardSource | undefined): CardPlaceSource | undefined {
+  const latest = useRef(source);
+  latest.current = source;
+  const { watch } = source ?? {};
+  return useMemo<CardPlaceSource | undefined>(() => (watch ? {
+    read: () => latest.current!.read(),
+    projection: () => latest.current!.view()?.projection,
+    frame: () => {
+      const { viewport, area } = latest.current!.frame();
+      return { viewport, areaAt: () => area };
+    },
+    watch,
+    wheel: false,
+  } : undefined), [watch]);
+}
+
+function CardBody({ target, gs, t, locale, source }: {
   target: Target;
   gs: GridState;
   t: ReturnType<typeof useT>;
   locale: ReturnType<typeof useEditorStore.getState>['locale'];
+  source?: SelectionCardSource;
 }) {
-  const { zoom, weights } = useGlidingChromeLift(BUTTON);
-  const { refs, growUp, nameCut } = useSelectionCardPlace(zoom, locale, ROW, TAIL);
+  const pictured = !!source;
+  const lift = useGlidingChromeLift(BUTTON);
+  // A pictured card stands under the Help window's zoom, so it divides that back out to draw the
+  // size the live card draws, shrunk as far as its figure asks.
+  const surface = useSurfaceZoom();
+  const [share, setShare] = useState(1);
+  const live = pictured ? lift.zoom / surface : lift.zoom;
+  const zoom = live * share;
+  const { weights } = lift;
+  const place = usePicturedPlace(source);
+  const { refs, growUp, nameCut } = useSelectionCardPlace(zoom, locale, ROW, TAIL, place);
+  const fit = source?.share;
+  useLayoutEffect(() => {
+    const header = refs.header.current;
+    const title = header?.querySelector<HTMLElement>('[data-card-title]');
+    if (!fit || !header || !title) return;
+    // Css px inside the card, which its zoom leaves as they are.
+    setShare(fit((header.offsetWidth - title.offsetWidth + TITLE_MIN) * live));
+  }, [fit, live, refs]);
   const profiles = useInteractionProfiles();
   const touch = useTouchMode();
   const [open, setOpen] = useState(false);
@@ -140,13 +207,16 @@ function CardBody({ target, gs, t, locale }: {
   const rotateName = useNameReveal(t('a11y.rotate'), nameSide);
   const pickName = useNameReveal(t('a11y.pick_material'), nameSide);
   const copyName = useNameReveal(t('context.copy'), nameSide);
-  const copyOffered = useEditorStore(copyAllowed) && target.copyable;
+  const copyOffered = (useEditorStore(copyAllowed) || pictured) && target.copyable;
   const deleteName = useNameReveal(t('a11y.delete'), nameSide);
 
   const exec = () => useEditorStore.getState();
-  const rotate = () => rotateSelection(90);
-  const face = (angle: Facing) => faceSelected(Number(angle) as Rotation);
-  const remove = () => {
+  const acts = <A extends unknown[]>(act: (...args: A) => void): ((...args: A) => void) => (pictured ? noop : act);
+  const rotate = acts(() => rotateSelection(90));
+  const face = acts((angle: Facing) => faceSelected(Number(angle) as Rotation));
+  const pick = acts(pickSelection);
+  const copy = acts(() => { copyObjects(); });
+  const remove = acts(() => {
     const s = exec();
     if (target.plural) {
       // A group has no confirm step, matching the delete shortcut; one undo restores it.
@@ -156,12 +226,12 @@ function CardBody({ target, gs, t, locale }: {
     }
     // The confirmation the Delete shortcut opens, unrolled from this button.
     if (target.block) s.setDeletePopover(s.deletePopover ? null : target.block);
-  };
-  const narrow = (catalogId: string) => {
+  });
+  const narrow = acts((catalogId: string) => {
     const s = exec();
     const refs = s.gridState ? narrowToCatalog(s.selection, s.gridState, catalogId) : [];
     if (refs.length) s.setSelection(refs);
-  };
+  });
 
   // What the card says about its selection.
   let title = '';
@@ -169,7 +239,7 @@ function CardBody({ target, gs, t, locale }: {
   const facts: [string, string][] = [];
   let kinds: { catalogId: string; name: string; icon?: string; n: number }[] = [];
   if (target.plural) {
-    const group = groupSummary(gs, selectedObjectIds(useEditorStore.getState().selection));
+    const group = groupSummary(gs, selectedObjectIds(source ? source.read().selection : useEditorStore.getState().selection));
     kinds = group.kinds.map(({ catalogId, n }) => {
       const item = getCatalogItem(catalogId);
       return { catalogId, n, name: item ? localizedName(item.name, locale) : catalogId, icon: item?.icon ? iconUrl(item.icon) : undefined };
@@ -197,7 +267,7 @@ function CardBody({ target, gs, t, locale }: {
     if (terrain) facts.push([t('selection.layer'), layerName(t, mountain ? surfaceElevation(terrain) : terrain.elevation)]);
   }
   const facing = target.object && target.rotatable && !target.sessionLandmark ? String(target.object.rotation) as Facing : null;
-  const proj = getActiveView()?.projection;
+  const proj = source ? source.view()?.projection : getActiveView()?.projection;
 
   const arrive = 1 - amplitude('selection.card.arrive');
   return (
@@ -207,10 +277,10 @@ function CardBody({ target, gs, t, locale }: {
     >
       <div
         ref={refs.box}
-        {...helpTargetAttr('select')}
+        {...(pictured ? { inert: '' } : helpTargetAttr('select'))}
         data-testid="selection-card"
         style={{
-          position: 'fixed', zIndex: z.canvasControls, zoom, ...weights,
+          position: pictured ? 'absolute' : 'fixed', zIndex: pictured ? undefined : z.canvasControls, zoom, ...weights,
           visibility: 'hidden', pointerEvents: 'none',
         }}
       >
@@ -221,7 +291,7 @@ function CardBody({ target, gs, t, locale }: {
           transition={framerMotion('selection.card.arrive')}
           style={{
             display: 'flex', flexDirection: growUp ? 'column-reverse' : 'column', width: 'max-content',
-            position: 'relative', color: INK, fontFamily: font.family, pointerEvents: 'auto',
+            position: 'relative', color: INK, fontFamily: font.family, pointerEvents: pictured ? 'none' : 'auto',
           }}
         >
           {/* The plate and its pointer are one silhouette under the map's hairline, so the outline
@@ -254,13 +324,13 @@ function CardBody({ target, gs, t, locale }: {
               </motion.button>
             )}
             {target.pickable && (
-              <motion.button type="button" data-testid="handle-pick" {...profiles.tile} style={iconButton} onClick={pickSelection} aria-label={t('a11y.pick_material')} {...pickName.bind}>
+              <motion.button type="button" data-testid="handle-pick" {...profiles.tile} style={iconButton} onClick={pick} aria-label={t('a11y.pick_material')} {...pickName.bind}>
                 <PickIcon />
                 {pickName.bubble}
               </motion.button>
             )}
             {copyOffered && (
-              <motion.button type="button" data-testid="handle-copy" {...profiles.tile} style={iconButton} onClick={() => copyObjects()} aria-label={t('context.copy')} {...copyName.bind}>
+              <motion.button type="button" data-testid="handle-copy" {...profiles.tile} style={iconButton} onClick={copy} aria-label={t('context.copy')} {...copyName.bind}>
                 <DuplicateIcon />
                 {copyName.bubble}
               </motion.button>

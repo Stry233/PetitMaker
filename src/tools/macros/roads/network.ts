@@ -56,7 +56,7 @@ interface NetCtx extends MapGrid {
 }
 
 /** The router's seed and the road tile it paves with. */
-export interface NetworkStyle { variation: number; surfaceId?: string }
+interface NetworkStyle { variation: number; surfaceId?: string }
 
 /** Pools/hub setup + the three shared route-laying closures. Returns null on the early-outs (no road tile,
  *  no hub node, or no reachable network seed) — connectRoadNetwork then returns without doing any work. */
@@ -477,7 +477,7 @@ function ensureAstarBuffers(cells: number): AstarBuffers {
  *  (incl. start + goal) or null. Superseded heap entries (a node improved after being pushed, or
  *  already expanded) are skipped by lazy deletion: a node's best entry always pops first (g only
  *  ever decreases, and each decrease pushes a strictly better entry), so a later pop is stale. */
-export interface AstarSearch {
+interface AstarSearch {
   passable: (x: number, y: number) => boolean;
   W: number;
   H: number;

@@ -7,7 +7,7 @@ import type { Command, MacroCell } from '../../core/model/types';
 
 /** Which eraser peels: the water eraser turns water into a bank at its elevation, and in the planet
  *  session (`groundEditable`) layer 0 peels too. */
-export interface PeelOptions {
+interface PeelOptions {
   waterEraser?: boolean;
   groundEditable?: boolean;
 }

@@ -76,7 +76,7 @@ describe('running a tap', () => {
     openBuildSurface('erase');
     expect([s().editMode.mode, designModeOf(s())]).toEqual(['water', 'erase']);
     s().setEditMode({ mode: 'road' });
-    // `INVALID STORE SEED:` only the session's presence matters to the surface a tool key opens
+    // Only the session's presence matters to the surface a tool key opens
     useEditorStore.setState({ planetSession: { entryId: null } as never });
     openBuildSurface('free');
     expect(s().editMode.mode).toBe('mountain');

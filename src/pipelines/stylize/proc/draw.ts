@@ -28,7 +28,7 @@ export const viewHeight = (v: ProcView): number => v.cellsH * v.pxPerCell;
 
 /** A page inset inside the band: the pack composes a sheet rather than filling the rectangle, and
  *  everything it lays out reads through the returned transform. */
-export interface SheetView {
+interface SheetView {
   px: number;
   T: (x: number, y: number) => [number, number];
   W: number;

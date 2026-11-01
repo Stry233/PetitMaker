@@ -18,7 +18,7 @@ import { linkedController } from '../../platform/async/abort';
  *  32k-context endpoint no history budget. An adapter clamps its own `max_tokens` to the room left. */
 export const COMPACTION_RESERVE = 16000;
 /** Tail tokens kept verbatim behind the summary, rounded up to the nearest whole exchange group. */
-export const KEEP_RECENT = 8000;
+const KEEP_RECENT = 8000;
 
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 

@@ -56,7 +56,7 @@ export interface TransferOutcome {
   violations: ValidationError[];
 }
 
-export interface TransferOptions {
+interface TransferOptions {
   /** The destination planet: a built-in template id, or the template itself (a planet the built-in
    *  registry does not hold). */
   target: string | MapTemplate;

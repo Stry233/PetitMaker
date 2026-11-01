@@ -26,7 +26,8 @@ interface SprayStroke {
   seed: number;
   radius: number;
   peak: number;
-  timer: ReturnType<typeof setInterval> | null;
+  /** Stops the hold's burst ticks on the host's clock. */
+  stopTicks: (() => void) | null;
   /** Begun with the baseline, at the first dab: the stroke's dabs fold into one undo entry. */
   stroke: Stroke | null;
   failed: boolean;
@@ -55,15 +56,15 @@ export class MountainSpray {
     const stroke: SprayStroke = {
       source: ctx, ctx: adjustContext(ctx), state: ctx.state,
       points: [c], next: 0, released: false, stages: new Map(), seed, radius: sprayRadius(ctx.arming.brushSize),
-      peak: 0, timer: null, stroke: null, failed: false,
+      peak: 0, stopTicks: null, stroke: null, failed: false,
     };
     this.held = stroke; this.queue.push(stroke);
-    stroke.timer = setInterval(() => {
+    stroke.stopTicks = ctx.holdClock.every(HOLD_BURST_MS, () => {
       if (this.busy || stroke.next < stroke.points.length) return;
       const at = stroke.points[stroke.points.length - 1]!;
       if ((stroke.stages.get(cellKey(at.x, at.y)) ?? 0) >= LADDER_TOP) return;
       stroke.points.push(at); this.pump();
-    }, HOLD_BURST_MS);
+    });
     this.pump();
   }
 
@@ -83,7 +84,7 @@ export class MountainSpray {
   up(c: MacroCoord, _ctx: MacroToolContext): void {
     if (!this.held) return;
     this.append(c, true); this.held.released = true;
-    if (this.held.timer) clearInterval(this.held.timer);
+    this.held.stopTicks?.();
     this.held = null;
     this.pump();
   }
@@ -164,7 +165,7 @@ export class MountainSpray {
         if (token !== this.token) return;
         this.busy = false; s.failed = true;
         s.next = s.points.length; s.released = true;
-        if (s.timer) clearInterval(s.timer);
+        s.stopTicks?.();
         if (this.held === s) this.held = null;
         this.remember(s.ctx);
       };
@@ -206,7 +207,7 @@ export class MountainSpray {
   cancel(ctx: MacroToolContext): boolean {
     const had = this.hasPending(), active = this.queue[0];
     if (active && this.unchanged(active)) this.finish(active);
-    for (const s of this.queue) if (s.timer) clearInterval(s.timer);
+    for (const s of this.queue) s.stopTicks?.();
     this.queue.length = 0; this.held = null; this.busy = false; this.token++;
     this.clearGhost(ctx); return had;
   }

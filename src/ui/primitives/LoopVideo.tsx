@@ -3,16 +3,18 @@
  * It plays on its own unless the reader reduces motion or the caller holds it (`autoplay` false, as
  * for a visitor saving data), and then rests on its poster under a play control until asked. A clip
  * none of whose sources plays shows its poster and nothing else. A pictured subtree shows the poster.
+ * A clip meant to play that has not started yet, or stalls to load more, shows the loading dots.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { useUiPreview } from '../design/preview';
 import { skin } from '../design/window-skin';
 import { ActionButton } from './ActionButton';
+import { LoadingDots } from './LoadingDots';
 import { PlayIcon } from './line-glyphs';
 import { useNameReveal } from './use-name-reveal';
 
-export interface VideoSource { src: string; type: string }
+interface VideoSource { src: string; type: string }
 
 /** What a caller can do with a standing clip. */
 export interface LoopVideoHandle {
@@ -24,6 +26,9 @@ export interface LoopVideoHandle {
 
 const mediaStyle: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' };
 const PLAY_SIZE = 56;
+/** A clip that starts within this long (ms), as a cached one does, never shows the loading dots. */
+const LOADING_DELAY_MS = 300;
+const loadingStyle: CSSProperties = { position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' };
 const playStyle: CSSProperties = {
   position: 'absolute', insetInlineStart: '50%', top: '50%', width: PLAY_SIZE, height: PLAY_SIZE, marginTop: -PLAY_SIZE / 2,
   marginInlineStart: -PLAY_SIZE / 2, borderRadius: '50%', border: 'none',
@@ -62,6 +67,9 @@ export const LoopVideo = forwardRef<LoopVideoHandle, {
   const ref = useRef<HTMLVideoElement>(null);
   const [asked, setAsked] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Frames are moving; false until the first `playing` and again while the clip stalls for data.
+  const [moving, setMoving] = useState(false);
+  const [slow, setSlow] = useState(false);
   const allowed = autoplay && !reduced;
   const playing = allowed || asked;
   const playName = useNameReveal(playLabel);
@@ -91,6 +99,12 @@ export const LoopVideo = forwardRef<LoopVideoHandle, {
   // The last source's failure is the clip's: an earlier one only hands over to the next.
   const fail = (): void => { setFailed(true); onFailed?.(); };
   const still = pictured || failed || sources.length === 0;
+  const loading = !still && playing && !waiting && !moving;
+  useEffect(() => {
+    if (!loading) { setSlow(false); return; }
+    const timer = setTimeout(() => setSlow(true), LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [loading]);
   return (
     <div style={{ position: 'relative', overflow: 'hidden', ...style }} data-testid={testId}>
       {still ? (
@@ -98,9 +112,12 @@ export const LoopVideo = forwardRef<LoopVideoHandle, {
       ) : (
         <video ref={ref} style={mediaStyle} muted loop playsInline autoPlay={allowed && !waiting} preload={allowed ? 'auto' : 'none'}
           poster={(posterAtRest && playing ? null : poster) ?? undefined} aria-label={label} data-testid={testId && `${testId}-video`}
-          onPlaying={onPlaying} onPause={onPause} onError={fail}>
+          onPlaying={() => { setMoving(true); onPlaying?.(); }} onWaiting={() => setMoving(false)} onPause={onPause} onError={fail}>
           {sources.map((s, i) => <source key={s.src} src={s.src} type={s.type} onError={i === sources.length - 1 ? fail : undefined} />)}
         </video>
+      )}
+      {loading && slow && (
+        <div style={loadingStyle} data-testid={testId && `${testId}-loading`}><LoadingDots color={skin.muted} /></div>
       )}
       {!still && !playing && (
         <ActionButton interaction="tile" data-testid={testId && `${testId}-play`} {...playName.bind} aria-label={playLabel}

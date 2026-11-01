@@ -23,7 +23,7 @@ export interface Box {
   height: number;
 }
 
-export interface Viewport {
+interface Viewport {
   width: number;
   height: number;
 }

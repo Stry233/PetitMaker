@@ -81,7 +81,7 @@ function svgDensity(): '1x' | '2x' {
 }
 
 /** Test-only: drop the memo so a test can observe rebuilding. */
-export function __clearCursorCssCache(): void {
+export function __resetCursorCssCache(): void {
   cache.clear();
   imageSet = undefined;
   density = undefined;

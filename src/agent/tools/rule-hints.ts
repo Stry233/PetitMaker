@@ -13,7 +13,7 @@ const ANCHOR = anchorTerm();
 const capitalized = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Every rule id has advice: the type is total, so a new rule fails to compile until it has its entry. */
-export const RULE_HINTS: Readonly<Record<RuleId, string>> = {
+const RULE_HINTS: Readonly<Record<RuleId, string>> = {
   'V-MTN-03': `POST-CHECK — a mountain cell at elevation >=${BASE_SUPPORT.fromLayer} needs a full ${BASE_SUPPORT.window}x${BASE_SUPPORT.window} base at some elevation >= N-${BASE_SUPPORT.reach} below it. Build pyramids, not 1-wide towers. A water cell counts as support up to its own surface, but nothing can be built ON water.`,
   'V-CHUNK-01': `When regional load enforcement is on, each region may carry at most ${CHUNK_LOAD_LIMIT}. The full object load counts in every region it touches; moving or turning an item counts only the net change. Unknown loads count as zero.`,
   'V-MTN-01': `Mountain elevation must be 0-${ELEVATION_MAX} (${CLEARING_ELEVATION} clears the cell).`,

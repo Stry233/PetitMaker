@@ -8,7 +8,7 @@ import { getCatalogItem } from '../../state/catalog';
 import { currentCatalogId } from '../../config/catalog/retired-ids';
 
 /** Terrain types a decoded/imported cell may legally carry (None/Mountain/Water). */
-export const VALID_TERRAIN_TYPES: readonly number[] = [TerrainType.None, TerrainType.Mountain, TerrainType.Water];
+const VALID_TERRAIN_TYPES: readonly number[] = [TerrainType.None, TerrainType.Mountain, TerrainType.Water];
 
 export const isValidTerrainType = (t: unknown): boolean => VALID_TERRAIN_TYPES.includes(t as number);
 export const isValidRotation = (r: unknown): boolean => (ROTATIONS as readonly number[]).includes(r as number);
@@ -20,7 +20,7 @@ export const isValidElevation = (e: unknown): boolean =>
 /** An object id in the alphabet the app emits. Ids can enter model context, so a decoder admits no other. */
 export const isValidObjectId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 
-export interface ImportBounds { width: number; height: number }
+interface ImportBounds { width: number; height: number }
 
 interface ObjectGeometryInput {
   x: unknown;
@@ -31,7 +31,7 @@ interface ObjectGeometryInput {
 }
 
 /** Coordinates are anchors on the item's grid; span lengths are positive macro-cell counts. */
-export function isValidObjectGeometry(item: CatalogItem, object: ObjectGeometryInput, bounds?: ImportBounds): boolean {
+function isValidObjectGeometry(item: CatalogItem, object: ObjectGeometryInput, bounds?: ImportBounds): boolean {
   const { x, y, rotation, elevation, spanLength } = object;
   if (!isFiniteNumber(x) || !isFiniteNumber(y) || !onItemGrid(item, x) || !onItemGrid(item, y)) return false;
   if (x < 0 || y < 0 || (bounds && (x >= bounds.width || y >= bounds.height))) return false;
@@ -41,7 +41,7 @@ export function isValidObjectGeometry(item: CatalogItem, object: ObjectGeometryI
 }
 
 /** An object record a decoder may place: its current catalog id and item. */
-export interface AdmittedObject { catalogId: string; item: CatalogItem }
+interface AdmittedObject { catalogId: string; item: CatalogItem }
 
 /**
  * The one admission of an object record, in the save's wire shape (`x`, `y`, a corner suffix): a

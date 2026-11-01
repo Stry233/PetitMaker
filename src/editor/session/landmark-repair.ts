@@ -43,7 +43,7 @@ const PREVIEW_MARGIN = 8;
  *  `autoFlagged`, the objects the plan removes, where the save had them, and any it lands that would
  *  still stand against the rules. `ground` is the terrain cells whose own terrain the repair changes.
  *  Detached copies that share `state`'s notes; `state` is not changed. */
-export interface RepairPreviews {
+interface RepairPreviews {
   auto: GridState;
   hand: GridState;
   autoFlagged: PlacedObject[];
@@ -109,7 +109,7 @@ export function repairPreviews(state: GridState, report: CompatibilityReport): R
 /** Whether a load's report changes the visitor's map: objects to move or remove, or terrain of the
  *  map's own that the repair changes. The repair is asked only then; ground a template lays under a
  *  landmark where the save held none comes back silently, since it takes nothing away. */
-export function asksRepair(report: CompatibilityReport | undefined): report is CompatibilityReport {
+function asksRepair(report: CompatibilityReport | undefined): report is CompatibilityReport {
   return !!report && (report.objects.length > 0 || report.terrain.some((t) => t.before !== null));
 }
 

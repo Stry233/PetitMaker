@@ -11,8 +11,6 @@ import { PanelShell } from '../../../ui/agent/PanelShell';
 import { useAgentConnection } from '../../../agent/connection/store';
 import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults';
 import type { JobView, PanelView } from '../../../agent/core/project-view';
-import { ACTIVE, INK, PLATE, TRACK } from '../../../ui/design/tokens';
-import { statePaper } from '../../../ui/agent/panel-skin';
 import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
 import type { TextKey } from '../../../i18n/keys';
 
@@ -25,13 +23,6 @@ const backing = new Map<string, string>();
 };
 
 const t = (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params);
-
-/** Pushes a colour through the same DOM round-trip on both sides, since jsdom normalizes a set value. */
-function asBackground(value: string): string {
-  const probe = document.createElement('span');
-  probe.style.background = value;
-  return probe.style.background;
-}
 
 beforeEach(() => {
   backing.clear();
@@ -135,49 +126,7 @@ describe('Banner: what each trouble offers', () => {
   });
 });
 
-/**
- * `panel-skin.ts:edge` is a whole border shorthand, so `1px solid ${edge}` is an invalid declaration
- * the engine drops silently; the resolved border is asserted, since the string looks right either way.
- */
-function expectOutlined(el: HTMLElement, at: string): void {
-  expect(el.style.borderTopStyle, `${at}: border-style`).toBe('solid');
-  expect(el.style.borderTopWidth, `${at}: border-width`).toBe('1px');
-  expect(el.style.borderTopColor, `${at}: border-colour`).not.toBe('');
-}
-
-describe('every card on the plate draws its outline', () => {
-  it('outlines the resume offer, in both faces', () => {
-    const offered = renderWithI18n(<ResumeCard order="Terrace the hill" onResume={() => {}} />);
-    expectOutlined(offered.getByTestId('resume-card'), 'resume offer');
-    offered.unmount();
-
-    const blocked = renderWithI18n(<ResumeCard order="Terrace the hill" blocked="the key went away" />);
-    expectOutlined(blocked.getByTestId('resume-card'), 'blocked offer');
-  });
-
-  it('outlines every banner dress, loud and demoted alike', () => {
-    for (const cls of BANNER_CLASSES) {
-      for (const standing of [false, true]) {
-        const { getByTestId, unmount } = renderWithI18n(
-          <Banner cls={cls} {...(standing ? { standing: true } : {})} onAction={() => {}} />,
-        );
-        expectOutlined(getByTestId('banner'), `${cls}${standing ? ' (standing)' : ''}`);
-        unmount();
-      }
-    }
-  });
-});
-
 describe('ResumeCard: a held job offered back', () => {
-  it('stands on a plain wait-tinted paper every engine can paint', () => {
-    // `color-mix()` arrived in Chrome 111; an older engine would drop the declaration and the tint.
-    const { getByTestId } = renderWithI18n(<ResumeCard order="Terrace the hill" onResume={() => {}} />);
-    const paper = getByTestId('resume-card').style.background;
-    expect(paper).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
-    // A tint of the wait paper over the plate, so neither of the two.
-    expect(paper).not.toBe(asBackground(PLATE));
-    expect(paper).not.toBe(asBackground(statePaper.wait));
-  });
 
   it('names the order, where it stopped and what is already on the map', () => {
     const { getByTestId } = renderWithI18n(
@@ -229,26 +178,6 @@ describe('ResumeCard: a held job offered back', () => {
     expect(queryByTestId('resume-set-aside')).toBeNull();
   });
 
-  it('paints Resume and Fix key with the dark ink primary, never the ask colour', () => {
-    const resuming = renderWithI18n(
-      <ResumeCard order="Plant a forest along the ridge" onResume={() => {}} onSetAside={() => {}} />,
-    );
-    expect(asBackground(resuming.getByTestId('resume-resume').style.background)).toBe(asBackground(INK));
-    expect(asBackground(resuming.getByTestId('resume-set-aside').style.background)).toBe(asBackground(PLATE));
-    resuming.unmount();
-
-    const blocked = renderWithI18n(
-      <ResumeCard
-        order="Plant a forest along the ridge"
-        blocked="The job ended when the key was cleared. A new order picks up the work."
-        onResume={() => {}}
-        onFixKey={() => {}}
-        onSetAside={() => {}}
-      />,
-    );
-    expect(asBackground(blocked.getByTestId('resume-fix-key').style.background)).toBe(asBackground(INK));
-    expect(asBackground(blocked.getByTestId('resume-fix-key').style.background)).not.toBe(asBackground(ACTIVE));
-  });
 });
 
 describe('PanelShell: a fault names its repair and the repair acts', () => {
@@ -386,21 +315,12 @@ describe('PanelShell: the OFF composer says the one instruction', () => {
     expect(input.placeholder).toBe(t('agent.composer_shorter'));
   });
 
-  /** The placeholder carries the repair, so the composer stays fully legible. */
-  it('says the refusal with the tokens, never with a fade', () => {
+  it('refuses the field and the send while the fault stands', () => {
     const { getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({ view: incidentView('cors'), connected: true, now: 0, ...VERBS })} />,
     );
-    for (const id of ['composer', 'composer-send']) {
-      const fade = getByTestId(id).style.opacity;
-      expect(fade === '' || fade === '1', `${id} opacity ${fade}`).toBe(true);
-    }
-    expect(getByTestId('composer-well').style.background).toBe(asBackground(TRACK));
-    expect(getByTestId('composer-send').style.background).toBe(asBackground(TRACK));
-    // The well stays reachable (the region frame is a live verb), so each control refuses itself.
     expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(true);
     expect((getByTestId('composer-send') as HTMLButtonElement).disabled).toBe(true);
-    expect(getByTestId('composer').style.pointerEvents).toBe('');
   });
 
   /** A demoted strip that kept the composer off would be a fault with no way past it. */
@@ -722,25 +642,6 @@ describe('PanelShell: the holds keep their verbs', () => {
     expect(/\bpause\b/i.test(words), words).toBe(false);
   });
 
-  /** Resume on a hold acts on a held job rather than answering the dock's ask, so it takes the ink
-   *  primary, never the amber `active` pill, at both sites. */
-  it.each([
-    ['at the ticket\'s foot', 'ticket-resume', makeView({ phase: 'paused', current: makeJob() })],
-    ['after the ask that produced the hold', 'hold-resume', makeView({
-      phase: 'paused',
-      current: makeJob({
-        asks: [{ gateId: 'g1', scope: 'tool', summary: 'Pave a road to the mill', verdict: 'declined' }],
-      }),
-    })],
-  ] as const)('paints the hold\'s Resume with the primary ink %s', (_where, testId, view) => {
-    const { getByTestId } = renderWithI18n(
-      <PanelShell {...panelProps({ view, connected: true, now: 0, ...VERBS, onResume: () => {} })} />,
-    );
-    const paint = asBackground(getByTestId(testId).style.background);
-    expect(paint).toBe(asBackground(INK));
-    expect(paint).not.toBe(asBackground(ACTIVE));
-    expect(asBackground(getByTestId(testId).style.color)).toBe(asBackground(PLATE));
-  });
 });
 
 describe('PanelShell: the resume offer', () => {

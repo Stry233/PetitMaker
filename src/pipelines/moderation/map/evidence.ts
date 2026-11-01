@@ -4,7 +4,7 @@ import { simplifiedChinese } from '../text/chinese';
 import { cuss } from 'cuss';
 import type { Provisional } from '../text/segmenter';
 
-export type ImageScores = { className: string; probability: number }[];
+type ImageScores = { className: string; probability: number }[];
 
 /** A strict screening threshold, not a calibrated probability that the map violates policy. */
 export function explicitImage(scores: ImageScores): string | null {

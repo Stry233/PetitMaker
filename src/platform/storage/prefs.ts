@@ -7,15 +7,15 @@ import { PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
 import type { InputMode } from '../device/input-mode';
 import type { LayoutShape } from '../device/layout-shape';
 
-export const HINT_LEVELS = ['full', 'concise', 'off'] as const;
+const HINT_LEVELS = ['full', 'concise', 'off'] as const;
 export type HintLevel = typeof HINT_LEVELS[number];
 /** The 3D scene's quality choice: 'auto' follows the GL probe (device-quality), the others pin it. */
 export const QUALITIES_3D = ['auto', 'full', 'lite'] as const;
 export type Quality3d = typeof QUALITIES_3D[number];
-export const VIEW_MODES = ['2d', '3d'] as const;
+const VIEW_MODES = ['2d', '3d'] as const;
 export type ViewMode = typeof VIEW_MODES[number];
 /** Animation preference: 'system' follows the OS prefers-reduced-motion, the others override it. */
-export const MOTION_PREFS = ['system', 'reduced', 'full'] as const;
+const MOTION_PREFS = ['system', 'reduced', 'full'] as const;
 export type MotionPref = typeof MOTION_PREFS[number];
 /** Which grid the map draws: the one the active tool works on (`auto`), the placement or terrain
  *  grid always, or none, in the order the Settings grid tile cycles through them. The half grid
@@ -23,7 +23,7 @@ export type MotionPref = typeof MOTION_PREFS[number];
 export const GRID_MODES = ['auto', PLACEMENT_GRID, TERRAIN_GRID, 'off'] as const;
 export type GridMode = typeof GRID_MODES[number];
 /** Which end of the window the assistant's panel docks at. */
-export const DOCK_SIDES = ['left', 'right'] as const;
+const DOCK_SIDES = ['left', 'right'] as const;
 export type DockSide = typeof DOCK_SIDES[number];
 
 /** Browser language by prefix (`fr-CA` to `fr`, `zh-Hant` to `zh`), else English. */
@@ -73,7 +73,7 @@ export const TOUCH_UI_ZOOM_DEFAULT = 1.25;
 export const TOUCH_WIDE_UI_ZOOM_DEFAULT = 1.05;
 
 /** Which UI scale is in force: PC mode's, or touch mode's on an upright or on a wide screen. */
-export type ScaleProfile = 'pc' | 'touch' | 'touchWide';
+type ScaleProfile = 'pc' | 'touch' | 'touchWide';
 
 /** The scale profile for an input mode and arrangement. */
 export function scaleProfileOf(mode: InputMode, shape: LayoutShape): ScaleProfile {
@@ -150,6 +150,8 @@ export const PREFS = {
 /** The IndexedDB databases this app opens, declared beside the localStorage keys. */
 export const BROWSER_DATABASES = {
   agentVault: 'petit-agent-vault',
+  /** Help figures' computed worlds, keyed by build (`figure-cache.ts`). */
+  figureCache: 'petit-figure-cache',
 } as const;
 
 /** A grid switched off stays off; a grid that was on follows the active tool. */
@@ -159,7 +161,7 @@ function migratedGridMode(): GridMode {
 
 export type PrefId = keyof typeof PREFS;
 /** The preferences that hold a JSON record. */
-export type JsonPrefId = { [K in PrefId]: (typeof PREFS)[K] extends { readonly json: true } ? K : never }[PrefId];
+type JsonPrefId = { [K in PrefId]: (typeof PREFS)[K] extends { readonly json: true } ? K : never }[PrefId];
 export type ValueOf<K extends PrefId> = (typeof PREFS)[K] extends PrefDef<infer T> ? T : never;
 
 /** Every name this app persists under, localStorage keys and database names, for enumeration

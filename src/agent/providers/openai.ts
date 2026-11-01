@@ -146,7 +146,7 @@ function refusesStreamOptions(err: unknown): boolean {
 
 /** OpenAI's reasoning model families, which take `max_completion_tokens` and, on OpenAI's own host,
  *  the Responses protocol. */
-export const OPENAI_REASONING_MODEL = /^(?:gpt-[5-9]|o[1-9])/;
+const OPENAI_REASONING_MODEL = /^(?:gpt-[5-9]|o[1-9])/;
 
 /** Whether a turn goes over the Responses protocol: a reasoning model on OpenAI's own host. */
 function usesResponses(baseUrl: string | undefined, model: string, caps: ModelCapabilities | undefined): boolean {

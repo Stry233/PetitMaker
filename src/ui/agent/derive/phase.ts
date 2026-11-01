@@ -3,7 +3,7 @@ import type { SessionPhase } from '../../../agent/panel';
 import type { PaperState } from '../panel-skin';
 import type { I18nKey } from '../../../i18n/keys';
 
-export interface PhaseTraits {
+interface PhaseTraits {
   /** The job proceeds under its own power. */
   running: boolean;
   /** The loop still owns a job, including gates, retry backoff and a pending pause; the desk clock ticks. */

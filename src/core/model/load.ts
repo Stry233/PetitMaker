@@ -1,8 +1,8 @@
-import { CHUNK_LOAD_ENABLED, CHUNK_LOAD_LIMIT, LOAD_DECIMALS } from '../game/profile';
+import { CHUNK_LOAD_LIMIT, LOAD_DECIMALS } from '../game/profile';
 import type { GridState } from './types';
 
 export function isChunkLoadEnforced(state: GridState): boolean {
-  return CHUNK_LOAD_ENABLED && !state.ignoreChunkLoad;
+  return !state.ignoreChunkLoad;
 }
 
 /** Quantize arithmetic so repeated additions and removals preserve exact budget boundaries. */

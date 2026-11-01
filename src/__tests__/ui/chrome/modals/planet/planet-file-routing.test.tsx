@@ -7,7 +7,7 @@
  * the same way.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translate } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
@@ -113,9 +113,11 @@ describe('the page-level drop', () => {
   it('still reads a map file as a map', async () => {
     render(<Host />);
     dropOnWindow(mapFile());
-    expect(await screen.findByTestId('import-confirm')).toBeTruthy();
+    const confirm = await screen.findByTestId('import-confirm');
     expect(inspectSpy).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('import-redirect')).toBeNull();
+    // [UI-66] The confirmation that stands in for the window's body carries its one title heading.
+    expect(within(confirm).getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([t('import.confirm_title')]);
   });
 });
 

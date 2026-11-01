@@ -12,7 +12,7 @@ const REST_MS = 1000;
 export const MISSED_RENDER_CHECK = import.meta.env.DEV && import.meta.env.MODE !== 'test';
 
 /** The pixels a frame read returns, row-major RGBA. */
-export type FramePixels = ArrayLike<number>;
+type FramePixels = ArrayLike<number>;
 
 /**
  * Reads `view`'s last frame through a copy on `scratch`, never from `view` itself: Chrome moves a

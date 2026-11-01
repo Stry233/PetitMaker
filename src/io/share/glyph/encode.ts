@@ -11,7 +11,7 @@ import { bytesToSymbols } from './bitpack';
 import { convolutionEncode } from './convolution';
 import { crc32 } from '../../../core/base/crc32';
 
-export interface EncodedGlyph {
+interface EncodedGlyph {
   rgba: Uint8Array;
   width: number;
   height: number;

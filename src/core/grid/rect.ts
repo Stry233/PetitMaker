@@ -26,7 +26,7 @@ export function rectContains(r: Rect, x: number, y: number): boolean {
 
 /** The bounding box of the cells `cellOf` reads off `items`, or null when there are none: the one
  *  bounding-box loop. */
-export function boundsOf<T>(items: Iterable<T>, cellOf: (item: T) => { x: number; y: number }): Rect | null {
+function boundsOf<T>(items: Iterable<T>, cellOf: (item: T) => { x: number; y: number }): Rect | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const item of items) {
     const c = cellOf(item);

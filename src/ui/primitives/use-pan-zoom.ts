@@ -23,9 +23,9 @@ const PINCH_WHEEL_RATE = 0.01;
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 6;
 
-export interface PanZoomView { tx: number; ty: number; scale: number }
+interface PanZoomView { tx: number; ty: number; scale: number }
 
-export interface PanZoom {
+interface PanZoom {
   view: PanZoomView;
   /** True mid-drag; the picture's transform transition turns off so it tracks the hand exactly. */
   dragging: () => boolean;

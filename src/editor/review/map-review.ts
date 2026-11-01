@@ -11,7 +11,7 @@ export const MAP_REVIEW_UNAVAILABLE: MapReview = { status: 'unavailable' };
 
 /** What was checked: the map and the caller's key for the pictures it showed (its revision, notes
  *  and illustration). */
-export interface MapReviewSubject { map: object; key: string }
+interface MapReviewSubject { map: object; key: string }
 
 /** The latest verdict a check reached, for the subject it was reached on. */
 let latest: { subject: MapReviewSubject; verdict: MapReview } | null = null;

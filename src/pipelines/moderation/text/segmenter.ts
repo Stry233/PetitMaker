@@ -30,7 +30,7 @@ export function loadLexicon(): Promise<void> {
   return loading;
 }
 
-export function installLexicon(index: LexiconIndex): void {
+export function __setLexicon(index: LexiconIndex): void {
   install(index);
   loading = Promise.resolve();
 }

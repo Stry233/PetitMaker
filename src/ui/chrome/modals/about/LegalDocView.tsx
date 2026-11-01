@@ -32,7 +32,7 @@ import { useInteractionProfiles } from '../../../design/input-mode';
 
 const bundledLicenses = BUNDLES_LICENSE_TEXTS ? import.meta.glob<string>('../../licenses/**/*', { query: '?raw', import: 'default', eager: true }) : {};
 
-export interface LegalDocViewProps {
+interface LegalDocViewProps {
   id: DocId;
   lang: 'en' | 'zh';
   onLang: (l: 'en' | 'zh') => void;

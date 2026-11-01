@@ -18,14 +18,14 @@ export type I18nKey = BaseOf<keyof typeof en & string, keyof typeof en & string>
 export type LocaleTable = TableOf<keyof typeof en & string>;
 
 /** A key of the Help tables. */
-export type HelpKey = keyof typeof helpEn & string;
+type HelpKey = keyof typeof helpEn & string;
 export type HelpTable = TableOf<HelpKey>;
 
 /** Any key the translation lookup resolves: an interface key or a Help key. */
 export type TextKey = I18nKey | HelpKey;
 
 /** A string's `{param}` substitutions. */
-export type TextParams = Record<string, string | number>;
+type TextParams = Record<string, string | number>;
 
 /** The interface strings that name a layer, by the param carrying its number. That param takes a
  *  `LayerNumber` alone, so a raw elevation never reaches the copy; `terms/layer-name.ts` words a layer

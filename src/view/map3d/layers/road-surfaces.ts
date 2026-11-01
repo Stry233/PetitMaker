@@ -16,7 +16,7 @@ import { softenRoadEdge } from '../draw/road-edge';
 import { toGeometry } from '../draw/mesh-upload';
 
 /** What the road surfaces read from the scene that holds them. */
-export interface RoadSurfacesHost {
+interface RoadSurfacesHost {
   readonly scene: THREE.Scene;
   /** The live map. */
   state(): GridState;

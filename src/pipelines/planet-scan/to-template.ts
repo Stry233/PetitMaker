@@ -12,7 +12,7 @@ import { ScanError } from './errors';
 import type { LandmarkDetection } from './ground/landmark';
 
 /** The template zone of a ground reading's kind. */
-export function groundZoneOf(kind: number): CellZone {
+function groundZoneOf(kind: number): CellZone {
   return kind === GRASS ? CellZone.Grass : kind === SAND ? CellZone.Beach : CellZone.Void;
 }
 

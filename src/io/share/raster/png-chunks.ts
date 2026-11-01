@@ -7,7 +7,7 @@ import { ImportError } from '../../save/import-error';
  *  writer (png-raster prepends it to the chunk stream). */
 export const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
 
-export interface PngChunk { type: string; data: Uint8Array }
+interface PngChunk { type: string; data: Uint8Array }
 
 function isPng(bytes: Uint8Array): boolean {
   if (bytes.length < PNG_SIGNATURE.length) return false;

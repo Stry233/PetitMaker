@@ -9,7 +9,7 @@ import { useUiPreviewPose } from './preview';
 import { touchSizing, useLayoutShape, useTouchMode } from './input-mode';
 import { onUiZoomSpan, uiZoomLive, uiZoomSpan, useSettledUiZoom } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, weightVars } from './text-weight';
-import { UI_ZOOM_MIN, UI_ZOOM_MAX } from '../../platform/storage/prefs';
+import { UI_ZOOM_MIN } from '../../platform/storage/prefs';
 import { useLocale } from '../../i18n/context';
 import {
   NO_DOCK, reachOf, uiScaleOf,
@@ -17,10 +17,9 @@ import {
 } from './scale-model';
 
 export {
-  FIT_FLOOR, FIT_REF, MIN_UI_ROOM, NO_DOCK, TOUCH_TARGET, besideDock, fittedUiScale, liftOf, reachOf, reachShareOf, spacedOf, touchReachPx, uiScaleOf,
-  type ArrangementRoom, type DockAxis, type DockRef, type ScaleView,
+  FIT_FLOOR, MIN_UI_ROOM, NO_DOCK, TOUCH_TARGET, besideDock, fittedUiScale, liftOf, reachShareOf, touchReachPx, uiScaleOf,
+  type ArrangementRoom, type DockAxis, type DockRef,
 } from './scale-model';
-export { UI_ZOOM_MIN, UI_ZOOM_MAX };
 
 /** One step of the UI scale, for the Settings slider and the Ctrl+(+/−) shortcut alike. */
 export const UI_SCALE_STEP = 0.05;
@@ -72,7 +71,7 @@ export interface ScaleInputs { touch: boolean; uiZoom: number; dock?: DockRef }
 
 /** The dock's strip on this frame, published by the shell's dock driver (`shell/use-dock.ts`): one
  *  page-wide registration, so a writer or a gliding surface here hears the slide the frame hears. */
-export interface LiveDock {
+interface LiveDock {
   /** The strip as it stands on this frame. */
   now(): DockRef;
   /** Whether it is moving: a slide between its ends, or a held seam. */

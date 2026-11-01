@@ -9,11 +9,6 @@ import type { GridState } from '../../core/model/types';
 import type { CompatibilityReport } from '../landmark-clearance';
 import type { ParkedEditor } from './planet-session';
 
-/** `choose`: the choice is asked over the map that was open, which nothing has touched; the decoded
- *  map waits in `pending`. `hand`: the decoded map is open with the objects where the save had them,
- *  and the visitor moves or deletes each. */
-export type RepairPhase = RepairSession['phase'];
-
 /** The map a load brought as it came, before any repair, for Export first: the file opened, as read
  *  and under the name it came with (`file`), or the map as decoded or carried (`map`), written out as
  *  a save file. */
@@ -23,6 +18,8 @@ export type LoadedOriginal =
 
 export type RepairSession =
   | {
+    /** The choice is asked over the map that was open, which nothing has touched; the decoded map
+     *  waits in `pending`. */
     phase: 'choose';
     /** What the load found, with the planner's proposals. */
     report: CompatibilityReport;
@@ -34,6 +31,8 @@ export type RepairSession =
     original: LoadedOriginal;
   }
   | {
+    /** The decoded map is open with the objects where the save had them, and the visitor moves or
+     *  deletes each. */
     phase: 'hand';
     report: CompatibilityReport;
     /** The editor Cancel brings back: the map that was open before this one, as it was. */

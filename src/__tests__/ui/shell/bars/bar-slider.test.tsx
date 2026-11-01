@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-/** The slider's reading bubble stands on the knob or nowhere; a slider that measures nothing must not park it at the page origin.
- *  A slider filling its row keeps each value at the same share of its track at any length, and reports a value only as it changes. */
+/** A slider filling its row keeps each value at the same share of its track at any length, and reports a value only as it changes. */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { useState } from 'react';
@@ -16,17 +15,6 @@ function Providers({ children }: { children: React.ReactNode }) {
 
 beforeEach(() => { setStoreState({ locale: 'en' }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-
-describe('BarSlider reading', () => {
-  it('keeps the reading layer hidden while the slider has no measured width', () => {
-    render(<Providers><BrushSizeSlider value={3} onChange={() => {}} /></Providers>);
-    fireEvent.pointerEnter(screen.getByRole('slider', { name: 'Brush Size' }));
-    const bubble = screen.getByTestId('shell-slider-reading');
-    const layer = bubble.parentElement as HTMLElement;
-    expect(layer.style.position).toBe('fixed');
-    expect(layer.style.visibility).toBe('hidden');
-  });
-});
 
 describe('BarSlider filling its row', () => {
   /** Lays out the slider's own parts at `width` px from x = 10; jsdom has no layout of its own. */

@@ -58,7 +58,7 @@ function newRunnerConfig(armed: ArmedConnection, live: Live): RunnerConfig {
 
 /** What the host is told each time the panel renders. `model` is the model the panel shows, which
  *  the vision probe asks about. */
-export interface RunnerHostInputs {
+interface RunnerHostInputs {
   armed: ArmedConnection;
   model: string;
   connected: boolean;
@@ -67,7 +67,7 @@ export interface RunnerHostInputs {
   uiLocale: string;
 }
 
-export interface RunnerHost {
+interface RunnerHost {
   /** The runner, built on the first call that has a rule registry; null before. */
   runner(inputs: RunnerHostInputs): PanelRunner | null;
   /** Refreshes the config in place and starts the warm-ups a changed connection owes. */

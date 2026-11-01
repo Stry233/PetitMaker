@@ -4,6 +4,7 @@
  * take no transform (each bar is fixed to the window) but stand at their bars' rung, since an opacity
  * under 1 makes a stacking context that would otherwise pass under the screen's vignette.
  */
+import { useUiPreviewPose, type UiPreviewPose } from '../../design/preview';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ItemCategory } from '../../../config/catalog/categories';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
@@ -28,6 +29,8 @@ import { GenerateShelf } from '../edition-surfaces';
 type Cover = 'scope' | 'brush';
 const coverOf = (s: EditorStore): Cover | null =>
   s.selectingRegion ? 'scope' : s.objectBrushBar && s.editMode.mode === 'object' ? 'brush' : null;
+const posedCover = (pose: UiPreviewPose, mode: BuildMode): Cover | null =>
+  pose.regionScreen ? 'scope' : pose.objectBrush && mode === 'object' ? 'brush' : null;
 const covering = (): boolean => coverOf(useEditorStore.getState()) !== null;
 const finishScope = () => useEditorStore.getState().setSelectingRegion(false);
 const finishBrush = () => useEditorStore.getState().setObjectBrushBar(false);
@@ -42,7 +45,10 @@ const barFailure = (retry: () => void) => <BarFailure onRetry={retry} />;
  * Reduced motion swaps before paint.
  */
 export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentType | null }) {
-  const cover = useEditorStore(coverOf);
+  const pose = useUiPreviewPose();
+  const liveCover = useEditorStore(coverOf);
+  // A picture stands the region screen or the brush bar where its pose says and never the live editor's cover.
+  const cover: Cover | null = pose ? posedCover(pose, mode) : liveCover;
   const covered = cover !== null;
   // The screen leaving keeps its face until its exit ends.
   const shownCover = useRef<Cover>(cover ?? 'scope');
@@ -57,7 +63,9 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
   const shelfTab = useRef<ItemCategory | null>(null);
   useEffect(() => { if (mode !== 'object') shelfTab.current = null; }, [mode]);
   const toolbar = multi ? null : surface ?? (mode === 'annotate' ? 'notes' : null);
-  const bar = multi ? <MultiSelectBar />
+  // A picture of the region screen stands nothing under it: the live bar there is hidden and only holds its claim.
+  const bar = pose?.regionScreen ? null
+    : multi ? <MultiSelectBar />
     : toolbar ? <EditToolbar bar={toolbar} />
     : mode === 'object' ? <ObjectShelf source={planetShelfItems} leftTab={shelfTab} />
       : mode === 'generate' ? <GenerateShelf /> : null;

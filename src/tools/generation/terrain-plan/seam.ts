@@ -18,7 +18,7 @@ import { entriesNear, getObjectIndex } from '../../../state/object-index';
 import { terrainCellRect } from '../../../core/grid/grid-convert';
 
 /** Snapshot of buildable cells before a scoped generation run clears them. */
-export interface RegionBase {
+interface RegionBase {
   width: number;
   height: number;
   /** 1 for buildable cells inside the region; seam repair edits only these cells. */
@@ -32,7 +32,7 @@ interface SeamOptions {
   spare?: (obj: PlacedObject) => boolean;
 }
 
-export interface SeamRepair {
+interface SeamRepair {
   /** Distinct in-region cells moved toward their saved terrain. */
   restored: number;
   /** In-region cells that gave up a tier instead, counted the same way. */

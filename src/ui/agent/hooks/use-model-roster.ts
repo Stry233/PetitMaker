@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadRoster, type ListModels, type ProviderId, type ProviderRegion } from '../../../agent/panel';
 import { endpointCheckVerdict } from '../connection/setup-parts';
 
-export interface ModelRoster {
+interface ModelRoster {
   status: 'idle' | 'loading' | 'ready' | 'failed';
   models: readonly string[];
 }

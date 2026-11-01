@@ -29,7 +29,7 @@ import { mosaicRaster, nameSurfaces } from './surfaces';
 const G = SCAN_PROFILE.ground;
 
 /** The recording's ground palette: cluster centres in L*a*b* and each centre's class. */
-export interface Palette {
+interface Palette {
   readonly centres: Float64Array;
   readonly classes: Uint8Array;
 }
@@ -116,7 +116,7 @@ export function fitPalette(sampler: PaletteSampler): Palette {
 }
 
 /** Per-cell readings the ground decision and the landmark search share. */
-export interface CellReadings {
+interface CellReadings {
   readonly cols: number;
   readonly rows: number;
   /** Seen: the centre's weight exceeds `SCAN_PROFILE.evidence.known`. */
@@ -154,7 +154,7 @@ function pointsContrast(ev: CellEvidence): Float32Array {
 }
 
 /** The readings of every cell of the evidence; the sand round a cell is that within `sandRadius` cells. */
-export function cellReadings(ev: CellEvidence, sandRadius: number = G.localSand.radius): CellReadings {
+function cellReadings(ev: CellEvidence, sandRadius: number = G.localSand.radius): CellReadings {
   const { cols, rows } = ev.grid;
   const s = ev.sub;
   const pw = ev.points.width;
@@ -348,7 +348,7 @@ export interface GroundReading {
 /** The settings of the grass rule, defaulting to `SCAN_PROFILE.ground`'s: the build contrast above
  *  which the blob and the profile may add a cell, the colour test that keeps a cell reading as the
  *  sand round it out of the blob and the profile, and how the grass edge offset is read. */
-export interface GrassGuard {
+interface GrassGuard {
   readonly blobTexture: number;
   readonly profileTexture: number;
   readonly localSand: { readonly radius: number; readonly grassVote: number; readonly distance: number };
@@ -405,7 +405,7 @@ export function readGround(evidence: CellEvidence, shore: ShoreModel = SHORE_MOD
 }
 
 /** The water the open sea does not reach (`inlandWater`). */
-export interface InlandWater {
+interface InlandWater {
   /** The evidence with the water of every body at least `G.waterBody` cells across read as grass. */
   readonly evidence: CellEvidence;
   /** Per sample point, the sea vote `evidence` reads as grass. */

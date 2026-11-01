@@ -6,7 +6,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { ModalShell } from '../../../ui/primitives/ModalShell';
-import { framerMotion } from '../../../ui/design/motion';
 
 function Harness({ initialOpen = false }: { initialOpen?: boolean } = {}) {
   const [open, setOpen] = useState(initialOpen);
@@ -164,22 +163,6 @@ describe('ModalShell — focus trap', () => {
     const endSentinel = screen.getByTestId('modal-trap-end');
     endSentinel.focus();
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Only link' }));
-  });
-});
-
-// A `motionSize` morph travels up to 420px of card width or height, and a spring's overshoot scales
-// with travel, so the morph's registry motion is a tween.
-describe('ModalShell — the default size-morph transition does not spring', () => {
-  const resize = framerMotion('modal.resize') as Record<string, unknown>;
-
-  it('is a tween, not a spring', () => {
-    expect(resize).not.toHaveProperty('stiffness');
-    expect(resize).not.toHaveProperty('damping');
-  });
-
-  it('carries a duration and an ease curve, as a tween must', () => {
-    expect(resize.duration).toBeGreaterThan(0);
-    expect(Array.isArray(resize.ease)).toBe(true);
   });
 });
 

@@ -94,7 +94,7 @@ function isTerminus(
 }
 
 /** One street end: the paved cells of its face and the direction the street was heading. */
-export interface Terminus { face: { x: number; y: number }[]; dx: number; dy: number }
+interface Terminus { face: { x: number; y: number }[]; dx: number; dy: number }
 
 /** Every street end on a finished map. The dressing reads this to compose something at the end of a
  *  path, which is what the evaluation's arrival reading then finds there. */

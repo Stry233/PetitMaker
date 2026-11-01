@@ -3,4 +3,5 @@
  * import files directly; everything else comes through here.
  */
 export { AnnotateTool } from './annotate-tool';
+export type { AnnotationEditVerbs } from './channel';
 export { CHIP_TEXT_SIZES, ZONE_TEXT_SIZES } from './facts';

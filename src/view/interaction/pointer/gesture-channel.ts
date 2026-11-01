@@ -21,7 +21,7 @@ export function runTwoFingerTap(): void {
 /** Where a held press stands: `map`, a press on the map whose hold opens a menu, ringed around the
  *  finger under the chrome; `control`, a press on a control whose hold lifts it, ringed above the
  *  finger over every surface. */
-export type HoldPlace = 'map' | 'control';
+type HoldPlace = 'map' | 'control';
 
 /** A still press whose hold acts: where it landed, in layout px, where it stands, and a fresh `id`
  *  per press. */

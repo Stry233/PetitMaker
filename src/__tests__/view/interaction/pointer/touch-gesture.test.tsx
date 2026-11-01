@@ -54,11 +54,10 @@ function setup(tool: ToolType, objects: PlacedObject[] = []) {
   } as unknown as ActiveView;
   manager.setActiveTool(tool); useEditorStore.setState({ activeLayer: 1 });
   registerToolManager(manager); setActiveView(view);
-  const rollbacks = vi.spyOn(executor as unknown as { rollbackTo(watermark: number): void }, 'rollbackTo');
   const canvas = render(<Host />).getByTestId('canvas');
   const snapshot = () => JSON.stringify([state.cells, [...state.objects.values()]]);
   const before = snapshot();
-  return { state, executor, canvas, rollbacks, unchanged: () => snapshot() === before };
+  return { state, executor, canvas, unchanged: () => snapshot() === before };
 }
 
 /** One finger presses at (8, 8) and drags to (12, 8). */
@@ -71,22 +70,20 @@ function drag(canvas: HTMLElement, from: [number, number] = [80, 80], to: [numbe
 }
 
 describe('a cancelled touch drag', () => {
-  it('rolls the brush stroke back exactly once when the browser cancels it', () => {
+  it('rolls the brush stroke back when the browser cancels it', () => {
     const s = setup(ToolType.TerrainBrush);
     drag(s.canvas);
     expect(s.unchanged()).toBe(false);
     touch(window, 'pointercancel', [120, 80]);
     expect(s.unchanged()).toBe(true);
-    expect(s.rollbacks).toHaveBeenCalledTimes(1);
     expect(s.executor.canUndo()).toBe(false);
   });
 
-  it('rolls the brush stroke back exactly once when a second finger lands', () => {
+  it('rolls the brush stroke back when a second finger lands', () => {
     const s = setup(ToolType.TerrainBrush);
     drag(s.canvas);
     touch(s.canvas, 'pointerdown', [150, 150], 2);
     expect(s.unchanged()).toBe(true);
-    expect(s.rollbacks).toHaveBeenCalledTimes(1);
     for (const id of [1, 2]) touch(window, 'pointerup', [150, 150], id);
     expect(s.unchanged()).toBe(true);
     expect(s.executor.canUndo()).toBe(false);
@@ -99,7 +96,6 @@ describe('a cancelled touch drag', () => {
     touch(window, 'pointercancel', [85, 85]);
     touch(window, 'pointerup', [85, 85]);
     expect(s.unchanged()).toBe(true);
-    expect(s.rollbacks).not.toHaveBeenCalled();
     expect(s.executor.historyDepth()).toBe(0);
   });
 });

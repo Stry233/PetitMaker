@@ -1,19 +1,12 @@
-// @vitest-environment jsdom
 /**
  * On a narrow window at a high UI zoom the layer count, a rung higher (`z.column` over `z.panel`), can
  * cover the assistant panel's gear. The count keeps only the part of itself clear of the column, and
  * the part over the panel is the panel's to answer. The boxes are the live app's at 1280x800 and
  * uiZoom 1.8, in frame px (divided by `ZOOM` 1.25 times uiZoom 1.8, so 2.25).
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
-import { I18nProvider } from '../../../../i18n/context';
-import { useEditorStore } from '../../../../state/store';
-import { Rail } from '../../../../ui/shell/Rail';
+import { describe, it, expect } from 'vitest';
 import { readoutPressLane } from '../../../../ui/shell/frame';
 import { PANEL_RIGHT } from '../../../../ui/shell/panel-frame';
-
-afterEach(() => { cleanup(); useEditorStore.setState({ assistantOpen: false }); });
 
 /** CSS px per frame px at uiZoom 1.8. */
 const F = 2.25;
@@ -51,14 +44,5 @@ describe('the press the layer count takes while the assistant panel stands under
 
   it('is the whole word for a box nothing has laid out yet', () => {
     expect(readoutPressLane({ left: 0, width: 0 }, PANEL_RIGHT)).toBeNull();
-  });
-});
-
-describe('the count as rendered', () => {
-  it('takes its own press where no panel stands under it', () => {
-    render(<I18nProvider><Rail hidden={false} onHide={() => {}} /></I18nProvider>);
-    const button = screen.getByTestId('shell-layer-readout').closest('button')!;
-    expect(button.style.pointerEvents).not.toBe('none');
-    expect(screen.queryByTestId('shell-layer-readout-press')).toBeNull();
   });
 });

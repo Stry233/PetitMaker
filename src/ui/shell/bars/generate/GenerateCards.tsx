@@ -12,7 +12,7 @@ import type { GenerateRecipe } from './use-generate-recipe';
 /** The visitor's own card stands after the dealt ones. */
 export const CUSTOM = CANDIDATES;
 
-export interface CardsView {
+interface CardsView {
   shots: readonly (string | null | undefined)[];
   customShot: string | null | undefined;
   appliedIndex: number | null;

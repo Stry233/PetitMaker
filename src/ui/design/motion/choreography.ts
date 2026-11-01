@@ -11,7 +11,7 @@
  */
 import type { MotionId } from './registry';
 
-export interface Beat {
+interface Beat {
   /** What moves. A name a reader can find in the shell, not a selector. */
   target: string;
   motion: MotionId;

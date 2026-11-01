@@ -17,7 +17,7 @@ import { LOCALES } from '../../../core/model/locale';
 /** The fields each trait carries beside `type`, numbers unless typed `:boolean`; `?` marks an
  *  optional one. */
 const TRAIT_FIELDS: Record<PlacementTrait['type'], readonly string[]> = {
-  flat: [], noFloat: [], coatingSupport: [], plantable: [], growsOnPlantable: [], terrainBase: [],
+  flat: [], coatingSupport: [], plantable: [], growsOnPlantable: [], terrainBase: [],
   halfStep: [], footprintTurn: [],
   waterSpan: ['min', 'max'],
   heightDrop: ['layers'],

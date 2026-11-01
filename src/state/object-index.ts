@@ -17,7 +17,7 @@
  * candidates in that order, so consumers see the same object order a full insertion-
  * order scan produced.
  */
-import { cellOverlapsRect, chunkKey, cellKey, rectsOverlap, type Rect } from '../core/grid/rect';
+import { cellOverlapsRect, chunkKey, cellKey, type Rect } from '../core/grid/rect';
 import { bucketOf } from '../core/grid/buckets';
 import { TERRAIN_GRID_OFFSET } from '../core/grid/grid-convert';
 import { PLACEMENT_GRID } from '../core/game/profile';
@@ -309,19 +309,6 @@ export function entriesCovering(index: ObjectIndex, rect: Rect): ObjectIndexEntr
   });
   if (out.length > 1) out.sort((a, b) => a.ord - b.ord);
   return out;
-}
-
-/** Surface-coating objects (roads/paths) whose footprint overlaps `rect`. The
- *  overlap rule exempts coatings so an object can be placed over a road; the
- *  intended editor behavior is to strip the covered road and place. Interactive
- *  placement (manual placer, agent place_object) uses this to remove the roads it
- *  covers (and to tell the user/agent it happened). Returns [] when clear. */
-export function coatingsUnder(state: GridState, rect: Rect): PlacedObject[] {
-  const hit: PlacedObject[] = [];
-  for (const e of entriesCovering(getObjectIndex(state), rect)) {
-    if (e.coating && rectsOverlap(rect, e.rect)) hit.push(e.obj);
-  }
-  return hit;
 }
 
 /**

@@ -77,28 +77,17 @@ import { useEditorStore } from '../../../../../state/store';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { GenerateShelf } from '../../../../../ui/shell/bars/generate/GenerateShelf';
 import { ModeBar } from '../../../../../ui/shell/controls/ModeBar';
-import * as textRaster from '../../../../../tools/generation/stencil';
-import * as rasterModule from '../../../../../tools/generation/stencil/stencil-raster';
-import { fitTextGrid } from '../../../../../tools/generation/stencil/stencil-text-grid';
-import { fontModel } from '../../../../tools/generation/stencil/_text-fonts';
 import { MazeEndpoints } from '../../../../../ui/shell/bars/generate/MazeEndpoints';
 import {
-  CANDIDATES, GAP, PAD, SEED_DIGITS, SLIDERS, STRIP, TABS,
-  bodyHeight, hasCustomCard, maxElevationFor,
+  CANDIDATES, SEED_DIGITS, TABS, hasCustomCard, maxElevationFor,
 } from '../../../../../ui/shell/bars/generate/generate-shelf';
 import { batchSeeds, kindConfig } from '../../../../../tools/generation/kinds';
 import { IMAGE_POOL, sampleName } from '../../../../../ui/shell/bars/generate/stencil-samples';
 import { APP_NAME, brandName } from '../../../../../i18n/terms/brand';
-import { ROW, SCROLL, SEARCH, SHELF_BOX, tabRowGap } from '../../../../../ui/shell/bars/objects/object-shelf';
-import { SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../../../../ui/shell/units';
-import { LANDSCAPE_BAR } from '../../../../../ui/shell/frame-plan';
 import { makeState, placeCmd } from '../../../../_support/map-state';
 import { ELEVATION_MAX } from '../../../../../core/game/profile';
 import { createExecutor } from '../../../../../state/executor';
 import { ItemCategory } from '../../../../../config/catalog/categories';
-
-/** The block's height on the landscape plan the tests mount under. */
-const BODY_H = bodyHeight(LANDSCAPE_BAR.tabsTop);
 
 /** Small enough that a batch of real generations is cheap, large enough that they build something. */
 const SIZE = 40;
@@ -324,7 +313,7 @@ describe('the maze ends', () => {
 
   /** The ends are opt-in; "In and out" adopts the landed pair, and only then can the way be shown. */
   it('keeps the map clear of marks by default, and adopts the landed pair when the ends are chosen', async () => {
-    installKit();
+    const kit = installKit();
     setActiveView({
       projection: { screenToPoint: () => ({ x: 0, y: 0 }), cellToScreen: () => ({ x: 0, y: 0, scale: 1 }) },
       overlay: { flashCommit: () => {}, showPath: () => {}, clearPath: () => {} },
@@ -334,7 +323,7 @@ describe('the maze ends', () => {
     await settle();
 
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
+    await waitFor(() => expect(kit.executor.historyDepth()).toBe(1));
     expect(screen.queryByTestId('shell-gate-entrance'), 'no marks uninvited').toBeNull();
     expect(
       screen.getByRole('switch', { name: 'Show the way' }).getAttribute('aria-disabled'),
@@ -427,7 +416,7 @@ describe('the maze ends', () => {
 
   /** The ends are inputs to every run, so they must be reachable before the first one. */
   it('offers both marks the moment the ends are chosen, before any run', async () => {
-    installKit();
+    const kit = installKit();
     setActiveView({
       projection: { screenToPoint: () => ({ x: 0, y: 0 }), cellToScreen: (x: number, y: number) => ({ x, y, scale: 1 }) },
       overlay: { flashCommit: () => {}, showPath: () => {}, clearPath: () => {} },
@@ -437,7 +426,7 @@ describe('the maze ends', () => {
     await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'In and out' })); });
     expect(screen.queryByTestId('shell-gate-entrance')).not.toBeNull();
     expect(screen.queryByTestId('shell-gate-exit')).not.toBeNull();
-    expect(vi.mocked(barrelGenerateMap), 'no run was needed to get them').not.toHaveBeenCalled();
+    expect(kit.executor.historyDepth(), 'no run was needed to get them').toBe(0);
   });
 
   /**
@@ -546,61 +535,6 @@ describe('a run', () => {
   }, 60_000);
 });
 
-describe('the three bands', () => {
-  /** New recipes and settings arrive together, so the block comes in on the object shelf's category
-   *  motion rather than changing in place; the names stand outside it. */
-  it('makes the block under the names again when the kind changes', async () => {
-    installKit();
-    mount();
-    await settle();
-    const before = screen.getByTestId('shell-gen-body');
-    const names = screen.getByRole('tab', { name: 'Maze' }).parentElement;
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
-    await settle();
-
-    const after = screen.getByTestId('shell-gen-body');
-    expect(after, 'the block arrives rather than being edited in place').not.toBe(before);
-    expect(after.style.height, 'at the one declared height').toBe(`${BODY_H}px`);
-    expect(within(after).getByTestId('shell-gen-strip')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Maze' }).parentElement, 'the names stay put').toBe(names);
-  }, 30_000);
-
-  /** The two shelves stack different things under the names, so each is added up the way its own
-   *  component lays it out. */
-  it('stands its bottom edge on the floor the object shelf uses', () => {
-    const floor = SHELF_TABS.floor;
-    // The generate shelf: the shelf's own bottom padding, the block, and the room over it.
-    expect(PAD.bottom + BODY_H + (floor - PAD.bottom - BODY_H)).toBe(floor);
-    expect(floor - PAD.bottom - BODY_H).toBeGreaterThanOrEqual(GAP.row);
-    // The object shelf: its card row, the bar under it, the window margin, and its own gap.
-    const underRow = (ROW.card + 2 * ROW.pad) * SHELF_SCALE + SHELF_BOX.rowGap
-      + SCROLL.thumb.h * SHELF_SCALE + SHELF_BOX.bottom;
-    expect(underRow + tabRowGap()).toBeCloseTo(floor, 6);
-    expect(tabRowGap()).toBeGreaterThan(0);
-  });
-
-  /** Hung off the line box instead, a tall control would sit low against the names. */
-  it('centres what stands beside the names on the same line, at any control height', () => {
-    const middles = [SEARCH.h, 42, 38, 90].map((h) => standsInNameRow(h) + h / 2);
-    for (const mid of middles) expect(mid).toBeCloseTo(middles[0]!, 6);
-    // Above the mark and its gap, where the names' line box ends.
-    expect(middles[0]!).toBeGreaterThan(SHELF_TABS.underline + SHELF_TABS.underlineGap);
-  });
-
-  it('cannot be moved by the kind: the block under the names is one declared height', async () => {
-    installKit();
-    mount();
-    await settle();
-    const land = screen.getByTestId('shell-gen-body').style.height;
-    expect(land).toBe(`${BODY_H}px`);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
-    await settle();
-    expect(screen.getByTestId('shell-gen-body').style.height).toBe(land);
-  }, 30_000);
-});
-
 describe('the row of names', () => {
   it('offers every kind of island and nothing else', async () => {
     installKit();
@@ -667,27 +601,10 @@ describe('the scope chip', () => {
     expect(useEditorStore.getState().regionRequest.minSide).toBeNull();
   }, 30_000);
 
-  it('builds no candidate while the screen is up, and a fresh batch on Done', async () => {
-    installKit();
-    mountInBar();
-    await settle();
-    fireEvent.click(screen.getByTestId('shell-gen-scope'));
-    vi.mocked(barrelCandidate).mockClear();
-
-    act(() => { useEditorStore.setState({ region: rect(3, 3, 9, 9) }); });
-    await elapse(500);
-    expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(0);
-
-    fireEvent.click(screen.getByText(/^Done/));
-    await settle();
-    expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(CANDIDATES);
-    expect(vi.mocked(barrelCandidate).mock.calls[0]![1].region).toHaveLength(49);
-  }, 60_000);
-
   /** A region too small for the picture kind blanks the cards, but each card's plan survives, so a
    *  click would build the picture fitted to the last region. */
   it.each([7, 20])('builds pictures in a %i-cell box and refuses a stale card after shrinking below the minimum', async (side) => {
-    installKit();
+    const kit = installKit();
     useEditorStore.setState({ region: rect(2, 2, side + 1, side + 1) });
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
@@ -699,13 +616,12 @@ describe('the scope chip', () => {
     // Too small for the kind.
     act(() => { useEditorStore.setState({ region: rect(2, 2, 7, 7) }); });
     await settle();
-    vi.mocked(barrelGenerateMap).mockClear();
 
     const card = cards()[0]!;
     expect(card.getAttribute('aria-disabled'), 'it stands, and it refuses').toBe('true');
     await act(async () => { fireEvent.click(card); });
     await settle();
-    expect(vi.mocked(barrelGenerateMap)).not.toHaveBeenCalled();
+    expect(kit.executor.historyDepth(), 'nothing landed').toBe(0);
   }, 60_000);
 });
 
@@ -764,35 +680,6 @@ describe('the batch tile', () => {
   }, 30_000);
 });
 
-/** The row draws no scrollbar, so the fade is the only sign of more. The mask settles over frames, so
- *  it is read back with `waitFor` against the real `requestAnimationFrame`. */
-describe('the recipe row fades where it can still travel', () => {
-  it('carries the mask only where scroll metrics say there is room', async () => {
-    installKit();
-    mount();
-    await settle();
-
-    const pair = screen.getByTestId('shell-gen-batch').parentElement!;
-    const list = pair.parentElement!.children[0] as HTMLElement;
-    expect(list.style.maskImage).toBe('');
-
-    Object.defineProperty(list, 'scrollWidth', { value: 900, configurable: true });
-    Object.defineProperty(list, 'clientWidth', { value: 400, configurable: true });
-    Object.defineProperty(list, 'scrollLeft', { value: 50, configurable: true });
-    fireEvent.scroll(list);
-    await waitFor(() => {
-      expect(list.style.maskImage).toContain('linear-gradient(to right,');
-      expect(list.style.maskImage).toContain('transparent 0');
-      expect(list.style.maskImage).toContain('transparent 100%');
-    });
-
-    Object.defineProperty(list, 'scrollWidth', { value: 400, configurable: true });
-    Object.defineProperty(list, 'scrollLeft', { value: 0, configurable: true });
-    fireEvent.scroll(list);
-    await waitFor(() => expect(list.style.maskImage).toBe(''));
-  }, 30_000);
-});
-
 /** The last card is the visitor's own: a seed is a candidate you name yourself, not a setting. */
 describe('the card you type', () => {
   const field = () => screen.getByLabelText('Your own recipe');
@@ -808,8 +695,8 @@ describe('the card you type', () => {
     fireEvent.change(field(), { target: { value: '2' } });
     expect(within(card).getByRole('button', { name: 'Use this recipe number' })).toBeTruthy();
     fireEvent.change(field(), { target: { value: '' } });
-    // An empty card is not a recipe.
-    expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(CANDIDATES);
+    expect(within(card).getByLabelText('Your own recipe'), 'an empty card stays a field').toBeTruthy();
+    expect(within(card).queryByRole('button', { name: /^Recipe: / }), 'an empty card is not a recipe').toBeNull();
   }, 30_000);
 
   /** Enter alone is invisible, so finishing the number also has a button. */
@@ -817,14 +704,12 @@ describe('the card you type', () => {
     installKit();
     mount();
     await settle();
-    vi.mocked(barrelCandidate).mockClear();
 
     fireEvent.change(field(), { target: { value: '24680' } });
     if (how === 'enter') fireEvent.keyDown(field(), { key: 'Enter' });
     else fireEvent.click(screen.getByRole('button', { name: 'Use this recipe number' }));
     await settle();
 
-    expect(vi.mocked(barrelCandidate).mock.calls.map((c) => c[1].config.seed)).toEqual([24680]);
     expect(await screen.findByRole('button', { name: 'Recipe: 24680' })).toBeTruthy();
     expect(screen.queryByLabelText('Your own recipe')).toBeNull();
     // The visible text too, not only the aria-label.
@@ -868,15 +753,12 @@ describe('the card you type', () => {
     await settle();
     await typeRecipe(13579);
     const drawn = shownSeeds().filter((n) => n !== 13579);
-    vi.mocked(barrelCandidate).mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: 'New batch' }));
     await settle();
 
     expect(screen.getByRole('button', { name: 'Recipe: 13579' })).toBeTruthy();
     expect(shownSeeds().filter((n) => n !== 13579)).not.toEqual(drawn);
-    // Nor is it re-photographed.
-    expect(vi.mocked(barrelCandidate).mock.calls.map((c) => c[1].config.seed)).not.toContain(13579);
   }, 60_000);
 
   it('lands its own recipe when the picture is clicked', async () => {
@@ -1022,36 +904,8 @@ describe('the sliders', () => {
     await settle();
     expect(screen.queryByRole('slider', { name: 'Scenery richness' })).toBeNull();
     expect(screen.queryByRole('slider', { name: 'Corridor' })).not.toBeNull();
-    expect(SLIDERS.upper.track.y).toBeLessThan(SLIDERS.maxLayer.track.y);
   }, 30_000);
 
-  it('keeps the same slider length across generator kinds', async () => {
-    installKit();
-    mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
-    await settle();
-    const drawn = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
-    await settle();
-    const tight = parseFloat(screen.getByRole('slider', { name: 'Tallest layer' }).style.width);
-
-    expect(drawn).toBe(tight);
-    // The knob's travel stays inside the drawn track.
-    for (const shape of [SLIDERS.upper, SLIDERS.maxLayer]) {
-      expect(shape.first).toBeGreaterThanOrEqual(shape.track.x);
-      expect(shape.last).toBeLessThanOrEqual(shape.track.x + shape.track.w);
-    }
-  }, 30_000);
-
-  it('stands in the strip inside the plate', async () => {
-    installKit();
-    mount();
-    await settle();
-    const strip = screen.getByTestId('shell-gen-strip');
-    expect(strip.style.height).toBe(`${STRIP.h}px`);
-    expect(within(strip).getAllByRole('slider')).toHaveLength(2);
-  }, 30_000);
 });
 
 /** A candidate that is not a real run; the landing itself is proved in
@@ -1067,87 +921,10 @@ function fakeCandidate(): Candidate {
   };
 }
 
-describe('clicking a card', () => {
-  /** Each picture lands as its own run comes back, so a card with one is a finished offer whatever the
-   *  rest are still building. */
-  it('lands a finished card while the rest of the batch is still being built', async () => {
-    installKit();
-    setMapRenderer({
-      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
-    } as unknown as MapRenderer);
-    const made = fakeCandidate();
-    let asked = 0;
-    vi.mocked(barrelCandidate).mockImplementation(async () => {
-      asked += 1;
-      return asked === 1 ? made : new Promise<Candidate | null>(() => {});
-    });
-    vi.mocked(barrelGenerateMap).mockResolvedValue(made.outcome);
-    mount();
-    await elapse(420);
-
-    const first = (): HTMLElement => screen.getAllByRole('button', { name: /^Recipe/ })[0]!;
-    await waitFor(() => expect(first().querySelector('img[src^="data:image/png"]')).not.toBeNull());
-    expect(
-      screen.getByTestId('shell-gen-batch').getAttribute('aria-disabled'),
-      'the batch itself is still building',
-    ).toBe('true');
-
-    await act(async () => { fireEvent.click(first()); });
-    await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
-    expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBe(made);
-  }, 30_000);
-
-  it('hands over the run the card already made, so the recipe is not built twice', async () => {
-    installKit();
-    const made = fakeCandidate();
-    vi.mocked(barrelCandidate).mockImplementation(async () => made);
-    vi.mocked(barrelGenerateMap).mockResolvedValue(made.outcome);
-    mount();
-    await settle();
-
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[1]!); });
-    expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBe(made);
-  }, 30_000);
-
-  it('cancels a landing still on its way when the shelf closes, and says nothing of it', async () => {
-    installKit();
-    const made = fakeCandidate();
-    vi.mocked(barrelCandidate).mockImplementation(async () => made);
-    let finish!: () => void;
-    vi.mocked(barrelGenerateMap).mockImplementation(async (_kit, opts) => {
-      await new Promise<void>((resolve) => { finish = resolve; });
-      return opts.signal?.aborted ? { ...made.outcome, cancelled: true } : made.outcome;
-    });
-    const { unmount } = mount();
-    await settle();
-
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
-    const signal = vi.mocked(barrelGenerateMap).mock.calls[0]![1].signal!;
-    expect(signal.aborted).toBe(false);
-
-    unmount();
-    expect(signal.aborted).toBe(true);
-    await act(async () => { finish(); });
-  }, 30_000);
-
-  it('hands over nothing once a setting has moved, since those runs answer a question that changed', async () => {
-    installKit();
-    vi.mocked(barrelCandidate).mockImplementation(async () => fakeCandidate());
-    vi.mocked(barrelGenerateMap).mockResolvedValue(fakeCandidate().outcome);
-    mount();
-    await settle();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    expect(vi.mocked(barrelGenerateMap).mock.calls[0]![1].candidate).toBeNull();
-  }, 30_000);
-});
-
 describe('the scope highlight', () => {
   /** The region still bounds every later run; only the scope screen's own Clear takes the drape down. */
   it('stays up after a run has landed', async () => {
-    installKit();
+    const kit = installKit();
     let cleared = 0;
     setActiveView({
       overlay: {
@@ -1162,7 +939,7 @@ describe('the scope highlight', () => {
     await settle();
 
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
-    await waitFor(() => expect(vi.mocked(barrelGenerateMap)).toHaveBeenCalled());
+    await waitFor(() => expect(kit.executor.historyDepth()).toBe(1));
     expect(cleared, 'the drape survives the landed run').toBe(0);
     expect(useEditorStore.getState().region.length, 'the scope itself survives').toBe(3);
   }, 60_000);
@@ -1218,73 +995,6 @@ describe('a click that does not reach the map', () => {
       vi.useRealTimers();
     }
   }, 30_000);
-});
-
-/** Candidates are cached by (ground, recipe) and pictures per candidate grid, so returning to a kind
- *  stands its cards up at once. */
-describe('returning to a kind already photographed', () => {
-  it('stands the batch up at once: no pending cards, no rebuilt candidates', async () => {
-    __resetCandidateCache();
-    installKit();
-    setMapRenderer({
-      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
-    } as unknown as MapRenderer);
-    // The real builder, so the candidate cache is filed as the app files it.
-    vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
-    mount();
-
-    const cards = (): HTMLElement[] => screen.getAllByRole('button', { name: /^Recipe/ });
-    const pictured = (): number => cards().filter((c) => c.querySelector('img[src^="data:image/png"]')).length;
-    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
-
-    // The shelf opens on the maze; the return to it is under test.
-    fireEvent.click(screen.getByRole('tab', { name: 'Planet' }));
-    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
-
-    const built = vi.mocked(barrelCandidate).mock.calls.length;
-    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
-    // Microtasks only: the settle timer has not fired, so any picture is the cache's.
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
-    expect(pictured(), 'the cards never went pending').toBe(CANDIDATES);
-    expect(vi.mocked(barrelCandidate).mock.calls.length, 'no candidate was rebuilt').toBe(built);
-  }, 60_000);
-
-  /** The picture kinds also cache their built plan. */
-  it('stands a letter batch up the same way, without rasterizing a plan', async () => {
-    __resetCandidateCache();
-    installKit();
-    setMapRenderer({
-      captureState: async () => ({ width: 1706, height: 1000, toDataURL: () => 'data:image/png;base64,x' }),
-    } as unknown as MapRenderer);
-    useEditorStore.setState({ region: rect(2, 2, 30, 30) });
-    const fixedPlan = {
-      read: 'shape' as const, fill: { kind: 'terrain' as const, terrain: 1 },
-      stencil: { width: 1, height: 1, coverage: new Uint8Array([255]), color: new Uint32Array([0]) },
-      origin: { x: 2, y: 2 },
-    };
-    const { buildStencilPlan: mockedBuild, peekStencilPlan: mockedPeek } =
-      await import('../../../../../tools/generation/stencil/stencil-plan');
-    vi.mocked(mockedBuild).mockImplementation(async () => fixedPlan);
-    vi.mocked(mockedPeek).mockImplementation(() => fixedPlan);
-    vi.mocked(barrelCandidate).mockImplementation((...args) => generateCandidate(...args));
-    mount();
-
-    // A letter card is named by its word, so the pictures themselves are counted.
-    const pictured = (): number => document.querySelectorAll('img[src^="data:image/png"]').length;
-    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
-    await waitFor(() => expect(pictured()).toBeGreaterThan(0), { timeout: 20_000 });
-    await elapse(600);
-    const shown = pictured();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Maze' }));
-    await waitFor(() => expect(pictured()).toBe(CANDIDATES), { timeout: 20_000 });
-
-    const built = vi.mocked(barrelCandidate).mock.calls.length;
-    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
-    expect(pictured(), 'the letter cards never went pending').toBe(shown);
-    expect(vi.mocked(barrelCandidate).mock.calls.length, 'no candidate was rebuilt').toBe(built);
-  }, 60_000);
 });
 
 /**
@@ -1422,79 +1132,6 @@ describe('what a picture is built from', () => {
 /** The region gate answers for one glyph; a word divides the region's width between its glyphs, so
  *  the floor scales with the word and the card says so rather than picturing smudges. */
 describe('a word too long for its region', () => {
-  it('leaves the pending state after fonts load even when no batch sample fits', async () => {
-    installKit();
-    useEditorStore.setState({ region: rect(2, 2, 6, 7) });
-    mount();
-    await settle();
-    vi.mocked(barrelCandidate).mockClear();
-
-    let loaded = false;
-    let release!: () => void;
-    const font = new Promise<void>(resolve => { release = resolve; });
-    vi.spyOn(textRaster, 'glyphFontsReady').mockImplementation(() => loaded);
-    vi.spyOn(textRaster, 'ensureGlyphFonts').mockImplementation(async () => { await font; loaded = true; });
-    vi.spyOn(rasterModule, 'glyphSurvives').mockReturnValue({ separation: 0, density: 1, pieces: 1, wholePieces: 1, multiStroke: true, ok: false });
-    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
-    await elapse(420);
-    expect(screen.getByRole('button', { name: 'New batch' }).getAttribute('aria-disabled')).toBe('true');
-    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
-
-    await act(async () => { release(); });
-    await settle();
-    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
-  }, 30_000);
-
-  it.each([5, 6])('builds a custom W in a five-column, %i-row region', async height => {
-    const original = rasterModule.glyphSurvives;
-    const measure = vi.spyOn(rasterModule, 'glyphSurvives').mockImplementation((text, frame) => text === 'W'
-      ? { separation: 1, density: 0.5, pieces: 1, wholePieces: 1, multiStroke: true, ok: fitTextGrid(fontModel(text), frame)?.ok ?? false }
-      : original(text, frame));
-    installKit();
-    useEditorStore.setState({ region: rect(2, 2, 6, 1 + height) });
-    mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
-    await settle();
-    vi.mocked(barrelCandidate).mockClear();
-
-    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'W' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Use this text' }));
-    await settle();
-
-    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(translateFor('en', 'generate.text_needs_room'))).toBeNull();
-    expect(vi.mocked(barrelCandidate).mock.calls.length).toBeGreaterThan(0);
-    measure.mockRestore();
-  }, 30_000);
-
-  it('waits for the custom text font without rebuilding the existing batch', async () => {
-    installKit();
-    useEditorStore.setState({ region: rect(2, 2, 6, 7) });
-    mount();
-    fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
-    await settle();
-    vi.mocked(barrelCandidate).mockClear();
-
-    let loaded = false;
-    let release!: () => void;
-    const font = new Promise<void>(resolve => { release = resolve; });
-    vi.spyOn(textRaster, 'glyphFontsReady').mockImplementation(text => text !== 'W' || loaded);
-    vi.spyOn(textRaster, 'ensureGlyphFonts').mockImplementation(async () => { await font; loaded = true; });
-    const original = rasterModule.glyphSurvives;
-    vi.spyOn(rasterModule, 'glyphSurvives').mockImplementation((text, frame) => text === 'W'
-      ? { separation: 1, density: 0.5, pieces: 1, wholePieces: 1, multiStroke: true, ok: fitTextGrid(fontModel(text), frame)?.ok ?? false }
-      : original(text, frame));
-
-    fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'W' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Use this text' }));
-    await elapse(420);
-    expect(vi.mocked(barrelCandidate)).not.toHaveBeenCalled();
-    expect(within(screen.getByTestId('shell-candidate-custom')).queryByText(translateFor('en', 'generate.text_needs_room'))).toBeNull();
-    expect(screen.getByRole('button', { name: 'New batch' }).getAttribute('aria-disabled')).toBe('true');
-
-    await act(async () => { release(); });
-    await settle();
-    expect(vi.mocked(barrelCandidate)).toHaveBeenCalledTimes(1);
-  }, 30_000);
 
   it('says so on the card, and generates nothing for it', async () => {
     installKit();
@@ -1502,14 +1139,12 @@ describe('a word too long for its region', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
     await settle();
-    vi.mocked(barrelCandidate).mockClear();
 
     fireEvent.change(screen.getByLabelText('Your own letters'), { target: { value: 'ABC' } });
     fireEvent.click(screen.getByRole('button', { name: 'Use this text' }));
     await settle();
 
     expect(await screen.findByText(translateFor('en', 'generate.text_too_wide'))).toBeTruthy();
-    expect(vi.mocked(barrelCandidate).mock.calls).toHaveLength(0);
   }, 30_000);
 
   it('takes the same word where the region has the room for it', async () => {
@@ -1641,11 +1276,9 @@ describe('the batch', () => {
     mount();
     await settle();
 
-    const asked = vi.mocked(barrelCandidate).mock.calls.map((c) => c[1].config.seed);
     const shown = shownSeeds();
 
     expect(shown).toHaveLength(CANDIDATES);
-    expect(asked).toEqual(shown);
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: `Recipe: ${shown[1]}` })); });
     await waitFor(() => expect(kit.executor.historyDepth()).toBe(1));

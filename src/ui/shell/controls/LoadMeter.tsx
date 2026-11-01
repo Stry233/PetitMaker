@@ -20,16 +20,17 @@ import { useEditorStore } from '../../../state/store';
 import { btnReset, cursors, radii } from '../../design/styles';
 import { topRightHeight, type FrameArt } from '../frame';
 import {
-  chunkLoad, CHUNK_LOAD_MAX, getPointerRegion, MAP_LOAD_SHOWN, setPointerRegion,
-  subscribePointerRegion, type ChunkLoad,
+  chunkLoad, CHUNK_LOAD_MAX, getPointerRegion, setPointerRegion,
+  subscribePointerRegion,
 } from '../../chrome/modals/load/map-load';
 import { mapChunkAt } from '../../../core/grid/map-chunks';
 import { chunkAtClient } from '../../../editor/host/map-pointer';
 import { INK, LOAD_FILL, MASK_CUT, MASK_KEEP } from '../../design/tokens';
 import { useMapRevision } from '../../session/use-map-revision';
+import type { GridState } from '../../../core/model/types';
 
 /** The control in a 100-unit box, measured off the game's: disc, hole, and a round-capped arc from twelve o'clock. */
-export const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
+const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
 const CIRCUMFERENCE = 2 * Math.PI * DISC.arc;
 
 /** The track's opacity over the map, as the game's translucent disc lets the map show through. */
@@ -42,25 +43,31 @@ const HOLE_MASK = 'shell-load-hole';
  *  immediate, slow enough that a 3D surface pick is not run every frame. */
 const SAMPLE_MS = 100;
 
-export function LoadMeter({ art }: { art: FrameArt }) {
+/** A map the meter reads other than the live one: a Help figure's world and the region its pictured
+ *  pointer last stood over. */
+interface LoadReading { state: GridState; region: { cx: number; cy: number } | null }
+
+export function LoadMeter({ art, reading }: { art: FrameArt; reading?: LoadReading }) {
   const t = useT();
   const locale = useLocale();
-  // A pictured meter shows the reading and samples nothing (`ui-preview.tsx`): its global
+  // A pictured meter shows the reading and samples nothing (`ui/design/preview.tsx`): its global
   // pointermove would be a second surface pick per pointer step for a figure that cannot be hovered.
   const preview = useUiPreview();
   // The grid is mutated in place, so this is not an edit signal — it is which map is loaded, and a
   // map that arrives after the frame is mounted has to be read once without waiting for an edit.
-  const gridState = useEditorStore((s) => s.gridState);
+  const liveState = useEditorStore((s) => s.gridState);
+  const gridState = reading ? reading.state : liveState;
   const setModal = useEditorStore((s) => s.setModal);
   const zoom = useFrameZoom();
   /** The region under the pointer, held in `map-load.ts` because the window reads it too. Null
    *  until the pointer has been over the map at all. */
-  const at = useSyncExternalStore(subscribePointerRegion, getPointerRegion, getPointerRegion);
+  const liveAt = useSyncExternalStore(subscribePointerRegion, getPointerRegion, getPointerRegion);
+  const at = reading ? reading.region : liveAt;
   // The stats are a live view mutated in place, so the map revision re-renders this once a frame at most.
-  useMapRevision(MAP_LOAD_SHOWN && !!gridState, 'frame');
+  useMapRevision(!!gridState && !reading, 'frame');
 
   useEffect(() => {
-    if (!MAP_LOAD_SHOWN || preview) return undefined;
+    if (preview) return undefined;
     let last = 0;
     const onMove = (e: PointerEvent) => {
       // Only a pointer over the map canvas points at a region; the panels over it do not.
@@ -76,12 +83,11 @@ export function LoadMeter({ art }: { art: FrameArt }) {
     return () => window.removeEventListener('pointermove', onMove);
   }, [preview]);
 
-  if (!MAP_LOAD_SHOWN || !gridState) return null;
+  if (!gridState) return null;
   const { width, height } = gridState.template;
   const stats = getMapStats(gridState);
   const region = at ?? mapChunkAt(gridState.template, Math.floor(width / 2), Math.floor(height / 2));
-  const load: ChunkLoad | null = chunkLoad(stats, region.cx, region.cy);
-  if (!load) return null;
+  const load = chunkLoad(stats, region.cx, region.cy);
 
   // Its own height, the one that puts a disc filling its box at the size a rail button reads. The
   // three in the corner are one reading, not one box.

@@ -42,9 +42,9 @@ const NOMINAL_FRAME_MS = 16;
  *  one jittery sample, high enough that a flick's last few events still dominate. */
 const SMOOTHING = 0.35;
 
-export interface InertiaStep { dx: number; dy: number }
+interface InertiaStep { dx: number; dy: number }
 
-export interface InertiaOptions {
+interface InertiaOptions {
   /** Below this much unapplied travel the glide is over. Defaults to `MIN_TRAVEL_PX`, which is the
    *  right floor for screen pixels; an axis in other units (the dolly accumulates log of a distance
    *  factor) sets its own. */

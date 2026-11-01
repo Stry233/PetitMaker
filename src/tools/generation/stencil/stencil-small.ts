@@ -156,7 +156,7 @@ export function settleWaterBodies(
 /** Share of a flat region's palette request supplied by its region-level color. */
 const AREA_SHARE = 1;
 
-export interface SmallBoxInput {
+interface SmallBoxInput {
   matchable: (index: number) => boolean;
   colorAt: (index: number) => number;
   /** `smallBoxWeight` of the stencil: 0 reads nothing. */
@@ -232,7 +232,7 @@ export type BorrowPolicy = 'none' | 'accent' | 'free';
 
 /** Accent area cap and minimum channel-weighted improvement over the primary palette. */
 const BORROW_ACCENT_SHARE = 1 / 3;
-export const BORROW_MIN_GAIN = 24;
+const BORROW_MIN_GAIN = 24;
 /** Minimum fraction of a region that must accept the borrowed material. */
 export const BORROW_COVER_MIN = 0.4;
 

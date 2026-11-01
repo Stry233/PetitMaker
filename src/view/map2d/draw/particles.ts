@@ -12,7 +12,7 @@ import { isMotionReduced } from '../../../platform/channels/motion-state';
 /** Concurrent live-particle count across every burst (place + delete). */
 let live = 0;
 
-export interface PuffOpts {
+interface PuffOpts {
   count: number;
   color: number;          // particle fill hue
   spreadPx: number;       // travel distance at end of life

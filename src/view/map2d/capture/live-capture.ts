@@ -14,7 +14,7 @@ import type { GridLayer } from '../layers/grid-layer';
 import type { LabelLayer } from '../layers/label-layer';
 
 /** What the captures read from the renderer that holds them. */
-export interface LiveCaptureHost {
+interface LiveCaptureHost {
   readonly app: PIXI.Application;
   readonly worldContainer: PIXI.Container;
   readonly annotationLayer: AnnotationLayer;

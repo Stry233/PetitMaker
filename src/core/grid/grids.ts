@@ -10,7 +10,7 @@ import type { Brand, MacroCoord } from '../base/coords';
 import type { Rect } from './rect';
 
 /** Where one grid's cells lie against the map's lattice, in cells per axis, and their side. */
-export interface GridSpec {
+interface GridSpec {
   readonly offset: { readonly x: number; readonly y: number };
   /** A cell's side in map cells; absent is 1. */
   readonly size?: number;

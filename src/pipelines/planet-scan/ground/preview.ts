@@ -13,7 +13,7 @@ export const PREVIEW_UNSEEN = 0;
 export const PREVIEW_SEA = 1 + SEA;
 export const PREVIEW_SAND = 1 + SAND;
 export const PREVIEW_GRASS = 1 + GRASS;
-export type PreviewClass = typeof PREVIEW_UNSEEN | typeof PREVIEW_SEA | typeof PREVIEW_SAND | typeof PREVIEW_GRASS;
+type PreviewClass = typeof PREVIEW_UNSEEN | typeof PREVIEW_SEA | typeof PREVIEW_SAND | typeof PREVIEW_GRASS;
 
 /** A preview grid has at most this many units a side; larger grids merge units. */
 export const PREVIEW_MAX_UNITS = 192;

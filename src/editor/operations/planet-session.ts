@@ -47,7 +47,7 @@ export interface PlanetDraft {
 
 /** A saved planet opened for editing: its draft, and the library entry saving it replaces. A
  *  library entry is one. */
-export interface SessionEntry extends PlanetDraft {
+interface SessionEntry extends PlanetDraft {
   readonly entryId: string;
   readonly name: string;
   readonly nameReviewed: boolean;

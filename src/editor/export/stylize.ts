@@ -34,7 +34,7 @@ export type RunStylize = (
  *  status to show (null for a cancellation). */
 export type TakeOutcome = { status: 'kept' } | { status: 'stale' } | { status: 'failed'; reason: StylizeStatus | null };
 
-export interface ModelTakeRequest {
+interface ModelTakeRequest {
   direction: DirectionId;
   /** The custom direction's words. */
   text: string;
@@ -176,7 +176,7 @@ export type StylizeListModels = (
 export const defaultListModels: StylizeListModels = (dialect, cfg, signal) => dialect.listModels(cfg, signal);
 
 /** The provider's row, or the first provider for an id this build no longer offers. */
-export function providerRow(id: StylizeProvider['id']): StylizeProvider {
+function providerRow(id: StylizeProvider['id']): StylizeProvider {
   return STYLIZE_PROVIDERS.find((p) => p.id === id) ?? STYLIZE_PROVIDERS[0]!;
 }
 

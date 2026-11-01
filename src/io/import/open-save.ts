@@ -9,7 +9,7 @@ import { applyRelocation } from '../../state/relocation-plan';
 import { createExecutor } from '../../state/executor';
 import type { GridState, MapTemplate } from '../../core/model/types';
 
-export interface LoadedSave { state: GridState; cleared: LandmarkClearance }
+interface LoadedSave { state: GridState; cleared: LandmarkClearance }
 
 export function loadParsedSave(parsed: ParsedSave): LoadedSave {
   const state = decodeSave(parsed);

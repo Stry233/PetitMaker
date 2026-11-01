@@ -104,7 +104,7 @@ class FrameQueue {
 }
 
 /** What a scan reads with: the workers it spawns and the video it opens. */
-export interface ScanVideoDeps {
+interface ScanVideoDeps {
   readonly spawn: () => Worker;
   /** The decode worker that hands the scan worker a file's frames; without it every file is read
    *  through playback. */

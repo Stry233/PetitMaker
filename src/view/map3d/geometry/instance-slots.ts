@@ -5,8 +5,8 @@
  * group's last slot and reports which id moved — the scene copies that
  * instance's matrix/color down and shrinks count by one.
  */
-export interface SlotRef { group: string; slot: number }
-export interface RemoveResult { group: string; slot: number; moved: { id: string; fromSlot: number } | null }
+interface SlotRef { group: string; slot: number }
+interface RemoveResult { group: string; slot: number; moved: { id: string; fromSlot: number } | null }
 
 export class InstanceSlots {
   private byId = new Map<string, SlotRef>();

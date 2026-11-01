@@ -6,8 +6,8 @@
 import { cursorArt } from '../../../assets/cursors/cursor-art';
 import { CURSORS, CURSOR_SIZE, type CursorId } from '../../../assets/cursors/cursor-spec';
 
-/** The drawn tile in CSS px; the painted arrow inside it reads at about 20. */
-export const PICTURED_CURSOR_PX = 24;
+/** The drawn tile in CSS px: the size the live cursor draws at, so a pictured pointer reads as the real one. */
+export const PICTURED_CURSOR_PX = CURSOR_SIZE;
 
 /** Cursor `id`'s art at `PICTURED_CURSOR_PX`, with the offset that puts its hotspot on the origin;
  *  null for an id with no drawing. */

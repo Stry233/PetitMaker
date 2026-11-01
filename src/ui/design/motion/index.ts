@@ -96,7 +96,7 @@ export function framerMotion(id: MotionId, reduced: boolean | null = false): Tra
 }
 
 /** The values a surface can arrive from and leave to; each rests at 1 (opacity, scale) or 0 (x, y). */
-export interface PresenceShape { opacity?: number; scale?: number; x?: number | string; y?: number | string }
+interface PresenceShape { opacity?: number; scale?: number; x?: number | string; y?: number | string }
 const REST: Required<PresenceShape> = { opacity: 1, scale: 1, x: 0, y: 0 };
 
 /**

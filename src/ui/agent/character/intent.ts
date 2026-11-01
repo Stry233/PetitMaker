@@ -13,9 +13,9 @@ import type { BadgeId } from './badges';
 import type { BodyPart, PoseName } from './poses';
 
 /** The dream plume: none, the sleeping zzz, or the glyph of the order she is dreaming. */
-export type DreamBadge = 'off' | 'zzz' | IconId;
+type DreamBadge = 'off' | 'zzz' | IconId;
 
-export interface CharacterIntent {
+interface CharacterIntent {
   /** A surface's own pose, outranking the session phase; null hands her back to the phase. */
   pose: PoseName | null;
   dream: DreamBadge;

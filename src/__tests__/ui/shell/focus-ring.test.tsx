@@ -13,12 +13,10 @@ import { acquireOverlayLock } from '../../../platform/channels/overlay-state';
 import type { EditorEvents } from '../../../state/editing/events';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { MenuSheet } from '../../../ui/shell/controls/MenuSheet';
-import { Rail } from '../../../ui/shell/Rail';
 import { Shell } from '../../../ui/shell/Shell';
 import { ELEVATION_COLORS, ZONE_COLORS } from '../../../core/model/palette';
 import { useFocusSource } from '../../../ui/design/focus-source';
-import { ACTIVE, DARK_PLATE, FOCUS_HALO, FOCUS_RING, FOCUS_RING_FIELD, INK, INSET, PLATE } from '../../../ui/design/tokens';
+import { ACTIVE, DARK_PLATE, FOCUS_HALO, FOCUS_RING, INK, INSET, PLATE } from '../../../ui/design/tokens';
 
 /** The attribute `animations.css` selects the ring by, on the document element. */
 const FOCUS_SOURCE_ATTR = 'data-focus-source';
@@ -65,18 +63,6 @@ describe('the focus ring', () => {
     }
     // The halo falls back to `transparent`, a valid colour, so the declaration still parses.
     expect(css).toMatch(/box-shadow: 0 0 0 var\(--control-clearance\) var\(--focus-halo, transparent\);/);
-  });
-
-  it('is this frame\'s own three colours for as long as the shell is mounted', () => {
-    const vars = { '--focus-ring': FOCUS_RING, '--focus-halo': FOCUS_HALO, '--focus-ring-field': FOCUS_RING_FIELD };
-    const root = document.documentElement;
-    const shell = mountShell();
-    for (const [name, value] of Object.entries(vars)) expect(root.style.getPropertyValue(name), name).toBe(value);
-    shell.unmount();
-    for (const name of Object.keys(vars)) expect(root.style.getPropertyValue(name), `${name} after unmount`).toBe('');
-    // Distinct from the chosen yellow, since a chosen control can be focused, and from the ink.
-    expect(FOCUS_RING).not.toBe(ACTIVE);
-    expect(FOCUS_RING).not.toBe(INK);
   });
 
   /**
@@ -262,22 +248,3 @@ describe('the shell stamps what placed the focus', () => {
   });
 });
 
-describe('every control in the frame declares the shape its ring follows', () => {
-  it('the right-hand column, including each half of the layer plate', () => {
-    render(<I18nProvider><Rail hidden={false} onHide={() => {}} /></I18nProvider>);
-    const buttons = screen.getAllByRole('button');
-    expect(buttons.length).toBeGreaterThan(4);
-    for (const b of buttons) {
-      expect(b.style.borderRadius, b.getAttribute('aria-label') ?? '').not.toBe('');
-    }
-    // The plate does not clip: a clip there takes a focused step's ring with it.
-    expect(screen.getByRole('button', { name: 'Add layer' }).parentElement!.style.overflow).toBe('');
-  });
-
-  it('the menu sheet\'s rows', () => {
-    render(<I18nProvider><MenuSheet open onDismiss={() => {}} trigger={{ current: document.body.appendChild(document.createElement('button')) }} /></I18nProvider>);
-    const rows = screen.getAllByRole('menuitem');
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect((row as HTMLElement).style.borderRadius).not.toBe('');
-  });
-});

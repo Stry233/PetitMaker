@@ -72,7 +72,7 @@ export function ShelfBrushButton({ size, paints, style, expands }: {
   const fade = presence('control.fade', { opacity: 0 }, { reduced });
   return (
     <ActionButton
-      {...helpTargetAttr('objects')}
+      {...helpTargetAttr('objects', 'objects-batch')}
       {...tourTargetAttr('shelf-brush')}
       {...name.bind}
       {...(grows ? reveal.bind : {})}

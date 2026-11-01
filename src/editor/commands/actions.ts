@@ -12,7 +12,7 @@ import { contentTypeOf, designModeArming, isAnnotating, isContentMode, modeOpenI
 import type { DesignMode } from '../../state/editing/vocabulary';
 import { useEditorStore } from '../../state/store';
 
-export interface EditorAction {
+interface EditorAction {
   id: string;
   action: 'file' | 'build' | 'placement' | 'generate' | 'move';
   /** Content type for `build`, catalog category for `placement`, dialog for `file`. */

@@ -74,7 +74,7 @@ export function mapCaptureFrame(template: ChunkMap): MapFrame {
 }
 
 /** The same cell frame as the 2D capture, so separately rendered maps, grids and annotations align. */
-export interface BandGeometry {
+interface BandGeometry {
   /** Top-left of the capture in saved cell coordinates, including surrounding sea or terrain bleed. */
   originX: number;
   originY: number;

@@ -8,7 +8,7 @@ import { createSignal } from '../core/base/signal';
 
 /** What produced a version's pixels. `model` covers provider and on-device neural output and
  *  receives the AI disclosure when composed; `proc` is drawn by a non-neural local procedure. */
-export type VersionKind = 'model' | 'proc';
+type VersionKind = 'model' | 'proc';
 
 export interface StylizeVersion {
   id: string;

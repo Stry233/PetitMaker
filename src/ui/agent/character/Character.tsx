@@ -19,7 +19,7 @@ import { useHover } from '../../design/input-mode';
 import { useMorph } from '../../primitives/morph';
 
 /** The live character's element and parts, for the seat module to place. */
-export interface CharacterHandle {
+interface CharacterHandle {
   el: HTMLDivElement;
   parts: Record<BodyPart, HTMLDivElement>;
 }
@@ -148,7 +148,7 @@ export function Character({ pose, size, press }: { pose: PoseName; size: number;
   );
 }
 
-/** One closed-eye lid over its eye (`face.ts` derives it); `border-box` keeps the lash inside the stated oval. */
+/** One closed-eye lid over its eye (`eyes.ts:lidBox` derives it); `border-box` keeps the lash inside the stated oval. */
 function lidStyle(side: 'l' | 'r', size: number): CSSProperties {
   const box = lidBox(EYE_DOTS[side]);
   return {

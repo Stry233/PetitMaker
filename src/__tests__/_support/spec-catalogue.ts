@@ -9,15 +9,17 @@ import { join, relative, resolve } from 'node:path';
 export const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 export const SPEC_DIR = join(REPO_ROOT, 'docs', 'spec');
 
-/** Each area's file and the id prefix its requirements carry; rules are named by their rule id. */
+/** Each area's file and the id prefix its requirements carry; rules are named by their rule id. A
+ *  branch writes a new numbered requirement as `<PREFIX>-NEW-<NAME>`, numbered when it merges
+ *  (`scripts/internal/guards/number-spec-ids.mts`), so parallel branches never take the same number. */
 export const AREAS = {
   rules: /^V-[A-Z]+(?:-[A-Z0-9]+)*$/,
-  editing: /^EDIT-\d{2}$/,
-  files: /^FILE-\d{2}$/,
-  planets: /^PLAN-\d{2}$/,
-  generation: /^GEN-\d{2}$/,
-  interface: /^UI-\d{2}$/,
-  assistant: /^ASST-\d{2}$/,
+  editing: /^EDIT-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  files: /^FILE-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  planets: /^PLAN-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  generation: /^GEN-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  interface: /^UI-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  assistant: /^ASST-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
 } as const;
 export type Area = keyof typeof AREAS;
 

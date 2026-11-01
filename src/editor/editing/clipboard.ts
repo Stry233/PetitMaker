@@ -16,7 +16,7 @@ import { activeToolOf, armedItemOf, armedMacroOf, holdsSelection } from '../../s
 import { cellAtPoint } from '../../core/grid/pointer';
 import { PLACEMENT_GRID } from '../../core/game/profile';
 import type { MacroCoord } from '../../core/model/types';
-import { copyArrangement, pasteAt as pasteArrangementAt, type PasteAim, type PasteDoor } from '../../tools/objects';
+import { copyArrangement, pasteAt as pasteArrangementAt, pasteKeyAim, type PasteAim, type PasteDoor } from '../../tools/objects';
 import { decodeArrangement, encodeArrangement } from '../../io/clipboard/payload';
 import { getActiveView } from '../../view/active-view';
 import { translate } from '../../i18n/context';
@@ -104,26 +104,15 @@ export function cellAtScreen(x: number, y: number): MacroCoord | null {
   return view ? cellAtPoint(view.projection.screenToPoint(x, y), PLACEMENT_GRID) : null;
 }
 
-const clamp = (v: number, hi: number): number => Math.min(Math.max(v, 0), Math.max(hi, 0));
-
-/**
- * Where the paste key aims (EDIT-54), never at the pointer: the picked block as the copy's
- * top-left when one is picked, else inside the painted region when one is painted, else the open
- * ground nearest the copy's own origin, held on this map, so a copy from another map lands where it
- * stood there; a copy with no origin starts from the map's middle.
- */
+/** Where the paste key aims (`pasteKeyAim`), on the live map. */
 function keyAim(a: Arrangement): PasteAim | null {
   const s = store();
-  if (s.pickedCell) return { kind: 'cell', cell: s.pickedCell };
-  if (s.region.length > 0) return { kind: 'region', cells: s.region };
-  const t = s.gridState?.template;
-  if (!t) return null;
-  const from = a.origin ?? { x: Math.floor((t.width - a.w) / 2), y: Math.floor((t.height - a.h) / 2) };
-  return { kind: 'near', origin: { x: clamp(from.x, t.width - a.w), y: clamp(from.y, t.height - a.h) } };
+  const template = s.gridState?.template;
+  return template ? pasteKeyAim(a, { pickedCell: s.pickedCell, region: s.region, template }) : null;
 }
 
 /** The paste key's body: one copy where `keyAim` aims, or a word that nothing is copied. */
-export function pasteFromKey(): void {
+function pasteFromKey(): void {
   const s = store();
   if (!copyAllowed(s)) return;
   if (!s.clipboard) { showToast(translate('paste.empty'), 'info'); return; }

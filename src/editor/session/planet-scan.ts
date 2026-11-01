@@ -13,7 +13,7 @@ export {
 export type { ScanPictureLook, ScanPreviewPainter };
 
 /** How a read ended: the planet read, or the reason it was not. */
-export type PlanetScanResult = { status: 'read'; outcome: ScanOutcome } | { status: 'failed'; reason: ImportFailure };
+type PlanetScanResult = { status: 'read'; outcome: ScanOutcome } | { status: 'failed'; reason: ImportFailure };
 
 /** Reads a planet from a recording with `scan`; null when `signal` stopped it. A failure that is
  *  not one of the import's own refusals is logged and reads as a plain failure. */

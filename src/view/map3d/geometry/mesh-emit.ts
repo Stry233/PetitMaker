@@ -3,7 +3,7 @@ import type { MeshData } from './types';
 import type { Rgb } from '../draw/palette';
 import type { Pt } from '../../shared/terrain/quadrant-poly';
 
-export type Vec3 = [number, number, number];
+type Vec3 = [number, number, number];
 
 /** Append a quad (4 corners, CCW seen from outside) with one flat colour. */
 export function quad(m: MeshData, corners: readonly [Vec3, Vec3, Vec3, Vec3], col: Rgb): void {

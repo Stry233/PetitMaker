@@ -22,7 +22,9 @@ import { easingCss, seconds } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
 import { clearMapArea } from '../../primitives/map-edge';
 import { useObservedSize } from '../../primitives/use-observed-size';
-import { cardBoxStyle, holdPlace, placeFittedCard, tailStyle, type HeldPlace, type ScreenBounds } from './selection-card-layout';
+import {
+  cardBoxStyle, holdPlace, placeFittedCard, tailStyle, type Area, type HeldPlace, type ScreenBounds, type ViewportSize,
+} from './selection-card-layout';
 
 /** Screen bounds of what is selected, in visual px, or null when it cannot be placed. */
 function selectionBounds(sel: readonly BlockRef[], gs: GridState, proj: ViewProjection): ScreenBounds | null {
@@ -94,10 +96,36 @@ export function facingAngle(facing: string, obj: PlacedObject | null, proj: View
 
 /** The longest the header's name may run, and the least it shortens to for a narrow map area, in css px. */
 export const TITLE_MAX = 220;
-const TITLE_MIN = 48;
+export const TITLE_MIN = 48;
+
+/** Where a card reads what it is placed against: the selection and its map, the projection, the room
+ *  it stands in and when to place it again. The live card reads the store, the active view and the
+ *  window; a Help figure hands in its own world's, whose projection answers in its box's px. */
+export interface CardPlaceSource {
+  read: () => { selection: readonly BlockRef[]; gridState: GridState | null };
+  projection: () => ViewProjection | null | undefined;
+  /** The box the card's coordinates are measured in, and the part of it the map stands clear in. */
+  frame: () => { viewport: ViewportSize; areaAt: (rows?: { top: number; bottom: number }) => Area };
+  /** Calls `tell` whenever the card may have to be placed again, with a map edit's cause; returns the unsubscribe. */
+  watch: (tell: (cause?: string) => void) => () => void;
+  /** Whether a wheel over the card drives the map (only the live map takes one). */
+  wheel: boolean;
+}
+
+/** The live card's source: the store, the active view and the window. */
+const LIVE_PLACE: CardPlaceSource = {
+  read: () => useEditorStore.getState(),
+  projection: () => getActiveView()?.projection,
+  frame: () => {
+    const vp = viewportSize();
+    return { viewport: vp, areaAt: (rows) => clearMapArea(vp, rows) };
+  },
+  watch: (tell) => onProjectionChange(useEditorStore.getState().eventBus, tell, { objects: true }),
+  wheel: true,
+};
 
 /** The card's parts the placement writes to, by ref. */
-export interface CardRefs {
+interface CardRefs {
   box: RefObject<HTMLDivElement>;
   header: RefObject<HTMLDivElement>;
   body: RefObject<HTMLDivElement>;
@@ -108,7 +136,9 @@ export interface CardRefs {
 /** Places the card for a header `row` css px tall with a pointer of side `tail`, drawn at `zoom`:
  *  the refs to attach to its parts, whether its details grow upward from the header, and whether
  *  the header's name has been cut short for this card. */
-export function useSelectionCardPlace(zoom: number, locale: string, row: number, tail: number): { refs: CardRefs; growUp: boolean; nameCut: boolean } {
+export function useSelectionCardPlace(
+  zoom: number, locale: string, row: number, tail: number, source: CardPlaceSource = LIVE_PLACE,
+): { refs: CardRefs; growUp: boolean; nameCut: boolean } {
   const box = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -128,8 +158,8 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
 
   const place = useCallback((cause?: string) => {
     const box = refs.box.current, header = refs.header.current;
-    const proj = getActiveView()?.projection;
-    const state = useEditorStore.getState();
+    const proj = source.projection();
+    const state = source.read();
     const gsLive = state.gridState;
     if (!box || !header || !proj || !gsLive) return;
     // Mid group rotation the members are briefly off the map; the card keeps its place and adopts
@@ -137,7 +167,7 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
     if (cause === GROUP_ROTATION_CAUSE) { adoptPositions.current = true; return; }
     const sel = state.selection;
     const z = zoomRef.current;
-    const vp = viewportSize();
+    const { viewport: vp, areaAt } = source.frame();
     const positions = memberPositions(sel, gsLive);
     // A move or a turn removes a member before placing it back; wait for it to land.
     if (hold.current && positions.includes('-')) return;
@@ -166,7 +196,7 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
     // The right-hand column narrows the map only level with its own controls, here the header's row;
     // opened details may pass a column's label further up. The name shortens to fit that width.
     const fit = placeFittedCard(bounds, parts, natural, vp,
-      { areaAt: (rows) => clearMapArea(vp, rows), prefer: decision.prefer, titleMin: TITLE_MIN * z, titleMax: TITLE_MAX * z });
+      { areaAt, prefer: decision.prefer, titleMin: TITLE_MIN * z, titleMax: TITLE_MAX * z });
     const { placement: p, area, size } = fit;
     if (title) {
       box.style.setProperty('--title-max', `${fit.titleCap / z}px`);
@@ -214,13 +244,12 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
         );
       }
     }
-  }, [refs, row, tail]);
+  }, [refs, row, tail, source]);
 
   useLayoutEffect(() => {
-    const bus = useEditorStore.getState().eventBus;
     place();
-    const offProjection = onProjectionChange(bus, place, { objects: true });
-    const box = refs.box.current;
+    const offProjection = source.watch(place);
+    const box = source.wheel ? refs.box.current : null;
     const onWheel = (e: WheelEvent) => {
       const scroller = refs.scroll.current;
       if (scroller && e.target instanceof Node && scroller.contains(e.target) && !e.ctrlKey) {
@@ -234,7 +263,7 @@ export function useSelectionCardPlace(zoom: number, locale: string, row: number,
       offProjection();
       box?.removeEventListener('wheel', onWheel);
     };
-  }, [place, refs]);
+  }, [place, refs, source]);
   // The header row's own size, and the details' (a line they gain), move where it fits.
   useObservedSize(() => [refs.header.current, refs.body.current], () => place(), [place], { immediate: false });
   // A chrome-scale change rescales the `zoom` subtree without emitting anything.

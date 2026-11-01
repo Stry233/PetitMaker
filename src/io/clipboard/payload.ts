@@ -40,7 +40,7 @@ export function encodeArrangement(a: Arrangement): string {
 /** What reading clipboard text came to. `not-a-copy`: the text is not from the editor and a paste
  *  ignores it. `future`: a newer release wrote it. `ok`: the arrangement, with the members naming
  *  an item this release does not know left out and counted. */
-export type DecodedCopy =
+type DecodedCopy =
   | { kind: 'not-a-copy' }
   | { kind: 'future' }
   | { kind: 'malformed' }

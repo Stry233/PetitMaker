@@ -8,11 +8,13 @@
  */
 import { SUPPORTS_EXTERNAL_LINKS } from '../../platform/build/edition';
 import { providerName } from '../../i18n/terms/providers';
-import { Fragment, memo, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useObservedSize } from '../primitives/use-observed-size';
 import { useEditorStore } from '../../state/store';
 import { startTour } from '../chrome/tour/use-tour';
 import { useLocale } from '../../i18n/context';
 import { useReadingT } from '../design/reading';
+import { PosedDeviceFacts, useTouchMode } from '../design/input-mode';
 import { useKeybinds } from '../../state/keymap/store';
 import { resolveTokenSpecs } from './hints/catalogue';
 import { HintTokens } from './hints/hint-marks';
@@ -29,8 +31,14 @@ import { inlineArt, type InlineArt } from './inline-art';
 import { helpFacts } from './facts';
 import { HELP_SCENES } from './figures/scenes';
 import { HelpDemo } from './figures/HelpDemo';
+import { HelpReel, useHelpReel } from './figures/HelpReel';
 import { HELP_SURFACES, helpProvider } from './edition-help';
 import { FigureReadyContext } from './figures/figure-ready';
+import { useImageArrival } from './figures/use-image-arrival';
+import { FigureRoomContext, figureShare } from './figures/figure-scale';
+
+/** Below this width a figure's plate gives its content more of the column. */
+const NARROW_FIGURE = 360;
 import { useInView } from './figures/use-in-view';
 import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
 import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
@@ -136,6 +144,7 @@ const STEP_LINK: CSSProperties = {
 
 function SectionView({ section }: { section: HelpSection }) {
   const t = useReadingT();
+  const touch = useTouchMode();
   const overrides = useKeybinds((s) => s.overrides);
   const facts = helpFacts(useLocale());
   if (section.kind === 'callout') {
@@ -202,6 +211,8 @@ function SectionView({ section }: { section: HelpSection }) {
     );
   }
   if (section.kind === 'keys') {
+    // A touch reader presses no keys: the tips show none in touch mode, and neither does Help.
+    if (touch) return null;
     return (
       <section>
         {heading}
@@ -234,23 +245,67 @@ function SectionView({ section }: { section: HelpSection }) {
   );
 }
 
+/** A figure in the reader's form, or in the form it is about (`HelpFigure.form`). */
 function Figure({ fig }: { fig: HelpPage['figure'] }) {
+  if (!fig?.form) return <FigureBody fig={fig} />;
+  return (
+    <PosedDeviceFacts {...fig.form}>
+      <FigureBody fig={fig} />
+    </PosedDeviceFacts>
+  );
+}
+
+function FigureBody({ fig }: { fig: HelpPage['figure'] }) {
   const t = useReadingT();
   const facts = helpFacts(useLocale());
   const ref = useRef<HTMLElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const ready = useInView(ref);
+  useImageArrival(ref);
   // The row scrolls and fades inside the figure, so the figure's own plate stays whole.
   const row = useScrollRow(rowRef, { zoom: useSurfaceZoom(), pointerEvents: 'auto' });
+  // Figures size themselves to the room they are handed (`figure-scale.ts`, UI-63). One still wider
+  // shrinks to fit, but never past `FIGURE_LEAST`; a figure that marks its width
+  // (`data-figure-width`) is fitted by that width, so an overhang changing never rescales it.
+  const fitRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(1);
+  const [room, setRoom] = useState(0);
+  const [narrow, setNarrow] = useState(false);
+  useObservedSize(() => [ref.current, rowRef.current, ...Array.from(fitRef.current?.children ?? [])], () => {
+    const width = ref.current?.offsetWidth ?? 0;
+    setNarrow((was) => (width > 0 ? width < NARROW_FIGURE : was));
+    // The row's own width less the padding its scroll fade bleeds into, which is not the figure's room.
+    const rowEl = rowRef.current;
+    const cs = rowEl ? getComputedStyle(rowEl) : null;
+    const inside = rowEl && cs ? rowEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) : 0;
+    setRoom((was) => (Math.abs(was - inside) > 0.5 ? inside : was));
+    const widest = Math.max(0, ...Array.from(fitRef.current?.children ?? [], (c) => {
+      const el = c as HTMLElement;
+      // A figure that sizes itself to the room (`figure-scale.ts`) is never shrunk again: shrinking
+      // it would hand it a wider room in its own px, which it would fill.
+      if (el.dataset.figureSized !== undefined) return 0;
+      // A figure that clips its own content is as wide as its box; its scroll width counts what it crops.
+      const clips = el.dataset.figureWidth !== undefined || getComputedStyle(el).overflowX !== 'visible';
+      return clips ? el.offsetWidth : Math.max(el.offsetWidth, el.scrollWidth);
+    }));
+    const next = Math.floor(figureShare(inside, widest).share * 1000) / 1000;
+    setFit((was) => (Math.abs(was - next) > 0.002 ? next : was));
+  }, [fig]);
+  const reel = useHelpReel(fig?.kind === 'reel' ? fig.reel : null);
   if (!fig) return null;
+  // A reel stands for its live figure only where a recording ships; the fallback keeps its caption.
+  const shown = fig.kind === 'reel' && !reel.files ? fig.fallback : fig;
+  if (!shown) return null;
   let body: ReactNode = null;
-  if (fig.kind === 'demo') {
-    const scene = HELP_SCENES[fig.scene];
+  if (shown.kind === 'reel') {
+    body = <HelpReel kind={shown.reel} />;
+  } else if (shown.kind === 'demo') {
+    const scene = HELP_SCENES[shown.scene];
     body = scene ? <HelpDemo scene={scene} /> : null;
-  } else if (fig.kind === 'demos') {
+  } else if (shown.kind === 'demos') {
     body = (
       <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-        {fig.scenes.map(({ scene, labelKey }) => {
+        {shown.scenes.map(({ scene, labelKey }) => {
           const sc = HELP_SCENES[scene];
           return sc ? (
             <div key={scene} style={{ background: PLATE, borderRadius: radii.field, padding: '10px 12px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
@@ -262,19 +317,23 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
       </div>
     );
   } else {
-    const Mock = HELP_SURFACES[fig.surface];
+    const Mock = HELP_SURFACES[shown.surface];
     body = Mock ? <Mock /> : null;
   }
   if (!body) return null;
   // A demo narrates itself with its animated caption; only a surface carries a static one.
   return (
-    <figure ref={ref} style={{ background: rgbaOf(INSET, 0.42), borderRadius: radii.card, padding: '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <figure ref={ref} style={{ background: rgbaOf(INSET, 0.42), borderRadius: radii.card, padding: narrow ? '12px 8px 10px' : '18px 18px 12px', margin: '16px 0 4px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div ref={rowRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', ...row }}>
-        <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
+        <div ref={fitRef} style={{ width: '100%', zoom: fit, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <FigureRoomContext.Provider value={room}>
+            <FigureReadyContext.Provider value={ready}>{body}</FigureReadyContext.Provider>
+          </FigureRoomContext.Provider>
+        </div>
       </div>
-      {fig.kind === 'surface' && (
+      {shown.kind === 'surface' && (
         <figcaption style={{ ...roleFont('note'), color: MUTED, textAlign: 'center', lineHeight: 1.5, paddingBottom: 4 }}>
-          {t(fig.captionKey, facts)}
+          {emphasize(t(shown.captionKey, facts))}
         </figcaption>
       )}
     </figure>

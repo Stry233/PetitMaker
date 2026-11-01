@@ -66,7 +66,7 @@ function isTrimMeshedRoad(obj: PlacedObject): boolean {
 /** Which 3D representation carries an object's body. 'none' means the map holds the object and
  *  neither path draws it, so anything iterating objects (the group-rotation tween) would drop it
  *  without a trace — the miss a caller must surface rather than skip. */
-export type BodyRoute = 'instanced' | 'roadTrim' | 'none';
+type BodyRoute = 'instanced' | 'roadTrim' | 'none';
 
 /** The route for one object id (see BodyRoute). Model-side, so a test can assert that every member
  *  of an operation has a body to animate without standing up a WebGL scene. */

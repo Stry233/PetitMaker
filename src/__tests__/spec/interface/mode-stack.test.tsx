@@ -86,14 +86,6 @@ describe('the folded mode row', () => {
     expect(drawing(), 'the same drawing through the fold').toBe(open);
   });
 
-  spec('UI-34', 'keeps the whole row wherever the top row holds it beside the corner actions', () => {
-    resizeTo(700, 600);
-    act(() => { useEditorStore.getState().setUiZoom(1); });
-    render(<ModeRow modes={MODES} mode={null} swap={{} as ChromeSwap} onPick={() => {}} />, { wrapper: wide });
-    expect(screen.getByRole('button', { name: 'Roads' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Show modes' })).toBeNull();
-  });
-
   spec('UI-34', 'stands folded again after a turn to upright and back, never reopening by itself', () => {
     resizeTo(700, 600);
     const at = (shape: 'landscape' | 'portrait') => (

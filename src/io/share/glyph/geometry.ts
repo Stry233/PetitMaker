@@ -32,7 +32,7 @@ export const HEADER_MODULES = (HEADER_ENC_BYTES * 8) / HEADER_SYMBOL_BITS;  // 6
 export const CALIB_CELLS = 2;
 
 /** Smallest base-cell size accepted by the export compositor. */
-export const MIN_MODULE_BASE = 12;
+const MIN_MODULE_BASE = 12;
 
 /** A v1/v2 decoder tier whose fields are fixed wire identities. */
 export interface Tier {

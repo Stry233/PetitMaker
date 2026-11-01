@@ -1,9 +1,7 @@
 /**
- * Half-step span items at the trait level: the trait itself, the covered-cell expansion in
- * V-PLACE-TRAIT's flat/noFloat sweeps, and the off-grid guard. Detection (bridge-span and
- * heightDrop walking the half grid) belongs to `half-step-detection.test.ts`. These fixtures
- * carry `halfStep` with `noFloat` or no other trait, never `waterSpan` or `heightDrop`, so the
- * trait is exercised in isolation.
+ * Half-step span items at the trait level: the trait itself and the off-grid guard. Detection
+ * (bridge-span and heightDrop walking the half grid) belongs to `half-step-detection.test.ts`.
+ * These fixtures carry `halfStep` and no other trait, so the trait is exercised in isolation.
  */
 import { describe, it, expect } from 'vitest';
 import { traitPlacementRule } from '../../rules/placement';
@@ -17,11 +15,6 @@ import { hasHalfStep } from '../../state/object-geometry';
 import { ANCHOR_LANDMARK } from '../_support/anchor';
 import { ItemCategory } from '../../config/catalog/categories';
 
-__setCatalogItem({
-  id: 'hs-pier', category: ItemCategory.Facility, name: { en: 'HalfStep Pier' },
-  width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
-  traits: [{ type: 'halfStep' }, { type: 'noFloat' }],
-});
 __setCatalogItem({
   id: 'hs-slab', category: ItemCategory.Facility, name: { en: 'HalfStep Slab' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
@@ -54,7 +47,7 @@ describe('V-PLACE-TRAIT: off-grid guard', () => {
   it('lets a halfStep item reach its own trait validation at a fractional position', () => {
     const state = makeState();
     for (const x of [7, 8, 9]) setTerrain(state, x, 5, TerrainType.Mountain, 1);
-    const errors = traitPlacementRule.validate(place('hs-pier', 7.5, 5), state);
+    const errors = traitPlacementRule.validate(place('hs-slab', 7.5, 5), state);
     expect(errors).toHaveLength(0);
   });
 });
@@ -83,32 +76,6 @@ describe('unknown catalog item (no item to check the trait of)', () => {
   it('returns empty rather than gating a fractional position', () => {
     const state = makeState();
     expect(traitPlacementRule.validate(place('nonexistent', 5.5, 5), state)).toHaveLength(0);
-  });
-});
-
-describe('noFloat sweep over covered cells (half-integer anchor)', () => {
-  it('rejects exactly the covered cells with no support, including the half-covered ends', () => {
-    const state = makeState();
-    // hs-pier (width 2) at x=7.5 covers macro cells 7, 8, 9 (floor/ceil expansion).
-    // Only cell 8 has support, so 7 and 9 are both reported as offenders.
-    setTerrain(state, 8, 5, TerrainType.Mountain, 1);
-    const errors = traitPlacementRule.validate(place('hs-pier', 7.5, 5), state);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]!.cells).toEqual([{ x: 7, y: 5 }, { x: 9, y: 5 }]);
-  });
-
-  it('passes when every covered cell has support', () => {
-    const state = makeState();
-    for (const x of [7, 8, 9]) setTerrain(state, x, 5, TerrainType.Mountain, 1);
-    expect(traitPlacementRule.validate(place('hs-pier', 7.5, 5), state)).toHaveLength(0);
-  });
-
-  it('applies noFloat at an integer anchor', () => {
-    const state = makeState();
-    setTerrain(state, 5, 5, TerrainType.Mountain, 1);
-    const errors = traitPlacementRule.validate(place('hs-pier', 5, 5), state);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]!.cells).toEqual([{ x: 6, y: 5 }]);
   });
 });
 

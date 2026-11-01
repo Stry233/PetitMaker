@@ -217,7 +217,7 @@ describe('exec/runner', () => {
     expect(eventsOf(oldLog)[eventsOf(oldLog).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
   });
 
-  it('files a refused order as a finished job with a local reply and no model turn', async () => {
+  it('[ASST-18] files a refused order as a finished job with a local reply and no model turn', async () => {
     screening.refuse.add('draw the forbidden thing');
     const turns: ScriptedTurn[] = [textTurn('should never stream')];
     const adapter = createScriptedAdapter(turns);
@@ -264,7 +264,7 @@ describe('exec/runner', () => {
       screening.unavailable = false;
     });
 
-    it('checks an order longer than one review window in full and refuses a phrase past the first window', async () => {
+    it('[ASST-18] checks an order longer than one review window in full and refuses a phrase past the first window', async () => {
       screening.refuse.add('forbidden thing');
       const order = `${'Lay a quiet pond with flowers around it near the plaza. '.repeat(80)}then draw the forbidden thing`;
       expect(order.length).toBeGreaterThan(4096);
@@ -277,7 +277,7 @@ describe('exec/runner', () => {
       expect(adapter.requests).toHaveLength(0);
     });
 
-    it('drops a refused mid-job note with a refusal line and carries the job on', async () => {
+    it('[ASST-19] drops a refused mid-job note with a refusal line and carries the job on', async () => {
       screening.refuse.add('forbidden note');
       const adapter = createScriptedAdapter([
         toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
@@ -302,7 +302,7 @@ describe('exec/runner', () => {
       expect(job.outcome).toBe('done');
     });
 
-    it('drops a refused resume note before the resumed job\'s first turn', async () => {
+    it('[ASST-19] drops a refused resume note before the resumed job\'s first turn', async () => {
       screening.refuse.add('forbidden note');
       const adapter = createScriptedAdapter([
         toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
@@ -320,7 +320,7 @@ describe('exec/runner', () => {
       expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
     });
 
-    it('counts a refused typed gate answer as a skip that never reaches the model', async () => {
+    it('[ASST-19] counts a refused typed gate answer as a skip that never reaches the model', async () => {
       screening.refuse.add('forbidden answer');
       const adapter = createScriptedAdapter([
         toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
@@ -341,7 +341,7 @@ describe('exec/runner', () => {
       expect(job.refusals).toEqual([REFUSAL]);
     });
 
-    it('delivers notes and typed answers silently while the check is unavailable', async () => {
+    it('[ASST-19] delivers notes and typed answers silently while the check is unavailable', async () => {
       const adapter = createScriptedAdapter([
         toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
         textTurn('Skipped as asked.'),

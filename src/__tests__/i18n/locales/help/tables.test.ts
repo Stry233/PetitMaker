@@ -7,9 +7,8 @@ import { RESOLVED_TOKENS } from '../../../../i18n/context';
 describe('the Help tables', () => {
   const LOCALES = Object.keys(HELP_TABLES) as (keyof typeof HELP_TABLES)[];
   const enKeys = Object.keys(HELP_TABLES.en);
-  // Copy whose translator-filled tokens differ from en by design, by key and locale: zh names the
-  // landmark where en says "it".
-  const RESOLVED_DIFFERS: Readonly<Record<string, readonly string[]>> = { 'help.faq.a3': ['zh'] };
+  // Copy whose translator-filled tokens differ from en by design, by key and locale.
+  const RESOLVED_DIFFERS: Readonly<Record<string, readonly string[]>> = {};
   // Translator-filled tokens count once each: a locale may repeat a name where its grammar wants it.
   // `{glyph}` is a fixed name each locale writes where its own sentence names it.
   const placeholders = (v: string, skipResolved = false) => {

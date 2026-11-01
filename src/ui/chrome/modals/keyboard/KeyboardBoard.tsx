@@ -26,7 +26,7 @@ const BOARD_GAP = 24;
  *  whatever the key count, and the widest main row sets the board. */
 const clusterW = (units: number): number => units * UNIT + (units - 1) * GAP;
 const BOARD_UNITS = Math.max(...KEY_ROWS.map((r) => r.reduce((s, k) => s + (k.w ?? 1), 0)));
-export const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
+const KEYBOARD_W = clusterW(BOARD_UNITS) + BOARD_GAP * 2 + clusterW(NAV_COLS) + clusterW(NUMPAD_COLS);
 export const KEYBOARD_H = KEY_ROWS.length * KEY_H + (KEY_ROWS.length - 1) * GAP;
 /** Room above and beside the keys for a key's hover lift and the selection ring, in board px. */
 export const BOARD_RING = 6;

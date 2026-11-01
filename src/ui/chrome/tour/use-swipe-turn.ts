@@ -15,13 +15,13 @@ export const SWIPE_VAR = '--tour-swipe';
 export const SWIPE_PART_ATTR = 'data-tour-swipe';
 
 /** How far a press travels, in window px, before it is a drag along one axis. */
-export const SWIPE_LOCK = 8;
+const SWIPE_LOCK = 8;
 /** A release turns past this share of the card's width, bounded to these window px. */
 const TURN_SHARE = 0.22;
 const TURN_LEAST = 48;
 const TURN_MOST = 120;
 /** A release this fast, in window px per ms, the way of the drag turns from any distance past the lock. */
-export const SWIPE_FLICK = 0.45;
+const SWIPE_FLICK = 0.45;
 /** How long a release's speed is read over, in ms. */
 const FLICK_WINDOW = 90;
 /** How far the parts follow a drag towards no card, as a share of the finger's travel. */
@@ -39,7 +39,7 @@ function stand(el: HTMLElement, px: number): void {
 
 /** Whether a drag of `dx` window px, let go at `speed` px per ms, across a card `width` px wide, turns
  *  it: forward for a drag to the left, back for one to the right. */
-export function swipeTurns(dx: number, speed: number, width: number): boolean {
+function swipeTurns(dx: number, speed: number, width: number): boolean {
   const reach = Math.min(TURN_MOST, Math.max(TURN_LEAST, width * TURN_SHARE));
   return Math.abs(dx) >= reach || (Math.abs(dx) > SWIPE_LOCK && speed * Math.sign(dx) >= SWIPE_FLICK);
 }

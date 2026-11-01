@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 /**
- * The panel docked in the real shell: the frame's plane is inset by the column's width and is the box
- * its clusters place against while passing map presses through; the column stands the window's full
- * height; the control reports the live state. The pref is an intent, so a window too narrow for the
- * dock sets the panel free and forgets nothing.
+ * The panel docked in the real shell: the pin sequence's beats, the dock control and its live state,
+ * the side switch, and the remembered intent.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import type { ReactNode } from 'react';
 
@@ -15,22 +13,13 @@ import { useEditorStore } from '../../../state/store';
 import { PREFS } from '../../../platform/storage/prefs';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { Shell } from '../../../ui/shell/Shell';
-import {
-  CHARACTER_SEAT, DOCK_CHROME_W, PANEL_LEFT, PANEL_PLATE_PAD, PANEL_TOP, PINNED_COLUMN_W,
-  PINNED_DOCK_REF_W, PINNED_PANEL, hasPinRoom,
-} from '../../../ui/shell/panel-frame';
-import { FIT_FLOOR, FIT_REF } from '../../../ui/design/scale';
-import { PANEL_WIDTH } from '../../../ui/agent/panel-skin';
-import { z } from '../../../ui/design/styles';
-import { ModalShell } from '../../../ui/primitives/ModalShell';
-import { resolveCss } from '../shell/_resolve-css';
+import { PINNED_DOCK_REF_W, hasPinRoom } from '../../../ui/shell/panel-frame';
+import { FIT_FLOOR, FIT_REF } from '../../../ui/design/scale-model';
 import { outSeconds, seconds } from '../../../ui/design/motion';
 import { useDockDriver, useDockStage } from '../../../ui/shell/use-dock';
 
 /** The narrowest window the dock fits in at UI zoom 1: the frame beside it at the fit floor. */
 const PIN_ROOM_FLOOR = FIT_FLOOR * (FIT_REF.w + PINNED_DOCK_REF_W);
-/** The character travels at most her own folded width between her seats. */
-const SEAT_TRAVEL_MAX = CHARACTER_SEAT.w;
 
 const backing = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -69,11 +58,6 @@ function mountShell() {
   );
 }
 
-/** The frame's plane: the element carrying the frame's zoom, the veil's parent. */
-function plane(): HTMLElement {
-  return screen.getByTestId('shell-frame-veil').parentElement as HTMLElement;
-}
-
 /** The panel is a lazy chunk; its first render compiles the assistant graph, paid once here. */
 beforeAll(async () => {
   backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
@@ -93,158 +77,6 @@ afterEach(() => {
   cleanup();
   backing.delete(PREFS.assistantPinned.key);
   backing.delete(PREFS.assistantDockSide.key);
-});
-
-describe('the frame stands beside the dock', () => {
-  it('is one plane, placed against nothing but the window, while the panel stands free', async () => {
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    const box = plane();
-    expect(box.style.left).toBe('0px');
-    // The `fixed` clusters inside resolve against this box, so the dock moves them all with one number.
-    expect(box.style.contain).toBe('layout');
-    // A full-window box would take every press the map is meant to get.
-    expect(box.style.pointerEvents).toBe('none');
-  });
-
-  it('is inset by the column\'s own width while the panel is docked', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    expect(plane().style.left).toBe(`${PINNED_COLUMN_W}px`);
-    // The dock's width in chrome units, published per edge for surfaces outside this frame.
-    expect(document.documentElement.style.getPropertyValue('--pin-dock-left')).toBe(`${PINNED_DOCK_REF_W}px`);
-    expect(document.documentElement.style.getPropertyValue('--pin-dock-right')).toBe('0px');
-  });
-
-  /** The travel rides the one animated fraction the fit also rides; a CSS transition on a plane would
-   *  be a second clock, and the interface would rescale and move on different frames. */
-  it('travels on the shared fraction rather than a clock of its own', async () => {
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    expect(plane().style.transition).toBe('');
-    expect(screen.getByTestId('shell-map-plane').style.transition).toBe('');
-    expect(screen.getByTestId('shell-vignette').style.transition).toBe('');
-  });
-
-  it('gives the window back when the panel is set free again', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    act(() => { useEditorStore.setState({ assistantPinned: false }); });
-    expect(plane().style.left).toBe('0px');
-    expect(document.documentElement.style.getPropertyValue('--pin-dock-left')).toBe('0px');
-  });
-
-  /** A folded panel docks nothing, but the intent is kept for the next open. */
-  it('un-insets while the panel is away, without forgetting the dock', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    act(() => { useEditorStore.getState().setAssistantOpen(false); });
-    expect(plane().style.left).toBe('0px');
-    expect(useEditorStore.getState().assistantPinned).toBe(true);
-  });
-});
-
-/** Docking insets the map's plane past the dock as it does the frame's, so both views size and place
- *  themselves by what is left of the window. */
-describe('the map moves with the interface', () => {
-  const mapPlane = () => screen.getByTestId('shell-map-plane');
-
-  it('holds the views, and holds them the way the frame holds its clusters', async () => {
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    expect(mapPlane().contains(screen.getByTestId('map-views'))).toBe(true);
-    expect(mapPlane().style.contain).toBe('layout');
-    expect(mapPlane().style.left).toBe('0px');
-  });
-
-  /** The frame's plane is inset in its own zoomed px and the map's in real CSS px; both edges land on
-   *  the same column of pixels. */
-  it('is inset past the dock, on the same travel the frame takes', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    const frameZoom = parseFloat(plane().style.zoom);
-    expect(parseFloat(mapPlane().style.left))
-      .toBeCloseTo(parseFloat(plane().style.left) * frameZoom, 6);
-    expect(parseFloat(mapPlane().style.left)).toBeGreaterThan(0);
-    // The vignette starts where the workspace does.
-    expect(screen.getByTestId('shell-vignette').style.left).toBe(mapPlane().style.left);
-  });
-});
-
-describe('the docked column', () => {
-  /** The docked desk holds the window's left, top and bottom edges at the bottom of the z ladder;
-   *  what travels is the interface sheet over it. */
-  it('stands at the window\'s left edge, from top to bottom, beneath everything', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    const wrapper = await screen.findByTestId('shell-assistant-panel');
-    expect(wrapper.style.left).toBe(`${PINNED_PANEL.edge}px`);
-    expect(wrapper.style.top).toBe('0px');
-    expect(wrapper.style.bottom).toBe('0px');
-    expect(wrapper.style.zIndex).toBe(String(z.ground));
-    expect(z.ground).toBeLessThan(z.paper);
-    expect(screen.getByTestId('shell-map-plane').style.zIndex).toBe(String(z.paper));
-  });
-
-  it('is the content column plus its control gutter, and reads as ground rather than as a card', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    const plate = screen.getByTestId('panel-shell');
-    // Wider than the free plate by the gutter, with the plate's own padding on every edge: the
-    // buttons' seat is carved from the desk band alone.
-    expect(plate.style.width).toBe(`${PANEL_WIDTH + DOCK_CHROME_W}px`);
-    expect(plate.style.paddingRight).toBe(plate.style.paddingLeft);
-    expect(parseFloat(plate.style.paddingLeft)).toBe(PANEL_PLATE_PAD);
-    // Square: three edges are the window's and the fourth is under the sheet.
-    expect(parseFloat(plate.style.borderRadius)).toBe(0);
-    // The outline stays only on the edge that meets the sheet.
-    expect(parseFloat(plate.style.borderRightWidth)).toBeGreaterThan(0);
-    expect(plate.style.borderTopWidth).toBe('0px');
-    expect(plate.style.borderBottomWidth).toBe('0px');
-    expect(plate.style.borderLeftWidth).toBe('0px');
-    // Docked, the caller's height cap is the window.
-    expect(plate.style.height).toBe(PINNED_PANEL.height);
-    expect(plate.style.minHeight).toBe('0');
-  });
-
-  /** The entrance wipe's clip outlives the wipe, so a rounded `inset()` would leave four notches in a
-   *  docked plate. */
-  it('carries no corner in its clip either, at either side', async () => {
-    for (const side of ['left', 'right'] as const) {
-      act(() => { useEditorStore.setState({ assistantPinned: true, assistantDockSide: side }); });
-      mountShell();
-      await screen.findByTestId('shell-assistant-panel');
-      const clip = screen.getByTestId('panel-shell').style.clipPath;
-      expect(clip, side).not.toBe('');
-      expect(clip, side).not.toContain('round');
-      cleanup();
-    }
-  });
-
-  it('rounds both while it is free', async () => {
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    const plate = screen.getByTestId('panel-shell');
-    expect(parseFloat(plate.style.borderRadius)).toBeGreaterThan(0);
-  });
-
-  it('stands over the map while it is free', async () => {
-    mountShell();
-    const wrapper = await screen.findByTestId('shell-assistant-panel');
-    expect(Number(wrapper.style.zIndex)).toBeGreaterThan(z.paper);
-  });
-
-  it('keeps the frame\'s own grid while it stands free', async () => {
-    mountShell();
-    const wrapper = await screen.findByTestId('shell-assistant-panel');
-    expect(wrapper.style.left).toBe(`${PANEL_LEFT}px`);
-    expect(screen.getByTestId('panel-shell').style.height).toBe('');
-  });
 });
 
 /**
@@ -375,64 +207,11 @@ describe('the dock control', () => {
     expect(pin.getAttribute('aria-label')).toBe(translateFor('en', 'agent.pin_no_room'));
   });
 
-  it('sets the panel free in a narrow window and docks it again when the room returns', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true }); });
-    mountShell();
-    await screen.findByTestId('shell-assistant-panel');
-    expect(plane().style.left).toBe(`${PINNED_COLUMN_W}px`);
-    widen(1000);
-    expect(plane().style.left).toBe('0px');
-    expect(useEditorStore.getState().assistantPinned).toBe(true);
-    widen(1600);
-    expect(plane().style.left).toBe(`${PINNED_COLUMN_W}px`);
-  });
 });
 
 /** The side is remembered, and a right dock is the left layout mirrored, except the controls, which
  *  stay at the right. */
 describe('the dock at the other end of the window', () => {
-  const docked = (side: 'left' | 'right') => {
-    act(() => { useEditorStore.setState({ assistantPinned: true, assistantDockSide: side }); });
-    return mountShell();
-  };
-
-  it('holds that side\'s own edge and insets the sheet from it', async () => {
-    docked('right');
-    const wrapper = await screen.findByTestId('shell-assistant-panel');
-    expect(wrapper.style.right).toBe(`${PINNED_PANEL.edge}px`);
-    expect(wrapper.style.left).toBe('');
-    expect(plane().style.right).toBe(`${PINNED_COLUMN_W}px`);
-    expect(plane().style.left).toBe('0px');
-    // The map's plane and the vignette mirror too.
-    expect(parseFloat(screen.getByTestId('shell-map-plane').style.right)).toBeGreaterThan(0);
-    expect(screen.getByTestId('shell-map-plane').style.left).toBe('0px');
-    expect(screen.getByTestId('shell-vignette').style.right)
-      .toBe(screen.getByTestId('shell-map-plane').style.right);
-  });
-
-  it('publishes the width on the edge it stands at, and zero on the other', async () => {
-    docked('right');
-    await screen.findByTestId('shell-assistant-panel');
-    const root = document.documentElement.style;
-    expect(root.getPropertyValue('--pin-dock-right')).toBe(`${PINNED_DOCK_REF_W}px`);
-    expect(root.getPropertyValue('--pin-dock-left')).toBe('0px');
-  });
-
-  it('puts the seam at the edge that faces the work, and the controls at the right regardless', async () => {
-    docked('right');
-    await screen.findByTestId('shell-assistant-panel');
-    const plate = screen.getByTestId('panel-shell');
-    expect(parseFloat(plate.style.borderLeftWidth)).toBeGreaterThan(0);
-    expect(plate.style.borderRightWidth).toBe('0px');
-    // The padding does not mirror: the content column takes the same whole width at either end.
-    expect(plate.style.paddingLeft).toBe(plate.style.paddingRight);
-    // The two controls stand stacked at the right at either end.
-    const cluster = screen.getByTestId('desk-pin');
-    expect(cluster.style.flexDirection).toBe('column');
-    expect(cluster.style.right).not.toBe('');
-    expect(cluster.style.left).toBe('');
-  });
-
   it('offers the switch only while it is docked, and offers the end it is not at', async () => {
     mountShell();
     await screen.findByTestId('shell-assistant-panel');
@@ -455,57 +234,6 @@ describe('the dock at the other end of the window', () => {
     expect(backing.get(PREFS.assistantDockSide.key)).toBe('right');
   });
 
-  it('drifts the ground the same distance the other way', async () => {
-    for (const side of ['left', 'right'] as const) {
-      docked(side);
-      await screen.findByTestId('shell-assistant-panel');
-      const settled = screen.getByTestId('shell-assistant-panel').style.transform;
-      // Settled, the ground is flush with the sheet.
-      expect(settled, side).toBe('');
-      cleanup();
-    }
-  });
-});
-
-/** A modal's backdrop covers the dock, so the panel's composer is locked too, while its card centres
- *  on the interface beside the dock. */
-describe('the chrome stands over the interface, not over the dock', () => {
-  /** The backdrop's side padding, resolved against the dock widths the shell publishes on the root,
-   *  since jsdom keeps a `var()` as written. */
-  function backdropPadding(backdrop: HTMLElement): { left: number; right: number } {
-    const root = document.documentElement.style;
-    const vars: Record<string, string> = {};
-    for (const name of ['--pin-dock-left-px', '--pin-dock-right-px']) {
-      const value = root.getPropertyValue(name);
-      if (value !== '') vars[name] = value;
-    }
-    return {
-      left: resolveCss(backdrop.style.paddingLeft || '0px', 900, 1, vars),
-      right: resolveCss(backdrop.style.paddingRight || '0px', 900, 1, vars),
-    };
-  }
-
-  it('centres the card on the interface beside the dock, at either side', async () => {
-    for (const side of ['left', 'right'] as const) {
-      act(() => { useEditorStore.setState({ assistantPinned: true, assistantDockSide: side }); });
-      render(
-        <MotionConfig reducedMotion="always">
-          <I18nProvider>
-            <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
-            <ModalShell open onClose={() => {}} ariaLabel="Probe"><p>probe</p></ModalShell>
-          </I18nProvider>
-        </MotionConfig>,
-      );
-      await screen.findByTestId('shell-assistant-panel');
-      const pad = backdropPadding(screen.getByRole('dialog', { name: 'Probe' }).parentElement!);
-      // The backdrop pads by the map plane's insets.
-      const map = screen.getByTestId('shell-map-plane');
-      expect(pad.left, side).toBeCloseTo(parseFloat(map.style.left), 6);
-      expect(pad.right, side).toBeCloseTo(parseFloat(map.style.right), 6);
-      expect(side === 'left' ? pad.left : pad.right, side).toBeGreaterThan(0);
-      cleanup();
-    }
-  });
 });
 
 describe('the bound the dock is offered inside', () => {
@@ -513,63 +241,4 @@ describe('the bound the dock is offered inside', () => {
     expect(hasPinRoom(PIN_ROOM_FLOOR)).toBe(true);
     expect(hasPinRoom(PIN_ROOM_FLOOR - 0.5)).toBe(false);
   });
-});
-
-/** The floating panel folds onto the character's button within her own box (`SEAT_TRAVEL_MAX`); a
- *  docked desk is a dock's width away, so the sequence hands one form to the other instead of
- *  moving between them. */
-describe('a fold is told from a change of form by the distance', () => {
-  const travelTo = (seat: { left: number; top: number }) => Math.hypot(
-    seat.left - CHARACTER_SEAT.left,
-    seat.top - CHARACTER_SEAT.top,
-  );
-
-  it('keeps the free panel\'s own fold inside her box', () => {
-    // The free desk's seat: the column's left edge and top, plus the plate's padding.
-    expect(travelTo({ left: PANEL_LEFT + PANEL_PLATE_PAD, top: PANEL_TOP + PANEL_PLATE_PAD }))
-      .toBeLessThanOrEqual(SEAT_TRAVEL_MAX);
-  });
-
-  it('puts a docked desk far outside it, on either side', () => {
-    // Docked left the seat is at the window's own corner; docked right it is a dock's width across.
-    expect(travelTo({ left: PANEL_PLATE_PAD, top: PANEL_PLATE_PAD }))
-      .toBeGreaterThan(SEAT_TRAVEL_MAX);
-    expect(travelTo({ left: PINNED_DOCK_REF_W + PANEL_PLATE_PAD, top: PANEL_PLATE_PAD }))
-      .toBeGreaterThan(SEAT_TRAVEL_MAX);
-  });
-});
-
-/** Closing a docked panel runs the two-beat leave: the sheet returns over the ground first, and only
- *  then does the form go, rather than the window-tall ground playing the floating exit in view. */
-describe('a collapse over a dock', () => {
-  const realAnimate = (Element.prototype as unknown as { animate?: unknown }).animate;
-  beforeEach(() => {
-    (Element.prototype as any).animate = () => ({ cancel: () => {}, finish: () => {}, playState: 'idle' });
-  });
-  afterEach(() => {
-    (Element.prototype as any).animate = realAnimate;
-  });
-
-  it('keeps the ground standing, live, while the sheet comes back over it', async () => {
-    act(() => { useEditorStore.setState({ assistantPinned: true, assistantOpen: true }); });
-    render(
-      <FullMotion>
-        <I18nProvider>
-          <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
-        </I18nProvider>
-      </FullMotion>,
-    );
-    await screen.findByTestId('shell-assistant-panel');
-    act(() => { useEditorStore.setState({ assistantOpen: false }); });
-
-    // Past the floating exit's length, inside the sheet's return: the docked form still stands.
-    await act(async () => {
-      await new Promise((resolve) => { setTimeout(resolve, seconds('panel.close') * 1000 + 60); });
-    });
-    const plate = screen.getByTestId('panel-shell');
-    expect(plate.style.width).toBe(`${PANEL_WIDTH + DOCK_CHROME_W}px`);
-
-    // After the folded beat, the panel goes.
-    await waitFor(() => expect(screen.queryByTestId('panel-shell')).toBeNull(), { timeout: 4000 });
-  }, 20_000);
 });

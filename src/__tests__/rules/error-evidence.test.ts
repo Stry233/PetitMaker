@@ -26,7 +26,7 @@ __setCatalogItem({
 __setCatalogItem({
   id: 'ev-pier', category: ItemCategory.Facility, name: { en: 'Evidence Pier' },
   width: 2, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
-  traits: [{ type: 'noFloat' }],
+  traits: [],
 });
 __setCatalogItem({
   id: 'ev-path', category: ItemCategory.Road, name: { en: 'Evidence Path' },
@@ -78,16 +78,6 @@ describe('evidence cells: V-PLACE-TRAIT', () => {
     const errors = traitPlacementRule.validate(place('ev-house', 5, 5), state);
     expect(errors).toHaveLength(1);
     expect(has(errors[0]!.cells, 6, 6)).toBe(true);
-    expect(errors[0]!.grid).toBe('terrain');
-  });
-
-  it('noFloat reports exactly the cells with no real surface', () => {
-    // 2x1 pier at (5,5): (5,5) sits on mountain, (6,5) on bare ground → only (6,5) floats.
-    const state = makeState();
-    setTerrain(state, 5, 5, TerrainType.Mountain, 1);
-    const errors = traitPlacementRule.validate(place('ev-pier', 5, 5), state);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]!.cells).toEqual([{ x: 6, y: 5 }]);
     expect(errors[0]!.grid).toBe('terrain');
   });
 

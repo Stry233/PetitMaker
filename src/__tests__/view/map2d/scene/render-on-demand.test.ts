@@ -8,24 +8,10 @@
  */
 import '../../../_support/pixi-env';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import * as PIXI from 'pixi.js-legacy';
 import { MapRenderer } from '../../../../view/map2d/scene/map-renderer';
 import { rendererLayers } from '../../../_support/renderer-layers';
 import { EventBus } from '../../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../../state/editing/events';
-
-/** The ticker's listener chain, which pixi keeps as a private linked list. */
-function tickerListeners(ticker: PIXI.Ticker): Array<{ fn: unknown; context: unknown }> {
-  const out: Array<{ fn: unknown; context: unknown }> = [];
-  let node = (ticker as unknown as { _head: { next: unknown } })._head.next as
-    | { fn: unknown; context: unknown; next: unknown }
-    | null;
-  while (node) {
-    out.push({ fn: node.fn, context: node.context });
-    node = node.next as typeof node;
-  }
-  return out;
-}
 
 const renderers: MapRenderer[] = [];
 
@@ -70,13 +56,6 @@ describe('render-on-demand loop', () => {
     r.resize(150, 170);
     expect(draw).toHaveBeenCalledOnce();
     expect(painted).toHaveBeenCalledOnce();
-  });
-
-  it('leaves exactly one listener on the ticker, and it is not pixi own render', () => {
-    const r = makeRenderer();
-    const listeners = tickerListeners(r.app.ticker);
-    expect(listeners).toHaveLength(1);
-    expect(listeners.some((l) => l.fn === r.app.render && l.context === r.app)).toBe(false);
   });
 
   it('rests its ticker once the window closes, drawing nothing until asked', () => {

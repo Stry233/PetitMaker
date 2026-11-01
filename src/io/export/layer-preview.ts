@@ -2,7 +2,7 @@ import type { GridState } from '../../core/model/types';
 import { getMapStats } from '../../state/map-stats';
 
 /** One step of the construction sequence: the map built up to `level`. */
-export interface LayerStep {
+interface LayerStep {
   level: number;
 }
 

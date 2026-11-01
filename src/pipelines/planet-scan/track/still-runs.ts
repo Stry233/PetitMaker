@@ -12,7 +12,7 @@ import type { GreyImage } from '../types';
 // and never kept.
 
 /** Grouping tuning; each value defaults to, and is documented in, `SCAN_PROFILE`. */
-export interface StillRunOptions {
+interface StillRunOptions {
   /** Mean absolute grey difference below which a frame repeats the last distinct one. */
   readonly repeatThreshold?: number;
   /** The difference is sampled every this many tile pixels on both axes. */

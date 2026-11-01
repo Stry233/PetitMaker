@@ -7,7 +7,7 @@ import { eventKeyToken } from './key-token';
 
 /** A combo taken apart: modifier flags plus the key it ends on ('' for a bare-modifier combo like
  *  `ctrl`, which carries no key of its own). */
-export interface Combo { key: string; ctrl: boolean; alt: boolean; shift: boolean }
+interface Combo { key: string; ctrl: boolean; alt: boolean; shift: boolean }
 
 /** Canonical combo string: modifiers in a fixed order (ctrl, alt, shift), then the key, lowercase.
  *  So "Shift+G", "shift+g", "G+Shift" all normalize to "shift+g". Cmd, Meta and Control read as

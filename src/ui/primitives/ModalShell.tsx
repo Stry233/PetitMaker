@@ -33,7 +33,7 @@ import { useMorph } from './morph';
 type ModalShellChildren = ReactNode | ((exiting: boolean) => ReactNode);
 
 /** The card's largest size as percent shares of the measured window: `w` of its width, `h` of its height. */
-export interface WindowCap { w?: number; h?: number }
+interface WindowCap { w?: number; h?: number }
 
 /** The window sizes the app's windows share: a width in the card's px and a cap. A window's own
  *  `width`, `height` and `cap` override its preset's. */
@@ -53,7 +53,7 @@ const WINDOW_SIZES = {
   reader: { width: 1080, height: 720, cap: { w: 96, h: 92 } },
 } as const satisfies Record<string, Pick<ModalShellProps, 'width' | 'height' | 'cap'>>;
 
-export type WindowSize = keyof typeof WINDOW_SIZES;
+type WindowSize = keyof typeof WINDOW_SIZES;
 
 /** The room a card capped at `capW` percent of a window `windowW` wide gives its content at chrome
  *  zoom `chrome`, in card px, its padding and border `frameX` across. */
@@ -122,9 +122,9 @@ export interface ModalShellProps {
   /** Whether this shell suppresses global map keyboard shortcuts (`useOverlayLock`) while open.
    *  Defaults to `true`, i.e. the whole `open` span. */
   lockOverlay?: boolean;
-  /** Accessible name for the dialog. Pass one of `ariaLabel` (a literal string,
-   *  e.g. the modal's translated title) or `ariaLabelledBy` (the id of a
-   *  visible heading inside the card). Threaded onto `role="dialog"`. */
+  /** Accessible name for the dialog: `ariaLabelledBy` (the id of a visible heading inside the card),
+   *  else the title heading of the card's `WindowHeader`, else `ariaLabel` (a literal string, e.g.
+   *  the modal's translated title). Threaded onto `role="dialog"`. */
   ariaLabel?: string;
   ariaLabelledBy?: string;
   /** The id of the element that describes the dialog. */
@@ -276,6 +276,10 @@ function ModalCard({ helpTarget, open, onClose, onEntered, width, height, cap, c
   // A piece of the chrome's morph, so an input-mode switch carries the card to its new size: its
   // outline exactly, though its content re-flows to another shape.
   const morph = useMorph(`window-${useId()}`, 'card');
+  // The title heading a `WindowHeader` stands in the card names it; `ariaLabel` names a card without one.
+  const [titleId, setTitleId] = useState<string | null>(null);
+  const nameTitle = useCallback((id: string, shown: boolean) => setTitleId((was) => (shown ? id : was === id ? null : was)), []);
+  const labelledBy = ariaLabelledBy ?? titleId ?? undefined;
   const fills = useLayoutShape() === 'portrait' && !preview && fillsUpright;
   const { w: windowW, h: windowH } = useViewportSize();
   // The caps bound the whole card. A content-box card grows by its padding and border on top of a
@@ -392,8 +396,8 @@ function ModalCard({ helpTarget, open, onClose, onEntered, width, height, cap, c
         role="dialog"
         tabIndex={-1}
         aria-modal="true"
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabelledBy}
+        aria-label={labelledBy ? undefined : ariaLabel}
+        aria-labelledby={labelledBy}
         aria-describedby={ariaDescribedBy}
         data-testid={testId}
         onClick={(e) => e.stopPropagation()}
@@ -424,7 +428,9 @@ function ModalCard({ helpTarget, open, onClose, onEntered, width, height, cap, c
         <SurfaceOwner.Provider value={scope}>
           <WindowRoom.Provider value={roomValue}>
             <SurfaceZoomProvider value={chrome}>
-              <WindowPartsProvider key={session} card={cardRef} room={partsRoom}><ShellChildren>{children}</ShellChildren></WindowPartsProvider>
+              <WindowPartsProvider key={session} card={cardRef} room={partsRoom} nameTitle={nameTitle}>
+                <ShellChildren>{children}</ShellChildren>
+              </WindowPartsProvider>
             </SurfaceZoomProvider>
           </WindowRoom.Provider>
         </SurfaceOwner.Provider>

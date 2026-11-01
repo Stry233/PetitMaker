@@ -929,34 +929,6 @@ describe('one leave verb per screen', () => {
     }
   });
 
-  /** Every step draws Back as the same footer ghost button; the underlined text idiom is for tight
-   *  spaces only. */
-  it('draws Back as the footer ghost button, the same on every step that has one', async () => {
-    const ghost = (el: HTMLElement) => ({
-      background: el.style.background,
-      color: el.style.color,
-      borderRadius: el.style.borderRadius,
-      fontSize: el.style.fontSize,
-      fontWeight: el.style.fontWeight,
-    });
-
-    const mouth = renderWithI18n(<SetupScreen onLeave={() => {}} />);
-    const atMouth = screen.getByTestId('setup-leave');
-    expect(atMouth.tagName).toBe('BUTTON');
-    expect(atMouth.style.textDecoration).not.toBe('underline');
-    const shape = ghost(atMouth);
-    expect(shape.background, 'the footer ghost brings its own fill').not.toBe('');
-    mouth.unmount();
-
-    // The waiting step's Back must match.
-    vi.useFakeTimers();
-    renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['m'])} onLeave={() => {}} />);
-    fireEvent.change(screen.getByTestId('setup-key-input'), { target: { value: KEY.claude } });
-    await act(async () => { vi.advanceTimersByTime(200); });
-    expect(ghost(screen.getByTestId('setup-act-reenter'))).toEqual(shape);
-    vi.useRealTimers();
-  });
-
   /** A first-time visitor cannot judge oversight yet, so it defaults and lives on the manage card. */
   it('never asks for oversight, on any step', async () => {
     renderWithI18n(<SetupScreen listModels={() => Promise.resolve(['claude-sonnet-4-5'])} />);

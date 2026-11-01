@@ -5,7 +5,7 @@
  */
 import { escapeRegExp } from '../../core/base/text';
 
-export const SECRET_PATTERNS: readonly RegExp[] = [
+const SECRET_PATTERNS: readonly RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{10,}\b/g,          // OpenAI-style keys (also DeepSeek/gateways/OpenRouter)
   /\bpplx-[A-Za-z0-9_-]{10,}\b/g,        // Perplexity keys
   /\bAIza[\w-]{20,}\b/g,                 // Google API keys

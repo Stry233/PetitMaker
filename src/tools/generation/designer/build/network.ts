@@ -19,7 +19,7 @@ import { mouthPaved, paveApproach, paveBand, paveHubApron, type Paving } from '.
 import type { Scope } from './scope';
 
 /** The plans the network is laid from. */
-export interface NetworkDesign {
+interface NetworkDesign {
   streets: StreetPlan;
   anchors: AnchorPlan;
   sculpt: TerrainSculpt;
@@ -28,12 +28,12 @@ export interface NetworkDesign {
 }
 
 /** The map readings every course is judged on: where pavement may go and each cell's walking level. */
-export interface NetworkGround {
+interface NetworkGround {
   pavable: Uint8Array;
   surface: Int8Array;
 }
 
-export interface NetworkOutcome {
+interface NetworkOutcome {
   /** Objects the map accepted: road tiles, buildings, court-lane tiles and crossings together. */
   placed: number;
   /** Placements the rules refused, by kind (`DesignedOutcome.refused`). */

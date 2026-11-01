@@ -23,6 +23,16 @@ export function resizeMeasurement(points: readonly [MacroCoord, MacroCoord], end
   return next;
 }
 
+/** `resizeMeasurement` with the moved end's cell kept on a `width` by `height` map. */
+export function resizeMeasurementOn(
+  size: { width: number; height: number }, points: readonly [MacroCoord, MacroCoord], endpoint: 0 | 1, cell: MacroCoord,
+): [MacroCoord, MacroCoord] {
+  return resizeMeasurement(points, endpoint, {
+    x: Math.max(0, Math.min(size.width - 1, cell.x)),
+    y: Math.max(0, Math.min(size.height - 1, cell.y)),
+  });
+}
+
 /** Inclusive cell extents of cells of `grid`, in map cells: cells 0 through 83 occupy 84 cells, not
  *  83 centre-to-centre intervals. A measurement's cells sit at half-cell corners on the placement grid. */
 export function cellEdges(cells: readonly MacroCoord[], grid: GridId = PLACEMENT_GRID): CellEdges | null {

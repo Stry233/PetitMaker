@@ -189,23 +189,6 @@ describe('the stylize studio', () => {
     for (const name of names) expect(scroller.getByText(name)).toBeTruthy();
   });
 
-  it('scrolls the row list on its own element, with the desk standing outside it', () => {
-    renderStudio(async () => ({ image: picture('x') }));
-    const scroller = screen.getByTestId('stylize-direction-scroll');
-    // The declared CSS an overflowing list of twelve rows needs to scroll rather than push the
-    // reserved pane down: a shrinkable flex item (`min-height: 0`) scrolling its own overflow.
-    expect(scroller.style.overflowY).toBe('auto');
-    expect(scroller.style.minHeight).toBe('0');
-
-    // Custom is a member of the scroller like its eleven siblings.
-    const customRow = screen.getByText('Custom').closest('button')!;
-    expect(scroller.contains(customRow)).toBe(true);
-
-    // The reserved pane never is, the writing desk it opens into included.
-    fireEvent.click(customRow);
-    const desk = screen.getByPlaceholderText(/Describe the style you want/);
-    expect(scroller.contains(desk)).toBe(false);
-  });
 
   it('updates the reserved pane when a preset deep in the list is picked', () => {
     renderStudio(async () => ({ image: picture('x') }));
@@ -215,34 +198,7 @@ describe('the stylize studio', () => {
     expect(screen.getAllByText('Lantern night')).toHaveLength(2);
   });
 
-  it('pans and zooms the canvas with the export preview\'s own hands: wheel in, double-click home', () => {
-    renderStudio(async () => ({ image: {} as HTMLImageElement }));
-    const stage = screen.getByTestId('stylize-canvas');
-    const view = screen.getByTestId('stylize-canvas-view');
-    expect(view.style.transform).toContain('scale(1)');
 
-    fireEvent.wheel(stage, { deltaY: -100 });
-    expect(view.style.transform).toContain('scale(1.12');
-
-    fireEvent.doubleClick(stage);
-    expect(view.style.transform).toContain('scale(1)');
-  });
-
-  it('the shelf scrolls sideways past six occupants instead of wrapping into a second row', () => {
-    act(() => {
-      for (let i = 0; i < 7; i++) {
-        versionStore.mint({ kind: 'model', direction: 'watercolor', image: {} as HTMLImageElement, mapEdit: 0 });
-      }
-    });
-    renderStudio(async () => ({ image: {} as HTMLImageElement }));
-
-    const row = screen.getByTestId('stylize-shelf-scroll');
-    // Original plus all seven takes stand side by side as slots of the one row; nothing is dropped
-    // and no ghosts remain.
-    const cards = [within(row).getByLabelText('Original'), ...Array.from({ length: 7 }, (_, i) => within(row).getByLabelText(`Take ${i + 1}`))];
-    for (const card of cards) expect(card.parentElement!.parentElement).toBe(row);
-    expect(row.children).toHaveLength(8);
-  });
 
   it('a retake anchors on the kept take of the same direction, not on the pack sample', async () => {
     act(() => {

@@ -1,6 +1,7 @@
 // A provider-returned image URL is fetched only over HTTPS, only as a bounded PNG, JPEG, or WebP body.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchProviderImage, MAX_IMAGE_BYTES } from '../../../../pipelines/stylize/dialects/fetch-image';
+import { fetchProviderImage } from '../../../../pipelines/stylize/dialects/fetch-image';
+import { MAX_IMAGE_BYTES } from '../../../../pipelines/stylize/dialects/image-response';
 import { StylizeError } from '../../../../pipelines/stylize/dialects/types';
 
 function reply(body: Uint8Array, contentType: string, init: { ok?: boolean; status?: number } = {}): Response {

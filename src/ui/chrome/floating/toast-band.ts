@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { SPACE } from '../../design/styles';
 
 export const TOAST_BAND_TOP = 64;
-export const TOAST_BAND_ROW = 51;
+const TOAST_BAND_ROW = 51;
 
 /** The root custom property that moves the whole band down, in chrome css px, past the surfaces
  *  standing in its place (`useToastBandShift`). */
@@ -77,7 +77,7 @@ export function bandTop(px: number): string {
 }
 
 /** The least air between a band tenant held at its words' width and the window's sides, in screen px. */
-export const BAND_WINDOW_MARGIN = SPACE[8];
+const BAND_WINDOW_MARGIN = SPACE[8];
 
 /** The air the greeting keeps under its card, inside its row. */
 export const ARRIVAL_AIR = 12;

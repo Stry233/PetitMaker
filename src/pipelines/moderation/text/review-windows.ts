@@ -4,7 +4,7 @@ import { REVIEW_MAX_CHARS, reviewText, type ReviewWorkerLease } from './reviewer
 /** Characters adjacent windows share before boundary alignment. Alignment moves each edge by at most
  *  `EDGE_SLACK`, so the shared span stays at least `REVIEW_WINDOW_OVERLAP - 2 * EDGE_SLACK`, which
  *  is longer than every restriction entry: a phrase cut by one window's edge lies whole in the next. */
-export const REVIEW_WINDOW_OVERLAP = 256;
+const REVIEW_WINDOW_OVERLAP = 256;
 const EDGE_SLACK = 64;
 
 const isWordChar = (char: string | undefined) => char !== undefined && /[\p{L}\p{N}\p{M}]/u.test(char);

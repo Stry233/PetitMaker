@@ -6,7 +6,7 @@
  * limits. A test that opens a lazy window waits for it: a chunk still loading at the next reset
  * evaluates half-bound into the next graph.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import type { ModalId } from '../../../../state/store';
@@ -36,6 +36,9 @@ async function loadLazyWindows(): Promise<void> {
   await loadHelpModal();
 }
 
+// Transforms the shell graph once, outside any test's timeout, so the first mount is not the one to pay for it.
+beforeAll(async () => { await import('../../../../ui/shell/Shell'); }, 120_000);
+
 afterEach(() => {
   cleanup();
   vi.resetModules();
@@ -58,6 +61,7 @@ const SHEET: readonly string[] = [
 ];
 
 describe('the menu', () => {
+  /** A row that acts on the map belongs to the shelf it acts on, so the sheet holds the windows alone. */
   it('opens on the menu button and offers the five windows and nothing else', async () => {
     await mountShell();
     expect(screen.queryByRole('menu')).toBeNull();
@@ -67,16 +71,6 @@ describe('the menu', () => {
     expect(menu).toBeTruthy();
     const items = screen.getAllByRole('menuitem');
     expect(items.map((el) => el.textContent)).toEqual(SHEET);
-  });
-
-  /** A row that acts on the map belongs to the shelf it acts on. */
-  it('offers nothing that acts on the map', async () => {
-    await mountShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
-    await screen.findByRole('menu');
-
-    expect(screen.queryByRole('menuitem', { name: 'Clear generated' })).toBeNull();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(ROWS.length);
   });
 
   it.each(ROWS)('the %s row opens its window', async (label, modal) => {

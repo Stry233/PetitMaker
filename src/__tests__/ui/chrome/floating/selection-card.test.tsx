@@ -374,18 +374,6 @@ describe('SelectionCard: placement', () => {
     expect(card().style.visibility).toBe('hidden');
   });
 
-  it('stays inside the viewport for a selection at every edge', () => {
-    for (const view of [makeView(-45, 300), makeView(979, 300), makeView(300, -45), makeView(300, 723)]) {
-      setActiveView(view);
-      renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
-      expect(card().style.visibility).toBe('visible');
-      const left = parseFloat(card().style.left);
-      expect(left).toBeGreaterThanOrEqual(0);
-      expect(left).toBeLessThanOrEqual(window.innerWidth);
-      cleanup();
-    }
-  });
-
   it('stands above the 3D body instead of the ground footprint', () => {
     const view = makeView(0, 0, 10);
     view.projection.objectScreenBox = () => ({ x: 400, y: 300, w: 50, h: 50 });

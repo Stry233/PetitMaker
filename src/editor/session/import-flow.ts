@@ -26,7 +26,7 @@ export interface ImportRouting {
 
 /** Where a file went: to a redirect card, on to its window, refused, back to the surface as a video
  *  it reads, waiting as a decoded map, or nowhere (a refusal already reported). */
-export type ImportRoute =
+type ImportRoute =
   | { to: 'card'; redirect: HandedImport }
   | { to: 'handed' }
   | { to: 'refused' }

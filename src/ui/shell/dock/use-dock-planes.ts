@@ -97,7 +97,10 @@ export function useDockPlanes() {
     const root = document.documentElement.style;
     if (live !== null) root.setProperty(DOCK_DEPTH_VAR, String(live));
     const frame = frameRef.current, map = mapRef.current, vig = vignetteRef.current;
-    const { zoom: zoomNow, windowH } = liveFrameZoom(live ?? undefined, upright, pictured ? { touch, uiZoom } : undefined);
+    // A pictured shell reads its posed window, not the browser's.
+    const { zoom: zoomNow, windowH } = pictured
+      ? liveFrameZoom(live ?? undefined, upright, { touch, uiZoom }, { width: vw, height: vh })
+      : liveFrameZoom(live ?? undefined, upright);
     const g0 = planeGeometry(dockAside.get(), atLeft, live, windowH, zoomNow);
     const g = dockDrag.get() === null || depth === null ? g0 : { ...g0, between: true };
     for (const [k, value] of Object.entries(dockVars(atLeft, g.refW, g.side))) root.setProperty(k, value);

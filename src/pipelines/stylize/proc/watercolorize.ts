@@ -21,7 +21,7 @@ import { makeRng } from '../../../core/base/rng';
 
 export interface Bitmap { data: Uint8ClampedArray; width: number; height: number }
 
-export interface WatercolorizeOptions {
+interface WatercolorizeOptions {
   seed: number;
   /** Warp amplitude as a fraction of the image's short edge. */
   warp?: number;

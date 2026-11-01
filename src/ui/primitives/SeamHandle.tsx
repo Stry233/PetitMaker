@@ -6,6 +6,7 @@
  * A finger's hit area grows past the strip (`reach`) or, where the strip's own sides are taken, past
  * its grip (`gripReach`). Placement and what a depth means are the owner's.
  */
+import { helpAttributes, type HelpTarget } from './help-target';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { easingCss, seconds } from '../design/motion';
@@ -25,7 +26,7 @@ export const SEAM_HANDLE = { h: 24, grip: { w: 40, h: 5 } } as const;
 const GRIP_INK = { light: inkTint(0.2), dark: rgbaOf(ON_DARK, 0.35) } as const;
 
 export function SeamHandle({
-  label, zoom, value, clamp, onDrag, onRelease, onStep, follows = false, style, reach = { top: false }, gripReach, plate = 'light', testId, morph, arrive,
+  label, zoom, value, clamp, onDrag, onRelease, onStep, follows = false, style, reach = { top: false }, gripReach, plate = 'light', testId, morph, arrive, helpTarget,
 }: {
   /** The separator's accessible name. */
   label: string;
@@ -59,6 +60,8 @@ export function SeamHandle({
   morph?: string;
   /** The fade it arrives on as it mounts, where it shows up once its seam has formed. */
   arrive?: MotionId;
+  /** The Help topic What's this? opens for it. */
+  helpTarget?: HelpTarget;
 }) {
   // A strip as wide as the window: it takes each box exactly, its grip too small to show the stretch.
   const marked = useMorph(morph ?? '', 'fill');
@@ -131,6 +134,7 @@ export function SeamHandle({
       ref={self}
       tabIndex={0}
       data-testid={testId}
+      {...helpAttributes(helpTarget)}
       {...(morph ? marked : {})}
       onPointerDown={down}
       onPointerMove={move}

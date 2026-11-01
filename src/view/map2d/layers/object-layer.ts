@@ -51,7 +51,7 @@ function drawnAs(o: PlacedObject): string {
 }
 
 /** What the layer reads from the view that owns it. */
-export interface ObjectLayerDeps {
+interface ObjectLayerDeps {
   /** The map this layer draws: the editor's in the editor, a figure's or a capture's own elsewhere. */
   state(): GridState | null;
   /** Opens the owning renderer's render window. */

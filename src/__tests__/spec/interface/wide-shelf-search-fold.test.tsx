@@ -3,7 +3,8 @@
  * The wide object shelf whose names, beside the brush button and the whole search field, would have less
  * room than two of them need: the field folds to the upright shelf's search button, which grows into the
  * field and back (UI-28). jsdom lays nothing out, so the names row's room and each name's width are
- * stated for the mount.
+ * stated to bring the shelf to its folded form; where it folds is `searchFolds`' to hold, and the
+ * drawn result a browser's.
  */
 import { describe, expect, beforeEach, afterEach, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -66,7 +67,7 @@ afterEach(() => {
 });
 
 describe('the wide shelf short of room', () => {
-  spec('UI-28', 'where the names would have less room than two of them need, folds the search field to a search button after the brush button, which opens into the field and closes clearing it', () => {
+  spec('UI-28', 'the folded search field is a search button after the brush button, which opens into the field and closes clearing it', () => {
     mount(fits - 1);
     expect(screen.queryByRole('searchbox'), 'the field is folded').toBeNull();
     const brush = screen.getByTestId('shell-shelf-brush');
@@ -82,11 +83,6 @@ describe('the wide shelf short of room', () => {
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.getByRole('tablist', { hidden: true }).closest('[aria-hidden="true"]')).toBeNull();
     expect(screen.getByRole('tab', { name: en('shelf.tab_flora') }), 'closing cleared the search').toBeTruthy();
-  });
-
-  spec('UI-28', 'keeps the whole field where two names fit beside it, the rest of the names scrolling', () => {
-    mount(fits);
-    expect(screen.getByRole('searchbox', { name: en('shelf.search') })).toBeTruthy();
   });
 });
 

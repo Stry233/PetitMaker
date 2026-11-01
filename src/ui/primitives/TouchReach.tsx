@@ -38,7 +38,7 @@ function axisStyle(size: number | undefined, reach: number, start: boolean, end:
 }
 
 /** The area's box for a `w` x `h` control (its own px) that a finger needs `reach` px of. */
-export function reachStyle(w: number | undefined, h: number | undefined, reach: number, sides: ReachSides = EVERY_SIDE): CSSProperties {
+function reachStyle(w: number | undefined, h: number | undefined, reach: number, sides: ReachSides = EVERY_SIDE): CSSProperties {
   const y = axisStyle(h, reach, sides.top, sides.bottom, ['top', 'bottom', 'height', 'translateY']);
   const x = axisStyle(w, reach, sides.left, sides.right, ['left', 'right', 'width', 'translateX']);
   const shifts = [x.shift, y.shift].filter(Boolean);

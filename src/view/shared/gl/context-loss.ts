@@ -3,7 +3,7 @@
  * mobile tab loses its GPU process, and a canvas whose `webglcontextrestored` never arrives stays
  * blank until its renderer is rebuilt on a fresh context.
  */
-export interface ContextLossOptions {
+interface ContextLossOptions {
   /** Whether the canvas's context is lost right now (`gl.isContextLost()`). */
   isLost: () => boolean;
   /** Called once, when a loss outlives the grace or is found on return to the foreground. */

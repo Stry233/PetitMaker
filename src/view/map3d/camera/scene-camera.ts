@@ -38,7 +38,7 @@ export function maxHeight(state: GridState): number {
 }
 
 /** What the camera reads from the scene that holds it. */
-export interface SceneCameraHost {
+interface SceneCameraHost {
   requestRender(): void;
   /** Tells the chrome anchored to the map that the view moved. */
   viewportChanged(): void;

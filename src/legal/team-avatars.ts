@@ -21,7 +21,7 @@ const avatarFiles = import.meta.glob('../assets/team/*.jpg', { eager: true, impo
 
 // Keyed by Bilibili mid (the numeric id in space.bilibili.com/<mid>), which is each file's basename
 // and the `bilibili` field on each credited member; config.ts owns the names.
-export const TEAM_AVATARS: Record<string, string> = Object.fromEntries(
+const TEAM_AVATARS: Record<string, string> = Object.fromEntries(
   Object.entries(avatarFiles).map(([path, url]) => [path.slice(path.lastIndexOf('/') + 1, -'.jpg'.length), url]),
 );
 

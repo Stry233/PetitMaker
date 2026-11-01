@@ -33,7 +33,7 @@ const card: CSSProperties = {
 const stripe: CSSProperties = { flex: '0 0 auto', width: 4, alignSelf: 'stretch', borderRadius: radii.hair, background: ACCENT };
 
 /** The width a notice may take: its content up to the default cap, or a fixed share of the window. */
-export const NOTICE_WIDTH = { maxWidth: 'min(92vw, 560px)' } as const satisfies CSSProperties;
+const NOTICE_WIDTH = { maxWidth: 'min(92vw, 560px)' } as const satisfies CSSProperties;
 
 interface NoticeBarProps extends Omit<HTMLMotionProps<'div'>, 'style' | 'children'> {
   /** Which window edge the card stands off, and how far (the card's own css px, or any CSS length). */

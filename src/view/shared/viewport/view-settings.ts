@@ -30,7 +30,7 @@ export interface ViewSettingsTarget {
   setPassiveOverlays(overlays: PassiveOverlays): void;
 }
 
-export const passiveOverlaysOf = (s: EditorStore): PassiveOverlays =>
+const passiveOverlaysOf = (s: EditorStore): PassiveOverlays =>
   ({ grid: shownGridOf(s), numbers: layerNumbersShown(s), chunks: s.showChunkBounds });
 
 /** Gives `target` the settings as they stand. */

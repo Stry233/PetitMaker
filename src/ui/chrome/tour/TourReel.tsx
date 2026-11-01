@@ -33,6 +33,7 @@ import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { asksToSaveData } from '../../../platform/device/device-quality';
 import { useHandoffCovered } from '../../session/splash-handoff';
+import { helpTargetAttr } from '../../session/help-targets';
 import { REEL_CAPTIONS, REEL_TYPES, reelTiming, type ReelFiles, type ReelTiming } from './reels';
 import { SWIPE_VAR } from './use-swipe-turn';
 
@@ -62,7 +63,7 @@ const TAB_GLYPH = 16;
 
 /** The corner tab's side on a frame rounded by `radius`: it takes the whole rounded corner, so the
  *  frame's outline runs on along its outer edges. */
-export function reelTab(radius: number): number {
+function reelTab(radius: number): number {
   return Math.max(TAB_LEAST, radius + TAB_BEYOND);
 }
 
@@ -81,7 +82,7 @@ const TAB_MOST = 1.75;
 /** How an enlarged reel's parts grow over their size in the card, for a frame drawn `k` times wider at
  *  `zoom` with corner radius `radius` in the card: the bars and caption by `foot`, and the corner tab
  *  and its glyph by `tab`, which in touch mode keeps the tab at least `least` window px across. */
-export function enlargedScales(k: number, zoom: number, radius: number, least = 0): { foot: number; tab: number } {
+function enlargedScales(k: number, zoom: number, radius: number, least = 0): { foot: number; tab: number } {
   return { foot: Math.min(k, FOOT_MOST), tab: Math.max(Math.min(k, TAB_MOST), least / (reelTab(radius) * zoom)) };
 }
 
@@ -176,7 +177,7 @@ const enlargedSpan = (span: number, foot: number, w: number): number => Math.min
  * for a clip enlarged to `enlarged` on a plate `plate` padded by `ENLARGED_PAD`, all in card px.
  * Holding every part at both ends of the glide, it holds them all through it.
  */
-export function liftedPlateShrink(frame: Size, foot: number, span: number, enlarged: Size, plate: Size): number {
+function liftedPlateShrink(frame: Size, foot: number, span: number, enlarged: Size, plate: Size): number {
   return Math.max(frame.w / enlarged.w, span / enlarged.w, (frame.h + foot) / (plate.h - 2 * ENLARGED_PAD));
 }
 
@@ -407,6 +408,7 @@ export function TourReel({ files, width, height, centred, enlarge = null, onPlay
                 {...name.bind}
                 onClick={toggle}
                 data-testid="tour-reel-enlarge"
+                {...helpTargetAttr('tour', 'tour-reel')}
                 style={{ position: 'absolute', inset: 0, padding: 0, border: 'none', borderRadius: radius, background: 'transparent', cursor: cursors.clickable }}
               >{name.bubble}</ActionButton>
             )}

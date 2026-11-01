@@ -1,7 +1,7 @@
 /*
  * The typed way for a test to seed the editor store: a `Partial<EditorStore>` parameter keeps
  * TypeScript's excess-property check, so a renamed or removed field is a compile error rather than a
- * seed that silently asserts nothing (`__tests__/repo/store-seed-typing.test.ts` bans the cast).
+ * seed that silently asserts nothing.
  *
  * Not for a test that calls `vi.resetModules()` and re-imports the store: this helper closes over the
  * outer graph's store, so seed the fresh graph's own `useEditorStore` there (as

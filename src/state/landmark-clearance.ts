@@ -20,16 +20,16 @@ import {
 } from './relocation-plan';
 
 /** Where a landmark stood when a map was saved: its laid footprint. */
-export type LandmarkFootprint = Pick<LandmarkConfig, 'id' | 'x' | 'y' | 'width' | 'height'>;
+type LandmarkFootprint = Pick<LandmarkConfig, 'id' | 'x' | 'y' | 'width' | 'height'>;
 
 /** Why an object came off the map. `covered`: a landmark's footprint overlaps it, or it stands on
  *  the ground the landmark rests on where the placement rules refuse it. `overlapping`: the
  *  repair took it from a cell where it stood on something it may not stand on (V-PLACE-COATED).
  *  `invalid`: the repair took it from a cell another post-stroke rule flagged. */
-export type CompatibilityIssue = 'covered' | 'overlapping' | 'invalid';
+type CompatibilityIssue = 'covered' | 'overlapping' | 'invalid';
 
 /** One object a load took off the map, as it was saved; its taint stays for when it is placed back. */
-export interface AffectedObject {
+interface AffectedObject {
   object: PlacedObject;
   issue: CompatibilityIssue;
   /** The landmark covering it, for `covered`. */
@@ -46,11 +46,11 @@ export interface AffectedObject {
 /** One terrain cell the load changed: a cell under a landmark given its template's terrain
  *  (`landmark` names it), or a cell the rules refuse or flag given back to its template's terrain,
  *  or cleared where it held that already. */
-export interface TerrainChange { x: number; y: number; before: TerrainCell | null; after: TerrainCell | null; landmark?: string }
+interface TerrainChange { x: number; y: number; before: TerrainCell | null; after: TerrainCell | null; landmark?: string }
 
 /** A landmark the load made room for: where the save had it, when that is known and differs, where
  *  it stands now, and how far its centre moved in cells (0 when unknown). */
-export interface LandmarkShift { id: string; was?: LandmarkFootprint; now: LandmarkFootprint; distance: number }
+interface LandmarkShift { id: string; was?: LandmarkFootprint; now: LandmarkFootprint; distance: number }
 
 /** What a load found against the current rules, under its landmarks and anywhere else, and what it
  *  did about it. Objects are only taken off; applying `plan` (`relocation-plan.ts:applyRelocation`)

@@ -34,7 +34,7 @@ import type { I18nKey } from '../i18n/keys';
 
 export type { DocId };
 
-export type DocSourceKind = 'authored' | 'canonical-root' | 'generated';
+type DocSourceKind = 'authored' | 'canonical-root' | 'generated';
 
 export interface DocMeta {
   id: DocId;

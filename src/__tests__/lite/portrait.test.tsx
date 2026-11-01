@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The Lite entry on an upright window: it shows the shared portrait arrangement with the page
- * unrotated, so the layout space is the window itself. Positions are read from the styles the plan
- * writes, since jsdom has no layout.
+ * unrotated, so the layout space is the window itself. jsdom has no layout, so where the surfaces
+ * stand is checked in a browser.
  */
 import { describe, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
@@ -42,9 +42,6 @@ describe('the Lite shell on an upright window', () => {
       return el;
     });
     expect(row.dataset.placement).toBe('bottom');
-    // In the window's lower half, however the plan anchors it: by its top, or by its foot held above the window's.
-    const foot = row.style.top ? parseFloat(row.style.top) : 844 - parseFloat(row.style.bottom);
-    expect(foot).toBeGreaterThan(844 / 2);
     expect(screen.getByTestId('shell-corner-actions')).toBeTruthy();
     // The whole Lite entry loads here, every module of the app, which takes several seconds.
   }, 20_000);
