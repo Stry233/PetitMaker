@@ -74,6 +74,20 @@ describe('agent session store', () => {
     expect(setItem.mock.calls.filter(([k]) => k === PREFS.agentLogV3.key)).toHaveLength(1);
   });
 
+  it.each(['pagehide', 'visibilitychange'])('writes the owed save at once on %s, as a phone may never run the timer', (event) => {
+    useAgentSession.getState().hydrate();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    setItem.mockClear();
+    append(useAgentSession.getState().log, { kind: 'order', text: 'build', mapContext: 'ctx' });
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    (event === 'pagehide' ? window : document).dispatchEvent(new Event(event));
+    hidden.mockRestore();
+    expect(setItem.mock.calls.filter(([k]) => k === PREFS.agentLogV3.key)).toHaveLength(1);
+    vi.advanceTimersByTime(600);
+    expect(setItem.mock.calls.filter(([k]) => k === PREFS.agentLogV3.key)).toHaveLength(1);
+    setItem.mockRestore();
+  });
+
   it('setLive publishes on the next frame, and panelView then reflects streaming', () => {
     useAgentSession.getState().hydrate();
     append(useAgentSession.getState().log, { kind: 'order', text: 'build', mapContext: 'ctx' });
@@ -86,6 +100,27 @@ describe('agent session store', () => {
     expect(useAgentSession.getState().epoch).toBe(epochBefore + 1);
     const view = panelView(useAgentSession.getState());
     expect(view.phase).toBe('streaming');
+  });
+
+  /** The stall notice measures silence from this stamp, so only movement in the stream may advance it. */
+  it('stamps when the in-flight turn last moved, and leaves the stamp alone as the turn closes', () => {
+    expect(useAgentSession.getState().liveAt, 'nothing has streamed').toBe(0);
+
+    const start = Date.now();
+    useAgentSession.getState().setLive([{ kind: 'reasoning', text: 'hm', done: false }]);
+    vi.advanceTimersByTime(FRAME_MS);
+    const first = useAgentSession.getState().liveAt;
+    expect(first).toBeGreaterThanOrEqual(start);
+
+    vi.advanceTimersByTime(30_000);
+    useAgentSession.getState().setLive([{ kind: 'reasoning', text: 'hm, a pond', done: false }]);
+    vi.advanceTimersByTime(FRAME_MS);
+    const second = useAgentSession.getState().liveAt;
+    expect(second - first).toBeGreaterThanOrEqual(30_000);
+
+    vi.advanceTimersByTime(5_000);
+    useAgentSession.getState().setLive(null);
+    expect(useAgentSession.getState().liveAt).toBe(second);
   });
 
   it('panelView memoizes: same (log, epoch, live) inputs return the identical object', () => {
@@ -332,15 +367,23 @@ describe('agent session store', () => {
     expect(useAgentSession.getState().epoch).toBe(epochBefore + 1);
   });
 
-  it('setChildLive updates childLive, and clearSession resets it to null', () => {
+  it('setChildLive keeps each call\'s helper apart, and clearSession empties them', () => {
     useAgentSession.getState().hydrate();
-    expect(useAgentSession.getState().childLive).toBeNull();
+    expect(useAgentSession.getState().childLive).toEqual({});
 
-    useAgentSession.getState().setChildLive({ task: 'raise a hill', opName: 'paint_terrain', ops: 2 });
-    expect(useAgentSession.getState().childLive).toEqual({ task: 'raise a hill', opName: 'paint_terrain', ops: 2 });
+    const hill = { task: 'raise a hill', opName: 'draw_area', ops: 2 };
+    const grove = { task: 'plant a grove', ops: 0 };
+    useAgentSession.getState().setChildLive('d1', hill);
+    useAgentSession.getState().setChildLive('d2', grove);
+    expect(useAgentSession.getState().childLive).toEqual({ d1: hill, d2: grove });
 
+    // One helper ending leaves the other's progress standing.
+    useAgentSession.getState().setChildLive('d1', null);
+    expect(useAgentSession.getState().childLive).toEqual({ d2: grove });
+
+    useAgentSession.getState().setChildLive('d1', hill);
     useAgentSession.getState().clearSession();
-    expect(useAgentSession.getState().childLive).toBeNull();
+    expect(useAgentSession.getState().childLive).toEqual({});
   });
 
   /**

@@ -9,15 +9,23 @@ import {
   helperInterrupted, planMalformed, planProgressRefusal, planProgressResult, planRevisionLimit, planSet,
   reissueMessage, repeatRefusal, replyNoted, revertNudge, toolCrashed, verbatimRetryNudge,
 } from './nudges';
+import { loopNoteResult } from './tool-result';
 import { append, type SessionLog } from './log';
 import { PROTOCOL } from './protocol';
-import { parseStages, type JobOutcome, type Part, type ToolPart } from './types';
+import { MAP_LEFT, parseStages, type JobOutcome, type Part, type ToolPart } from './types';
 import { createSkippableSleeper } from './skippable-sleep';
-import { writesMap } from './tool-facts';
+import { gateLevelOf, writesMap } from './tool-facts';
 import { type AssistantEvent, deriveBadCallIds, jobEvents, eventsAfter, existingGateId, hasAllowAlways, hasJobCheckpoint, hasPlanEvent, isCallResolved, pauseIsPending } from './job-reads';
 import type { ExecutedResult, LoopDeps } from './loop';
 
 type ReissueSignal = 'continue' | 'paused' | 'aborted';
+
+/**
+ * The hand-overs that have started, per log this session has run: a hand-over a pause held back before
+ * it started runs when the job resumes, and one that had started is never run again. A log restored
+ * after a reload has no entry, so every unresolved hand-over in it counts as started.
+ */
+const begun = new WeakMap<SessionLog, Set<string>>();
 
 export function isToolPart(p: Part): p is ToolPart { return p.kind === 'tool'; }
 
@@ -56,7 +64,8 @@ export function endJob(
   deps: LoopDeps,
   end: { outcome: JobOutcome; summary?: string; question?: true },
 ): void {
-  append(log, { kind: 'jobEnd', ...end, undoIndex: deps.undoStackSize() });
+  const cause = end.outcome === 'aborted' && deps.signal.reason === MAP_LEFT ? { stoppedBy: MAP_LEFT } : null;
+  append(log, { kind: 'jobEnd', ...end, ...cause, undoIndex: deps.undoStackSize() });
 }
 
 /** The wait a job takes when its deps bring no sleep of their own: a sleeper nothing skips. */
@@ -81,8 +90,9 @@ async function askAndWait(
 
 /** Resolves a call's supervision gate. */
 async function resolveGate(log: SessionLog, deps: LoopDeps, part: ToolPart, assistantSeq: number): Promise<boolean | 'aborted'> {
+  const level = gateLevelOf(deps.executor.facts, part.name, part.input);
   const gate = shouldGate({
-    isWrite: writesMap(deps.executor.facts, part.name), isWide: deps.executor.facts.access(part.name) === 'wide',
+    isWrite: level !== 'none', isWide: level === 'wide',
     oversight: deps.oversight, allowAll: hasAllowAlways(log),
   });
   return gate ? askAndWait(log, deps, 'tool', part, assistantSeq) : true;
@@ -114,8 +124,7 @@ async function handleUpdatePlan(log: SessionLog, deps: LoopDeps, part: ToolPart,
   const stages = parseStages(part.input.stages);
   if (!stages) {
     append(log, {
-      kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
-      content: planMalformed(),
+      kind: 'toolResult', callId: part.callId, name: part.name, ...loopNoteResult(planMalformed()),
       ...resultStamp(deps, part.name, assistantSeq),
     });
     return 'continue';
@@ -123,9 +132,7 @@ async function handleUpdatePlan(log: SessionLog, deps: LoopDeps, part: ToolPart,
   // Reject excess revisions before supervision because the plan cannot be accepted.
   if (jobEvents(log).filter((e) => e.kind === 'plan').length >= MAX_PLAN_FILINGS) {
     append(log, {
-      kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
-      detail: { damper: true },
-      content: planRevisionLimit(),
+      kind: 'toolResult', callId: part.callId, name: part.name, ...loopNoteResult(planRevisionLimit(), { damper: true }),
       ...resultStamp(deps, part.name, assistantSeq),
     });
     return 'continue';
@@ -138,7 +145,7 @@ async function handleUpdatePlan(log: SessionLog, deps: LoopDeps, part: ToolPart,
     const revision = jobEvents(log).filter((e) => e.kind === 'plan').length + 1;
     append(log, { kind: 'plan', stages, revision });
     append(log, {
-      kind: 'toolResult', callId: part.callId, name: part.name, content: planSet(), isError: false,
+      kind: 'toolResult', callId: part.callId, name: part.name, content: planSet(stages.length, deps.executor.facts.guides), isError: false,
       ...resultStamp(deps, part.name, assistantSeq),
     });
   }
@@ -159,66 +166,66 @@ export async function processCalls(
   const sleep = deps.sleep ?? realSleep;
   /** Whether this batch has executed a write, whatever its result, so the next write waits a beat. */
   let built = false;
-  for (const part of toolParts) {
-    if (isCallResolved(eventsAfter(log, assistantSeq), part.callId)) continue;
+  if (!resuming && !begun.has(log)) begun.set(log, new Set());
+
+  /** Everything that stands before a call runs: 'run' to execute it, 'skip' when it is already answered. */
+  const admit = async (part: ToolPart): Promise<'run' | 'skip' | 'paused' | 'aborted'> => {
+    if (isCallResolved(eventsAfter(log, assistantSeq), part.callId)) return 'skip';
     if (deps.signal.aborted) return 'aborted';
     if (parkIfPausePending(log)) return 'paused';
 
     if (badCallIds.has(part.callId)) {
       append(log, {
-        kind: 'toolResult', callId: part.callId, name: part.name, content: reissueMessage(), isError: true,
+        kind: 'toolResult', callId: part.callId, name: part.name, ...loopNoteResult(reissueMessage()),
         ...resultStamp(deps, part.name, assistantSeq),
       });
-      continue;
+      return 'skip';
     }
     if (part.name === PROTOCOL.reply && toolNames.has(part.name)) {
       append(log, {
         kind: 'toolResult', callId: part.callId, name: part.name, content: replyNoted(), isError: false,
         ...resultStamp(deps, part.name, assistantSeq),
       });
-      continue;
+      return 'skip';
     }
     if (part.name === PROTOCOL.plan && toolNames.has(part.name)) {
       const outcome = await handleUpdatePlan(log, deps, part, assistantSeq);
-      if (outcome !== 'continue') return outcome;
-      continue;
+      return outcome === 'continue' ? 'skip' : outcome;
     }
 
-    // A delegated helper may have partially edited the map without a resumable child log.
-    if (resuming && part.name === PROTOCOL.delegate) {
+    // A delegated helper that had started may have partially edited the map without a resumable child log.
+    if (resuming && part.name === PROTOCOL.delegate && begun.get(log)?.has(part.callId) !== false) {
       append(log, {
-        kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
-        content: helperInterrupted(),
+        kind: 'toolResult', callId: part.callId, name: part.name, ...loopNoteResult(helperInterrupted()),
         ...resultStamp(deps, part.name, assistantSeq),
       });
-      continue;
+      return 'skip';
     }
 
     // Reuse an identical failure until a success or map write changes its basis.
     const streak = repeatedFailure(log, { name: part.name, args: part.input });
     if (streak) {
       append(log, {
-        kind: 'toolResult', callId: part.callId, name: part.name, isError: true,
-        content: repeatRefusal(deps.executor.facts.guides, streak),
-        detail: { damper: true, repeatRefused: true },
+        kind: 'toolResult', callId: part.callId, name: part.name,
+        ...loopNoteResult(repeatRefusal(deps.executor.facts.guides, streak), { damper: true, repeatRefused: true }),
         ...resultStamp(deps, part.name, assistantSeq),
       });
-      continue;
+      return 'skip';
     }
 
     const proceed = await resolveGate(log, deps, part, assistantSeq);
     if (proceed === 'aborted') return 'aborted';
     if (deps.signal.aborted) return 'aborted';
     if (parkIfPausePending(log)) return 'paused';
-    if (!proceed) continue; // skipped: the projection synthesizes the model-visible result
+    if (!proceed) return 'skip'; // skipped: the projection synthesizes the model-visible result
 
     const isWrite = writesMap(deps.executor.facts, part.name);
     if (isWrite && !hasJobCheckpoint(log)) {
       append(log, { kind: 'checkpoint', undoIndex: deps.undoStackSize(), label: 'job' });
     }
 
-    // Pace consecutive writes and let the job signal interrupt the wait.
-    if (isWrite && built) {
+    // Pace consecutive writes and let the job signal interrupt the wait. A hand-over is not an edit to watch land.
+    if (isWrite && built && part.name !== PROTOCOL.delegate) {
       try {
         await sleep(BUILD_BEAT_MS, deps.signal);
       } catch {
@@ -228,13 +235,21 @@ export async function processCalls(
 
     if (deps.signal.aborted) return 'aborted';
     if (parkIfPausePending(log)) return 'paused';
-    let executed: ExecutedResult;
+    return 'run';
+  };
+
+  const run = async (part: ToolPart): Promise<ExecutedResult> => {
+    if (part.name === PROTOCOL.delegate) begun.get(log)?.add(part.callId);
     try {
-      executed = await deps.executor.execute({ callId: part.callId, name: part.name, args: part.input });
-      if (isWrite) built = true;
+      const executed = await deps.executor.execute({ callId: part.callId, name: part.name, args: part.input });
+      if (writesMap(deps.executor.facts, part.name)) built = true;
+      return executed;
     } catch (err) {
-      executed = { content: toolCrashed(err), isError: true };
+      return loopNoteResult(toolCrashed(err));
     }
+  };
+
+  const file = (part: ToolPart, executed: ExecutedResult): void => {
     let content = executed.content;
     let dampered = false;
     if (executed.isError) {
@@ -252,6 +267,26 @@ export async function processCalls(
       ...(detail !== undefined ? { detail } : {}),
       ...resultStamp(deps, part.name, assistantSeq),
     });
+  };
+
+  for (let i = 0; i < toolParts.length; i++) {
+    const part = toolParts[i]!;
+    const first = await admit(part);
+    if (first === 'aborted' || first === 'paused') return first;
+    if (first === 'skip') continue;
+    // Helpers briefed side by side in one turn work at the same time; their results are filed in the order asked.
+    const batch = [part];
+    let held: 'paused' | 'aborted' | undefined;
+    while (part.name === PROTOCOL.delegate && toolParts[i + 1]?.name === PROTOCOL.delegate) {
+      const next = toolParts[++i]!;
+      const ready = await admit(next);
+      if (ready === 'run') batch.push(next);
+      else if (ready !== 'skip') { held = ready; break; }
+    }
+    // A pause or a stop that arrives while the batch is admitted starts none of it.
+    if (held) return held;
+    const results = await Promise.all(batch.map(run));
+    batch.forEach((p, k) => file(p, results[k]!));
   }
   return 'continue';
 }

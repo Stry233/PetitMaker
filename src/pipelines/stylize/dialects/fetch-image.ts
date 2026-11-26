@@ -2,7 +2,8 @@
 // unrelated to their API origin, so the host is free; scheme, image signature, and body size are not.
 import { scrub } from './errors';
 import { isAbortError } from '../../../platform/async/abort';
-import { bytesToDataUrl, MAX_IMAGE_BYTES, sniffImageType } from './image-response';
+import { bytesToDataUrl } from '../../../platform/remote/data-url';
+import { MAX_IMAGE_BYTES, sniffImageType } from './image-response';
 import { StylizeError } from './types';
 import { concatBytes } from '../../../core/base/bytes';
 

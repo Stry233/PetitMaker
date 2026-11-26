@@ -8,7 +8,7 @@ import { adjustContext } from '../paint/curve-session';
 import { LADDER_TOP, raiseFooting } from '../../macros/terrain/raise';
 import { surfaceAt } from '../../macros/terrain/terrain';
 import { previewMacroAsync } from '../../macros/runtime/preview';
-import { buildMacroRun, EMPTY_KEY, hasMacroBuildRunner, landMacroRun, MACROS, prepareMacro, type MacroBuild, type MacroOpts } from '../../macros/run';
+import { buildMacroThen, EMPTY_KEY, landMacroRun, MACROS, type MacroBuild, type MacroOpts } from '../../macros/run';
 import { stampMap, stillStamped, type MapStamp } from '../../../core/model/fingerprint';
 import { mixedCellSet } from '../../../core/grid/grids';
 import { LatestRequest } from './latest-request';
@@ -169,12 +169,10 @@ export class MountainSpray {
         if (this.held === s) this.held = null;
         this.remember(s.ctx);
       };
-      if (!hasMacroBuildRunner(s.ctx.macroContext)) {
-        try { land(buildMacroRun(s.ctx.macroContext, 'raise', opts)); } catch (error) { failed(error); }
-        continue;
-      }
+      const pending = buildMacroThen(s.ctx.macroContext, 'raise', opts, { land, failed });
+      if (!pending) continue;
       this.busy = true;
-      void prepareMacro(s.ctx.macroContext, 'raise', opts).then(land).catch(failed).finally(() => {
+      void pending.finally(() => {
         if (token === this.token) this.pump();
       });
       return;

@@ -19,7 +19,7 @@
 import type { CSSProperties } from 'react';
 import { cursors, font, radii, UNAVAILABLE } from './styles';
 import { roleFont } from './text-weight';
-import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK, FRAME_INK, MUTED, DANGER_SURFACE, DANGER_INK } from './tokens';
+import { ACTIVE, INK, INSET, LINE, ON_DARK, PANEL_EDGE, PLATE, PLATE_INK, TRACK, FRAME_INK, MUTED, DANGER_SURFACE, DANGER_INK, rgbaOf } from './tokens';
 
 /** The modal card: the cream plate a `ModalShell` is drawn on. */
 export const cozyPanel: CSSProperties = {
@@ -84,12 +84,26 @@ export const windowInset: CSSProperties = {
   borderRadius: radii.lg,
 };
 
-/** A one-line text field on the plate, rounded by itself (so it takes no field-wrap focus marker). */
+/** A one-line field box's height in css px, border-box: a 26 px line, 8 px padding and a 1.5 px border on each side. */
+export const WINDOW_FIELD_BOX = 26 + 8 * 2 + 1.5 * 2;
+
+/** The text field's box on the plate (`primitives/TextField.tsx` draws it). It writes no `outline`,
+ *  which as an inline style would outrank the focus ring the box wears. */
 export const windowField: CSSProperties = {
   fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset,
   border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 10px',
-  outline: 'none', width: '100%', boxSizing: 'border-box',
+  width: '100%', boxSizing: 'border-box',
 };
+
+/** How far the ring a picked picture or choice wears stands outside its edge, in css px. */
+const PICKED_RING_WIDTH = 2.5;
+
+/** The ring a picked picture wears outside its edge, or the same ring at no width and no colour, so
+ *  a change between the two is one interpolated shadow. Follow it after any inset hairline the
+ *  picture keeps. */
+export function pickedRing(picked: boolean): string {
+  return picked ? `0 0 0 ${PICKED_RING_WIDTH}px ${skin.active}` : `0 0 0 0 ${rgbaOf(ACTIVE, 0)}`;
+}
 
 export type PillVariant = 'quiet' | 'active' | 'danger';
 
@@ -112,15 +126,16 @@ export function windowPill(variant: PillVariant = 'quiet', disabled = false, on:
 }
 
 /** A count or status tag in a window row: the pill's type at a resting size, one step off the cream
- *  it stands on. It does not press, so it takes no cursor and no motion. */
-export function windowChip(on: WindowSurface = 'plate'): CSSProperties {
+ *  it stands on, or in the danger pair where it counts what a choice loses, as a danger pill is. It
+ *  does not press, so it takes no cursor and no motion. */
+export function windowChip(on: WindowSurface = 'plate', tone: 'plain' | 'danger' = 'plain'): CSSProperties {
   return {
     fontFamily: font.family,
     ...roleFont('chip'),
     padding: '4px 12px',
     borderRadius: radii.pill,
-    background: on === 'inset' ? skin.plate : skin.inset,
-    color: skin.ink,
+    background: tone === 'danger' ? DANGER_SURFACE : on === 'inset' ? skin.plate : skin.inset,
+    color: tone === 'danger' ? DANGER_INK : skin.ink,
   };
 }
 

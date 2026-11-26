@@ -15,6 +15,7 @@ import { definePreRule } from './define';
 
 export const lockedObjectRule = definePreRule({
   id: 'V-LOCK-02',
+  description: 'A locked object, such as a landmark a map comes with, is permanent: it cannot be moved or removed, and nothing can be built over it.',
   appliesTo: [CommandType.RemoveObject],
   validate(cmd, state, fail) {
     const obj = state.objects.get(cmd.objectId);

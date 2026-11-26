@@ -6,7 +6,9 @@ import bridge_teak from './bridge-teak.json';
 import bridge_suspension from './bridge-suspension.json';
 import bridge_iron from './bridge-iron.json';
 import bridge_plank from './bridge-plank.json';
+import bridge_floradise from './bridge-floradise.json';
 
 export const bridge: CatalogItem[] = [
   bridge_park_arch, bridge_retro_arch, bridge_light_wood, bridge_teak, bridge_suspension, bridge_iron, bridge_plank,
+  bridge_floradise,
 ] as CatalogItem[];

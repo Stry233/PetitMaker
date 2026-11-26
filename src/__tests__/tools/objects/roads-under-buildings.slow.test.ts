@@ -11,15 +11,15 @@ import { isBuildableZone } from '../../../core/game/zones';
 import { createGridState } from '../../../core/model/template';
 import { getMapTemplate } from '../../../config/maps';
 import { serialize, decodeSave } from '../../../io/save/json-codec';
-import { clearUnderLandmarks } from '../../../state/landmark-clearance';
+import { clearUnderLandmarks } from '../../../tools/repair/landmark-clearance';
 import { parseSave } from '../../../io/save/parse';
 import { encodeMapPayload, decodeMapPayload } from '../../../io/share/codec/payload';
-import { toSaveJSON } from '../../../io/save/canonical';
+import { toSaveFile } from '../../../io/save/canonical';
 import { ROTATIONS, type GridState, type MacroCoord, type Rotation } from '../../../core/model/types';
 import { makeToolCtx } from '../../_support/tool-ctx';
 import { buildShareCode, importFromRaster } from '../../../io/share';
 import { CURRENT_VERSION } from '../../../io/save/format';
-import { readAutosave } from '../../../io/storage/autosave';
+import { readRestorableAutosave } from '../../../io/storage/autosave';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { autosave } from '../../../editor/session/autosave';
 import { rotateObject } from '../../../tools/objects/actions';
@@ -75,7 +75,7 @@ function scene(): Scene {
 }
 
 function paintRoad(s: Scene, material: string, cells: MacroCoord[]): void {
-  const ctx = makeToolCtx(s.state, s.ex, 1, 1, { tileMaterial: material });
+  const ctx = makeToolCtx(s.state, s.ex, 1, { tileMaterial: material });
   const start = s.ex.beginStroke();
   const painted = new Set<string>();
   for (const c of cells) expect(placeTileCell(c, ctx, painted), `road ${material} at ${c.x},${c.y}`).toBe(true);
@@ -89,7 +89,7 @@ function heldAt(itemId: string, at: MacroCoord, rotation: Rotation): MacroCoord 
 }
 
 function placeBuilding(s: Scene, itemId: string, at: MacroCoord, rotation: Rotation): void {
-  const ctx = makeToolCtx(s.state, s.ex, 1, 1, { armedItem: itemId, placementRotation: rotation });
+  const ctx = makeToolCtx(s.state, s.ex, 1, { armedItem: itemId, placementRotation: rotation });
   const start = s.ex.beginStroke();
   const held = heldAt(itemId, at, rotation);
   new ObjectPlacerTool().onPointerDown(cell(held), point(held), ctx);
@@ -175,7 +175,7 @@ describe('roads beneath supporting structures', () => {
             return cell && isBuildableZone(cell.zone) && !cell.terrain && !taken.has(`${c.x},${c.y}`);
           });
           if (!fits) continue;
-          const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: item.id, placementRotation: rotation });
+          const ctx = makeToolCtx(state, ex, 1, { armedItem: item.id, placementRotation: rotation });
           const before = ex.beginStroke();
           const held = heldAt(item.id, at, rotation);
           new ObjectPlacerTool().onPointerDown(cell(held), point(held), ctx);
@@ -229,7 +229,7 @@ describe('roads beneath supporting structures', () => {
   it('a share code with roads under buildings decodes unchanged', async () => {
     const state = mixedMap();
     const decoded = await decodeMapPayload(await encodeMapPayload(state, null, { appVersion: 'roads-under', saveVersion: 1 }));
-    const loaded = decodeSave(parseSave(JSON.parse(toSaveJSON(decoded.canonical, decoded.annotations)), { template: state.template }));
+    const loaded = decodeSave(parseSave(toSaveFile(decoded.canonical, decoded.annotations), { template: state.template }));
     const cleared = clearUnderLandmarks(loaded, createDefaultRegistry());
     expect(cleared).toEqual({ objects: 0, cells: 0, restored: 0 });
     expect(withoutIds(comparable(loaded))).toEqual(withoutIds(comparable(state)));
@@ -256,7 +256,7 @@ describe('roads beneath supporting structures', () => {
       setStoreState({ commandExecutor: s.ex, gridState: s.state });
       autosave.schedule(s.state);
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored?.cleared).toEqual({ objects: 0, cells: 0, restored: 0 });
       expect(comparable(restored!.state)).toEqual(comparable(s.state));
       expect(restored!.history?.length).toBeGreaterThan(0);

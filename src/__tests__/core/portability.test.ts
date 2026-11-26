@@ -63,6 +63,16 @@ describe('another game profile', () => {
     expect(cellAtPoint(mapPoint({ x: 0.2, y: 0.7 }), PLACEMENT_GRID)).toEqual({ x: -1, y: 0 });
   });
 
+  it('marks an object\'s footprint on the object grid\'s cells', async () => {
+    const { forEachFootprintCell } = await import('../../tools/placement/object');
+    const { footprintCells } = await import('../../core/grid/footprint');
+    const object = { id: 'o', catalogId: 'tree-apple', position: { x: 2, y: 3 }, rotation: 0 as const, elevation: 0, width: 2, height: 1 };
+    const seen: { x: number; y: number }[] = [];
+    forEachFootprintCell(object, (x, y) => seen.push({ x, y }));
+    expect(seen).toEqual(footprintCells(2, 3, 2, 1));
+    expect(seen).toContainEqual({ x: 1, y: 2 });
+  });
+
   it('keeps the storage bucket an engine unit apart from the game chunk', async () => {
     const { BUCKET_SIZE, bucketCounts } = await import('../../core/grid/buckets');
     const { dirtyChunksFor } = await import('../../view/map3d/geometry/chunk-dirty');

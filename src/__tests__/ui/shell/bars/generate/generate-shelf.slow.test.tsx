@@ -74,6 +74,7 @@ import type { Candidate, Outcome } from '../../../../../editor/operations';
 import { getCatalogByCategory } from '../../../../../state/catalog';
 import { createDefaultRegistry } from '../../../../../rules';
 import { useEditorStore } from '../../../../../state/store';
+import { regionOf } from '../../../../../state/editing/region';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { GenerateShelf } from '../../../../../ui/shell/bars/generate/GenerateShelf';
 import { ModeBar } from '../../../../../ui/shell/controls/ModeBar';
@@ -82,7 +83,8 @@ import {
   CANDIDATES, SEED_DIGITS, TABS, hasCustomCard, maxElevationFor,
 } from '../../../../../ui/shell/bars/generate/generate-shelf';
 import { batchSeeds, kindConfig } from '../../../../../tools/generation/kinds';
-import { IMAGE_POOL, sampleName } from '../../../../../ui/shell/bars/generate/stencil-samples';
+import { samplePool } from '../../../../../editor/editing/generate-batch';
+import { sampleName } from '../../../../../ui/shell/bars/generate/stencil-samples';
 import { APP_NAME, brandName } from '../../../../../i18n/terms/brand';
 import { makeState, placeCmd } from '../../../../_support/map-state';
 import { ELEVATION_MAX } from '../../../../../core/game/profile';
@@ -199,7 +201,7 @@ function shownSeeds(): number[] {
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
-  useEditorStore.setState({ locale: 'en', region: [], selectingRegion: false });
+  useEditorStore.setState({ locale: 'en', regions: {}, selectingRegion: false });
   vi.mocked(barrelCandidate).mockClear();
   vi.mocked(barrelCandidate).mockImplementation(async () => null);
   vi.mocked(barrelGenerateMap).mockClear();
@@ -212,7 +214,7 @@ afterEach(() => {
   cleanup();
   setActiveView(null);
   setMapRenderer(null);
-  useEditorStore.setState({ gridState: null, commandExecutor: null, region: [], selectingRegion: false });
+  useEditorStore.setState({ gridState: null, commandExecutor: null, regions: {}, selectingRegion: false });
   useEditorStore.getState().setEditMode({ mode: null });
 });
 
@@ -516,7 +518,7 @@ describe('a run', () => {
   it('stays inside the painted region, and leaves it painted', async () => {
     const kit = installKit();
     const region = rect(6, 6, 18, 18);
-    useEditorStore.setState({ region });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: region, map: st.gridState } } }));
     mount();
     await settle();
     await typeRecipe(4242);
@@ -531,7 +533,7 @@ describe('a run', () => {
       }
     }
     expect(outside).toBe(0);
-    expect(useEditorStore.getState().region).toEqual(region);
+    expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(region);
   }, 60_000);
 });
 
@@ -560,13 +562,13 @@ describe('the row of names', () => {
 describe('the scope chip', () => {
   it('says the whole island until a region is painted, and then the count', async () => {
     installKit();
-    useEditorStore.setState({ region: rect(2, 2, 4, 4) });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: rect(2, 2, 4, 4), map: st.gridState } } }));
     mount();
     await settle();
     expect(within(screen.getByTestId('shell-gen-scope')).getByText('9 cells')).toBeTruthy();
 
     cleanup();
-    useEditorStore.setState({ region: [] });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: [], map: st.gridState } } }));
     mount();
     await settle();
     expect(within(screen.getByTestId('shell-gen-scope')).getByText('Whole planet')).toBeTruthy();
@@ -605,7 +607,7 @@ describe('the scope chip', () => {
    *  click would build the picture fitted to the last region. */
   it.each([7, 20])('builds pictures in a %i-cell box and refuses a stale card after shrinking below the minimum', async (side) => {
     const kit = installKit();
-    useEditorStore.setState({ region: rect(2, 2, side + 1, side + 1) });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: rect(2, 2, side + 1, side + 1), map: st.gridState } } }));
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
     await settle();
@@ -614,7 +616,7 @@ describe('the scope chip', () => {
     expect(cards()[0]!.getAttribute('aria-disabled')).toBe('false');
 
     // Too small for the kind.
-    act(() => { useEditorStore.setState({ region: rect(2, 2, 7, 7) }); });
+    act(() => { useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: rect(2, 2, 7, 7), map: st.gridState } } })); });
     await settle();
 
     const card = cards()[0]!;
@@ -934,14 +936,15 @@ describe('the scope highlight', () => {
         showPath: () => {}, clearPath: () => {},
       },
     } as unknown as ActiveView);
-    useEditorStore.setState({ region: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }] });
+    const cells = [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }];
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells, map: st.gridState } } }));
     mount();
     await settle();
 
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /^Recipe/ })[0]!); });
     await waitFor(() => expect(kit.executor.historyDepth()).toBe(1));
     expect(cleared, 'the drape survives the landed run').toBe(0);
-    expect(useEditorStore.getState().region.length, 'the scope itself survives').toBe(3);
+    expect(regionOf(useEditorStore.getState(), 'generator').length, 'the scope itself survives').toBe(3);
   }, 60_000);
 });
 
@@ -1135,7 +1138,7 @@ describe('a word too long for its region', () => {
 
   it('says so on the card, and generates nothing for it', async () => {
     installKit();
-    useEditorStore.setState({ region: rect(2, 2, 15, 15) });    // 14 wide: one glyph fits, three do not
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: rect(2, 2, 15, 15), map: st.gridState } } }));    // 14 wide: one glyph fits, three do not
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Letter' }));
     await settle();
@@ -1242,6 +1245,7 @@ describe('the outcome of a letter', () => {
 });
 
 describe('the picture examples', () => {
+  const IMAGE_POOL = samplePool('image');
   it('resolves the logo and every registered neighbor portrait', () => {
     expect(IMAGE_POOL.length).toBeGreaterThanOrEqual(CANDIDATES);
     expect(IMAGE_POOL.map((s) => s.id)).toEqual([

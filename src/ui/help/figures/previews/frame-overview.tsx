@@ -17,7 +17,7 @@ import { UiPreviewProvider, type UiPreviewPose } from '../../../design/preview';
 import { FIT_REF, NO_DOCK, uiScaleOf } from '../../../design/scale-model';
 import { useScaleView, useSurfaceZoom, useViewportSize } from '../../../design/scale';
 import { PICTURED_UI_ZOOM } from '../../../design/ui-zoom-anim';
-import { MINIATURE_SIGHT, useFigureRoom, useFigureSight } from '../figure-scale';
+import { MINIATURE_SIGHT, cutShare, useFigureRoom, useFigureSight } from '../figure-scale';
 import { useLayoutShape } from '../../../design/input-mode';
 import { useEditorStore } from '../../../../state/store';
 import { useT } from '../../../../i18n/context';
@@ -30,6 +30,7 @@ import { figureCaption } from '../caption';
 import type { TextKey } from '../../../../i18n/keys';
 import { useSettledValue } from '../../../primitives/use-settled-value';
 import { useEffectEvent } from '../../../primitives/use-effect-event';
+import { useScriptedWalk } from '../../../primitives/use-scripted-walk';
 
 
 type FrameCorner = 'modes' | 'agent' | 'topright' | 'rail' | 'bar';
@@ -136,11 +137,9 @@ function measure(root: HTMLElement, corner: FrameCorner, winW: number): Box | nu
   return measureBox(root, CORNER_ANCHORS[corner], winW, corner === 'bar' ? 30 : 12);
 }
 
-const noop = () => {};
-
 /** The real shell, pictured: window-sized inside its own containing block, zoomed to fit. The pose
  *  holds a mode armed so the selected icon's name and its bottom toolbar are in the picture. */
-export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountain', objectBrush, regionScreen, children }: {
+export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountain', objectBrush, regionScreen, blueprintSave, blueprintExplorer, children }: {
   win: { w: number; h: number };
   zoom: number;
   layerPanel?: UiPreviewPose['layerPanel'];
@@ -149,6 +148,8 @@ export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountai
   notesRow?: UiPreviewPose['notesRow'];
   objectBrush?: UiPreviewPose['objectBrush'];
   regionScreen?: UiPreviewPose['regionScreen'];
+  blueprintSave?: UiPreviewPose['blueprintSave'];
+  blueprintExplorer?: UiPreviewPose['blueprintExplorer'];
   children?: ReactNode;
 }) {
   const backdrop = useMapBackdrop(win.w / win.h);
@@ -160,8 +161,9 @@ export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountai
     () => ({
       viewport: win, uiZoom, layerPanel, ...(mode ? { mode } : {}),
       ...(row ? { notesRow: row } : {}), ...(objectBrush ? { objectBrush } : {}), ...(regionScreen ? { regionScreen } : {}),
+      ...(blueprintSave ? { blueprintSave } : {}), ...(blueprintExplorer ? { blueprintExplorer } : {}),
     }),
-    [win, uiZoom, mode, layerPanel, row, objectBrush, regionScreen],
+    [win, uiZoom, mode, layerPanel, row, objectBrush, regionScreen, blueprintSave, blueprintExplorer],
   );
   return (
     <div style={{ position: 'relative', width: win.w, height: win.h, overflow: 'hidden', contain: 'paint', zoom }}>
@@ -169,7 +171,7 @@ export function PicturedShell({ win, zoom, layerPanel, notesRow, mode = 'mountai
         <img src={backdrop} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
       )}
       <UiPreviewProvider pose={pose}>
-        <Shell onRestoreSession={noop} splashActive={false}>{null}</Shell>
+        <Shell splashActive={false}>{null}</Shell>
       </UiPreviewProvider>
       {children}
     </div>
@@ -238,6 +240,8 @@ export function FrameMiniature({ mode }: { mode?: UiPreviewPose['mode'] }) {
 }
 
 const CYCLE: readonly FrameCorner[] = ['modes', 'agent', 'topright', 'rail', 'bar'];
+/** How long the spotlight stands on one cluster, in ms. */
+const SPOTLIGHT_BEAT_MS = 2200;
 
 /** The whole window at a glance, the spotlight walking cluster to cluster. */
 export function FrameOverview() {
@@ -247,17 +251,13 @@ export function FrameOverview() {
   const width = useOverviewWidth(win);
   const scale = width / win.w;
   const rootRef = useRef<HTMLDivElement>(null);
-  const [step, setStep] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
   const still = useReducedMotionConfig() === true;
+  const step = useScriptedWalk({ length: CYCLE.length, beatMs: SPOTLIGHT_BEAT_MS, active: ready && !still }, () => []);
+  // Clusters given up within the standing step, which the walk's own count knows nothing of.
+  const [passed, setPassed] = useState(0);
 
-  useEffect(() => {
-    if (!ready || still) return undefined;
-    const timer = setInterval(() => setStep((n) => (n + 1) % CYCLE.length), 2200);
-    return () => clearInterval(timer);
-  }, [ready, still]);
-
-  const corner = CYCLE[step]!;
+  const corner = CYCLE[(step + passed) % CYCLE.length]!;
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!ready || !root || still) return undefined;
@@ -270,7 +270,7 @@ export function FrameOverview() {
     // shell's own entrances settle. A cluster the live state is not showing (the bottom bar with
     // no mode armed) gives up its beat instead of holding a dead one.
     read();
-    const timer = setTimeout(() => { if (!read()) setStep((n) => (n + 1) % CYCLE.length); }, 80);
+    const timer = setTimeout(() => { if (!read()) setPassed((n) => (n + 1) % CYCLE.length); }, 80);
     return () => clearTimeout(timer);
   }, [corner, win.w, ready, still]);
 
@@ -279,7 +279,7 @@ export function FrameOverview() {
     {/* Every cluster's name in one cell, so the longest holds the room and a step moves nothing. */}
     <div style={{ display: 'grid', maxWidth: width }}>
       {CYCLE.map((c) => (
-        <span key={c} style={{ gridArea: '1 / 1', justifySelf: 'center', visibility: !still && box && c === corner ? 'visible' : 'hidden', ...figureCaption({ role: 'small', padding: '4px 14px' }) }}>
+        <span key={c} style={{ gridArea: '1 / 1', justifySelf: 'center', visibility: !still && box && c === corner ? undefined : 'hidden', ...figureCaption({ role: 'small', padding: '4px 14px' }) }}>
           {t(CORNER_TITLE[c])}
         </span>
       ))}
@@ -309,7 +309,17 @@ export function FrameOverview() {
  *  state is not showing (the bottom bar with no mode armed) falls back to the given stand-in.
  *  The shell mounts only once the figure nears the viewport: a page holds several of these, and
  *  mounting them all with the page is seconds of work the reader has not scrolled to yet. */
-export function FrameCut({ corner, fallback, layerPanel, mode, objectBrush, regionScreen, targets, highlight }: { corner: FrameCorner; fallback?: ReactNode; layerPanel?: UiPreviewPose['layerPanel']; mode?: UiPreviewPose['mode']; objectBrush?: UiPreviewPose['objectBrush']; regionScreen?: UiPreviewPose['regionScreen']; targets?: readonly string[]; highlight?: readonly string[] }) {
+export function FrameCut({
+  corner, fallback, layerPanel, mode, objectBrush, regionScreen, blueprintSave, blueprintExplorer, targets, pad = 20, highlight, whole,
+}: {
+  corner: FrameCorner; fallback?: ReactNode; layerPanel?: UiPreviewPose['layerPanel']; mode?: UiPreviewPose['mode']; objectBrush?: UiPreviewPose['objectBrush'];
+  regionScreen?: UiPreviewPose['regionScreen']; blueprintSave?: UiPreviewPose['blueprintSave']; blueprintExplorer?: UiPreviewPose['blueprintExplorer'];
+  targets?: readonly string[]; highlight?: readonly string[];
+  /** The room kept around `targets`, in shell px. */
+  pad?: number;
+  /** A cut read as one piece shrinks to the room within `FIGURE_LEAST` before it crops (`cutShare`). */
+  whole?: true;
+}) {
   const win = useWindowSnapshot();
   const holdRef = useRef<HTMLDivElement>(null);
   const near = useInView(holdRef);
@@ -321,13 +331,14 @@ export function FrameCut({ corner, fallback, layerPanel, mode, objectBrush, regi
 
   const live = useLiveShellZoom(win);
   const room = useFigureRoom();
-  // A cut is already a part of the shell, so it draws at live size and crops rather than shrinks.
-  const scale = live;
+  // A cut is already a part of the shell, so it draws at live size and crops rather than shrinks,
+  // unless it is read whole.
+  const scale = whole && box ? live * cutShare(room, box.w * live) : live;
 
   const read = () => {
     const root = rootRef.current;
     if (!root) return;
-    const next = targets ? measureBox(root, targets, win.w, 20) : measure(root, corner, win.w);
+    const next = targets ? measureBox(root, targets, win.w, pad) : measure(root, corner, win.w);
     setBox(next);
     if (next) setParts(measureParts(root, next, win.w));
     if (highlight) setFocus(measureBox(root, highlight, win.w, 4));
@@ -370,7 +381,10 @@ export function FrameCut({ corner, fallback, layerPanel, mode, objectBrush, regi
             {/* The measure root's width must be the pictured window's, whatever the wrappers lay
                 out at: the screen-to-shell ratio is read off this box. */}
             <div ref={rootRef} style={{ width: win.w }}>
-              <PicturedShell win={win} zoom={1} layerPanel={layerPanel} mode={mode} objectBrush={objectBrush} regionScreen={regionScreen} />
+              <PicturedShell
+                win={win} zoom={1} layerPanel={layerPanel} mode={mode} objectBrush={objectBrush} regionScreen={regionScreen}
+                blueprintSave={blueprintSave} blueprintExplorer={blueprintExplorer}
+              />
             </div>
           </div>
         </div>

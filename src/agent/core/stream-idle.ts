@@ -8,6 +8,11 @@ import type { StreamEvent, TurnError } from './types';
 export const FIRST_EVENT_IDLE_MS = 300_000;
 /** Between events, once the stream has proven alive. */
 export const BETWEEN_EVENT_IDLE_MS = 120_000;
+/**
+ * Stream silence after which the panel says the model is still thinking, in ms. A notice and not a
+ * failure, so it stays under both idle bounds: past those the turn has already timed out.
+ */
+export const STALL_NOTICE_MS = 90_000;
 
 /** Produces the network-class timeout shared with SDK connection timeouts. */
 function idleError(ms: number): TurnError {

@@ -20,7 +20,7 @@ import { DOCS, docNodes, type DocId } from '../../legal/registry';
 import { LEGAL } from '../../legal/config';
 import { I18nProvider, translateFor } from '../../i18n/context';
 import { Tour } from '../../ui/chrome/tour/Tour';
-import { startTour } from '../../ui/chrome/tour/use-tour';
+import { startTour } from '../../editor/session/tour';
 import { useEditorStore } from '../../state/store';
 import { MUTED, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY } from '../../ui/design/tokens';
 import { setStoreState } from '../_support/store';

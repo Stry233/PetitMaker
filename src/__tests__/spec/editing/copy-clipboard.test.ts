@@ -12,6 +12,7 @@ import { COMMAND_BY_ID, type CommandContext } from '../../../editor/commands/com
 import { useEditorStore } from '../../../state/store';
 import { resetStore } from '../../_support/store';
 import type { Arrangement } from '../../../state/clipboard';
+import { TerrainType, type Corners } from '../../../core/model/types';
 
 const ROW: Arrangement = {
   members: [
@@ -21,6 +22,24 @@ const ROW: Arrangement = {
   ],
   w: 2,
   h: 2,
+};
+
+/** A placed blueprint copied whole: a 4 by 5 frame, so 5 by 6 terrain cells, a raised block and
+ *  water among them, a road and a rose standing in it. */
+const GROUP: Arrangement = {
+  members: [
+    { catalogId: 'path-overgrown-dirt', x: 0, y: 4, rotation: 0, rise: 0 },
+    { catalogId: 'flower-rose', x: 2, y: 1, rotation: 0, rise: 1 },
+  ],
+  w: 4,
+  h: 5,
+  origin: { x: 20, y: 9 },
+  group: {
+    cells: Array.from({ length: 30 }, (_, k) => (k === 7 ? { type: TerrainType.Mountain, rise: 1, corners: ['fan', 'square', 'square', 'tri-SE'] as Corners }
+      : k === 13 ? { type: TerrainType.Water, rise: 0 } : null)),
+    base: 1,
+    seed: { blueprint: 'bp-1', name: 'Terrace', origin: 'Mei' },
+  },
 };
 
 const wire = (over: Record<string, unknown>) => JSON.stringify({ petitmaker: 'objects', v: 1, members: [{ id: 'flower-rose', x: 0, y: 0, r: 0, z: 0 }], ...over });
@@ -54,7 +73,7 @@ describe('the clipboard text of a copy', () => {
   spec('EDIT-62', 'other text, a broken copy and a copy from a newer release are not taken for a copy', () => {
     expect(decodeArrangement('hello').kind).toBe('not-a-copy');
     expect(decodeArrangement('{"a":1}').kind).toBe('not-a-copy');
-    expect(decodeArrangement(wire({ v: 2 })).kind).toBe('future');
+    expect(decodeArrangement(wire({ v: 3 })).kind).toBe('future');
     for (const bad of [
       wire({ members: 'x' }),
       wire({ members: [{ id: 'flower-rose', x: 0.3, y: 0, r: 0, z: 0 }] }),
@@ -64,6 +83,43 @@ describe('the clipboard text of a copy', () => {
       wire({ members: [{ id: 'flower-rose', x: 0, y: 0, r: 0, z: 0, corners: ['bogus'] }] }),
       wire({ members: Array.from({ length: 5000 }, () => ({ id: 'flower-rose', x: 0, y: 0, r: 0, z: 0 })) }),
     ]) expect(decodeArrangement(bad).kind, bad.slice(0, 80)).toBe('malformed');
+  });
+
+  spec('EDIT-62', 'a placed blueprint copied whole reads back with its terrain and the group it records', () => {
+    const read = decodeArrangement(encodeArrangement(GROUP));
+    expect(read).toEqual({ kind: 'ok', arrangement: GROUP, unknown: 0 });
+    // Members naming unknown items are left out and counted, the rest kept where the frame holds them.
+    const text = JSON.parse(encodeArrangement(GROUP)) as { members: unknown[] };
+    text.members.push({ id: 'no-such-item', x: 0, y: 0, r: 0, z: 0 });
+    const partial = decodeArrangement(JSON.stringify(text));
+    expect(partial).toEqual({ kind: 'ok', arrangement: GROUP, unknown: 1 });
+  });
+
+  spec('EDIT-62', 'a copy of objects an older release wrote still reads, and a broken group copy is refused', () => {
+    // The version 1 text a release before group copies wrote.
+    const old = '{"petitmaker":"objects","v":1,"members":[{"id":"flower-rose","x":0,"y":0,"r":0,"z":0}],"at":{"x":3,"y":4}}';
+    expect(decodeArrangement(old)).toEqual({
+      kind: 'ok', arrangement: { members: [{ catalogId: 'flower-rose', x: 0, y: 0, rotation: 0, rise: 0 }], w: 1, h: 1, origin: { x: 3, y: 4 } }, unknown: 0,
+    });
+    expect(decodeArrangement(encodeArrangement(ROW)).kind).toBe('ok');
+    expect(JSON.parse(encodeArrangement(ROW)).v, 'a copy of objects stays readable by older releases').toBe(1);
+    const group = (over: Record<string, unknown>) => {
+      const raw = JSON.parse(encodeArrangement(GROUP)) as { group: Record<string, unknown> };
+      return JSON.stringify({ ...raw, group: { ...raw.group, ...over } });
+    };
+    expect(decodeArrangement(JSON.stringify({ ...JSON.parse(encodeArrangement(GROUP)), v: 3 })).kind).toBe('future');
+    for (const bad of [
+      group({ cells: [] }),
+      group({ cells: Array.from({ length: 30 }, () => ({ type: 7, rise: 0 })) }),
+      group({ cells: Array.from({ length: 30 }, () => ({ type: TerrainType.Mountain, rise: -1 })) }),
+      group({ name: 7 }),
+      group({ name: '  ' }),
+      group({ w: 0 }),
+      group({ w: 1e6 }),
+      group({ base: -1 }),
+      group({ blueprint: '' }),
+      JSON.stringify({ ...JSON.parse(encodeArrangement(GROUP)), group: 'x' }),
+    ]) expect(decodeArrangement(bad).kind, bad.slice(-120)).toBe('malformed');
   });
 
   spec('EDIT-62', 'members naming items this release does not know are left out and counted', () => {

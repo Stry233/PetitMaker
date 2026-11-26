@@ -3,7 +3,8 @@ import { getCell } from '../core/model/grid-model';
 import { cellKey, onHalfGrid, straddledCells, snapHalf, type Rect } from '../core/grid/rect';
 import { terrainCellsUnder, getFootprint, getRotatedSize, isQuarterTurn } from '../core/grid/footprint';
 import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
-import { hasTrait, isSelfSnappingTrait } from '../core/model/traits';
+import { rampHighElevation } from '../core/domain/terrain/ramp-span';
+import { findTrait, hasTrait, isSelfSnappingTrait } from '../core/model/traits';
 import { CLEARANCE, DOOR } from '../core/game/profile';
 import { getCatalogItem, itemRole } from './catalog';
 
@@ -111,6 +112,19 @@ export function surfaceElevationAt(state: GridState, x: number, y: number): numb
 export function objectElevation(state: GridState, obj: PlacedObject): number {
   const item = getCatalogItem(obj.catalogId);
   if (!item || snapsOwnPlacement(item)) return obj.elevation;
+  return surfaceElevationAt(state, obj.position.x, obj.position.y);
+}
+
+/**
+ * The elevation `obj` takes laid exactly as it is, footprint and turn unchanged, on the ground now
+ * under it: a ramp the high end of the cliff its footprint lies against, anything else the surface
+ * under its position (a bridge's position rests on its near bank). A rigid move hands the rules
+ * this, so a ramp that still fits where it is carried is judged where it lies, never detected
+ * again from its corner as if that were an anchor (`snapsOwnPlacement`).
+ */
+export function laidElevation(state: GridState, obj: PlacedObject): number {
+  const item = getCatalogItem(obj.catalogId);
+  if (item && findTrait(item, 'heightDrop')) return rampHighElevation(state, obj, item.width, item.height);
   return surfaceElevationAt(state, obj.position.x, obj.position.y);
 }
 

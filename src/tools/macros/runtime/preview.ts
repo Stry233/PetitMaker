@@ -3,10 +3,11 @@ import { cloneGridState, mapVersionKey } from '../../../core/model/grid-model';
 import { hashJSON } from '../../../core/base/hash';
 import { boundedMap, type BoundedMap } from '../../../core/base/bounded-map';
 import type { GridState } from '../../../core/model/types';
-import { objectRect } from '../../../state/object-geometry';
+import { forEachFootprintCell } from '../../placement/object';
 import type { MacroContext } from '../context';
 import { applyMacro, MACROS, retireOn, type MacroId, type MacroOpts } from '../run';
 import { detachedContext } from './scratch';
+import { terrainChanged } from './measure';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import type { GridId, GridCellRef } from '../../../core/grid/grids';
 
@@ -92,35 +93,17 @@ export function previewMacro<K extends MacroId>(ctx: MacroContext, id: K, opts: 
     added.push({ x, y, grid });
   };
 
-  // Only the cells the run's own history touched are compared, never the whole grid: the collapsed
-  // entries carry every coordinate the commands and their auto-repairs reached, and a cell outside
-  // them cannot differ. Compared against the live state per cell, because the auto-revert can put
-  // a touched cell back exactly as it was.
-  const differs = (x: number, y: number): boolean => {
-    const was = ctx.state.cells[y]?.[x]?.terrain;
-    const now = state.cells[y]?.[x]?.terrain;
-    return JSON.stringify(was) !== JSON.stringify(now);
-  };
-  for (const entry of executor.getUndoEntries()) {
-    for (const snap of entry.after) {
-      if (differs(snap.coord.x, snap.coord.y)) add(snap.coord.x, snap.coord.y, TERRAIN_GRID);
-    }
-  }
+  // The scratch run's history names every cell its commands and auto-repairs reached.
+  for (const c of terrainChanged(state, executor.getUndoEntries(), true)) add(c.x, c.y, TERRAIN_GRID);
   // Compare object IDs in the input and preview maps to include placements and replaced coatings.
   const before = new Set(ctx.state.objects.keys());
   const after = new Set(state.objects.keys());
   for (const [objectId, obj] of state.objects) {
-    if (!before.has(objectId)) {
-      const rect = objectRect(obj);
-      for (let y = rect.y; y < rect.y + rect.h; y++) for (let x = rect.x; x < rect.x + rect.w; x++) add(x, y, PLACEMENT_GRID);
-    }
+    if (!before.has(objectId)) forEachFootprintCell(obj, (x, y) => add(x, y, PLACEMENT_GRID));
   }
   const removed: MacroPreviewCell[] = [];
   for (const [objectId, obj] of ctx.state.objects) {
-    if (!after.has(objectId)) {
-      const rect = objectRect(obj);
-      for (let y = rect.y; y < rect.y + rect.h; y++) for (let x = rect.x; x < rect.x + rect.w; x++) removed.push({ x, y, grid: PLACEMENT_GRID });
-    }
+    if (!after.has(objectId)) forEachFootprintCell(obj, (x, y) => removed.push({ x, y, grid: PLACEMENT_GRID }));
   }
   const grid = MACROS[id].grid;
 

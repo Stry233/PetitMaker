@@ -26,5 +26,8 @@ function badgesFor(summary: MapProvenanceSummary | null): Badge[] {
   return out;
 }
 
+/** Whether a map with `summary` has any badge to show, so the badge switch has something to turn off. */
+export const hasProvenanceBadge = (summary: MapProvenanceSummary | null): boolean => badgesFor(summary).length > 0;
+
 /** Pills shrink when both badges show, so they never crowd the title. */
 export function badgeScale(count: number): number { return count >= 2 ? 0.8 : 1; }

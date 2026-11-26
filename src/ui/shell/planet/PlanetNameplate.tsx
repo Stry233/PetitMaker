@@ -9,11 +9,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { type GridState } from '../../../core/model/types';
 import { joinList } from '../../../i18n/locale-info';
-import { showToast } from '../../../platform/channels/toast-bus';
 import { localizedName, quantityParams, useLocale, useT } from '../../../i18n/context';
 import { getCatalogItem } from '../../../state/catalog';
-import { pendingLandmarks, sessionFrame, sessionHasEdits, sessionHasGround } from '../../../editor/operations/planet-session';
+import { pendingLandmarks, reviewOpenCount, sessionFrame, sessionHasGround } from '../../../editor/operations/planet-session';
 import { useEditorStore } from '../../../state/store';
+import { pressCommand, runCommand } from '../../../editor/commands/run';
 import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
 import { useGlidingChromeLift } from '../../primitives/chrome-layer';
 import { useToastBandShift } from '../../chrome/floating/toast-band';
@@ -35,7 +35,7 @@ import { useFrameLayout } from '../frame-layout';
 import { LANDSCAPE_MODE_ROW } from '../frame-plan';
 import { EDGE_RIGHT } from '../units';
 import { useFrameZoom } from '../use-frame-zoom';
-import { finishPlanetEditing, stopPlanetEditing } from '../../../editor/session/planet-editing';
+import { leavingLosesWork } from '../../../editor/session/planet-editing';
 import { useSessionPlanetName } from './use-planet-session';
 import { useCanvasFact } from '../../session/use-canvas-fact';
 import { NAME_GAP, NAME_LEAST, NAME_PAD, PANEL_GAP, PEN, nameplateBottom, nameplateSpan, nameplateTop, toastBandShift } from './nameplate-layout';
@@ -62,12 +62,6 @@ const DISCARD_W = 360;
 /** Padding of a scanned planet's review segment, between its rule and Done, in css px. */
 const REVIEW_PAD = { start: 10, end: 6 };
 const REVIEW_GAP = 8;
-
-/** Whether leaving would lose work (`sessionHasEdits`). */
-const hasEdits = (): boolean => {
-  const s = useEditorStore.getState();
-  return sessionHasEdits(s.planetSession, s.commandExecutor?.historyDepth() ?? 0);
-};
 
 const iconButton: CSSProperties = {
   ...btnReset, width: BUTTON, height: BUTTON, flex: 'none', borderRadius: '50%',
@@ -110,17 +104,16 @@ export function PlanetNameplate({ motionProps }: {
 
   const back = () => {
     if (asking === 'discard') { close(); return; }
-    if (hasEdits()) setAsking('discard');
-    else stopPlanetEditing();
+    // `planet.leave` keeps a planet with work unless told to discard, so the question comes first.
+    if (leavingLosesWork()) setAsking('discard');
+    else pressCommand('planet.leave');
   };
   const rename = () => { setAsking('save'); setNameAsk((n) => n + 1); };
   const save = (asCopy: boolean) => {
     const trimmed = name.trim();
     if (!trimmed || !ground) return;
-    const result = finishPlanetEditing(trimmed, asCopy, fallback);
     // A save that did not finish keeps the panel and the session, so nothing drawn is lost.
-    if (result.ok) close();
-    else showToast(t(result.reason === 'quota' ? 'planet.save_failed' : 'planet.finish_failed'), 'error');
+    void runCommand('planet.finish', { name: trimmed, copy: asCopy }).then((outcome) => { if (outcome.ok) close(); });
   };
 
   const surface: CSSProperties = { fontFamily: font.family, color: INK, pointerEvents: 'auto' };
@@ -183,7 +176,7 @@ export function PlanetNameplate({ motionProps }: {
           <AnchoredConfirm key="discard" anchor={plateRef} trigger={backRef} align="start" zoom={zoom}
             width={DISCARD_W} helpTarget={{ page: 'planet' }} style={{ zoom, ...weights }}
             title={t('planet.discard_title')} cancelLabel={t('planet.keep_editing')} confirmLabel={t('planet.discard')}
-            onCancel={close} onConfirm={() => { close(); stopPlanetEditing(); }} />
+            onCancel={close} onConfirm={() => { close(); pressCommand('planet.leave', { discard: true }); }} />
         )}
       </AnimatePresence>
     </>,
@@ -196,6 +189,11 @@ function pendingIds(state: GridState | null): string {
   return pendingLandmarks(useEditorStore.getState().planetSession, state).join(' ');
 }
 
+/** `reviewOpenCount` of the live session. */
+function openCount(state: GridState | null): number {
+  return reviewOpenCount(useEditorStore.getState().planetSession, state);
+}
+
 /** A scanned planet's segment of the plate: how many places to check, the inferred landmark and each
  *  landmark still to place counted as one, and the switch that shows them on the map. Its title spells
  *  the count out. */
@@ -203,8 +201,8 @@ function ReviewSegment({ cells, landmark }: { cells: number; landmark: boolean }
   const t = useT();
   const locale = useLocale();
   const pending = useCanvasFact(pendingIds).split(' ').filter(Boolean);
+  const open = useCanvasFact(openCount);
   const shown = useEditorStore((s) => s.planetReviewShown);
-  const setShown = useEditorStore((s) => s.setPlanetReviewShown);
   const key = landmark ? 'planet.review_count_landmark' : 'planet.review_count';
   const counted = t(key, quantityParams(locale, { n: cells }));
   const names = pending.map((id) => { const item = getCatalogItem(id); return item ? localizedName(item.name, locale) : id; });
@@ -217,9 +215,9 @@ function ReviewSegment({ cells, landmark }: { cells: number; landmark: boolean }
       paddingInline: `${REVIEW_PAD.start}px ${REVIEW_PAD.end}px`,
     }}>
       <span data-testid="planet-review-count" style={{ ...roleFont('label'), color: PLATE_INK }}>
-        {t('planet.review_short', quantityParams(locale, { n: cells + (landmark ? 1 : 0) + pending.length }))}
+        {t('planet.review_short', quantityParams(locale, { n: open }))}
       </span>
-      <Switch on={shown} onClick={() => setShown(!shown)} label={t('planet.review_toggle')} />
+      <Switch on={shown} onClick={() => pressCommand('planet.review_shown', { on: !shown })} label={t('planet.review_toggle')} />
       {said.bubble}
     </div>
   );
@@ -257,7 +255,7 @@ function SavePanel({ style, zoom, anchor, trigger, editing, ground, name, known,
   const [frame] = useState(() => { const s = useEditorStore.getState().gridState; return s ? sessionFrame(s) : null; });
   const check = usePlanetNameReview(present, name, known);
   const saveable = ground && check.approved;
-  const submit = (asCopy: boolean) => { if (saveable) onSave(asCopy); };
+  const submit = (asCopy: boolean) => { if (saveable) check.commit(() => onSave(asCopy)); };
   const title = t(editing ? 'planet.save_title_edit' : 'planet.save_title_new');
 
   useSurfaceScope({ open: present, root: ref, trigger, onClose: onCancel, focus: 'contain', outside: true });

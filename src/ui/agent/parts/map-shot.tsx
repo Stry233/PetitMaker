@@ -10,11 +10,45 @@ import { useEditorStore } from '../../../state/store';
 import { ACTIVE, INK, rgbaOf } from '../../design/tokens';
 import { edge } from '../panel-skin';
 import type { CellBox } from '../../../agent/panel';
+import type { GridState } from '../../../core/model/types';
 import { radii } from '../../design/styles';
 import { useSettledValue } from '../../primitives/use-settled-value';
 
 /** A macro-cell rectangle a shot is framed on, in the shape `focusFrame` reads. */
 type ShotBox = CellBox;
+
+interface ShotOptions {
+  /** Width over height of the picture, the map centred in sea; absent, the map's own shape. */
+  aspect?: number;
+  /** The cells the picture is framed on; absent or null, the whole map. */
+  frame?: CellFrame | null;
+  /** The caller's map version (the `GridState` version pair), which re-takes the shot per value;
+   *  absent, the shot is taken once per grid. */
+  version?: string | number;
+  /** The last picture stands while the next is taken; otherwise there is none until it lands. */
+  hold?: boolean;
+}
+
+/**
+ * `grid` as a PNG `px` on its longer side, drawn by the editor's own renderer, or null while it is
+ * taken and where there is no grid or no renderer. The grid mutates in place, so the shot is keyed on
+ * its identity, the frame's cells and `version`.
+ */
+export function useMapShot(grid: GridState | null | undefined, px: number, { aspect, frame = null, version, hold = false }: ShotOptions = {}): string | null {
+  const [png, setPng] = useState<string | null>(null);
+  const framed = useSettledValue(frame, (f) => (f ? [f.x, f.y, f.width, f.height].join(',') : ''));
+  useEffect(() => {
+    let live = true;
+    if (!hold) setPng(null);
+    if (!grid) return () => { live = false; };
+    const opts = { frame: framed, ...(aspect !== undefined ? { aspect } : {}), ...(version !== undefined ? { version } : {}) };
+    void renderThumbnail(grid, px, opts).then((shot) => {
+      if (live && (shot !== null || !hold)) setPng(shot);
+    });
+    return () => { live = false; };
+  }, [grid, px, aspect, framed, version, hold]);
+  return png;
+}
 
 /** The live map as a PNG at `width`x`height`, framed on `box`; the grid mutates in place, so the shot is keyed on its identity plus the frame. */
 export function MapShot({ box, width, height, whole = false, placeholder, version }: {
@@ -34,22 +68,11 @@ export function MapShot({ box, width, height, whole = false, placeholder, versio
   placeholder?: ReactNode;
 }) {
   const grid = useEditorStore((s) => s.gridState);
-  const [png, setPng] = useState<string | null>(null);
-  const frameBox = useSettledValue(box, (b) => (b ? [b.origin.x, b.origin.y, b.width, b.height].join(',') : ''));
-
-  useEffect(() => {
-    let live = true;
-    setPng(null);
-    if (!grid || (!frameBox && !whole)) return () => { live = false; };
-    const aspect = width / height;
-    // `focusFrame` answers null for "the map entire", which is also what a missing box means
-    // here, so the two paths need no branch of their own.
-    const frame: CellFrame | null = frameBox ? focusFrame(frameBox, grid.template, aspect) : null;
-    void renderThumbnail(grid, Math.max(width, height), { aspect, frame, ...(version !== undefined ? { version } : {}) }).then((shot) => {
-      if (live) setPng(shot);
-    });
-    return () => { live = false; };
-  }, [grid, frameBox, width, height, whole, version]);
+  const aspect = width / height;
+  // `focusFrame` answers null for "the map entire", which is also what a missing box means here,
+  // so the two paths need no branch of their own.
+  const frame = box && grid ? focusFrame(box, grid.template, aspect) : null;
+  const png = useMapShot(box || whole ? grid : null, Math.max(width, height), { aspect, frame, ...(version !== undefined ? { version } : {}) });
 
   if (!box && !whole) return null;
   return (
@@ -78,21 +101,27 @@ const MARK_HALO = rgbaOf(INK, 0.5);
  * The whole map with a rect marked on it, so each picture says where; a crop of the rect alone shows
  * only its ground. The mark is placed by the capture's own sea framing (`seaFrame`).
  */
-export function MarkedShot({ box, width, height, testId = 'marked-shot', version }: {
+export function MarkedShot({ box, width, height, testId = 'marked-shot', version, zoom = false }: {
   box: ShotBox;
   width: number;
   height: number;
+  /** Frame the picture on the footprint and its surroundings (`focusFrame`) rather than the whole
+   *  map; a footprint too large to zoom on still shows the whole map. */
+  zoom?: boolean;
   /** The outer box's own id; the mark is `<testId>-mark`. Named so the region family keeps the two
    *  ids it already had rather than gaining a second name for one drawing. */
   testId?: string;
   version?: string | number;
 }) {
   const template = useEditorStore((s) => s.gridState?.template);
-  const sea = template ? seaFrame(template.width, template.height, width / height) : null;
-  const mark: CSSProperties | null = sea && {
+  const frame = zoom && template ? focusFrame(box, template, width / height) : null;
+  // The cells the picture shows: the zoomed frame, else the whole map, centred in sea at the card's shape.
+  const shown = frame ?? (template ? { x: 0, y: 0, width: template.width, height: template.height } : null);
+  const sea = shown ? seaFrame(shown.width, shown.height, width / height) : null;
+  const mark: CSSProperties | null = sea && shown && {
     position: 'absolute',
-    left: `${((sea.dx + box.origin.x) / sea.width) * 100}%`,
-    top: `${((sea.dy + box.origin.y) / sea.height) * 100}%`,
+    left: `${((sea.dx + box.origin.x - shown.x) / sea.width) * 100}%`,
+    top: `${((sea.dy + box.origin.y - shown.y) / sea.height) * 100}%`,
     width: `${(box.width / sea.width) * 100}%`,
     height: `${(box.height / sea.height) * 100}%`,
     background: MARK_FILL,
@@ -116,7 +145,7 @@ export function MarkedShot({ box, width, height, testId = 'marked-shot', version
         height,
       }}
     >
-      <MapShot box={undefined} width={width} height={height} whole {...(version !== undefined ? { version } : {})} />
+      <MapShot box={frame ? box : undefined} width={width} height={height} whole {...(version !== undefined ? { version } : {})} />
       {mark && <span data-testid={`${testId}-mark`} style={mark} />}
     </span>
   );

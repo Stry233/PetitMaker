@@ -5,9 +5,8 @@ import type { ActiveView } from '../../../tools/pointer/runtime';
 import type { EventBus } from '../../../core/commands/event-bus';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import type { EditorEvents } from '../../../state/editing/events';
-import { ZOOM_STEP } from '../../shared/viewport/view-constants';
 import { TILE_SIZE } from '../geometry/world';
-import { FrameLoop, listenAll } from '../../shared/viewport/frame-loop';
+import { Beats, FrameLoop, listenAll, type PlayBeat } from '../../shared/viewport/frame-loop';
 import { WATER_COLOR } from '../../../core/model/palette';
 import { getCell } from '../../../core/model/grid-model';
 import { pageZoom } from '../../../platform/device/page-zoom';
@@ -17,7 +16,6 @@ import { BaseLayer } from '../layers/base-layer';
 import { resolveHistoryFlash } from '../../shared/overlay/error-flash';
 import { hideLoupe, loupeFramePainted, releaseLoupeSource, showLoupe, type LoupeSource } from '../../shared/overlay/loupe';
 import { LoupeRegion, type LoupeSquare } from './loupe-region';
-import { cullRect } from '../layers/chunk-grid';
 import { TerrainLayer } from '../layers/terrain-layer';
 import { ObjectLayer } from '../layers/object-layer';
 import { AnnotationLayer } from '../layers/annotation-layer';
@@ -29,7 +27,8 @@ import { captureDetachedState, type DetachedCaptureOptions } from '../capture/de
 import { DEFAULT_CAPTURE_PX, type MapCaptureOptions } from '../../map-capture';
 import type { PassiveOverlays, ViewSettingsTarget } from '../../shared/viewport/view-settings';
 import { Viewport } from '../camera/viewport';
-import { animateCamera, type CameraTweenHandle } from '../camera/tween';
+import { type CameraTweenHandle } from '../camera/tween';
+import { camera2d } from '../camera/camera-2d';
 import { MISSED_RENDER_CHECK, MissedRenderCheck, viewFrameReader } from './missed-render-check';
 import { watchContextLoss } from '../../shared/gl/context-loss';
 import { TERRAIN_GRID } from '../../../core/game/profile';
@@ -59,12 +58,17 @@ export class MapRenderer implements ViewSettingsTarget {
 
   private readonly eventBus: EventBus<EditorEvents>;
   private currentState: GridState | null = null;
+  /** The map drawn is a still one (a stand-in, `state/map-stand-in.ts`): the bus's edits and their
+   *  flashes belong to the live map, so they leave it as it is. */
+  private still = false;
 
+  /** Every canvas animation of this view, stepped by its frame loop. */
+  private readonly beats = new Beats(() => this.requestRender());
   /** The ticker sleeps between requested frames. */
   private readonly frames = new FrameLoop(() => {
     this.restCheck?.cancel();
     if (this.presenting || this.frames.awaitingPaint) this.app.ticker.start();
-  }, [() => this.currentState !== null && this.gridLayer.step(this.viewport.getZoom())]);
+  }, [() => this.currentState !== null && this.gridLayer.step(this.viewport.getZoom()), (now) => this.beats.step(now)]);
   private destroyed = false;
   /** The camera glide in flight (a zoom button, the fit), cancelled by the next and by `destroy`. */
   private readonly glide: CameraTweenHandle = { cancel: null };
@@ -86,11 +90,17 @@ export class MapRenderer implements ViewSettingsTarget {
   onUnrecoverableLoss: (() => void) | null = null;
   private unwatchContext: () => void = () => {};
 
-  /** Opens the render window (coalesced, spam-safe); every scene mutation and canvas-animation
-   *  frame calls it. */
+  /** Opens the render window (coalesced, spam-safe); every scene mutation calls it. */
   requestRender = (): void => {
     if (this.destroyed) return;
     this.frames.request();
+  };
+
+  /** Plays a canvas beat on this view's frame loop. A view off screen draws no frames, so a beat
+   *  played there lands on its end state at once. */
+  readonly play: PlayBeat = (beat) => {
+    if (this.destroyed || !this.presenting) { beat.settle(); return () => {}; }
+    return this.beats.play(beat);
   };
 
   private restTicker(): void {
@@ -105,13 +115,17 @@ export class MapRenderer implements ViewSettingsTarget {
     if (on) this.requestRender();
     else {
       this.restCheck?.cancel();
+      this.beats.settle();
       if (!this.frames.awaitingPaint) this.app.ticker.stop();
     }
   }
 
-  private renderTick = (): void => {
+  /** One frame: from the ticker, which passes its frame delta, or drawn synchronously (a resize). */
+  private renderTick = (tickerDelta?: number): void => {
     if (!this.presenting && !this.frames.awaitingPaint) { this.restTicker(); return; }
-    const painted = this.frames.advance();
+    // The ticker's frame time for its own frames; a synchronous draw between frames reads the clock.
+    const now = tickerDelta === undefined ? performance.now() : this.app.ticker.lastTime;
+    const painted = this.frames.advance(now);
     if (painted) {
       this.flushDirtyChunks();
       // The loupe's own square renders before the frame, so its read-back does not also wait on
@@ -199,9 +213,9 @@ export class MapRenderer implements ViewSettingsTarget {
     // Each layer opens this renderer's window, so a Help figure's animation never wakes the editor.
     this.baseLayer = new BaseLayer(this.requestRender);
     this.terrainLayer = new TerrainLayer(this.requestRender);
-    this.objectLayer = new ObjectLayer({ state: () => this.currentState, requestRender: this.requestRender });
-    this.annotationLayer = new AnnotationLayer(this.requestRender);
-    this.overlayLayer = new OverlayLayer(this.requestRender);
+    this.objectLayer = new ObjectLayer({ state: () => this.currentState, requestRender: this.requestRender, play: this.play });
+    this.annotationLayer = new AnnotationLayer(this.requestRender, this.play);
+    this.overlayLayer = new OverlayLayer(this.requestRender, () => this.currentState, this.play);
     this.overlayLayer.setShapeSource((x, y) =>
       (this.currentState ? getCell(this.currentState.cells, x, y)?.terrain : null) ?? null);
 
@@ -228,7 +242,7 @@ export class MapRenderer implements ViewSettingsTarget {
     // The bus outlives any one renderer (StrictMode remounts the canvas), so destroy() detaches these.
     this.detachBus = listenAll(eventBus, {
       'cells-changed': (data) => {
-        if (!this.currentState) return;
+        if (!this.currentState || this.still) return;
         const cells = cellsOn(data.cells, TERRAIN_GRID);
         this.baseLayer.redrawCells(cells, this.currentState);
         this.terrainLayer.redrawCells(cells, this.currentState);
@@ -236,17 +250,20 @@ export class MapRenderer implements ViewSettingsTarget {
         this.requestRender();
       },
       'objects-changed': (data) => {
+        if (this.still) return;
         if (data.removed) this.objectLayer.removeObjects(data.removed);
         if (data.added) this.objectLayer.addObjects(data.added);
         this.refreshNumbers();
         this.requestRender();
       },
       'validation-failed': (data) => {
+        if (this.still) return;
         this.overlayLayer.flashErrors(data.errors);
         this.requestRender();
       },
       // Latest-wins, so a burst of undos flashes once.
       'history-applied': ({ cells, objects }) => {
+        if (this.still) return;
         this.overlayLayer.flashCommit(resolveHistoryFlash(cells, objects));
         this.requestRender();
       },
@@ -260,9 +277,13 @@ export class MapRenderer implements ViewSettingsTarget {
     this.requestRender();
   }
 
-  /** `grid` is the grid the cell lines draw on, or null for none. */
-  initMap(state: GridState, grid: GridId | null, showChunks?: boolean, opts?: { labels?: boolean }): void {
+  /** `grid` is the grid the cell lines draw on, or null for none; a `still` map takes none of the
+   *  bus's edits. */
+  initMap(state: GridState, grid: GridId | null, showChunks?: boolean, opts?: { labels?: boolean; still?: boolean }): void {
     this.currentState = state;
+    this.still = opts?.still ?? false;
+    // Number rasters built so far are the previous map's, which the view settings may rebuild just before a swap.
+    this.terrainLayer.markNumbersDirty();
     this.gridLayer.setMap(state.template, grid, showChunks ?? false);
     this.requestRender();
     this.baseLayer.drawFull(state);
@@ -401,39 +422,24 @@ export class MapRenderer implements ViewSettingsTarget {
       animateRemove: (id: string) => this.objectLayer.animateRemove(id),
       showLoupe: (at) => showLoupe(this.loupeSource, at),
       hideLoupe,
-      camera: {
-        pan: (dx, dy) => {
-          this.viewport.pan(dx, dy);
-          this.applyViewportTransform();
-        },
-        zoomStep: (dir, ax, ay) => {
-          this.viewport.setZoom(this.viewport.getZoom() * ZOOM_STEP.notch.map2d ** dir, ax, ay);
-          this.applyViewportTransform();
-        },
-        // The camera buttons glide about the map box centre, as the 3D camera dollies about its
-        // target, rather than jump.
-        zoomStepAnimated: (dir) => {
-          animateCamera(this, this.glide, (r) => r.viewport.setZoomAtCentre(r.viewport.getZoom() * ZOOM_STEP.button ** dir));
-        },
-        fitToMap: () => {
-          const template = this.currentState?.template;
-          if (template) animateCamera(this, this.glide, (r) => r.viewport.fitToMap(template.width, template.height));
-        },
-        zoomBy: (factor, ax, ay) => {
-          this.viewport.setZoom(this.viewport.getZoom() * factor, ax, ay);
-          this.applyViewportTransform();
-        },
-      },
+      camera: camera2d({
+        viewport: this.viewport,
+        applyViewportTransform: () => this.applyViewportTransform(),
+        play: this.play,
+        mapSize: () => this.currentState?.template ?? null,
+      }, this.glide),
     };
   }
 
   applyViewportTransform(): void {
     const zoom = this.viewport.getZoom();
-    const offset = this.viewport.getOffset();
-    this.worldContainer.scale.set(zoom);
-    this.worldContainer.position.set(-offset.x, -offset.y);
+    const stage = this.viewport.stageTransform();
+    this.worldContainer.scale.set(stage.scale);
+    this.worldContainer.pivot.set(stage.pivot.x, stage.pivot.y);
+    this.worldContainer.position.set(stage.position.x, stage.position.y);
+    this.worldContainer.rotation = stage.rotation;
     if (this.currentState) this.gridLayer.follow(zoom);
-    const rect = this.cullLayers(zoom, offset);
+    const rect = this.cullLayers();
     // The number overlay hides and frees its rasters when zoomed out, builds chunks the camera
     // reaches, and does nothing on a plain pan.
     this.terrainLayer.setNumberZoom(zoom);
@@ -450,8 +456,8 @@ export class MapRenderer implements ViewSettingsTarget {
 
   /** Shows only the terrain and object chunks the camera rect reaches: Pixi has no culling of its
    *  own, and every frame would otherwise walk the whole map. */
-  private cullLayers(zoom: number, offset: { x: number; y: number }) {
-    const rect = cullRect(offset.x, offset.y, zoom, this.app.renderer.screen.width, this.app.renderer.screen.height);
+  private cullLayers() {
+    const rect = this.viewport.visibleWorldRect();
     this.terrainLayer.cull(rect);
     this.objectLayer.cull(rect);
     return rect;
@@ -490,7 +496,7 @@ export class MapRenderer implements ViewSettingsTarget {
     const everything = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
     this.terrainLayer.cull(everything);
     this.objectLayer.cull(everything);
-    return () => this.cullLayers(this.viewport.getZoom(), this.viewport.getOffset());
+    return () => this.cullLayers();
   }
 
   /** The live-world captures (`capture/live-capture.ts`). */
@@ -553,15 +559,15 @@ export class MapRenderer implements ViewSettingsTarget {
   /** Shows only the chunks the loupe's `square` (css px of the canvas) reaches, or with null the
    *  camera's chunks again. */
   private cullLoupe(square: LoupeSquare | null): void {
-    const zoom = this.viewport.getZoom(), offset = this.viewport.getOffset();
-    if (!square) { this.cullLayers(zoom, offset); return; }
-    const rect = cullRect(offset.x + square.x, offset.y + square.y, zoom, square.side, square.side);
+    if (!square) { this.cullLayers(); return; }
+    const rect = this.viewport.visibleWorldRect(square);
     this.terrainLayer.cull(rect);
     this.objectLayer.cull(rect);
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.beats.clear();
     this.loupeRegion?.release();
     this.glide.cancel?.();
     this.unwatchContext();

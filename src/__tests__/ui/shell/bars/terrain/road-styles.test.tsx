@@ -3,7 +3,7 @@
  * The road picker: the catalog's path art on its swatches, the hovered surface's name, and the print
  * switch that keeps the chosen pavement.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../../../i18n/context';
@@ -24,9 +24,13 @@ function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
+// The picker stands on the road surface's bar, which is where its swatches act.
+beforeEach(() => { useEditorStore.getState().setEditMode({ mode: 'road' }); });
+
 afterEach(() => {
   cleanup();
-  useEditorStore.setState({ locale: 'en', tileMaterial: getRoadMaterials()[0]!.id, placementRotation: 0 });
+  useEditorStore.getState().setEditMode({ mode: null });
+  useEditorStore.setState({ locale: 'en', tileMaterial: getRoadMaterials()[0]!.id, roadFamilyMaterials: { roads: null, prints: null }, placementRotation: 0 });
 });
 
 describe('the road picker', () => {
@@ -53,7 +57,7 @@ describe('the road picker', () => {
     useEditorStore.setState({ tileMaterial: 'path-simple-brick' });
     render(<Providers><RoadStyles /></Providers>);
     const toggle = screen.getByRole('button', { name: 'Switch to prints' });
-    expect(toggle.closest('[role="group"], [data-content-swap]')).toBeNull();
+    expect(toggle.closest('[role="group"], [data-swap-reel]')).toBeNull();
     fireEvent.click(toggle);
     expect(useEditorStore.getState().tileMaterial).toBe(getRoadMaterials(true)[0]!.id);
     await screen.findByRole('group', { name: 'Surface prints' });

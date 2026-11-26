@@ -13,7 +13,7 @@ import {
   type Corners,
   type MaterialisePatchCommand,
   type Rotation,
-  type TerrainType,
+  TerrainType,
   type TrimRoadCommand,
   type TrimTerrainCommand,
 } from './types';
@@ -24,6 +24,26 @@ export function paintTerrainCommand(
   cells: MacroCoord[], terrainType: TerrainType, elevation: number, ground?: GroundZone,
 ): PaintTerrainCommand {
   return { type: CommandType.PaintTerrain, cells, terrainType, elevation, ...(ground === undefined ? {} : { ground }) };
+}
+
+/** The mountain layers that raise each of `items` from its base to its top, lowest first, each
+ *  layer carrying every cell still below it: every layer stands on the one beneath (V-MTN-02 by
+ *  construction). A base of 0 is bare ground. */
+export function mountainLadder<T>(
+  items: Iterable<T>, cellOf: (item: T) => MacroCoord, baseOf: (item: T) => number, topOf: (item: T) => number,
+): PaintTerrainCommand[] {
+  const list = [...items];
+  let low = Infinity, high = -Infinity;
+  for (const item of list) {
+    low = Math.min(low, baseOf(item) + 1);
+    high = Math.max(high, topOf(item));
+  }
+  const commands: PaintTerrainCommand[] = [];
+  for (let level = Math.max(1, low); level <= high; level++) {
+    const cells = list.filter((item) => baseOf(item) < level && topOf(item) >= level).map(cellOf);
+    if (cells.length > 0) commands.push(paintTerrainCommand(cells, TerrainType.Mountain, level));
+  }
+  return commands;
 }
 
 /** Clear the terrain on `cells`; `ground` turns their zone first. */

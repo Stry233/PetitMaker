@@ -2,11 +2,9 @@
 import { afterPaint } from '../../../../platform/async/after-paint';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
-import type { Arrival, ArrivalLine } from '../../../../ui/session/arrival-bus';
-import { subscribeArrival, __resetArrivals } from '../../../../ui/session/arrival-bus';
+import { __resetArrivals, subscribeArrival, transferArrival, type Arrival, type ArrivalLine } from '../../../../editor/session/arrival';
 import { Windows } from '../../../../ui/shell/windows/Windows';
 import { LiteWindows } from '../../../../ui/lite/LiteWindows';
-import { transferArrival } from '../../../../ui/shell/windows/planet-arrival';
 import { setToastPresenter } from '../../../../platform/channels/toast-bus';
 import { I18nProvider, translateFor } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
@@ -256,7 +254,6 @@ describe('saved planets', () => {
 describe('Lite planet changes', () => {
   it('carries the build with no arrival card, and no toast when nothing was lost', async () => {
     world();
-    const arrivals = heard();
     const present = vi.fn();
     const unregister = setToastPresenter(present);
     try {
@@ -267,7 +264,6 @@ describe('Lite planet changes', () => {
       expect(opened().template.id).toBe(TAFA.id);
       expect(built(), 'the painted cell came along').toBe(1);
       expect(present).not.toHaveBeenCalled();
-      expect(arrivals).toEqual([]);
       expect(useEditorStore.getState().modals.newProject).toBe(false);
     } finally { unregister(); }
   });

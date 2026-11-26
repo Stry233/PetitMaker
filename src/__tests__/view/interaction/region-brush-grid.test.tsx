@@ -9,7 +9,7 @@ import { type MacroCoord } from '../../../core/model/types';
 import { ToolType } from '../../../state/editing/vocabulary';
 import { GRIDS, TERRAIN_GRID } from '../../../core/game/profile';
 import { gridCellRect } from '../../../core/grid/grids';
-import { setRegionBrushHandler } from '../../../tools/pointer/region';
+import { setRegionBrushHandler } from '../../../view/interaction/pointer/region-channel';
 import { useEditorStore } from '../../../state/store';
 import { ToolManager } from '../../../tools/pointer/runtime/tool-manager';
 import { makeExecutor, makeState } from '../../_support/map-state';
@@ -36,7 +36,7 @@ afterEach(() => { unregister(); cleanup(); registerToolManager(null); setActiveV
 function setup() {
   const state = makeState(30, 30), executor = makeExecutor(state);
   useEditorStore.setState({
-    gridState: state, commandExecutor: executor, region: [], selectingRegion: true, selection: [],
+    gridState: state, commandExecutor: executor, regions: {}, selectingRegion: true, selection: [],
     ...armedEditMode({ tool: ToolType.Hand, macro: null, item: null }),
   });
   const manager = new ToolManager(makeStubView(), executor, state, editorToolWiring());

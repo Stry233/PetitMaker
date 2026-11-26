@@ -12,7 +12,7 @@ import { usePanelTone } from './bar-panel';
 import { useReveal, type RevealBind } from '../../primitives/use-reveal';
 import { fadeMask } from '../../primitives/scroll-fade';
 import { MAP_LABEL } from '../../design/tokens';
-import { TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { MOTIONS } from '../../design/motion/registry';
 import { useTransition, useMotionAllowed } from '../../design/motion/use-motion';
@@ -23,7 +23,7 @@ const MAX_EM = 13;
 
 /** How far the name is softened at each end of the window it runs through, in css px: about two
  *  thirds of an em, which is a glyph's worth of dissolve at this size. */
-const FADE = Math.round(TEXT.label * 0.66);
+const FADE = Math.round(roleSize('label') * 0.66);
 
 /** The share of one round trip the name stands still at an end, either end. A name that turned the
  *  moment it arrived would never be readable at the end that matters most, which is the far one. */
@@ -115,7 +115,7 @@ export function CardNameBubble({ reached, lift = 0 }: { reached: CardNameReach |
             position: 'absolute', display: 'block', width: 'max-content',
             bottom: lift ? `calc(100% + ${lift}px)` : '100%', left: reached.centre,
             maxWidth: `${MAX_EM}em`,
-            fontSize: TEXT.label, fontWeight: weightAt(800, TEXT.label), lineHeight: 1.15,
+            fontSize: roleSize('label'), fontWeight: weightAt(800, roleSize('label')), lineHeight: 1.15,
             pointerEvents: 'none', ...MAP_LABEL,
           }}
         >

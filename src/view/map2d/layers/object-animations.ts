@@ -4,8 +4,8 @@ import { TILE_SIZE } from '../geometry/world';
 import { getCatalogItem } from '../../../state/catalog';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { iconUrl } from '../../../assets/icon-urls';
-import { animConfig, easeOutBack } from '../../shared/motion/anim-config';
-import { arcMotion, arcOffset, spinOffset } from '../../shared/motion/group-arc';
+import { animConfig } from '../../shared/motion/anim-config';
+import { arcMotion, arcOffset, flipOffset, flipSquash, groupEase, spinOffset } from '../../shared/motion/group-arc';
 import { plopScale, spinEase } from '../../shared/motion/object-beats';
 import type { GroupRotation } from '../../../tools/objects';
 import { isMotionReduced } from '../../../platform/channels/motion-state';
@@ -13,36 +13,32 @@ import { spawnPuff } from '../draw/particles';
 import { iconColor } from '../draw/icon-texture';
 import { itemTint } from '../../shared/icon/item-tint';
 import { OBJECT_CHILD, taggedChild } from '../draw/object-children';
+import { timedBeat, type PlayBeat } from '../../shared/viewport/frame-loop';
 
 export function fadeLayer(
   lc: PIXI.Container, elev: number, show: boolean,
-  layerFadeAnim: Map<number, number>,
-  /** Opens the render window of the renderer the layer container lives on. */
-  requestRender: () => void,
+  /** Each elevation's fade in flight, by its cancel. */
+  layerFadeAnim: Map<number, () => void>,
+  /** Plays on the frame loop of the renderer the layer container lives on. */
+  play: PlayBeat,
 ): void {
-  const prev = layerFadeAnim.get(elev);
-  if (prev !== undefined) { cancelAnimationFrame(prev); layerFadeAnim.delete(elev); }
+  layerFadeAnim.get(elev)?.();
+  layerFadeAnim.delete(elev);
   if (isMotionReduced()) { lc.visible = show; lc.alpha = 1; return; }
   if (show) lc.visible = true;                 // reveal before fading in
   const target = show ? 1 : 0;
   const from = lc.alpha;
   if (from === target && lc.visible === show) return;
-  const { durationMs } = animConfig.layerFade;
-  let start: number | null = null;
-  const tick = (ts: number) => {
-    requestRender();
-    if (start === null) start = ts;
-    const t = Math.min((ts - start) / durationMs, 1);
+  let ended = false;
+  const stop = play(timedBeat(animConfig.layerFade.durationMs, (t) => {
     lc.alpha = from + (target - from) * t;
-    if (t < 1) {
-      layerFadeAnim.set(elev, requestAnimationFrame(tick));
-    } else {
-      lc.alpha = target;
-      if (!show) lc.visible = false;           // hide only after fading out
-      layerFadeAnim.delete(elev);
-    }
-  };
-  layerFadeAnim.set(elev, requestAnimationFrame(tick));
+    if (t < 1) return;
+    lc.alpha = target;
+    if (!show) lc.visible = false;             // hide only after fading out
+    layerFadeAnim.delete(elev);
+    ended = true;
+  }));
+  if (!ended) layerFadeAnim.set(elev, stop);
 }
 
 /**
@@ -63,9 +59,9 @@ export function selectionPopAmplitude(spanPx: number): number {
  * scale).
  */
 export function animateSquash(
-  objectMap: Map<string, PIXI.Container>, objectId: string, sizeCells = 1,
-  /** Opens the render window of the renderer the wrapper lives on. */
-  requestRender: () => void,
+  objectMap: Map<string, PIXI.Container>, objectId: string, sizeCells: number,
+  /** Plays on the frame loop of the renderer the wrapper lives on. */
+  play: PlayBeat,
 ): void {
   if (isMotionReduced()) return;
   const wrapper = objectMap.get(objectId);
@@ -77,26 +73,17 @@ export function animateSquash(
   wrapper.x += cx;
   wrapper.y += cy;
 
-  let start: number | null = null;
-  const tick = (ts: number) => {
-    // The wrapper dies mid-flight when the placement is undone or deleted within the
-    // settle window; a tick on a destroyed display object throws inside rAF.
-    if (wrapper.destroyed) return;
-    requestRender();
-    if (start === null) start = ts;
-    const t = Math.min((ts - start) / settleMs, 1);
+  play(timedBeat(settleMs, (t) => {
+    // The wrapper dies mid-flight when the placement is undone or deleted within the settle window.
+    if (wrapper.destroyed) return false;
     const { across, up } = plopScale(t, sizeCells);
     wrapper.scale.set(across, up);
-    if (t < 1) {
-      requestAnimationFrame(tick);
-    } else {
-      wrapper.scale.set(1, 1);
-      wrapper.pivot.set(0, 0);
-      wrapper.x -= cx;
-      wrapper.y -= cy;
-    }
-  };
-  requestAnimationFrame(tick);
+    if (t < 1) return;
+    wrapper.scale.set(1, 1);
+    wrapper.pivot.set(0, 0);
+    wrapper.x -= cx;
+    wrapper.y -= cy;
+  }));
 }
 
 /**
@@ -110,8 +97,8 @@ export function animateSquash(
  */
 export function animateRotation(
   objectMap: Map<string, PIXI.Container>, id: string, turn: { fromDeg: number; toDeg: number },
-  /** Opens the render window of the renderer the wrapper lives on. */
-  requestRender: () => void,
+  /** Plays on the frame loop of the renderer the wrapper lives on. */
+  play: PlayBeat,
   onFrame?: (eased: number) => void,
 ): void {
   if (isMotionReduced()) return;
@@ -124,12 +111,8 @@ export function animateRotation(
   const toRad = (toDeg * Math.PI) / 180;
   const { durationMs } = animConfig.rotation;
   icon.rotation = fromRad;
-  let start: number | null = null;
-  const tick = (ts: number) => {
-    requestRender();
-    if (icon.destroyed) return;
-    if (start === null) start = ts;
-    const t = Math.min((ts - start) / durationMs, 1);
+  play(timedBeat(durationMs, (t) => {
+    if (icon.destroyed) return false;
     const e = spinEase(t);
     icon.rotation = fromRad + (toRad - fromRad) * e;
     // A caller (the selection ring) rides this same progress rather than computing its own — see
@@ -137,30 +120,26 @@ export function animateRotation(
     // this whole feature exists to avoid. Exactly 1 on the settling frame, matching icon.rotation
     // below landing exactly on toRad.
     onFrame?.(t < 1 ? e : 1);
-    if (t < 1) {
-      requestAnimationFrame(tick);
-    } else {
-      icon.rotation = toRad;
-    }
-  };
-  requestAnimationFrame(tick);
+    if (t >= 1) icon.rotation = toRad;
+  }));
 }
 
 /**
  * Group-rotation beat: the selection turns as one rigid body. Every member travels an arc about the
  * shared centre (a straight line would squash the arrangement mid-turn); a spun member's icon turns
- * by the same quarter on its own axis, and a carried member arcs without spinning. One rAF drives
- * every member, so they share start, duration and easing, and the frame costs one render request.
+ * by the same quarter on its own axis, and a carried member arcs without spinning. One beat drives
+ * every member, so they share start, duration and easing.
  * The commands have already applied, so the tween is an offset back from the rest pose that
  * reaches zero at the end; under reduced motion it does nothing, which is that end state.
  */
 export function animateGroupRotation(
   objectMap: Map<string, PIXI.Container>, turn: GroupRotation,
-  /** Opens the render window of the renderer the members live on. */
-  requestRender: () => void,
+  /** Plays on the frame loop of the renderer the members live on. */
+  play: PlayBeat,
   onFrame?: (eased: number) => void,
 ): void {
   if (isMotionReduced()) return;
+  if (turn.flip) { animateGroupFlip(objectMap, turn, turn.flip, play, onFrame); return; }
   const sweepRad = (turn.sweepDeg * Math.PI) / 180;
   const parts = turn.members.flatMap((m) => {
     const wrapper = objectMap.get(m.id);
@@ -175,16 +154,11 @@ export function animateGroupRotation(
   });
   if (parts.length === 0) return;
 
-  const { durationMs, overshoot } = animConfig.groupRotation;
-  let start: number | null = null;
-  const tick = (ts: number) => {
-    requestRender();
-    if (start === null) start = ts;
-    const t = Math.min((ts - start) / durationMs, 1);
+  play(timedBeat(animConfig.groupRotation.durationMs, (t) => {
     // Exactly 1 on the settling frame (never the raw formula there), so every member's offset and
     // spin land on precisely zero — see arcOffset/spinOffset's file header. The selection ring rides
     // this same value via onFrame instead of computing its own interpolation of the same turn.
-    const eased = t < 1 ? easeOutBack(t, overshoot) : 1;
+    const eased = groupEase(t);
     for (const p of parts) {
       // A member can die mid-flight (undo, a delete, a layer rebuild) — its wrapper is destroyed
       // while the others keep turning, so skip it rather than abandoning the whole tween.
@@ -197,9 +171,47 @@ export function animateGroupRotation(
       }
     }
     onFrame?.(eased);
-    if (t < 1) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
+  }));
+}
+
+/**
+ * Group-flip beat, the group rotation's twin for a flip: every member's wrapper squashes along the
+ * flipped screen axes about its own centre while it travels through the flip's axis, then opens out
+ * at rest (`shared/motion/group-arc.ts`). Its art is never mirrored, as the game never mirrors it.
+ * One beat drives every member; the wrappers' pivots and scales are given back on the settling frame.
+ */
+function animateGroupFlip(
+  objectMap: Map<string, PIXI.Container>, turn: GroupRotation, axes: { x: boolean; y: boolean },
+  play: PlayBeat, onFrame?: (eased: number) => void,
+): void {
+  const parts = turn.members.flatMap((m) => {
+    const wrapper = objectMap.get(m.id);
+    if (!wrapper) return [];
+    // Its centre at rest is its centre before the flip, mirrored across the pivot.
+    const rest = { x: axes.x ? 2 * turn.pivot.x - m.from.x : m.from.x, y: axes.y ? 2 * turn.pivot.y - m.from.y : m.from.y };
+    const centre = { x: rest.x * TILE_SIZE - wrapper.x, y: rest.y * TILE_SIZE - wrapper.y };
+    const was = { x: wrapper.x, y: wrapper.y, pivotX: wrapper.pivot.x, pivotY: wrapper.pivot.y, scaleX: wrapper.scale.x, scaleY: wrapper.scale.y };
+    return [{ wrapper, from: m.from, centre, was }];
+  });
+  if (parts.length === 0) return;
+  for (const p of parts) p.wrapper.pivot.set(p.was.pivotX + p.centre.x, p.was.pivotY + p.centre.y);
+  play(timedBeat(animConfig.groupRotation.durationMs, (t) => {
+    const eased = groupEase(t);
+    const squash = flipSquash(eased);
+    for (const p of parts) {
+      if (p.wrapper.destroyed) continue;
+      if (t >= 1) {
+        p.wrapper.pivot.set(p.was.pivotX, p.was.pivotY);
+        p.wrapper.position.set(p.was.x, p.was.y);
+        p.wrapper.scale.set(p.was.scaleX, p.was.scaleY);
+        continue;
+      }
+      const { dx, dy } = flipOffset(turn.pivot, p.from, axes, eased);
+      p.wrapper.position.set(p.was.x + p.centre.x + dx * TILE_SIZE, p.was.y + p.centre.y + dy * TILE_SIZE);
+      p.wrapper.scale.set(p.was.scaleX * (axes.x ? squash : 1), p.was.scaleY * (axes.y ? squash : 1));
+    }
+    onFrame?.(eased);
+  }));
 }
 
 /**
@@ -215,8 +227,8 @@ export function animateRemove(
   objectMap: Map<string, PIXI.Container>, container: PIXI.Container, id: string,
   /** The object as the layer's own map holds it, for its footprint and tint. */
   obj: PlacedObject | undefined,
-  /** Opens the render window of the renderer the wrapper lives on. */
-  requestRender: () => void,
+  /** Plays on the frame loop of the renderer the wrapper lives on. */
+  play: PlayBeat,
 ): void {
   if (isMotionReduced()) return;
   const wrapper = objectMap.get(id);
@@ -238,13 +250,9 @@ export function animateRemove(
   const del = animConfig.puff.delete;
   const poofCount = Math.min(del.countCap, del.countBase + Math.round(size.w * size.h * del.countPerArea));
 
-  let start: number | null = null;
   let poofed = false;
-  const tick = (ts: number) => {
-    requestRender();
-    if (wrapper.destroyed) return;
-    if (start === null) start = ts;
-    const t = Math.min((ts - start) / collapseMs, 1);
+  play(timedBeat(collapseMs, (t) => {
+    if (wrapper.destroyed) return false;
     wrapper.scale.set(1 - t, 1 - t);
     wrapper.alpha = 1 - t * t;
     if (!poofed && t >= poofOffsetFrac) {
@@ -255,13 +263,9 @@ export function animateRemove(
         count: poofCount, color, spreadPx: del.spreadMul * TILE_SIZE * 0.5,
         lifetimeMs: del.lifetimeMs, risePx: del.risePx, gravity: del.gravity,
         arcSpread: del.arcSpread, maxRadiusPx: del.maxRadiusPx,
-      }, requestRender);
+      }, play);
     }
-    if (t < 1) {
-      requestAnimationFrame(tick);
-    } else {
-      try { wrapper.parent?.removeChild(wrapper); wrapper.destroy({ children: true }); } catch { /* already gone */ }
-    }
-  };
-  requestAnimationFrame(tick);
+    if (t < 1) return;
+    try { wrapper.parent?.removeChild(wrapper); wrapper.destroy({ children: true }); } catch { /* already gone */ }
+  }));
 }

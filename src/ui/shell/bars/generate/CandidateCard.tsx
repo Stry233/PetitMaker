@@ -4,15 +4,18 @@
  * width while the caption keeps its size. The visitor's own card (`CustomCard`) is the same card.
  */
 import { ActionButton } from '../../../primitives/ActionButton';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { useT } from '../../../../i18n/context';
 import { LoadingDots } from '../../../primitives/LoadingDots';
 import { btnReset, cursors, radii } from '../../../design/styles';
-import { ACTIVE, MUTED_INK, PLATE, PLATE_INK, TRACK } from '../../../design/tokens';
-import { LOADING_DOT, SHELF_SCALE, TEXT } from '../../units';
+import { ACTIVE, INSET, MUTED, MUTED_INK, PLATE, PLATE_INK } from '../../../design/tokens';
+import { AlertIcon } from '../../../primitives/line-glyphs';
+import { roleSize } from '../../../design/text-weight';
+import { LOADING_DOT, SHELF_SCALE } from '../../units';
 import { BarText, Plate } from '../bar-atoms';
-import { CARD, CHOSEN } from './generate-shelf';
+import { CARD, CHOSEN, PLATE_BOX } from './generate-shelf';
+import { usePanelTone } from '../bar-panel';
 
 import cardPlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-1.svg';
 import picturePlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-2.svg';
@@ -64,23 +67,31 @@ export const BOX: CSSProperties = {
   position: 'relative', width: '100%', aspectRatio: `${CARD.w} / ${CARD.h}`,
 };
 
-/** The plate a chosen card stands on, both terms shares of the card's box (`generate-shelf.ts:CHOSEN`). */
-export function ChosenPlate() {
-  const chosen = useTransition('candidate.chosen');
+/** The plate a chosen card stands on, both terms shares of the card's box (`generate-shelf.ts:CHOSEN`):
+ *  it rises as the card is chosen and fades as another is. */
+export function ChosenPlate({ chosen }: { chosen: boolean }) {
+  const motionOf = useTransition('candidate.chosen');
   const pc = (n: number) => `${n * 100}%`;
   return (
-    <motion.span
-      initial={{ opacity: 0, scale: 0.94 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={chosen}
-      style={{
-        position: 'absolute',
-        left: `-${pc(CHOSEN.insetX)}`, right: `-${pc(CHOSEN.insetX)}`,
-        top: `-${pc(CHOSEN.insetY)}`, bottom: `-${pc(CHOSEN.insetY)}`,
-        borderRadius: `${pc(CHOSEN.radiusX)} / ${pc(CHOSEN.radiusY)}`,
-        background: ACTIVE, pointerEvents: 'none',
-      }}
-    />
+    <AnimatePresence>
+      {chosen ? (
+        <motion.span
+          key="plate"
+          data-testid="chosen-plate"
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.94 }}
+          transition={motionOf}
+          style={{
+            position: 'absolute',
+            left: `-${pc(CHOSEN.insetX)}`, right: `-${pc(CHOSEN.insetX)}`,
+            top: `-${pc(CHOSEN.insetY)}`, bottom: `-${pc(CHOSEN.insetY)}`,
+            borderRadius: `${pc(CHOSEN.radiusX)} / ${pc(CHOSEN.radiusY)}`,
+            background: ACTIVE, pointerEvents: 'none',
+          }}
+        />
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -93,26 +104,28 @@ export function NoteText({ text }: { text: string }) {
         gap: 4, padding: '6px 8%', boxSizing: 'border-box', width: '100%', height: '100%',
       }}
     >
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        viewBox="0 0 32 32"
-        style={{ width: 24, height: 24, flexShrink: 0, color: PLATE_INK, pointerEvents: 'none' }}
-      >
-        <circle cx="16" cy="16" r="16" fill={TRACK} />
-        <path d="M16 8V17" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
-        <circle cx="16" cy="24" r="2" fill="currentColor" />
-      </svg>
-      <BarText size={TEXT.small} color={PLATE_INK} weight={700} style={{ width: '100%', flexShrink: 0 }}>
+      <AlertIcon size={24} style={{ flexShrink: 0, color: MUTED, pointerEvents: 'none' }} />
+      <BarText role="small" color={PLATE_INK} weight={700} style={{ width: '100%', flexShrink: 0 }}>
         <span style={{ display: 'block', textAlign: 'center', whiteSpace: 'normal', textWrap: 'balance' }}>{text}</span>
       </BarText>
     </span>
   );
 }
 
+/** The card's plate on a cream panel: the inset, the fill a field on that plate takes. */
+const CREAM_PLATE: CSSProperties = {
+  position: 'absolute',
+  left: `${PLATE_BOX.insetX * 100}%`, right: `${PLATE_BOX.insetX * 100}%`,
+  top: `${PLATE_BOX.insetY * 100}%`, bottom: `${PLATE_BOX.insetY * 100}%`,
+  borderRadius: `${PLATE_BOX.radiusX * 100}% / ${PLATE_BOX.radiusY * 100}%`,
+  background: INSET, pointerEvents: 'none',
+};
+
 /** The two plates and the picture between them, filling whatever box the caller gives. */
-export function CardFace({ shot, waited, placeholder, bare = false }: {
+export function CardFace({ shot, waited, placeholder, bare = false, face }: {
   shot: string | null | undefined;
+  /** What the picture with its plate wears where a morph finds it as another arrangement's picture (`primitives/morph.ts:MORPH_FACE_ATTR`). */
+  face?: Record<string, string>;
   /** The picture alone, filling the box with `radii.field` corners, without the two plates. */
   bare?: boolean;
   /** Whether this card was drawn before its picture existed, which is what makes the arrival an
@@ -122,17 +135,20 @@ export function CardFace({ shot, waited, placeholder, bare = false }: {
   placeholder?: ReactNode;
 }) {
   const shotMotion = useTransition('candidate.shot.arrive');
+  const cream = usePanelTone() === 'cream';
+  // A face (`face`) is the picture with its own plate, so the two travel as one.
+  const framed = face !== undefined && !bare;
   const frame: CSSProperties = bare
     ? { position: 'absolute', inset: 0, borderRadius: radii.field, background: PLATE }
-    : { ...PICTURE, borderRadius: PICTURE_CORNER };
-  return (
+    : framed ? { position: 'absolute', inset: 0, borderRadius: PICTURE_CORNER } : { ...PICTURE, borderRadius: PICTURE_CORNER };
+  const picture = (
     <>
-      {bare ? null : <Plate src={cardPlate} style={{ inset: 0, width: '100%', height: '100%' }} />}
-      {bare ? null : <Plate src={picturePlate} style={PICTURE} />}
+      {bare ? null : <Plate src={picturePlate} style={framed ? { inset: 0, width: '100%', height: '100%' } : PICTURE} />}
 
       {/* The picture is framed in sea to the plate's own shape before it gets here, so it fills the
           rect to its edges and the only thing left to do is turn its corners. */}
       <span
+        {...(framed ? {} : face)}
         style={{
           ...frame,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -151,6 +167,12 @@ export function CardFace({ shot, waited, placeholder, bare = false }: {
           />
         ) : shot === undefined ? <LoadingDots color={PLATE_INK} size={LOADING_DOT * SHELF_SCALE} /> : placeholder ?? null}
       </span>
+    </>
+  );
+  return (
+    <>
+      {bare ? null : cream ? <span style={CREAM_PLATE} /> : <Plate src={cardPlate} style={{ inset: 0, width: '100%', height: '100%' }} />}
+      {framed ? <span {...face} style={{ ...PICTURE, display: 'block', pointerEvents: 'none' }}>{picture}</span> : picture}
     </>
   );
 }
@@ -193,7 +215,7 @@ export function CandidateCard({ seed, name, note, shot, selected, failed, landin
       }}
     >
       {/* Drawn first, so the card's own plate covers all of it but the margin. */}
-      {selected ? <ChosenPlate /> : null}
+      <ChosenPlate chosen={selected} />
       <CardFace
         shot={shot}
         waited={waited.current}
@@ -202,7 +224,7 @@ export function CandidateCard({ seed, name, note, shot, selected, failed, landin
       {landing ? <Landing /> : null}
 
       {/* The card's line: its recipe, or briefly that a click did not reach the map. */}
-      <BarText size={TEXT.small} color={PLATE} style={LINE}>
+      <BarText role="small" color={PLATE} style={LINE}>
         {failed ? t('generate.failed') : label}
       </BarText>
     </ActionButton>
@@ -224,12 +246,12 @@ export function ImportCard({ name, shot, selected, failed, landing, onPick, onSe
   const waited = useRef(shot === undefined);
   return (
     <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-import">
-      {selected ? <ChosenPlate /> : null}
+      <ChosenPlate chosen={selected} />
       {/* The face every card wears, the empty frame carrying the mark. */}
       <CardFace
         shot={shot}
         waited={waited.current}
-        placeholder={<BarText size={GIANT_SIZE} color={MUTED_INK} weight={900}>+</BarText>}
+        placeholder={<BarText role="lead" color={MUTED_INK} weight={900}>+</BarText>}
       />
       {/* The picture itself is the click that lands the run, once there is one; empty, the whole
           frame is the way to fetch one. */}
@@ -245,17 +267,9 @@ export function ImportCard({ name, shot, selected, failed, landing, onPick, onSe
           interaction="action"
           aria-label={t('generate.import_change')}
           onClick={onPick}
-          // Every box between the pill and the ellipsis span carries `minWidth: 0`, so a long name ellipsizes.
-          style={{
-            ...btnReset, height: '100%', maxWidth: '86%', minWidth: 0, padding: `0 ${FIELD_PAD}px`, borderRadius: radii.pill,
-            background: PLATE, cursor: cursors.clickable, display: 'flex', alignItems: 'center', overflow: 'hidden',
-          }}
+          style={{ ...btnReset, ...linePill(), cursor: cursors.clickable }}
         >
-          <BarText size={TEXT.small} color={PLATE_INK} style={{ minWidth: 0, maxWidth: '100%' }}>
-            <span style={{ display: 'block', minWidth: 0, maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {failed ? t('generate.failed') : name ?? t('generate.import_pick')}
-            </span>
-          </BarText>
+          <LinePillText text={failed ? t('generate.failed') : name ?? t('generate.import_pick')} />
         </ActionButton>
       </span>
     </div>
@@ -268,4 +282,22 @@ export const FIELD_PAD = 8;
  * The size every typed digit stands at, in css px: fixed where ten digits fit the frame, so a number never
  * resizes as it is typed.
  */
-export const GIANT_SIZE = 20;
+export const GIANT_SIZE = roleSize('lead');
+
+/** The pill on a card's line that names what an empty card fetches or starts. Every box between the
+ *  pill and the ellipsis span carries `minWidth: 0`, so a long name ellipsizes. */
+export function linePill(): CSSProperties {
+  return {
+    height: '100%', maxWidth: '86%', minWidth: 0, padding: `0 ${FIELD_PAD}px`, borderRadius: radii.pill,
+    background: PLATE, display: 'flex', alignItems: 'center', overflow: 'hidden',
+  };
+}
+
+/** The pill's words, cut with an ellipsis where they outgrow it. */
+export function LinePillText({ text }: { text: string }) {
+  return (
+    <BarText role="small" color={PLATE_INK} style={{ minWidth: 0, maxWidth: '100%' }}>
+      <span style={{ display: 'block', minWidth: 0, maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+    </BarText>
+  );
+}

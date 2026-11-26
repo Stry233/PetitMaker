@@ -3,7 +3,7 @@
  * that arms nothing. It offers only items that can tile (`tilesAShape`: no `maxCount`), dropping
  * categories left empty.
  */
-import { tilesAShape } from '../../../../tools/generation/stencil';
+import { tilesAShape } from '../../../../tools/generation/facts';
 import { ObjectShelf } from '../objects/ObjectShelf';
 
 export function ItemPickScreen({ current, onPicked }: {

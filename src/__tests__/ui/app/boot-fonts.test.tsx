@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 /** The web entry's font registration: a visit whose files are cached sets its first frame in the
- *  shipped faces; a visit that has to download them leaves them to the splash. */
+ *  shipped faces; a visit that has to download them leaves them to the boot's asset run. */
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import { mountApp } from '../../../ui/app/boot';
-import { registerFontsIfWarm, __resetPreload } from '../../../ui/shell/splash/preload';
-import { markSplashDone } from '../../../io/storage/splash-facts';
+import { registerFontsIfWarm, __resetBootAssets } from '../../../editor/session/boot-assets';
+import { markSplashDone } from '../../../editor/session/visit-marks';
 import { FONT_FILES, __resetFontFaces } from '../../../assets/fonts/faces';
 
 let registered = 0;
 
 beforeEach(() => {
-  __resetPreload();
+  __resetBootAssets();
   __resetFontFaces();
   localStorage.clear();
   registered = 0;

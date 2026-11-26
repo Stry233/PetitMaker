@@ -51,8 +51,8 @@ describe('the 2D and 3D views', () => {
       const p = brush(w, {}, view === '2d' ? flat() : perspective(w, shift(at, 3, 3)));
       p.drag(at, shift(at, 4, 0), shift(at, 4, 3));
       p.click(shift(at, 4, 3));
-      p.arm({ floor: 6 });
-      p.click(shift(at, 1, 5));
+      p.click(shift(at, 4, 3));
+      p.click(shift(at, 4, 3));
       const laid = picture(w);
       w.undo();
       return { laid, undone: picture(w), toasts: p.toasts, top: w.terrainAt(shift(at, 4, 3)) };

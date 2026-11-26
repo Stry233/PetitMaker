@@ -2,11 +2,11 @@
 import { useCallback, useRef, type CSSProperties, type MutableRefObject, type Ref } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { useEditorStore } from '../../../state/store';
 import { helpTargetAttr } from '../../session/help-targets';
-import type { HelpPageId } from '../../help/page-schema';
+import type { HelpPageId } from '../../../editor/help/page-schema';
+import type { FramePose } from '../../../state/frame-pose';
 import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
-import { cssMotion } from '../../design/motion';
+import { arrangementFadeCss } from '../../design/motion';
 import { ShapeEdge } from '../../design/shape-edge';
 import { btnReset, cursors, z } from '../../design/styles';
 import { FOCUS_SHAPE_RADIUS, mapShape } from '../../design/tokens';
@@ -15,11 +15,12 @@ import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameZoom } from '../use-frame-zoom';
 import { mapEdgeAttr } from '../../primitives/map-edge';
 import { TOP_RIGHT_TOP, cornerArt, topRightHeight, topRightSlack, type FrameArt } from '../frame';
-import { useFrameLayout, usePlanGlide } from '../frame-layout';
+import { useFrameLayout, usePlanGlide, useScaleGlideLine } from '../frame-layout';
 import { EDGE_RIGHT, TOP_RIGHT_GAP } from '../units';
 import { LoadMeter } from './LoadMeter';
 import type { ChromeSwap } from './ModeRow';
 import { useMorph } from '../../primitives/morph';
+import { useRunCommand } from '../use-shell-commands';
 
 /**
  * One drawn control, at its own height so its ink reads at a rail button's size, its slack hanging
@@ -62,16 +63,16 @@ function Piece({ art, onPress, expanded, tourTarget, helpTarget, buttonRef }: {
   );
 }
 
-/** A planet session keeps only the menu. A member with no drawing of its own is the load disc, drawn here. */
-export function CornerActions({ inSession, swap, menuOpen, toggleMenu, menuButton }: {
-  inSession: boolean;
+/** The corner `pose` keeps (`frame.ts:cornerArt`). A member with no drawing of its own is the load disc, drawn here. */
+export function CornerActions({ pose, swap, menuOpen, toggleMenu, menuButton }: {
+  pose: FramePose;
   swap: ChromeSwap;
   menuOpen: boolean;
   toggleMenu: () => void;
   menuButton: MutableRefObject<HTMLButtonElement | null>;
 }) {
   const layout = useFrameLayout();
-  const setModal = useEditorStore((s) => s.setModal);
+  const run = useRunCommand();
   // A session change keys a new corner in before the old one leaves, so the leaving copy clears the
   // shared ref only while it still holds its own button.
   const own = useRef<HTMLButtonElement | null>(null);
@@ -82,29 +83,33 @@ export function CornerActions({ inSession, swap, menuOpen, toggleMenu, menuButto
   const glide = usePlanGlide('frame.layout.adapt');
   // An unfolded mode row passes over the corner, which steps away until the row folds again.
   const aside = !!layout?.modeRow.open;
+  const place = { top: layout?.cornerTop ?? TOP_RIGHT_TOP, right: layout?.edgeRight ?? EDGE_RIGHT };
+  const box = useRef<HTMLDivElement>(null);
+  useScaleGlideLine(box, place);
   return (
     <motion.div
+      ref={box}
       {...swap}
       {...morph}
-      data-testid={inSession ? 'planet-session-corner' : 'shell-corner-actions'}
+      data-testid={pose === 'map' ? 'shell-corner-actions' : 'planet-session-corner'}
       {...mapEdgeAttr('top')}
       style={{
-        position: 'fixed', top: layout?.cornerTop ?? TOP_RIGHT_TOP, right: layout?.edgeRight ?? EDGE_RIGHT, zIndex: z.panel,
+        position: 'fixed', ...place, zIndex: z.panel,
         transition: glide(['top']),
         display: 'flex', alignItems: 'flex-end', gap: TOP_RIGHT_GAP, pointerEvents: aside ? 'none' : 'auto',
       }}
     >
       <div {...(aside ? { inert: '' } : {})} style={{
         display: 'flex', alignItems: 'flex-end', gap: TOP_RIGHT_GAP,
-        opacity: aside ? 0 : 1, transition: cssMotion('shell.row.fade', ['opacity']),
+        opacity: aside ? 0 : 1, transition: arrangementFadeCss('shell.row.fade', !aside, ['opacity']),
       }}>
-      {cornerArt(inSession).map(({ opens, ...art }) => (art.src === undefined ? (
+      {cornerArt(pose).map(({ opens, ...art }) => (art.src === undefined ? (
         <LoadMeter key={art.id} art={art} />
       ) : (
         <Piece
           key={art.id}
           art={{ ...art, src: art.src }}
-          onPress={opens === 'menu' ? toggleMenu : opens ? () => setModal(opens, true) : undefined}
+          onPress={opens === 'menu' ? toggleMenu : opens ? () => run('window.open', { window: opens }) : undefined}
           expanded={opens === 'menu' ? menuOpen : undefined}
           {...(opens === 'menu' ? { buttonRef: holdMenuButton } : {})}
           tourTarget={art.tourTarget}

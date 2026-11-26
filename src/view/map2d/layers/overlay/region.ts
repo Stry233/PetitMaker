@@ -1,4 +1,5 @@
-import { cellEdges, dimensionDrawing } from '../../../../core/model/annotation/dimensions';
+import { dimensionDrawing } from '../../../../core/model/annotation/dimensions';
+import type { RegionGuides } from '../../../../tools/pointer/runtime';
 import { dimensionBody, type Restroke } from '../annotation-layer';
 import { annotationLineCells } from '../../../shared/annotation/annotation-line';
 import * as PIXI from 'pixi.js-legacy';
@@ -11,7 +12,9 @@ import { regionPulseFactor } from '../../../shared/overlay/region-pulse';
 import { boundaryEdges } from '../../../../core/grid/cell-spans';
 import { ROUTE_TINT } from '../../../shared/overlay/preview-cell';
 import { FRAME_INK } from '../../../../assets/brand-palette';
+import { REGION_EDGE, REGION_FILL } from '../../../shared/overlay/region-edge';
 import type { OverlayHost } from './host';
+import { timedBeat } from '../../../shared/viewport/frame-loop';
 import { cellRect } from './paint';
 
 /** Review marks: the least screen size of a cell, and the ink edge and yellow line widths, in screen px. */
@@ -33,17 +36,14 @@ export class OverlayRegions {
   readonly reviewGraphics = new PIXI.Graphics();
   private review: { cells: CellSet; outline: Rect | null } | null = null;
 
-  showBuildableRegion({ grid, cells }: CellSet, dimensionScale?: number): void {
+  showBuildableRegion({ grid, cells }: CellSet, guides?: RegionGuides): void {
     this.regionDimensions?.destroy({ children: true });
     this.regionDimensions = null;
     this.regionRestroke = [];
-    const bounds = dimensionScale === undefined ? null : cellEdges(cells);
-    if (bounds && dimensionScale !== undefined) {
-      this.regionDimensions = dimensionBody(dimensionDrawing(bounds, dimensionScale), '#ffffff', {
-        inkScale: dimensionScale, lineCells: annotationLineCells(this.host.viewZoom * TILE_SIZE), restroke: this.regionRestroke,
+    if (guides) {
+      this.regionDimensions = dimensionBody(dimensionDrawing(guides.edges, guides.scale), '#ffffff', {
+        inkScale: guides.scale, lineCells: annotationLineCells(this.host.viewZoom * TILE_SIZE), restroke: this.regionRestroke,
       });
-      const at = gridOffsetPx(grid);
-      this.regionDimensions.position.set(at.x, at.y);
       this.dimensionSlot.addChild(this.regionDimensions);
     }
     this.host.requestRender();
@@ -52,13 +52,13 @@ export class OverlayRegions {
 
     if (cells.length === 0) return;
 
-    this.buildableGraphics.beginFill(0xffffff, 0.24);
+    this.buildableGraphics.beginFill(hexStringToNumber(REGION_FILL.color), REGION_FILL.alpha);
     for (const { x, y } of cells) cellRect(this.buildableGraphics, x, y, grid);
     this.buildableGraphics.endFill();
     const shift = gridOffsetPx(grid);
     const edges = boundaryEdges(cells);
-    for (const [width, color, alpha] of [[4, hexStringToNumber(FRAME_INK), 0.55], [1.75, 0xffffff, 0.95]] as const) {
-      this.buildableGraphics.lineStyle(width, color, alpha);
+    for (const { width, color, alpha } of REGION_EDGE) {
+      this.buildableGraphics.lineStyle(width, hexStringToNumber(color), alpha);
       for (const edge of edges) {
         this.buildableGraphics.moveTo(edge.ax * TILE_SIZE + shift.x, edge.ay * TILE_SIZE + shift.y);
         this.buildableGraphics.lineTo(edge.bx * TILE_SIZE + shift.x, edge.by * TILE_SIZE + shift.y);
@@ -76,7 +76,7 @@ export class OverlayRegions {
     if (!this.host.disposed) this.buildableGraphics.clear();
   }
 
-  private regionPulseAnim: number | null = null;
+  private stopRegionPulse: (() => void) | null = null;
 
   /**
    * The standing region dipping once and coming back (`panel.region.pulse`, whose numbers the
@@ -90,20 +90,17 @@ export class OverlayRegions {
     this.endRegionPulse();
     this.host.requestRender();
     if (this.host.disposed || isMotionReduced()) return;
-    const start = performance.now();
-    const step = () => {
-      this.host.requestRender();
-      const t = Math.min((performance.now() - start) / durationMs, 1);
+    let ended = false;
+    const stop = this.host.play(timedBeat(durationMs, (t) => {
       this.buildableGraphics.alpha = regionPulseFactor(t, dip);
-      if (t < 1) { this.regionPulseAnim = requestAnimationFrame(step); return; }
-      this.endRegionPulse();
-    };
-    this.regionPulseAnim = requestAnimationFrame(step);
+      if (t >= 1) { ended = true; this.endRegionPulse(); }
+    }));
+    if (!ended) this.stopRegionPulse = stop;
   }
 
   private endRegionPulse(): void {
-    if (this.regionPulseAnim !== null) cancelAnimationFrame(this.regionPulseAnim);
-    this.regionPulseAnim = null;
+    this.stopRegionPulse?.();
+    this.stopRegionPulse = null;
     this.buildableGraphics.alpha = 1;
   }
 
@@ -162,7 +159,7 @@ export class OverlayRegions {
   }
 
   dispose(): void {
-    if (this.regionPulseAnim !== null) cancelAnimationFrame(this.regionPulseAnim);
-    this.regionPulseAnim = null;
+    this.stopRegionPulse?.();
+    this.stopRegionPulse = null;
   }
 }

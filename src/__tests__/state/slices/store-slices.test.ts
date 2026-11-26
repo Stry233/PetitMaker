@@ -1,6 +1,6 @@
 /**
- * The store is seven slice factories composed at one `create()` call (`state/store.ts`). This
- * pins the shape of that split: the composed store carries every field the seven slices declare,
+ * The store is eight slice factories composed at one `create()` call (`state/store.ts`). This
+ * pins the shape of that split: the composed store carries every field the eight slices declare,
  * and, above all, `shell.ts` imports nothing from `engine.ts`. A shell field reaching
  * for an engine handle (`gridState`/`commandExecutor`) is exactly the coupling this split exists to
  * prevent.
@@ -16,14 +16,15 @@ import { createShellSlice } from '../../../state/slices/shell';
 import { createAnnotationsSlice } from '../../../state/slices/annotations';
 import { createPlanetSessionSlice } from '../../../state/slices/planet-session';
 import { createRepairSessionSlice } from '../../../state/slices/repair-session';
+import { createBlueprintSlice } from '../../../state/slices/blueprint';
 import { useEditorStore } from '../../../state/store';
 import { resetStore } from '../../_support/store';
 import { armedMacroOf } from '../../../state/editing/edit-mode';
 
 beforeEach(resetStore);
 
-describe('the store composes seven slices', () => {
-  it('the composed store carries every field the seven slices declare', () => {
+describe('the store composes eight slices', () => {
+  it('the composed store carries every field the eight slices declare', () => {
     // Each factory is called on its own bare vanilla store, so this is the slice's own field
     // list, not whatever the full EditorStore's `get()` would let it reach.
     const bare = () => createStore<any>(() => ({}));
@@ -34,7 +35,10 @@ describe('the store composes seven slices', () => {
     const annotationFields = Object.keys(createAnnotationsSlice(bare().setState, bare().getState, bare()));
     const planetFields = Object.keys(createPlanetSessionSlice(bare().setState, bare().getState, bare()));
     const repairFields = Object.keys(createRepairSessionSlice(bare().setState, bare().getState, bare()));
-    const declared = new Set([...engineFields, ...editFields, ...prefsFields, ...shellFields, ...annotationFields, ...planetFields, ...repairFields]);
+    const blueprintFields = Object.keys(createBlueprintSlice()(bare().setState, bare().getState, bare()));
+    const declared = new Set([
+      ...engineFields, ...editFields, ...prefsFields, ...shellFields, ...annotationFields, ...planetFields, ...repairFields, ...blueprintFields,
+    ]);
 
     const composed = new Set(Object.keys(useEditorStore.getState()));
     expect(composed).toEqual(declared);

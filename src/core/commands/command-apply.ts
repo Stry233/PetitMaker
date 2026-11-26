@@ -13,6 +13,7 @@ import {
   type TrimCornersCommand,
 } from '../model/types';
 import type { TaintDelta } from '../provenance/tracker';
+import type { PlacedGroup } from '../model/placed-group';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../game/profile';
 
 /**
@@ -43,6 +44,15 @@ export interface HistoryEntry {
   /** The map's generation around this step, when the step changed it. Session-only: saved
    *  histories leave it out. */
   generation?: { before: GenerationMark; after: GenerationMark };
+  /** The map's placed groups around this step, when the step changed them (`Stroke.setGroups`).
+   *  Session-only, as `generation` is. */
+  groups?: { before: readonly PlacedGroup[]; after: readonly PlacedGroup[] };
+}
+
+/** Writes the map's placed groups, leaving the field out when there are none. */
+export function writeGroups(state: GridState, groups: readonly PlacedGroup[]): void {
+  if (groups.length > 0) state.groups = groups;
+  else delete state.groups;
 }
 
 export function readGenerationMark(state: GridState): GenerationMark {
@@ -194,6 +204,7 @@ function replayObjects(take: PlacedObject[], put: PlacedObject[], state: GridSta
  */
 export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus: EventSink<KernelEvents>): MacroCoord[] {
   if (entry.generation) writeGenerationMark(state, entry.generation.before);
+  if (entry.groups) writeGroups(state, entry.groups.before);
   const coords: MacroCoord[] = [];
   for (const snap of entry.before) {
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));
@@ -208,6 +219,7 @@ export function revertEntryState(entry: HistoryEntry, state: GridState, eventBus
  *  `objectOps` forwards. Inverse of revertEntryState. */
 export function reapplyEntryState(entry: HistoryEntry, state: GridState, eventBus: EventSink<KernelEvents>): MacroCoord[] {
   if (entry.generation) writeGenerationMark(state, entry.generation.after);
+  if (entry.groups) writeGroups(state, entry.groups.after);
   const coords: MacroCoord[] = [];
   for (const snap of entry.after) {
     setCell(state.cells, snap.coord.x, snap.coord.y, cloneCell(snap.cell));

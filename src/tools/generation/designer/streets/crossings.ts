@@ -2,7 +2,7 @@
  * Plans the channels the walk steps over: a gap cut across a street where both banks stay joined to
  * the hub without it.
  */
-import { flatIndex, inflateRect, rectContains, rectsOverlap, type Rect } from '../../../../core/grid/rect';
+import { flatIndex, inflateRect, rectContains, rectsTouch, type Rect } from '../../../../core/grid/rect';
 import { TRUNK_W } from '../types';
 import { type Board, acrossOf, alongRect, firstPaved, lastPaved, restamp } from './board';
 import type { LineCrossing, RampFlight, StreetRun } from './model';
@@ -124,7 +124,7 @@ function cuttable(
     // more than the gap, and at a junction beside the gap that can be the only link between two halves.
     restamp(board, prune(board, streets, flights));
     const settled = reachable(board, flights);
-    const near = { x: gap.x - TRUNK_W, y: gap.y - TRUNK_W, w: gap.w + 2 * TRUNK_W, h: gap.h + 2 * TRUNK_W };
+    const near = inflateRect(gap, TRUNK_W);
     for (let i = 0; i < before.length && ok; i++) {
       if (before[i] && !settled[i] && !rectContains(near, i % board.W, (i / board.W) | 0)) ok = false;
     }
@@ -145,5 +145,3 @@ function bankReached(board: Board, run: StreetRun, t: number, reach: Uint8Array)
   }
   return false;
 }
-
-const rectsTouch = (a: Rect, b: Rect, pad: number): boolean => rectsOverlap(inflateRect(a, pad), b);

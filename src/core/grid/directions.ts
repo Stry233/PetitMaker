@@ -29,6 +29,9 @@ export const OPPOSITE_SIDE: Readonly<Record<Side, Side>> = { N: 'S', E: 'W', S: 
 /** A side named as a compass word, the vocabulary tools and the assistant speak. */
 export type Direction = 'north' | 'south' | 'east' | 'west';
 
+/** Every compass direction, in the order the type names them. */
+export const DIRECTIONS: readonly Direction[] = ['north', 'south', 'east', 'west'];
+
 /** The side each compass word names. */
 export const DIRECTION_SIDE: Readonly<Record<Direction, Side>> = { north: 'N', south: 'S', west: 'W', east: 'E' };
 
@@ -54,3 +57,12 @@ export const PERP_DIRS: Record<Direction, [Direction, Direction]> = {
   west:  ['north', 'south'],
   east:  ['north', 'south'],
 };
+
+/** A cell's exits turned clockwise by `turns` quarter turns (0 to 4), as a mask with N/E/S/W being
+ *  1/2/4/8. */
+export function rotateExits(mask: number, turns: number): number {
+  return ((mask << turns) | (mask >> (4 - turns))) & 15;
+}
+
+/** A cell's N/E/S/W exits (1/2/4/8) mirrored left to right: east and west trade. */
+export const mirrorExits = (mask: number): number => (mask & 5) | ((mask & 2) << 2) | ((mask & 8) >> 2);

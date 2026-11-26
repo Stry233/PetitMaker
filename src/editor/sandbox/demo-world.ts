@@ -7,7 +7,7 @@
  */
 import { placeObjectCommand } from '../../core/model/command-build';
 import {
-  TerrainType, type Command, type GridState, type MacroCoord, type PlacedObject, type Rotation, type ValidationError, type ValidationResult,
+  type TerrainType, type Command, type GridState, type MacroCoord, type PlacedObject, type Rotation, type ValidationError, type ValidationResult,
 } from '../../core/model/types';
 import { type AutoEdgeCut } from '../../state/editing/vocabulary';
 import { type EditorEvents } from '../../state/editing/events';
@@ -40,34 +40,52 @@ import { getCatalogItem } from '../../state/catalog';
 import { applyMacro, detachedContext, paint, previewMacro, type MacroId, type MacroOpts } from '../../tools/macros';
 import type { EditContext } from '../../core/commands/edit-context';
 import { mapPoint, type MapPoint } from '../../core/grid/grids';
-import { PLACEMENT_GRID, layerNumber } from '../../core/game/profile';
+import { PLACEMENT_GRID } from '../../core/game/profile';
 import type { CurveAnchor } from '../../core/base/spline';
 import { armingOf, type NoteDocument, type ToolArming } from '../../state/editing/arming';
 import { useEditorStore } from '../../state/store';
+import { regionOf, regionOnScreen, regionToolFields, type RegionOwner, type Regions } from '../../state/editing/region';
 import type { TextKey, Translate } from '../../i18n/keys';
 import { generateTerrain } from '../../tools/generation';
 import { generateDesigned, type DesignedContext } from '../../tools/generation/designer';
 import type { GenerateConfig } from '../../tools/generation/recipe';
 import { createRegionBrush, type RegionBrush } from '../../tools/pointer/region';
 import type { HoldClock } from '../../tools/pointer/macros';
-import { laneRecord, laneStep, type HistoryLane } from '../../state/history-lane';
 import { DEFAULT_REGION_REQUEST, type RegionRequest, type RegionTool } from '../../state/editing/vocabulary';
 import { cellSet } from '../../core/grid/grids';
+import { terrainCellsUnder } from '../../core/grid/footprint';
 import { TERRAIN_GRID } from '../../core/game/profile';
 import { turnRotation } from '../../core/model/types';
 import { reportRefusal } from '../../core/commands/refusal';
 import { pasteKeyAim, type GroupRotation } from '../../tools/objects';
 import { resolvePointer, toolDeclares } from '../../tools/pointer/runtime';
-import { holdsSelection, isBrushTool } from '../../state/editing/edit-mode';
-import { sameRef, selectedObjectIds } from '../../state/selection';
+import { holdsSelection } from '../../state/editing/edit-mode';
+import { narrowToCatalog, sameRef, sameSelection, selectedObjectIds, standingRefs } from '../../state/selection';
+import { leftBehindFields, rearmFields, selectionWrite, type ArmedFacts } from '../../state/editing/intent';
+import { regionCommitFields, regionSelectingFields, regionStepFields } from '../../state/slices/edit';
+import { selectionAside } from '../../state/slices/engine';
+import { REST_BLUEPRINT_UI, REST_STEP, armedUi, turnedUi, type BlueprintStep } from '../../state/slices/blueprint';
 import { layerNumbersShown } from '../../state/layer-utils';
 import { resolvePress, type PressFacts, type PressIntent, type PressPlan } from '../../view/interaction/press/press-plan';
 import { PRIMARY_BUTTON } from '../../view/interaction/press/pointer-buttons';
-import { isDraggableObject, pointerTarget } from '../../view/interaction/selection-hover';
+import { groupHoverFrame, groupProbeOf, isDraggableObject, pointerTarget } from '../../view/interaction/selection-hover';
 import { macroRect, objectsInBand } from '../../view/interaction/marquee';
 import { paintSelection } from '../../view/shared/overlay/selection-paint';
-import { copyNotices, groupDeleteNotices, pasteNotices, type CopyNotice } from '../../i18n/terms/copy-notices';
+import { blueprintSkipNotices, copyNotices, groupDeleteNotices, pasteNotices, type CopyNotice } from '../../i18n/terms/copy-notices';
 import { placingFilledCap } from '../editing/object-shelf';
+import { BLUEPRINT_FRAME_REQUEST, layBlueprint, originAmong, saveBlueprintTo, selectionFrame } from '../editing/blueprint';
+import { createBlueprintLibrary, memoryBlueprintBackend, memoryBlueprintLists } from '../../io/storage/blueprint-library';
+import type { BlueprintRecord } from '../../io/blueprint';
+import {
+  captureBlueprint, copyGroup, groupTurn, layGroupCopy, mapWithout, movedPlacement, pasteGroupAt, placeBlueprint as layBody, previewBlueprint, previewGroupAt,
+  relayGroup, takeBackGroup, turnedPlacement,
+  type BlueprintBody, type BlueprintLaid, type BlueprintPlacement, type CaptureRefusal, type PlacementSkips,
+} from '../../tools/blueprint';
+import type { PlacementDrag } from '../../tools/pointer/blueprint';
+import { groupBody, liveMembers, type PlacedGroup } from '../../core/model/placed-group';
+import { groupRefs, groupUnder, selectedGroup, selectedGroupFrame } from '../../state/placed-groups';
+import type { GhostBlock, GhostPrior } from '../../tools/pointer/runtime';
+import { rectContains, type Rect } from '../../core/grid/rect';
 
 /** Recipes a figure runs, built as the shelf builds them. */
 export { defaultConfig, type GenerateConfig, type MazeGates } from '../../tools/generation/recipe';
@@ -94,6 +112,9 @@ export function sandboxArming(): ToolArming {
 /** A drag the sandbox runs through the map's own drag session (`SandboxWorld.drag`). */
 interface WorldDrag {
   begin(anchorId: string, at: MacroCoord, copy?: boolean): boolean;
+  /** Begins a move, or with `copy` a copy, of the placed blueprint the selection is, pressed at `at`
+   *  inside its frame. */
+  beginPlacement(at: MacroCoord, copy: boolean): boolean;
   preview(at: MacroCoord): void;
   commit(at: MacroCoord): void;
 }
@@ -116,7 +137,6 @@ export class SandboxWorld {
   private stroke: Stroke;
   private placeSeq = 0;
   private strokeCells: MacroCoord[] = [];
-  private strokeWater = false;
 
   /** The editor's own tool set behind its tool manager, on a view whose screen is the map: a screen
    *  point is the map point there, so the tools resolve the cell under the pictured pointer. */
@@ -142,6 +162,11 @@ export class SandboxWorld {
     this.kit = detachedContext(this.state, createDefaultRegistry(), this.bus);
     this.executor = this.kit.executor;
     this.host = createToolHost(this.kit);
+    this.session = { ...EMPTY_SESSION, gridState: this.state };
+    // The map's history carries the selection as the store's executor does (`slices/engine.ts`).
+    this.executor.attachAside(selectionAside(
+      () => this.session.selection, (refs) => this.restoreSelection(refs), () => holdsSelection(this.arming.tool),
+    ));
     this.stroke = this.executor.beginStroke();
     this.bus.on('validation-failed', ({ errors }) => {
       const first = errors[0];
@@ -172,8 +197,10 @@ export class SandboxWorld {
       tagLabel: noteTagLabel(this.state),
       holdClock: this.clock,
       dealSeed: () => this.dealt.shift() ?? null,
+      blueprintPlaced: (_p, laid) => { this.armedBlueprintPlaced(laid); },
     });
     this.toolView = view;
+    this.curve.showFootprintOn(() => this.overlay, () => () => {});
     this.bus.on('objects-changed', ({ added, cause }) => this.objectsChanged(added, cause));
   }
 
@@ -248,17 +275,14 @@ export class SandboxWorld {
   /** Drag anchor `index` of the standing curve to map point `p`, as its handle does: the cell under
    *  the point on the curve's grid, previewed until `commit` re-lays the curve. */
   dragAnchor(index: number, p: MacroCoord, commit: boolean): void {
-    const live = this.curve.get();
-    if (!live) return;
-    const cell = cellAtPoint(mapPoint(p), live.grid);
-    this.curve.moveAnchor(index, cell.x, cell.y, commit);
+    const cell = this.curve.anchorAt(mapPoint(p));
+    if (cell) this.curve.moveAnchor(index, cell.x, cell.y, commit);
   }
 
   /** Paint terrain through the real macro (and so the real rules). */
   paint(cells: MacroCoord[], type: TerrainType, elevation: number): boolean {
     const took = paint(this.kit, cells, type, elevation);
     if (took) this.strokeCells.push(...cells);
-    if (type === TerrainType.Water) this.strokeWater = true;
     return took;
   }
 
@@ -300,7 +324,6 @@ export class SandboxWorld {
   beginStroke(): void {
     this.stroke = this.executor.beginStroke();
     this.strokeCells = [];
-    this.strokeWater = false;
   }
 
   /** The release of the pointer. A press of the tools is released through its tool, which reports
@@ -309,15 +332,11 @@ export class SandboxWorld {
    *  first kept for the figure's toast snapshot. */
   commit(): ValidationError[] {
     if (this.pressAt) { this.pointerUp(); return []; }
-    const { violations, waterLayer } = finishPaintStroke(
-      this.host, { stroke: this.stroke, terrainCells: this.strokeCells, water: this.strokeWater, trim: this.autoTrim },
+    const { violations } = finishPaintStroke(
+      this.host, { stroke: this.stroke, terrainCells: this.strokeCells, trim: this.autoTrim },
     );
     const first = violations[0];
-    if (first) {
-      this.refusal = waterLayer !== null
-        ? { message: 'error.water_only_layer', params: { layer: layerNumber(waterLayer) }, tone: 'warning' }
-        : { message: first.message, params: first.messageParams, tone: 'warning' };
-    }
+    if (first) this.refusal = { message: first.message, params: first.messageParams, tone: 'warning' };
     this.strokeCells = [];
     return violations;
   }
@@ -385,10 +404,12 @@ export class SandboxWorld {
       },
       notify: noop,
       t: ((key: TextKey) => key) as Translate,
+      placementDrag: () => this.groupDrag(),
     });
     const view = () => ({ overlay: this.overlay, plopObject: plop });
     return {
       begin: (anchorId, at, copy = false) => session.begin(anchorId, mapPoint(at), cellAtPoint(mapPoint(at), PLACEMENT_GRID), copy),
+      beginPlacement: (at, copy) => session.beginPlacement(mapPoint(at), cellAtPoint(mapPoint(at), PLACEMENT_GRID), {}, copy),
       preview: (at) => session.preview(view(), mapPoint(at)),
       commit: (at) => session.commit(view(), mapPoint(at)),
     };
@@ -402,16 +423,192 @@ export class SandboxWorld {
   /** Paste `a` where `aim` asks, as Ctrl+V and the menu's Paste place it (EDIT-54, EDIT-57);
    *  `onWillPlace` hears each member before it lands. */
   paste(a: Arrangement, aim: PasteAim, onWillPlace?: (obj: PlacedObject) => void): PasteOutcome {
-    return pasteAt(this.pasteDoor(), a, aim, onWillPlace);
+    return pasteAt(this.door(), a, aim, onWillPlace);
   }
 
   /** Place `a` with its outline at `at` whole or not at all, as a Ctrl+drag copy drops (EDIT-60). */
   pasteWhole(a: Arrangement, at: MacroCoord, onWillPlace?: (obj: PlacedObject) => void): PasteResult {
-    return pasteArrangement(this.pasteDoor(), a, at, onWillPlace);
+    return pasteArrangement(this.door(), a, at, onWillPlace);
   }
 
-  private pasteDoor(): PasteDoor {
-    return { state: this.state, registry: this.kit.registry, execute: (cmd) => this.executor.execute(cmd), beginStroke: () => this.executor.beginStroke() };
+  /** This world's own blueprint library, in memory: a figure never reaches the visitor's. */
+  private readonly blueprintShelf = createBlueprintLibrary(memoryBlueprintBackend(), memoryBlueprintLists());
+  /** The author this world saves and places as (`PREFS.blueprintAuthor`); null for anonymous. */
+  blueprintAuthor: string | null = null;
+
+  /** The blueprints this world's library holds, newest first. */
+  blueprints(): readonly BlueprintRecord[] {
+    return this.blueprintShelf.records();
+  }
+
+  /** Save `frame` as a blueprint named `name`, as the save step does (`editing/blueprint/save.ts:saveBlueprint`):
+   *  the stored record, or why the frame was refused. */
+  async saveBlueprint(
+    frame: Rect, name: string, opts: { author?: string | null; folder?: string | null } = {},
+  ): Promise<BlueprintRecord | CaptureRefusal> {
+    const author = opts.author === undefined ? this.blueprintAuthor : opts.author;
+    const draft = { frame, name, author, folder: opts.folder ?? null };
+    const out = await saveBlueprintTo(this.blueprintShelf, this.state, draft, originAmong(this.state, frame));
+    if (typeof out !== 'string') this.blueprintAuthor = author;
+    return out;
+  }
+
+  /** Place blueprint `id` with its frame's top-left at `at`, turned `quarters` clockwise, on the
+   *  surface under it, as a press with it armed does (`editing/blueprint/placing.ts:placeArmedAt`); what it skipped is
+   *  said in `notice`. Null for an id the library lacks. */
+  placeBlueprint(id: string, at: MacroCoord, quarters = 0): PlacementSkips | null {
+    const record = this.blueprintShelf.records().find((r) => r.id === id);
+    if (!record) return null;
+    const out = layBlueprint(this.door(), record, { at, quarters }, this.blueprintAuthor);
+    this.hear((t) => blueprintSkipNotices(t, out.skips));
+    return out.skips;
+  }
+
+  /** Arm the blueprint tool with what `frame` of this world's map holds, as saving that frame and
+   *  choosing its card do, turned `quarters` clockwise: the tool's ghost then follows the pointer and
+   *  a press lays it. False, with nothing armed, where the save step would refuse the frame. */
+  armFrame(frame: Rect, quarters = 0): boolean {
+    const body = this.captureFrame(frame);
+    if (!body) return false;
+    this.pick({ tool: ToolType.Blueprint, blueprint: turnedUi(armedUi(REST_BLUEPRINT_UI, { id: 'figure', body, seed: null }), quarters) });
+    return true;
+  }
+
+  /** E with a blueprint armed (`editing/blueprint/placing.ts:turnArmedBlueprint`): a quarter turn,
+   *  clockwise for 90, which the tool's ghost shows at the pointer's next move. */
+  turnArmedBlueprint(delta: 90 | -90): void {
+    this.arming = { ...this.arming, blueprint: turnedUi(this.arming.blueprint, delta / 90) };
+    this.tools.syncArming();
+  }
+
+  /** What follows a press of the armed blueprint, as the editor follows it (`armedBlueprintPlaced`):
+   *  the blueprint is put down, what it skipped is said and what it laid is selected (`followPlacement`). */
+  private armedBlueprintPlaced(laid: BlueprintLaid): void {
+    this.arming = { ...this.arming, blueprint: armedUi(this.arming.blueprint, null) };
+    this.followPlacement(laid);
+  }
+
+  /* ── Placed blueprints as Blueprint mode handles them (BLUE-07) ──────────────────────────────
+   * The world mirrors `editing/blueprint/groups.ts` over its own door: the same group tools turn,
+   * move, copy and take back the group its selection is. */
+
+  /** The figure stands in Blueprint mode, where a press selects a placed blueprint whole; off, a
+   *  figure stands in no build mode. */
+  blueprintMode = false;
+  /** The selection card's details stand open, as a press on its name opens them. */
+  cardDetails = false;
+
+  /** The store's view the group readers ask (`state/placed-groups.ts`). */
+  private groupView() {
+    return { gridState: this.state, selection: this.selection, editMode: { mode: this.blueprintMode ? 'blueprint' as const : null } };
+  }
+
+  /** The placed blueprint the selection is, whole, in Blueprint mode; null otherwise. */
+  selectedGroup(): PlacedGroup | null {
+    return selectedGroup(this.groupView());
+  }
+
+  /** The frame Blueprint mode outlines under a pointer at `p` (`selection-hover.ts:groupHoverFrame`);
+   *  null outside the mode or off every placement. */
+  groupFrameAt(p: MacroCoord): Rect | null {
+    if (!this.blueprintMode) return null;
+    const point = mapPoint(p);
+    return groupHoverFrame(this.groupView(), pointerTarget(this.state, point), cellAtPoint(point, PLACEMENT_GRID));
+  }
+
+  /** What `frame` holds, captured as the save step captures it (`tools/blueprint/capture.ts`); null
+   *  where it holds nothing a blueprint can keep. */
+  captureFrame(frame: Rect): BlueprintBody | null {
+    const out = captureBlueprint(this.state, frame);
+    return 'body' in out ? out.body : null;
+  }
+
+  /** Place `body` as blueprint `name` with its frame's top-left at `at`, as a press with it armed
+   *  does, and select the group it recorded as the live editor does after a placement. */
+  placeBody(body: BlueprintBody, at: MacroCoord, name: string): PlacedGroup | null {
+    const laid = layBody(this.door(), body, { at, quarters: 0 }, { blueprint: `figure:${name}`, name, origin: null });
+    this.followPlacement(laid);
+    return laid.group ?? null;
+  }
+
+  /** The selection's objects of `catalogId` alone, as a press on that kind in the card's details. */
+  narrowTo(catalogId: string): void {
+    const refs = narrowToCatalog(this.selection, this.state, catalogId);
+    if (refs.length > 0) this.writeSelection(refs);
+  }
+
+  /** Opens or closes the selection card's details, as a press on its name does. */
+  showCardDetails(open: boolean): void {
+    this.cardDetails = open;
+    this.tellSelection();
+  }
+
+  /** What a placement laid said, and the group it recorded selected (`placing.ts:followPlacement`). */
+  private followPlacement(laid: BlueprintLaid): void {
+    this.hear((t) => blueprintSkipNotices(t, laid.skips));
+    const refs = laid.group ? groupRefs(this.state, laid.group) : [];
+    this.writeSelection(this.blueprintMode ? refs : refs.filter((r) => r.kind === 'object'), { record: false });
+  }
+
+  /** Lays `group` again as `p` asks, refused whole where nothing of it would land (`groups.ts:relay`). */
+  private relay(group: PlacedGroup, p: BlueprintPlacement, turn?: 1 | -1): boolean {
+    const plan = previewGroupAt(this.door(), mapWithout(this.state, group), group, p);
+    if (plan.cells.length === 0 && plan.objects.length === 0) {
+      this.hear((t) => blueprintSkipNotices(t, { ground: plan.blocked.length, objects: liveMembers(this.state, group).objects.length, capped: 0, unknown: 0 }));
+      return false;
+    }
+    const laid = relayGroup(this.door(), group, p);
+    if (!laid) return false;
+    this.followPlacement(laid);
+    if (turn && laid.group) this.playTurn(laid.group, turn);
+    return true;
+  }
+
+  /** The turn plays as `groups.ts:playTurn` plays it: the objects arc and the laid terrain turns with them. */
+  private playTurn(group: PlacedGroup, turn: 1 | -1): void {
+    const spin = groupTurn(this.state, group, turn);
+    if (spin.members.length > 0) this.feedback.groupSpin(spin);
+    const { cells } = liveMembers(this.state, group);
+    this.overlay.turnBlocks?.(
+      cells.map((c): GhostBlock => ({ x: c.x, y: c.y, terrain: c.laid })),
+      cells.map((c): GhostPrior => ({ x: c.x, y: c.y, terrain: c.prior })), spin.pivot, spin.sweepDeg,
+    );
+  }
+
+  /** The drag the selected group offers the map's object drag (`groups.ts:selectedGroupDrag`). */
+  private groupDrag(): PlacementDrag | null {
+    if (!this.blueprintMode) return null;
+    return {
+      held: (_selection, on) => {
+        const group = this.selectedGroup();
+        if (!group) return null;
+        const at = { x: group.frame.x, y: group.frame.y };
+        if ('object' in on) return group.objects.some((o) => o.id === on.object) ? at : null;
+        return rectContains(group.frame, on.cell.x, on.cell.y) ? at : null;
+      },
+      preview: (at, copy) => {
+        const group = this.selectedGroup();
+        if (!group) return null;
+        return copy
+          ? previewBlueprint(this.door(), groupBody(this.state, group), movedPlacement(at))
+          : previewGroupAt(this.door(), mapWithout(this.state, group), group, movedPlacement(at));
+      },
+      move: (at) => { const group = this.selectedGroup(); if (group) this.relay(group, movedPlacement(at)); },
+      copy: (at) => {
+        const group = this.selectedGroup();
+        const laid = group && layGroupCopy(this.door(), copyGroup(this.state, group), at);
+        if (laid) this.followPlacement(laid);
+      },
+    };
+  }
+
+  /** The doors a map edit lands through: this world's map, rules and executor, a lay's changes of
+   *  objects held as one as the live editor's door holds them. */
+  door(): PasteDoor {
+    return {
+      state: this.state, registry: this.kit.registry, execute: (cmd) => this.executor.execute(cmd), beginStroke: () => this.executor.beginStroke(),
+      hold: (body) => this.executor.transaction({}, () => body()),
+    };
   }
 
   /** Delete a group's unlocked members; `onWillRemove` hears each before it goes. */
@@ -567,49 +764,37 @@ export class SandboxWorld {
     this.dealt.push(seed);
   }
 
-  /** Region selection while it is on: the editor's region brush, what it paints with, and the
-   *  region's own lane. */
-  private selecting: {
-    brush: RegionBrush;
-    tool: RegionTool;
-    size: number;
-    request: RegionRequest;
-    lane: HistoryLane<MacroCoord[]>;
-  } | null = null;
-  private regionCells: MacroCoord[] = [];
+  /** Region selection while it is on: the editor's region brush and what it paints with. The
+   *  region, its painting and its lane are the session's, written by the store's own field functions. */
+  private selecting: { brush: RegionBrush; size: number } | null = null;
 
-  /** The painted region, as the store's `region` holds it. */
-  get region(): readonly MacroCoord[] { return this.regionCells; }
+  /** The painted region, as the store's `regions` holds Generate's. */
+  get region(): readonly MacroCoord[] { return regionOf(this.session, 'generator'); }
 
   /**
-   * Arm region selection as the scope screen does: the editor's region brush takes the pointer
-   * verbs, painting `tool` at the store's initial brush size unless `size` says otherwise, and
-   * `undo` steps the region's own lane, never the map's. It starts from no region, since a template
-   * carries none and the figure's loop rewinds only the map. `show` draws the region with the
-   * figure being drawn, empty for none, as the live overlay does.
+   * Arm region selection as the scope screen does (`slices/edit.ts:setSelectingRegion`), which puts
+   * the selection down: the editor's region brush takes the pointer verbs, painting `tool` at the
+   * store's initial brush size unless `size` says otherwise, and `undo` steps the region's own lane,
+   * never the map's. It starts from no region, since a template carries none and the figure's loop
+   * rewinds only the map. `show` draws the region with the figure being drawn, empty for none, as
+   * the live overlay does.
    */
   selectRegion(opts: { tool: RegionTool; size?: number; request?: RegionRequest; show: (cells: readonly MacroCoord[]) => void }): void {
     this.endRegionSelection();
-    this.regionCells = [];
-    const sel = {
-      tool: opts.tool,
-      size: opts.size ?? useEditorStore.getInitialState().regionBrushSize,
-      request: opts.request ?? DEFAULT_REGION_REQUEST,
-      lane: { undo: [], redo: [] } as HistoryLane<MacroCoord[]>,
-    };
+    this.apply({ regions: { ...this.session.regions, generator: { cells: [], map: this.state } }, ...regionToolFields(opts.tool) });
+    const sel = { size: opts.size ?? useEditorStore.getInitialState().regionBrushSize };
     const brush: RegionBrush = createRegionBrush({
-      tool: () => sel.tool,
-      request: () => sel.request,
+      tool: () => this.session.regionTool,
+      request: () => this.session.regionRequest,
       size: () => sel.size,
       constrain: () => this.held.constrain,
       grid: () => this.state,
-      region: () => this.regionCells,
-      // The store's `commitRegion`: an empty region over an empty one records nothing, and a
-      // recorded change rereads the brush, as the store's subscription does.
+      region: () => this.region,
+      // A recorded change rereads the brush, as the store's subscription does.
       commit: (cells) => {
-        if (this.regionCells.length === 0 && cells.length === 0) return;
-        sel.lane = laneRecord(sel.lane, this.regionCells);
-        this.regionCells = cells;
+        const fields = regionCommitFields(this.session, cells);
+        if (!fields) return;
+        this.apply(fields);
         brush.resync();
       },
       show: opts.show,
@@ -619,6 +804,22 @@ export class SandboxWorld {
       },
     });
     this.selecting = Object.assign(sel, { brush });
+    this.applySelecting(true, opts.request);
+  }
+
+  /** Save as blueprint on the selection card (`editing/blueprint/steps.ts:saveSelectionAsBlueprint`):
+   *  the region brush under Blueprint's frame request, starting from the frame around the selected
+   *  objects, which it puts down; `show` draws the region as `selectRegion`'s does. False with no
+   *  object selected. */
+  frameSelection(show: (cells: readonly MacroCoord[]) => void): boolean {
+    const frame = selectionFrame(this.state, this.selection);
+    if (!frame) return false;
+    this.selectRegion({ tool: 'rect', request: BLUEPRINT_FRAME_REQUEST, show });
+    const cells = terrainCellsUnder(frame);
+    this.apply({ regions: { ...this.session.regions, generator: { cells, map: this.state } } });
+    this.selecting!.brush.resync();
+    show(cells);
+    return true;
   }
 
   /** Done on the scope screen: selection ends and its lane with it; the region stays painted. */
@@ -626,7 +827,15 @@ export class SandboxWorld {
     if (!this.selecting) return;
     if (this.pressAt) { this.pressAt = null; this.selecting.brush.cancel(); }
     this.selecting = null;
+    this.applySelecting(false);
     this.overlay.clearGhost();
+  }
+
+  /** Starts or stops Generate's painting as the store does, and repaints what that put down. */
+  private applySelecting(on: boolean, request?: RegionRequest): void {
+    const had = this.session.selection;
+    this.apply(regionSelectingFields(this.session, this.purpose(this.arming), on, 'generator', request));
+    if (this.session.selection !== had) { this.paintSelection(); this.tellSelection(); }
   }
 
   /** The region brush hearing the pointer at `p`: a press paints the cell under it and a hover
@@ -642,10 +851,9 @@ export class SandboxWorld {
   private undoRegion(): boolean {
     const sel = this.selecting!;
     if (this.pressAt) { this.pressAt = null; sel.brush.cancel(); }
-    const step = laneStep(sel.lane, this.regionCells, 'undo');
-    if (!step) return false;
-    sel.lane = step.lane;
-    this.regionCells = step.restored;
+    const fields = regionStepFields(this.session, 'undo');
+    if (!fields) return false;
+    this.apply(fields);
     sel.brush.resync();
     return true;
   }
@@ -660,15 +868,18 @@ export class SandboxWorld {
    * (`selection-paint.ts:paintSelection`) on this world's overlay; the copy, paste and delete verbs
    * report the notices the live verbs toast. */
 
+  /** The editor's selection and region state as the store holds it, written only through the
+   *  store's own field functions. */
+  private session: WorldSession;
   /** The selection, as the store's `selection` holds it. */
-  selection: readonly BlockRef[] = [];
+  get selection(): readonly BlockRef[] { return this.session.selection; }
   /** Touch multi-select's latch, as the store's `multiSelectLatched` holds it: set by the long-press
    *  menu's Multi-select, it holds the multi-select command down until the selection is cleared or
    *  the tool changes. */
-  multiSelectLatched = false;
+  get multiSelectLatched(): boolean { return this.session.multiSelectLatched; }
   private readonly selectionWatchers = new Set<(cause?: string) => void>();
   /** The picked block, the paste key's top-left (EDIT-54). */
-  pickedCell: MacroCoord | null = null;
+  get pickedCell(): MacroCoord | null { return this.session.pickedCell; }
   /** The copy the paste verbs place (the store's `clipboard`). */
   clipboard: Arrangement | null = null;
   /** The long-press menu standing open, on the block and at the point its hold landed. */
@@ -699,9 +910,12 @@ export class SandboxWorld {
     this.clipboard = null;
     this.notice = null;
     this.held.multiSelect = false;
-    this.multiSelectLatched = false;
+    this.blueprintMode = false;
+    this.cardDetails = false;
     this.pick({});
-    this.writeSelection([]);
+    this.apply({ ...leftBehindFields(this.session), multiSelectLatched: false, moveLatched: false });
+    this.paintSelection();
+    this.tellSelection();
   }
 
   /** The selected objects' ids. */
@@ -762,12 +976,15 @@ export class SandboxWorld {
     if (!press.touch && this.picked) this.pointerMove(p);
   }
 
-  /** Nothing selected or picked and the multi-select latch off, as the store's `clearSelection`
-   *  leaves it (the multi-select bar's Done, Escape). */
-  clearSelection(): void {
+  /** Nothing selected or picked and the touch latches off, as the store's `clearSelection` leaves it
+   *  (the multi-select bar's Done, Escape), as one undo step unless `record` is false. */
+  clearSelection(record = true): void {
     this.held.multiSelect = false;
-    this.multiSelectLatched = false;
-    this.writeSelection([]);
+    const before = this.session.selection;
+    this.apply(leftBehindFields(this.session));
+    if (record) this.executor.recordAside(before);
+    this.paintSelection();
+    this.tellSelection();
   }
 
   /** The menu's Multi-select (`editing/object-menu.ts:latchMultiSelect`): its object selected alone
@@ -775,8 +992,8 @@ export class SandboxWorld {
   menuMultiSelect(): void {
     const menu = this.takeMenu();
     if (menu?.block.kind !== 'object') return;
-    this.multiSelectLatched = true;
     this.writeSelection([menu.block]);
+    this.apply({ multiSelectLatched: true });
   }
 
   /** The menu's Rotate (`object-menu.ts:turnObjectQuarter`): its object selected alone and turned a
@@ -798,7 +1015,7 @@ export class SandboxWorld {
    *  (`group-edit.ts:deleteObjectConfirmed`): reported as a group delete is, the selection emptied. */
   deleteConfirmed(id: string): void {
     this.deleteSelection([id]);
-    this.clearSelection();
+    this.clearSelection(false);
   }
 
   /** The menu's Paste: one copy with its top-left on the placement cell the hold landed on. */
@@ -811,6 +1028,8 @@ export class SandboxWorld {
    *  selection turns as one body, a rotatable object in place; a refusal goes to `refusal`. */
   rotateSelection(delta: 90 | -90): void {
     const turn = delta === 90 ? 1 : -1;
+    const group = this.selectedGroup();
+    if (group) { this.relay(group, turnedPlacement(group, turn), turn); return; }
     const ids = this.selectedIds();
     if (this.selection.length > 1) {
       reportRefusal(this.bus, this.rotateGroup(ids, turn, (spin) => this.feedback.groupSpin(spin)).refusal);
@@ -827,36 +1046,54 @@ export class SandboxWorld {
    *  members go with their poofs, the selection keeps whoever survived, and the result is reported
    *  as the live verb reports it, a refusal on the bus and a partial delete as a notice. */
   deleteSelection(ids: readonly string[] = this.selectedIds()): void {
+    const group = this.selectedGroup();
+    if (group) {
+      this.writeSelection([], { record: false });
+      takeBackGroup(this.door(), group);
+      return;
+    }
     const result = this.deleteGroup(ids, (obj) => this.feedback.poof(obj.id));
-    this.writeSelection(ids.filter((id) => this.state.objects.has(id)).map((id) => ({ kind: 'object', id }) as const));
+    this.writeSelection(ids.filter((id) => this.state.objects.has(id)).map((id) => ({ kind: 'object', id }) as const), { record: false });
     reportRefusal(this.bus, result.refusal);
     this.hear((t) => groupDeleteNotices(t, result));
   }
 
-  /** The copy key and the selection card's Copy (`clipboard.ts:copyObjects`): the selection taken
+  /** The copy key and the selection card's Copy (`clipboard.ts:copySelection`): the selection taken
    *  as an arrangement, and what it took said. */
   copySelection(): void {
-    const taken = this.copy(this.selectedIds());
+    const group = this.selectedGroup();
+    const taken = group ? { arrangement: copyGroup(this.state, group), leftOut: 0 } : this.copy(this.selectedIds());
     if (taken.arrangement === null && taken.leftOut === 0) { this.notice = null; return; }
     if (taken.arrangement) this.clipboard = taken.arrangement;
-    this.hear((t) => copyNotices(t, { copied: taken.arrangement?.members.length ?? 0, leftOut: taken.leftOut }));
+    this.hear((t) => copyNotices(t, { copied: taken.arrangement?.members.length ?? 0, leftOut: taken.leftOut, blueprint: !!group }));
   }
 
-  /** The paste key (`clipboard.ts:pasteFromKey`), aimed where the key aims (`pasteKeyAim`). */
+  /** The paste key (`clipboard.ts:pasteFromKey`), aimed where the key aims (`pasteKeyAim`) with the
+   *  region on screen as the live key reads it (`regionOnScreen`): this world's region is the scope
+   *  screen's, painted for Generate, whose mode a figure of it stands in. */
   pasteKey(): void {
     if (!this.clipboard) return;
-    this.pasteCopy(pasteKeyAim(this.clipboard, { pickedCell: this.pickedCell, region: [], template: this.state.template }));
+    // A figure has no assistant panel: it stands as the store starts, closed.
+    const { assistantOpen } = useEditorStore.getInitialState();
+    const region = regionOnScreen({ ...this.session, editMode: { mode: 'generate' }, assistantOpen });
+    this.pasteCopy(pasteKeyAim(this.clipboard, { pickedCell: this.pickedCell, region, template: this.state.template }));
   }
 
   /** One copy placed where `aim` asks or nearby, what it came to said, and what it placed selected
    *  (`clipboard.ts:pasteAt`). */
   private pasteCopy(aim: PasteAim): void {
     if (!this.clipboard) return;
+    if (this.clipboard.group) {
+      const out = pasteGroupAt(this.door(), this.clipboard, aim);
+      this.hear((t) => pasteNotices(t, { nearby: out.nearby, noRoom: out.noRoom, capped: 0 }));
+      if (out.laid) this.followPlacement(out.laid);
+      return;
+    }
     const outcome = this.paste(this.clipboard, aim, (obj) => this.feedback.plop(obj.id));
     this.hear((t) => pasteNotices(t, outcome));
     if (outcome.placed.length === 0) return;
     if (this.arming.armedItem || this.arming.armedMacro || !holdsSelection(this.arming.tool)) this.pick({});
-    this.writeSelection(outcome.placed.map((id) => ({ kind: 'object', id }) as const));
+    this.writeSelection(outcome.placed.map((id) => ({ kind: 'object', id }) as const), { record: false });
   }
 
   /** Keeps the first notice `say` makes, by key and params, as the live toast would show it. */
@@ -878,7 +1115,10 @@ export class SandboxWorld {
   private pressFacts(p: MacroCoord, touch: boolean): PressFacts {
     const point = mapPoint(p);
     const macro = cellAtPoint(point, PLACEMENT_GRID);
-    const { hit, terrain, pick } = pointerTarget(this.state, point);
+    const target = pointerTarget(this.state, point);
+    const { hit, terrain, pick } = target;
+    const placed = selectedGroupFrame(this.groupView());
+    const under = groupUnder(this.groupView(), groupProbeOf(target, macro));
     const arming = this.armed();
     const declared = toolDeclares(arming.tool);
     const tool = this.tools.getActiveTool();
@@ -886,10 +1126,12 @@ export class SandboxWorld {
     const toolCoord = resolvePointer(this.toolView, tool, ctx, p.x, p.y).cell;
     return {
       button: PRIMARY_BUTTON,
+      inPlacement: !!placed && rectContains(placed, macro.x, macro.y),
+      group: under ? { refs: under.refs, selected: sameSelection(this.selection, under.refs) } : null,
       inputMode: touch ? 'touch' : 'pc',
       selectMode: declared.selectMode(arming),
       brush: declared.brush,
-      armedItemId: arming.armedItem,
+      armedPlacement: arming.armedItem,
       copyHeld: this.clipboard !== null,
       selection: this.selection,
       selectingRegion: false,
@@ -907,6 +1149,7 @@ export class SandboxWorld {
       pendingGesture: tool.hasPending?.(ctx) ?? false,
       clickOnlyStroke: !!tool.clickOnly?.(macro, ctx),
       armedStrokes: !!tool.strokes?.(ctx),
+      lookOnly: false,
     };
   }
 
@@ -919,8 +1162,9 @@ export class SandboxWorld {
           if (tap) this.click(p);
           else { press.tool = true; this.pointerDown(p); }
           break;
-        case 'select': this.writeSelection([intent.block], intent.pick ?? null); break;
-        case 'pick-cell': this.writeSelection([], intent.cell); break;
+        case 'select': this.writeSelection([intent.block], { pick: intent.pick }); break;
+        case 'select-group': this.writeSelection([...intent.blocks]); break;
+        case 'pick-cell': this.pickCell(intent.cell); break;
         case 'toggle-select':
         case 'toggle-on-release': {
           const block = intent.block;
@@ -934,10 +1178,16 @@ export class SandboxWorld {
         case 'copy-selection': {
           const drag = this.drag(
             () => this.selectedIds(),
-            (ids) => this.writeSelection(ids.map((id) => ({ kind: 'object', id }) as const)),
+            (ids) => this.writeSelection(ids.map((id) => ({ kind: 'object', id }) as const), { record: false }),
             (id) => this.feedback.plop(id),
           );
           if (drag.begin(intent.anchorId, press.at, intent.kind === 'copy-selection')) press.drag = drag;
+          break;
+        }
+        case 'move-placement':
+        case 'copy-placement': {
+          const drag = this.drag(() => this.selectedIds(), noop, (id) => this.feedback.plop(id));
+          if (drag.beginPlacement(press.at, intent.kind === 'copy-placement')) press.drag = drag;
           break;
         }
         case 'band-select': press.band = intent.from; break;
@@ -949,32 +1199,59 @@ export class SandboxWorld {
     }
   }
 
-  /** A selection write, as the store takes it (`slices/engine.ts:selectionFields`): it drops the
-   *  picked block, puts a brush away for the map's select mode, and is refused under any other tool
-   *  that holds no selection; then the ring is painted. */
-  private writeSelection(next: readonly BlockRef[], picked: MacroCoord | null = null): void {
-    if (next.length > 0 && !holdsSelection(this.arming.tool)) {
-      if (!isBrushTool(this.arming.tool)) return;
-      this.pick({});
-    }
-    this.selection = next;
-    this.pickedCell = picked;
+  /** A selection write, as the store takes it (`editing/intent.ts:selectionWrite`): a brush is put
+   *  away for the Hand tool, a write under any other tool that holds no selection is dropped, and a
+   *  recorded write that changed it is one undo step; then the ring is painted. */
+  private writeSelection(next: readonly BlockRef[], opts: { record?: boolean; pick?: MacroCoord } = {}): void {
+    const write = selectionWrite(this.session, this.arming.tool, next);
+    if (!write) return;
+    if (write.brushAway) this.pick({});
+    const before = this.session.selection;
+    this.apply(opts.pick && write.fields.selection.length === next.length ? { ...write.fields, pickedCell: opts.pick } : write.fields);
+    if (opts.record ?? true) this.executor.recordAside(before);
     this.paintSelection();
     this.tellSelection();
   }
 
-  /** A change of arming, as the store takes it (`slices/edit.ts:editModeFields`): a tool that holds
-   *  no selection drops it, and re-arming drops the picked block and the multi-select latch. */
+  /** Writes back a selection that stood before, as no step and without the objects the map no
+   *  longer holds (`slices/engine.ts:restoreSelection`). */
+  private restoreSelection(refs: readonly BlockRef[]): void {
+    this.writeSelection(standingRefs(this.state, refs), { record: false });
+  }
+
+  /** The press on open ground that picks `cell`, as the store's `pickCell` takes it: only under a
+   *  tool that selects, clearing the selection as one step. */
+  private pickCell(cell: MacroCoord): void {
+    if (!holdsSelection(this.arming.tool)) return;
+    const now = this.session.pickedCell;
+    if (now && now.x === cell.x && now.y === cell.y && this.session.selection.length === 0) return;
+    this.writeSelection([], { pick: { x: cell.x, y: cell.y } });
+  }
+
+  /** A change of arming from `was`, as the store takes it (`editing/intent.ts:rearmFields`); a new
+   *  tool or item lets go of the held multi-select key too. */
   private rearmed(was: ToolArming): void {
     const now = this.arming;
-    if (this.selection.length > 0 && !holdsSelection(now.tool)) this.selection = [];
-    if (now.tool !== was.tool || now.armedItem !== was.armedItem) {
-      this.pickedCell = null;
-      this.held.multiSelect = false;
-      this.multiSelectLatched = false;
-    }
+    if (now.tool !== was.tool || now.armedItem !== was.armedItem) this.held.multiSelect = false;
+    this.apply(rearmFields(this.session, this.purpose(was), this.purpose(now)));
     this.paintSelection();
     this.tellSelection();
+  }
+
+  /** What `arming` holds armed, as the store resolves its own: a figure has no build mode, and only
+   *  the blueprint tool places a blueprint. */
+  private purpose(arming: ToolArming): ArmedFacts {
+    return {
+      tool: arming.tool, picks: arming.picks, armedItem: arming.armedItem, armedMacro: arming.armedMacro, mode: null,
+      blueprint: arming.tool === ToolType.Blueprint ? arming.blueprint.armed : null,
+      painting: this.session.selectingRegion ? String(this.session.regionSelectionOwner) : null,
+      carrying: null, explorer: null,
+    };
+  }
+
+  /** Writes `fields` over the session, as the store's `set`. */
+  private apply(fields: Partial<WorldSession>): void {
+    this.session = { ...this.session, ...fields };
   }
 
   private tellSelection(cause?: string): void {
@@ -983,7 +1260,9 @@ export class SandboxWorld {
 
   /** The ring the live selection view sync paints for this selection. */
   private paintSelection(): void {
-    paintSelection(this.overlay, this.state, this.selection, layerNumbersShown(useEditorStore.getInitialState()), this.pickedCell);
+    paintSelection(this.overlay, this.state, this.selection, layerNumbersShown(useEditorStore.getInitialState()), {
+      picked: this.pickedCell, outline: selectedGroupFrame(this.groupView()),
+    });
   }
 
   /** The editor's own reactions to a map change: the ring follows moved geometry, and an item placed
@@ -1020,6 +1299,32 @@ class StepClock implements HoldClock {
   }
 
 }
+
+/** The store's selection, region and step fields a world holds, as the store's field functions read them. */
+interface WorldSession {
+  readonly selection: BlockRef[];
+  readonly pickedCell: MacroCoord | null;
+  readonly multiSelectLatched: boolean;
+  readonly moveLatched: boolean;
+  readonly gridState: GridState | null;
+  readonly layerVisibility: Record<number, boolean>;
+  readonly selectingRegion: boolean;
+  readonly regionSelectionOwner: RegionOwner | null;
+  readonly regions: Regions;
+  readonly regionUndoLane: MacroCoord[][];
+  readonly regionRedoLane: MacroCoord[][];
+  readonly regionTool: RegionTool;
+  readonly regionBrushShape?: Exclude<RegionTool, 'erase'>;
+  readonly regionRequest: RegionRequest;
+  readonly blueprintStep: BlueprintStep;
+}
+
+/** A session as a fresh editor holds it, on no map yet. */
+const EMPTY_SESSION: WorldSession = {
+  selection: [], pickedCell: null, multiSelectLatched: false, moveLatched: false,
+  gridState: null, layerVisibility: {}, selectingRegion: false, regionSelectionOwner: null, regions: {},
+  regionUndoLane: [], regionRedoLane: [], regionTool: 'free', regionRequest: DEFAULT_REGION_REQUEST, blueprintStep: REST_STEP,
+};
 
 /** A notice a selection verb said, by key, in the live toast's tone. */
 export interface SandboxNotice {

@@ -1,8 +1,8 @@
 /**
- * Export sizing: the map's native pixel size at the renderer's tile density (`mapNativePx`), the
- * largest capture this device can request (`clampedCaptureRequestPx`), and the uniform shrink that
- * keeps a composition inside the canvas ceiling (`canvasFitScale`). What a capture actually came
- * back at is read from its own width and height.
+ * Export sizing: the map's native pixel size at the renderer's tile density (`mapNativePx`) and its
+ * ratio (`mapPictureAspect`), the largest capture this device can request (`clampedCaptureRequestPx`),
+ * and the uniform shrink that keeps a composition inside the canvas ceiling (`canvasFitScale`). What
+ * a capture actually came back at is read from its own width and height.
  */
 import { TILE_SIZE } from '../../view/map2d/geometry/world';
 import { bandGeometry } from '../../core/grid/map-chunks';
@@ -16,6 +16,12 @@ type CaptureTemplate = Pick<MapTemplate, 'width' | 'height' | 'chunkGrid'>;
 export function mapNativePx(t: CaptureTemplate): PixelSize {
   const band = bandGeometry(t);
   return { w: band.widthCells * TILE_SIZE, h: band.heightCells * TILE_SIZE };
+}
+
+/** The width-to-height ratio a picture of the map has, which every capture of it comes back at. */
+export function mapPictureAspect(t: CaptureTemplate): number {
+  const n = mapNativePx(t);
+  return n.w / n.h;
 }
 
 /** What one 2D canvas may be: its longest side and its total pixel count. */

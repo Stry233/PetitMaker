@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { encodeGlyph, buildHeaderBytes } from '../../../../io/share/glyph/encode';
 import { BASE_CHROMA_OFFSETS, Y_LEVELS, encodeGlyphV2 } from '../../../_support/glyph-v2';
-import { decodeGlyph } from '../../../../io/share/glyph/decode';
+import { readGlyph } from '../../../../io/share/glyph/decode';
 import { HEADER_LEVELS, paletteForVersion, type RGB } from '../../../../io/share/glyph/palette';
 
 const PALETTE16_V1 = paletteForVersion(1)!;
@@ -76,7 +76,7 @@ describe('glyph palette versioning', () => {
     expect(HEADER_VERSION).toBe(3);
     const data = payload(1100);
     const glyph = encodeGlyph(data, mb)!;
-    expect(eq(decodeGlyph(glyph.rgba, glyph.width, glyph.height), data)).toBe(true);
+    expect(eq(readGlyph(glyph.rgba, glyph.width, glyph.height).payload, data)).toBe(true);
   });
 
   it('keeps the probe palette outside both fixed decoder tables', () => {
@@ -91,8 +91,8 @@ describe('glyph palette versioning', () => {
       const current = encodeGlyphV2(data, mb)!;
       const foreign = redrawAs(current, mb, data, 1, UNSEEN);
       expect(foreign.rgba).not.toEqual(current.rgba);
-      expect(eq(decodeGlyph(foreign.rgba, foreign.width, foreign.height), data)).toBe(true);
-      expect(eq(decodeGlyph(current.rgba, current.width, current.height), data)).toBe(true);
+      expect(eq(readGlyph(foreign.rgba, foreign.width, foreign.height).payload, data)).toBe(true);
+      expect(eq(readGlyph(current.rgba, current.width, current.height).payload, data)).toBe(true);
     });
   }
 
@@ -101,7 +101,7 @@ describe('glyph palette versioning', () => {
     const g = encodeGlyphV2(data, mb)!;
     for (const version of [0, 4, 255]) {
       const other = redrawAs(g, mb, data, version, PALETTE16_V2);
-      expect(decodeGlyph(other.rgba, other.width, other.height)).toBeNull();
+      expect(readGlyph(other.rgba, other.width, other.height).payload).toBeNull();
     }
   });
 });

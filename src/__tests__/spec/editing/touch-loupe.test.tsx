@@ -63,7 +63,11 @@ function event(target: EventTarget, type: string, p: { clientX: number; clientY:
 const down = (c: MacroCoord, type?: string, id?: number) => event(canvas, 'pointerdown', screen(c), type, id);
 const move = (c: MacroCoord, type?: string) => event(window, 'pointermove', screen(c), type);
 const up = (c: MacroCoord, type?: string) => event(window, 'pointerup', screen(c), type);
-const loupe = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-testid="map-loupe"]');
+/** The loupe standing over the press; one put away fades out of reach before it goes. */
+const loupe = (): HTMLElement | null => {
+  const el = document.querySelector<HTMLElement>('[data-testid="map-loupe"]');
+  return el && !el.closest('[data-leaving]') ? el : null;
+};
 
 /** The loupe's circle, read from where it is laid out. */
 function circle(el: HTMLElement): { cx: number; cy: number; r: number } {
@@ -88,7 +92,7 @@ function elementAt(x: number, y: number): Element {
 function open(arming: Parameters<typeof armedEditMode>[0]) {
   const w = world();
   origin = w.openGround(16, 16);
-  setStoreState({ gridState: w.state, commandExecutor: w.sandbox.executor, selection: [], activeLayer: 1, ...armedEditMode(arming) });
+  setStoreState({ gridState: w.state, commandExecutor: w.sandbox.executor, selection: [], ...armedEditMode(arming) });
   const manager = new ToolManager(view, w.sandbox.executor, w.state, editorToolWiring());
   registerToolManager(manager);
   registeredManager = manager;

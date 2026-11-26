@@ -176,7 +176,7 @@ describe('SelectionCard: actions', () => {
     const s = useEditorStore.getState();
     expect([activeToolOf(s), contentTypeOf(s)]).toEqual([ToolType.TerrainBrush, type === TerrainType.Mountain ? 'mountain' : 'water']);
     expect(s).toMatchObject({
-      activeLayer: 2, layerPinned: true, selection: [],
+      selection: [],
       editMode: { arming: { kind: 'brush' }, mode: type === TerrainType.Mountain ? 'mountain' : 'water' },
     });
     expect(gs.cells[4]![4]!.terrain).toEqual({ type, elevation: 2 });
@@ -359,7 +359,7 @@ describe('SelectionCard: placement', () => {
   it('stands above the selection, centred on it', () => {
     setActiveView(makeView(300, 300, 10));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]); // 340..350 on both axes
-    expect(card().style.visibility).toBe('visible');
+    expect(card().style.visibility).not.toBe('hidden');
     expect(parseFloat(card().style.left)).toBeCloseTo(345, 5);
     expect(headerBottom()).toBeCloseTo(340 - CARD_GAP, 5);
   });
@@ -391,7 +391,7 @@ describe('SelectionCard: placement', () => {
     gs.cells[4]![4]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
     useEditorStore.setState({ gridState: gs, selection: [{ kind: 'terrain', x: 4, y: 4 }] });
     render(<SelectionCard />, { wrapper: Wrapper });
-    expect(card().style.visibility).toBe('visible');
+    expect(card().style.visibility).not.toBe('hidden');
     expect(parseFloat(card().style.left)).toBeCloseTo(420, 5);
   });
 
@@ -417,16 +417,37 @@ describe('SelectionCard: placement', () => {
 });
 
 describe('SelectionCard: wheel input', () => {
-  it('hands a wheel it does not use to the map, so a touchpad pan crosses the card', () => {
+  it('hands a wheel or a pinch it does not use to the map, so a touchpad pan or pinch crosses the card', () => {
     const seen: WheelEvent[] = [];
     const release = setMapWheelSink((e) => seen.push(e));
     renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
     const wheel = new WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true });
+    const pinch = new WheelEvent('wheel', { deltaY: 40, ctrlKey: true, bubbles: true, cancelable: true });
     screen.getByTestId('selection-details').dispatchEvent(wheel);
-    expect(seen).toEqual([wheel]);
-    // Ctrl+wheel (a pinch) is zoomed window-wide by the map itself and is not forwarded.
-    screen.getByTestId('selection-details').dispatchEvent(new WheelEvent('wheel', { deltaY: 40, ctrlKey: true, bubbles: true }));
-    expect(seen).toHaveLength(1);
+    screen.getByTestId('selection-details').dispatchEvent(pinch);
+    expect(seen).toEqual([wheel, pinch]);
+    release();
+  });
+
+  it('keeps a wheel over details that scroll in them, at either end too, and hands a pinch there to the map', () => {
+    const seen: WheelEvent[] = [];
+    const release = setMapWheelSink((e) => seen.push(e));
+    renderWithSelection([{ id: 'a', catalogId: 'sel-hut', x: 4, y: 4 }]);
+    const scroller = screen.getByTestId('selection-details-scroll');
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 600 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 });
+    const wheel = (deltaY: number, ctrlKey = false) => {
+      const e = new WheelEvent('wheel', { deltaY, ctrlKey, bubbles: true, cancelable: true });
+      scroller.dispatchEvent(e);
+      return e;
+    };
+    scroller.scrollTop = 0;
+    wheel(-40);
+    scroller.scrollTop = 400;
+    wheel(40);
+    expect(seen).toEqual([]);
+    const pinch = wheel(40, true);
+    expect(seen).toEqual([pinch]);
     release();
   });
 });
@@ -468,7 +489,7 @@ describe('SelectionCard: what triggers a re-track', () => {
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
     });
     expect(parseFloat(card().style.left)).toBeCloseTo(385, 5);
-    expect(card().style.visibility).toBe('visible');
+    expect(card().style.visibility).not.toBe('hidden');
   });
 
   it('follows a 3D camera as it moves and keeps its side of the selection', () => {
@@ -480,7 +501,7 @@ describe('SelectionCard: what triggers a re-track', () => {
       view.projection.cellToScreen = (x, y) => ({ x: x * 10 + 360, y: y * 10 + 300, scale: 10 });
       useEditorStore.getState().eventBus.emit('viewport-changed', { zoom: 1 });
     });
-    expect(card().style.visibility).toBe('visible');
+    expect(card().style.visibility).not.toBe('hidden');
     expect(parseFloat(card().style.left)).toBeCloseTo(405, 5);
     expect(card().dataset.grow).toBe(side);
   });

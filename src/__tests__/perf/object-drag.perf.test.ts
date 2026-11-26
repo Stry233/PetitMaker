@@ -21,7 +21,7 @@ import { PERF, perfSuite } from './_harness';
 import { parseSave } from '../../io/save/parse';
 import { decodeSave } from '../../io/save/json-codec';
 import { createDefaultRegistry } from '../../rules/index';
-import { clearUnderLandmarks } from '../../state/landmark-clearance';
+import { clearUnderLandmarks } from '../../tools/repair/landmark-clearance';
 import { createExecutor } from '../../state/executor';
 import { useEditorStore } from '../../state/store';
 import { objectRect } from '../../state/object-geometry';

@@ -3,7 +3,7 @@
  * backings, eroded and chamfered seams, cleared ground, and the rings and sunken courts the theme
  * kits ask for.
  */
-import { flatIndex, type Rect } from '../../../../core/grid/rect';
+import { flatIndex, inflateRect, type Rect } from '../../../../core/grid/rect';
 import { NEIGHBORS4 } from '../../../../core/grid/directions';
 import { valueNoise01 } from '../../../../core/base/noise';
 import type { MacroCoord, MapTemplate } from '../../../../core/model/types';
@@ -407,10 +407,7 @@ export function sinkCourts(
     if (!ground.get(region.id)?.sunken) continue;
     const lot = region.lot[0];
     if (!lot) continue;
-    const rect: Rect = {
-      x: lot.x + SUNKEN_INSET, y: lot.y + SUNKEN_INSET,
-      w: lot.w - 2 * SUNKEN_INSET, h: lot.h - 2 * SUNKEN_INSET,
-    };
+    const rect = inset(lot, SUNKEN_INSET);
     if (rect.w < SUNKEN_MIN || rect.h < SUNKEN_MIN) continue;
     const cut = chamfers(rect, fnv1a32(region.id));
     let sunk = 0;
@@ -428,5 +425,8 @@ export function sinkCourts(
   return out;
 }
 
-const inset = (rect: Rect, k: number): Rect =>
-  ({ x: rect.x + k, y: rect.y + k, w: Math.max(0, rect.w - 2 * k), h: Math.max(0, rect.h - 2 * k) });
+/** `rect` shrunk by `k` on every side, never below an empty rect. */
+const inset = (rect: Rect, k: number): Rect => {
+  const r = inflateRect(rect, -k);
+  return { ...r, w: Math.max(0, r.w), h: Math.max(0, r.h) };
+};

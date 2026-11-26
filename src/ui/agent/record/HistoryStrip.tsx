@@ -1,17 +1,17 @@
 /*
- * Past jobs in a body-level floating menu, grouped by date and map identity. Rolled-back jobs and
- * jobs not tied to the open map offer no rollback. The row-wide open button sits behind a separate
+ * Past jobs in a body-level floating menu, grouped by date and map identity. Each row's rollback
+ * stands as `agent/panel.ts:takeBackStanding` answers. The row-wide open button sits behind a separate
  * rollback button, so ancestors must not establish a transformed containing block.
  */
 import { useState, type CSSProperties } from 'react';
 import { useReveal } from '../../primitives/use-reveal';
 import { motion } from 'framer-motion';
 import { Icon, type IconId } from '../parts/sprite';
-import { editCount } from '../derive/job-stats';
+import { editCount, type JobView, rewindBlock, type TakeBackFacts, type TakeBackStanding, takeBackStanding } from '../../../agent/panel';
+import { AT_REST, takeBackControl } from '../derive/rollback';
 import { DAY_KEY, dayOf, type Day } from '../derive/days';
 import { amplitude, framerMotion } from '../../design/motion';
 import { iconForTool } from '../parts/tool-meta';
-import { rollbackCost, rollbackReaches } from '../derive/rollback';
 import { RewindSquare } from '../parts/RewindSquare';
 import { ActionButton } from '../../primitives/ActionButton';
 import { FloatMenu } from '../../primitives/FloatMenu';
@@ -19,7 +19,6 @@ import { DANGER_SURFACE, INK, MUTED, PLATE, PLATE_INK } from '../../design/token
 import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
 import { recede } from '../panel-skin';
 import type { I18nKey } from '../../../i18n/keys';
 
@@ -96,19 +95,19 @@ function HistoryRow({
   job,
   rolledBack,
   blocked,
-  undoDepth,
+  whole,
   busy = false,
   onOpen,
   onRollBack,
 }: {
   job: JobView;
   rolledBack: boolean;
-  /** Why this job may not be rolled back here, or undefined where it may (see the file header). */
+  /** The group this record stands in where its map is not the open one. */
   blocked?: Blocked;
-  /** The live undo depth, so the confirm can name what the press would pop. */
-  undoDepth?: number;
-  /** A job is in flight, so neither of this row's presses may land (see the strip's header). Both
-   *  controls stand disabled with the reason readable rather than vanishing. */
+  /** How taking the whole job back stands. */
+  whole: TakeBackStanding;
+  /** A job is in flight, so neither of this row's presses may land. Both controls stand disabled
+   *  with the reason readable rather than vanishing. */
   busy?: boolean;
   onOpen?: (job: JobView) => void;
   onRollBack?: (job: JobView) => void;
@@ -122,10 +121,8 @@ function HistoryRow({
   /** The roll back's question stands, so the row previews what it would take; a running job closes it. */
   const [questioned, setAsking] = useState(false);
   const asking = questioned && !busy;
-  const watermark = job.checkpoints[0]?.undoIndex;
-  const rollable = onRollBack !== undefined && !rolledBack && blocked === undefined
-    && watermark !== undefined && rollbackReaches(watermark, undoDepth);
-  const actions = (onOpen ? 1 : 0) + (rollable ? 1 : 0);
+  const rollBack = onRollBack ? takeBackControl(whole) : null;
+  const actions = (onOpen ? 1 : 0) + (rollBack ? 1 : 0);
   const statKey = statKeyFor(job);
   const edits = editCount(job);
   const dim = blocked !== undefined;
@@ -225,14 +222,14 @@ function HistoryRow({
               pointerEvents: standing || revealed || asking ? 'auto' : 'none',
             }}
           >
-            {rollable && (
+            {rollBack && (
               <RewindSquare
                 testId="history-roll-back"
                 icon="pw-undo-arrow"
                 label={t('agent.history_roll_back')}
                 actLabel={t('agent.history_roll_back')}
-                cost={rollbackCost(watermark!, undoDepth, job.endUndoIndex)}
-                busy={busy}
+                cost={rollBack.cost}
+                busy={rollBack.busy}
                 onAskChange={setAsking}
                 onConfirm={() => onRollBack?.(job)}
               />
@@ -253,10 +250,7 @@ function HistoryRow({
 export function HistoryStrip({
   jobs,
   rolledBack,
-  otherMap,
-  unknownMap,
-  undoDepth,
-  busy = false,
+  takeBack = AT_REST,
   now,
   open,
   onOpenChange,
@@ -267,15 +261,10 @@ export function HistoryStrip({
   jobs: readonly JobView[];
   /** The order seqs whose edits the shell has taken back off the map. */
   rolledBack?: ReadonlySet<number>;
-  /** The order seqs whose edits are on a map that is not the one open. */
-  otherMap?: ReadonlySet<number>;
-  /** The order seqs whose record does not say which map it was built on, so no roll back from here
-   *  can be proven to aim at the map that is standing. */
-  unknownMap?: ReadonlySet<number>;
-  /** The live undo depth, so a row's confirm can name what its press would pop (`rollback.ts`). */
-  undoDepth?: number;
-  /** A job is in flight. Every row's presses stand disabled and say why. */
-  busy?: boolean;
+  /** The live facts each row's rollback is read against: which records are another map's or name
+   *  none (also the groups they stand in), the undo depth its question prices, and whether a job is
+   *  in flight, under which every row's presses stand disabled and say why. */
+  takeBack?: TakeBackFacts;
   /** The clock the day headers are read against. Defaults to now, and is passed in by a test or a
    *  fixture that needs the grouping to be the same picture every run. */
   now?: number;
@@ -292,12 +281,7 @@ export function HistoryStrip({
   const clock = now ?? Date.now();
   // Newest first, which is the order a reader looks for the job they just finished in.
   const newestFirst = jobs.slice().reverse();
-  /** Proven elsewhere outranks unproven: a record in both sets names a map, and what it names is
-   *  the sharper fact. */
-  const blockedOf = (job: JobView): Blocked | undefined => (
-    otherMap?.has(job.orderSeq) === true ? 'other-map'
-      : unknownMap?.has(job.orderSeq) === true ? 'unknown-map'
-        : undefined);
+  const blockedOf = (job: JobView): Blocked | undefined => rewindBlock(job, takeBack.otherMap, takeBack.unknownMap);
   const here = newestFirst.filter((job) => blockedOf(job) === undefined);
   const elsewhere = newestFirst.filter((job) => blockedOf(job) === 'other-map');
   const unrecorded = newestFirst.filter((job) => blockedOf(job) === 'unknown-map');
@@ -320,8 +304,8 @@ export function HistoryStrip({
             job={job}
             rolledBack={rolledBack?.has(job.orderSeq) ?? false}
             {...(blockedOf(job) ? { blocked: blockedOf(job)! } : {})}
-            {...(undoDepth !== undefined ? { undoDepth } : {})}
-            busy={busy}
+            whole={takeBackStanding(job, 'whole', takeBack)}
+            busy={takeBack.running}
             {...(onOpen ? { onOpen } : {})}
             {...(onRollBack ? { onRollBack } : {})}
           />

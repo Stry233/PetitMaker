@@ -19,7 +19,7 @@ describe('EraserTool: ghost grid alignment', () => {
     const executor = makeExecutor(state);
     const showGhost = vi.fn();
     const ctx = {
-      ...makeToolCtx(state, executor, 1, 1, { contentType: 'road' }),
+      ...makeToolCtx(state, executor, 1, { contentType: 'road' }),
       overlay: { showGhost, clearGhost: vi.fn(), flashCommit: vi.fn() },
     } as any;
 

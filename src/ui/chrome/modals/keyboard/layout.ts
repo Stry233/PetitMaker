@@ -6,7 +6,7 @@
  * pure helpers, so the board's geometry and combo mapping are unit-testable without the DOM.
  */
 import { normalizeCombo } from '../../../../platform/input/combo';
-import type { CommandCategory } from '../../../../state/keymap/registry';
+import { UNBINDABLE_KEYS, type CommandCategory } from '../../../../state/keymap/registry';
 import { KEY_CATEGORY_COLORS } from '../../../design/tokens';
 
 /** A modifier layer: any combination of the three chord modifiers (base = all false). */
@@ -23,7 +23,8 @@ export interface KeyDef {
   label: string;
   /** Width in key units (1 = a normal letter key). */
   w?: number;
-  /** A modifier/space key: not bindable. `mod` makes it toggle that layer when clicked. */
+  /** A key no command can sit on (`state/keymap/registry.ts:UNBINDABLE_KEYS`), drawn muted. `mod`
+   *  makes a key toggle that layer when clicked. */
   fixed?: boolean;
   mod?: ModId;
   /** This key represents a modifier layer, so it lights up while that layer is engaged, but clicking
@@ -42,25 +43,22 @@ export interface KeyDef {
 }
 
 const K = (base: string, label = base.toUpperCase(), shift?: string): KeyDef => ({ base, label, shift });
-const FIX = (base: string, label: string, w = 1, mod?: ModId): KeyDef => ({ base, label, w, fixed: true, mod });
-/** A browser-reserved function key (F1/F3/F5/…): shown but not bindable — the browser intercepts it
- *  (Help/Find/Reload/Fullscreen/DevTools) and preventDefault is unreliable, like PrintScreen. */
-const FF = (base: string, label: string): KeyDef => ({ base, label, fixed: true });
+/** The key as the board draws it: fixed where the keymap refuses a binding on it. */
+const drawn = (key: KeyDef): KeyDef => (UNBINDABLE_KEYS.has(key.base) ? { ...key, fixed: true } : key);
 
 /** The ANSI main block, top row to bottom. Every main row totals 15 units so the right edge aligns,
  *  exactly as on a real keyboard (Backspace 2u, Tab/\ 1.5u, Caps 1.75u, Enter 2.25u, Shift 2.25/2.75u,
  *  Space filling the bottom row). Esc sits on its own function-row slot at the top-left (a real board
- *  keeps it off the number row). The function row carries Esc + F1–F12 (grouped by spacers); the
- *  F-keys are bindable but note some (F5/F11/F12) may be intercepted by the browser. */
-export const KEY_ROWS: KeyDef[][] = [
+ *  keeps it off the number row). The function row carries Esc + F1–F12 (grouped by spacers). */
+export const KEY_ROWS: KeyDef[][] = ([
   [
     { base: 'escape', label: 'Esc', w: 1.5 },
     { base: '', label: '', spacer: true, w: 0.5 },
-    FF('f1', 'F1'), K('f2', 'F2'), FF('f3', 'F3'), K('f4', 'F4'),
+    K('f1', 'F1'), K('f2', 'F2'), K('f3', 'F3'), K('f4', 'F4'),
     { base: '', label: '', spacer: true, w: 0.5 },
-    FF('f5', 'F5'), FF('f6', 'F6'), K('f7', 'F7'), K('f8', 'F8'),
+    K('f5', 'F5'), K('f6', 'F6'), K('f7', 'F7'), K('f8', 'F8'),
     { base: '', label: '', spacer: true, w: 0.5 },
-    K('f9', 'F9'), K('f10', 'F10'), FF('f11', 'F11'), FF('f12', 'F12'),
+    K('f9', 'F9'), K('f10', 'F10'), K('f11', 'F11'), K('f12', 'F12'),
   ],
   [
     K('`', '`', '~'),
@@ -70,17 +68,17 @@ export const KEY_ROWS: KeyDef[][] = [
     { base: 'backspace', label: '⌫', w: 2 },
   ],
   [
-    FIX('tab', 'Tab', 1.5),
+    { base: 'tab', label: 'Tab', w: 1.5 },
     K('q'), K('w'), K('e'), K('r'), K('t'), K('y'), K('u'), K('i'), K('o'), K('p'),
     // \ is 1.5u (the key that carries this row's slack) so the qwerty row reaches 15u and its right
     // edge lines up with Backspace/Enter/Shift. Other rows already total 15u — don't widen them.
     K('[', '[', '{'), K(']', ']', '}'), { base: '\\', label: '\\', shift: '|', w: 1.5 },
   ],
   [
-    FIX('caps', 'Caps', 1.75),
+    { base: 'capslock', label: 'Caps', w: 1.75 },
     K('a'), K('s'), K('d'), K('f'), K('g'), K('h'), K('j'), K('k'), K('l'),
     K(';', ';', ':'), K("'", "'", '"'),
-    FIX('enter', 'Enter', 2.25),
+    { base: 'enter', label: 'Enter', w: 2.25 },
   ],
   [
     // Both Shift keys carry the rebindable 'constrain' command (base 'shift' → tool.constrain), not a
@@ -101,7 +99,7 @@ export const KEY_ROWS: KeyDef[][] = [
     { base: 'alt', label: 'Alt', w: 1.5, layerOf: 'alt' },
     { base: 'ctrl', label: 'Ctrl', w: 1.5, layerOf: 'ctrl' },
   ],
-];
+] satisfies KeyDef[][]).map((row) => row.map(drawn));
 
 const NP = (base: string, label: string, col: number, row: number, span?: { colSpan?: number; rowSpan?: number }): KeyDef =>
   ({ base, label, col, row, ...span });
@@ -112,9 +110,9 @@ export const NUMPAD_ROWS_N = 5;
 /** The numeric keypad, placed in a 4×5 CSS grid mirroring a real keyboard: a NumLock header row, a
  *  double-height `+` and `Enter` down the right edge, and a double-width `0`. Numpad keys carry no
  *  default binding — they exist so users can bind to them; their tokens (`num5`, `numadd`, …) are
- *  distinct from the top-row digits. NumLock is a fixed (non-bindable) label. */
+ *  distinct from the top-row digits. */
 export const NUMPAD: KeyDef[] = [
-  { base: 'numlock', label: 'Num', fixed: true, col: 1, row: 1 },
+  NP('numlock', 'Num', 1, 1),
   NP('numdivide', '÷', 2, 1), NP('nummultiply', '×', 3, 1), NP('numsubtract', '−', 4, 1),
   NP('num7', '7', 1, 2), NP('num8', '8', 2, 2), NP('num9', '9', 3, 2),
   NP('numadd', '+', 4, 2, { rowSpan: 2 }),
@@ -122,7 +120,7 @@ export const NUMPAD: KeyDef[] = [
   NP('num1', '1', 1, 4), NP('num2', '2', 2, 4), NP('num3', '3', 3, 4),
   NP('numenter', '⏎', 4, 4, { rowSpan: 2 }),
   NP('num0', '0', 1, 5, { colSpan: 2 }), NP('numdecimal', '.', 3, 5),
-];
+].map(drawn);
 
 export const NAV_COLS = 3;
 export const NAV_ROWS_N = 6;
@@ -133,16 +131,14 @@ export const NAV_ROWS_N = 6;
  *  arrows at the bottom (aligned with the modifier row) — exactly a full-size keyboard. Delete
  *  resolves to the delete command; arrows are pan aliases; the rest are unbound and rebindable. */
 export const NAV: KeyDef[] = [
-  // PrtSc is captured by the OS before the browser sees it (keydown usually never fires and the OS
-  // screenshot can't be preventDefault-ed), so it is not bindable — shown fixed/muted for honesty.
-  { base: 'printscreen', label: 'PrtSc', fixed: true, col: 1, row: 1 },
+  NP('printscreen', 'PrtSc', 1, 1),
   NP('scrolllock', 'ScrLk', 2, 1), NP('pause', 'Pause', 3, 1),
   NP('insert', 'Ins', 1, 2), NP('home', 'Home', 2, 2), NP('pageup', 'PgUp', 3, 2),
   NP('delete', 'Del', 1, 3), NP('end', 'End', 2, 3), NP('pagedown', 'PgDn', 3, 3),
   // row 4 intentionally empty (the gap above the arrows)
   NP('arrowup', '↑', 2, 5),
   NP('arrowleft', '←', 1, 6), NP('arrowdown', '↓', 2, 6), NP('arrowright', '→', 3, 6),
-];
+].map(drawn);
 
 /** The combo a key produces under the active layer, or null for a fixed key. */
 export function comboFor(key: KeyDef, layer: Layer): string | null {
@@ -161,6 +157,6 @@ export const CATEGORY_COLOR: Record<CommandCategory, string> = KEY_CATEGORY_COLO
 
 /** Order the category legend is shown in. */
 export const CATEGORY_ORDER: CommandCategory[] = [
-  'surface', 'tool', 'brush', 'layer', 'selection', 'camera', 'view', 'overlay', 'app', 'history',
+  'surface', 'tool', 'brush', 'selection', 'camera', 'view', 'overlay', 'app', 'history',
 ];
 

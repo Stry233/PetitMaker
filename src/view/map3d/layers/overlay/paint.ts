@@ -6,13 +6,6 @@ export function makeMat(color: number, opacity: number): THREE.MeshBasicMaterial
   return mat;
 }
 
-export function toGeo(m: { positions: number[]; index: number[] }): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3));
-  geo.setIndex(m.index);
-  return geo;
-}
-
 /**
  * Box paint is cached, one material per colour and opacity, and a box never disposes one. three
  * deletes a program when its last material is disposed and links it again on next use, and the

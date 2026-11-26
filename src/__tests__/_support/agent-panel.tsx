@@ -50,15 +50,14 @@ export type FlatPanelProps = PanelViewProps & PanelConnectionProps & PanelRecord
 
 /** The group each flat member belongs to; the mapped type fails to compile when a group gains a member. */
 const GROUP_OF: { [K in keyof FlatPanelProps]-?: keyof PanelShellProps } = {
-  view: 'panel', running: 'panel', open: 'panel', visit: 'panel', initialZone: 'panel', now: 'panel',
-  maxHeight: 'panel', mapName: 'panel', lane: 'panel', sketchbook: 'panel', fill: 'panel', hosted: 'panel',
+  view: 'panel', running: 'panel', open: 'panel', visit: 'panel', initialZone: 'panel', now: 'panel', liveAt: 'panel',
+  maxHeight: 'panel', mapName: 'panel', lane: 'panel', sketchbook: 'panel', fill: 'panel', hosted: 'panel', veiled: 'panel',
   connected: 'connection', ready: 'connection', providerName: 'connection', modelName: 'connection',
-  liveConnection: 'connection', connectionMeta: 'connection',
+  liveConnection: 'connection', connectionMeta: 'connection', signIn: 'connection',
   undoDepth: 'records', filed: 'records', cleared: 'records', otherMap: 'records', unknownMap: 'records',
   restored: 'records', storageNotice: 'records',
   bounds: 'region', marking: 'region', gateCells: 'region', onMarkRegion: 'region', onClearRegion: 'region',
   pinned: 'dock', edge: 'dock', away: 'dock', pinBlocked: 'dock', onTogglePin: 'dock', onSwitchSide: 'dock',
-  onCollapse: 'dock',
   onSend: 'verbs', onStop: 'verbs', onPause: 'verbs', onResume: 'verbs', onGateAnswer: 'verbs', onRetryNow: 'verbs',
   onRepair: 'verbs', onRecallSteer: 'verbs', onRewind: 'verbs', onRollBack: 'verbs', onRewindAll: 'verbs',
   onKeepGoing: 'verbs', onSetAside: 'verbs', onFileAway: 'verbs', onClearRecord: 'verbs', onClearJobs: 'verbs',

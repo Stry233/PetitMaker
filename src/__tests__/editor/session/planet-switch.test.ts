@@ -64,7 +64,7 @@ describe('Export first on a carried build', () => {
     const session = store().repairSession;
     if (session?.phase !== 'choose') throw new Error(`no choice: ${session?.phase}`);
     expect(session.pending.objects.has('under-0')).toBe(false);
-    expect(exportUnrepaired()).toBe(true);
+    expect(await exportUnrepaired({ confirmNotice: async () => true })).toBe(true);
     expect(downloads).toHaveLength(1);
     // Read back as a save file, the trees are under the plaza again, where the build had them.
     const reread = await inspectImportFile(new Blob([downloads[0]!.json], { type: 'application/json' }), downloads[0]!.name);

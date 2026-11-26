@@ -17,6 +17,7 @@ import { definePreRule } from './define';
 
 export const placementMaxCountRule = definePreRule({
   id: 'V-PLACE-MAX',
+  description: 'An item with a placement cap may stand at most that many times on the map.',
   appliesTo: [CommandType.PlaceObject],
 
   validate(cmd, state, fail) {

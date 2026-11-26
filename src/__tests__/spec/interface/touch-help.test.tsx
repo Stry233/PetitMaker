@@ -15,7 +15,7 @@ import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
 import type { InputMode } from '../../../platform/device/input-mode';
 import type { LayoutShape } from '../../../platform/device/layout-shape';
-import type { HelpPageId } from '../../../ui/help/page-schema';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import type { TextKey } from '../../../i18n/keys';
 import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gzipSync } from 'fflate';
-import { readAutosave } from '../../../io/storage/autosave';
+import { readRestorableAutosave } from '../../../io/storage/autosave';
 import { autosave } from '../../../editor/session/autosave';
 import { COMPRESS_RECORD_AT } from '../../../io/storage/record-codec';
 import { serialize } from '../../../io/save/json-codec';
@@ -37,7 +37,7 @@ class HeldWorker {
 const largeMap = (elevation: number): GridState => latticeMap(DEFAULT_MAP, elevation);
 
 function restoredElevation(): number | undefined {
-  const restored = readAutosave();
+  const restored = readRestorableAutosave();
   if (!restored) return undefined;
   for (const row of restored.state.cells) for (const cell of row) if (cell.terrain) return cell.terrain.elevation;
   return undefined;
@@ -126,6 +126,6 @@ describe('overlapping autosave writes', () => {
     autosave.clear();
     HeldWorker.all[0]!.reply();
     await vi.advanceTimersByTimeAsync(0);
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 });

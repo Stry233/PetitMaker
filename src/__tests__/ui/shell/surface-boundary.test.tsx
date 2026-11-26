@@ -38,7 +38,7 @@ function mount() {
   return render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+        <Shell><div data-testid="map-views" /></Shell>
       </I18nProvider>
     </MotionConfig>,
   );
@@ -87,7 +87,7 @@ describe('a bar that throws', () => {
     render(
       <MotionConfig reducedMotion="always">
         <InputModeProvider inputMode="touch" shape="portrait">
-          <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+          <I18nProvider><Shell><div /></Shell></I18nProvider>
         </InputModeProvider>
       </MotionConfig>,
     );

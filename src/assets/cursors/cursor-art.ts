@@ -51,11 +51,6 @@ export function cursorArt(id: CursorId, opts: { forbidden?: boolean } = {}): str
   return ART[id] ?? null;
 }
 
-/** The ids that have a badged variant. Exported so a test can hold it to forbiddable. */
-export const BADGED_IDS: ReadonlySet<string> = new Set(
-  Object.keys(ART).filter((k) => k.endsWith('-forbidden')).map((k) => k.replace('-forbidden', ''))
-);
-
 /**
  * The busy spinner's frames (`busy-0.svg` …), counted off the shipped files. `busy` is the one
  * Animated cursor — a long operation is running and a static custom cursor reads as stuck — so

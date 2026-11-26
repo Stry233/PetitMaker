@@ -8,7 +8,7 @@ import { roleFont } from '../../../../design/text-weight';
 export function MapReviewStatus({ result, pending, onRetry }: { result: MapReview | null; pending: boolean; onRetry: () => void }) {
   const t = useT();
   if (!pending && (!result || result.status === 'clear')) return null;
-  return <div role="status" aria-live="polite" style={{ ...roleFont('caption'), color: skin.ink, lineHeight: 1.5, padding: '12px 0' }}>
+  return <div role="status" aria-live="polite" style={{ ...roleFont('note'), color: skin.ink, lineHeight: 1.5, padding: '12px 0' }}>
     {pending ? <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Spinner size={18} />{t('export.map_check.checking')}</span>
       : <>{t(result?.status === 'blocked' ? 'export.map_check.blocked' : 'export.map_check.unavailable')}
         <ActionButton appearance="secondary" onClick={onRetry} style={{ marginTop: 8, display: 'block' }}>{t('export.review.retry')}</ActionButton></>}

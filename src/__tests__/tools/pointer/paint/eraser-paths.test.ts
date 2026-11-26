@@ -15,7 +15,7 @@ function world(shape: EraserShape, width = 1, elevation = 1) {
   const state = makeState(24, 24);
   for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) setTerrain(state, x, y, TerrainType.Mountain, elevation);
   const executor = makeExecutor(state);
-  const ctx = makeToolCtx(state, executor, width, elevation, { eraserShape: shape });
+  const ctx = makeToolCtx(state, executor, width, { eraserShape: shape });
   const tool = new EraserTool();
   const drag = (x1 = 4, y1 = 8, x2 = 16, y2 = 8) => {
     tool.onPointerDown(cell({ x: x1, y: y1 }), point({ x: 0, y: 0 }), ctx);

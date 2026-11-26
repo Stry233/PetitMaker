@@ -10,6 +10,7 @@ import { versionStore } from '../../../../../../state/stylize-versions';
 import { Studio, type RunStylize } from '../../../../../../ui/chrome/modals/export/stylize/Studio';
 import { StylizeWindow } from '../../../../../../ui/chrome/modals/export/stylize/StylizeWindow';
 import { makeState } from '../../../../../_support/map-state';
+import { packSampleUrl } from '../../../../../../assets/style-sample-urls';
 
 vi.mock('../../../../../../io/storage/stylize-settings', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../../../io/storage/stylize-settings')>();
@@ -199,6 +200,19 @@ describe('the stylize studio', () => {
   });
 
 
+
+  it('a first take of a pack anchors on the pack\'s committed sample', async () => {
+    let seen: unknown = null;
+    renderStudio(async (deps) => {
+      seen = (deps as { styleRef?: unknown }).styleRef;
+      return { image: {} as HTMLImageElement };
+    });
+
+    await press(generateButton());
+
+    expect(packSampleUrl('watercolor')).toBeTruthy();
+    expect(seen).toEqual({ url: packSampleUrl('watercolor'), kind: 'pack' });
+  });
 
   it('a retake anchors on the kept take of the same direction, not on the pack sample', async () => {
     act(() => {

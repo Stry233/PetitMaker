@@ -47,7 +47,7 @@ describe('the one way a layer is named', () => {
       // @ts-expect-error an elevation is not a layer number
       translateFor('en', 'agent.dc_wall', { w: 1, h: 1, crest: 3, flood: '' });
       // @ts-expect-error an elevation is not a layer number
-      ruleToast(t, 'error.water_only_layer', { layer: 3 });
+      ruleToast(t, 'error.elevation_limit', { max: 3 });
       // @ts-expect-error an elevation is not a layer number
       fail('error.elevation_limit', { grid: 'terrain', cells: [] } as never, { messageParams: { max: ELEVATION_MAX } });
       t('layer.name', { n: layerNumber(3) });

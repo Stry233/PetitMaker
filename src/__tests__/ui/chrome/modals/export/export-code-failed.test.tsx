@@ -33,13 +33,13 @@ afterEach(cleanup);
 
 describe('the export preview says when no code is coming', () => {
   it('is silent while a code is on its way', () => {
-    render(<I18nProvider><ExportPreview open options={opts} summary={null} codePending /></I18nProvider>);
+    render(<I18nProvider><ExportPreview open options={opts} words={null} summary={null} codePending /></I18nProvider>);
     expect(screen.queryByText(translate('export.code_overlap'))).toBeNull();
     expect(screen.queryByText(translate('export.code_failed'))).toBeNull();
   });
 
   it('names the stacked objects when that is what stopped it', () => {
-    render(<I18nProvider><ExportPreview open options={opts} summary={null} codeIssue="export.code_overlap" /></I18nProvider>);
+    render(<I18nProvider><ExportPreview open options={opts} words={null} summary={null} codeIssue="export.code_overlap" /></I18nProvider>);
     expect(screen.getByText(translate('export.code_overlap'))).toBeTruthy();
   });
 });

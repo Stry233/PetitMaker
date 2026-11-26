@@ -1,10 +1,13 @@
 /**
  * The keymap declares what commands exist and `RUN` what they do; `RUN` is keyed by `RunCommandId`, so
- * the compiler holds the two halves to each other and these pin how `COMMANDS` zips them.
+ * the compiler holds the two halves to each other and these pin how `COMMANDS` zips them and which
+ * keys the discrete engine takes.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { COMMAND_META } from '../../../state/keymap/registry';
-import { COMMANDS, hasRunBody, RUN } from '../../../editor/commands/commands';
+import { effectiveCombo } from '../../../state/keymap/resolve';
+import { TOOLBAR_CONTEXTS } from '../../../state/keymap/toolbar';
+import { COMMANDS, hasRunBody, keyBindings, RUN } from '../../../editor/commands/commands';
 import { useEditorStore } from '../../../state/store';
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeTemplate } from '../../_support/map-state';
@@ -16,11 +19,16 @@ describe('command registry', () => {
     }
   });
 
-  it('gives held and listener commands no body, so the discrete engine leaves their keys alone', () => {
-    const elsewhere = COMMAND_META.filter((c) => c.continuous || c.listener).map((c) => c.id);
-    expect(elsewhere).toContain('camera.pan_up');
-    expect(elsewhere).toContain('app.ui_zoom_in');
-    for (const id of elsewhere) expect(hasRunBody(id), id).toBe(false);
+  it('leaves the keys of held and listener commands alone in the discrete engine, whose own listeners hear them', () => {
+    const elsewhere = COMMAND_META.filter((c) => c.continuous || c.listener);
+    expect(elsewhere.map((c) => c.id)).toEqual(expect.arrayContaining(['camera.pan_up', 'app.ui_zoom_in', 'app.whats_this']));
+    for (const toolbar of TOOLBAR_CONTEXTS) {
+      const bound = new Set(keyBindings({}, toolbar, { toggleMenu: () => {} }).map((binding) => binding.combo));
+      for (const cmd of elsewhere) {
+        const combo = effectiveCombo({}, cmd.id, toolbar);
+        if (combo) expect(bound.has(combo), `${cmd.id} in ${toolbar}`).toBe(false);
+      }
+    }
   });
 });
 

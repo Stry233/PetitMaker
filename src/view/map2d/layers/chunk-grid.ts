@@ -14,7 +14,7 @@ import * as PIXI from 'pixi.js-legacy';
 import { CHUNK_PX, chunkVisible, type CullRect } from '../geometry/chunk-cull';
 import { chunkKey } from '../../../core/grid/rect';
 
-export { cullRect, type CullRect } from '../geometry/chunk-cull';
+export { type CullRect } from '../geometry/chunk-cull';
 
 export class ChunkGrid {
   private chunks = new Map<string, { c: PIXI.Container; cx: number; cy: number }>();

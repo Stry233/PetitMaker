@@ -29,7 +29,7 @@ const cleared = (state: GridState): number => {
 
 /** Drive one gesture: press at `from`, drag to `to`, release. */
 function drag(state: GridState, shape: 'free' | 'rect' | 'circle', from: MacroCoord, to: MacroCoord, constrain = false) {
-  const ctx = makeToolCtx(state, exec(state), 1, 1, { eraserShape: shape, modifiers: { constrain, multiSelect: false } });
+  const ctx = makeToolCtx(state, exec(state), 1, { eraserShape: shape, modifiers: { constrain, multiSelect: false } });
   const eraser = new EraserTool();
   eraser.onPointerDown(cell(from), point(from), ctx);
   eraser.onPointerMove(cell(to), point(to), ctx);
@@ -60,7 +60,7 @@ describe('EraserTool: batch shapes', () => {
 
   it('is not committed until the release, so a drag can still be re-aimed', () => {
     const state = field();
-    const ctx = makeToolCtx(state, exec(state), 1, 1, { eraserShape: 'rect' });
+    const ctx = makeToolCtx(state, exec(state), 1, { eraserShape: 'rect' });
     const eraser = new EraserTool();
     eraser.onPointerDown(cell(m(3, 3)), point(m(3, 3)), ctx);
     eraser.onPointerMove(cell(m(9, 9)), point(m(9, 9)), ctx);
@@ -79,7 +79,7 @@ describe('EraserTool: batch shapes', () => {
 
   it('the dab is untouched: it erases as it travels, under the brush', () => {
     const state = field();
-    const ctx = makeToolCtx(state, exec(state), 1, 1, { eraserShape: 'free' });
+    const ctx = makeToolCtx(state, exec(state), 1, { eraserShape: 'free' });
     const eraser = new EraserTool();
     eraser.onPointerDown(cell(m(4, 4)), point(m(4, 4)), ctx);
     expect(cleared(state)).toBe(1); // taken on the press, not held for the release
@@ -92,7 +92,7 @@ describe('EraserTool: batch shapes', () => {
   it('a whole shape is ONE undo step', () => {
     const state = field();
     const e = exec(state);
-    const ctx = makeToolCtx(state, e, 1, 1, { eraserShape: 'rect' });
+    const ctx = makeToolCtx(state, e, 1, { eraserShape: 'rect' });
     const before = e.historyDepth();
     const eraser = new EraserTool();
     eraser.onPointerDown(cell(m(3, 3)), point(m(3, 3)), ctx);

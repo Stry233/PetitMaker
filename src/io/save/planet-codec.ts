@@ -5,6 +5,7 @@ import { loadableWater } from '../../core/model/template';
 import { hasLandmark } from '../../core/model/landmarks';
 import { isTrustedPlanet } from '../../core/model/planet-validate';
 import { rleDecode, rleEncode } from './rle';
+import { clampText } from '../../core/base/text';
 import { ImportError } from './import-error';
 import { ANCHOR_LANDMARK, ELEVATION_MAX } from '../../core/game/profile';
 
@@ -39,8 +40,7 @@ export interface SerializedTemplate {
 /** A planet name as every planet format stores it: a string of at most `PLANET_NAME_MAX` UTF-16
  *  units, never ending in half a surrogate pair. */
 export function clampName(v: unknown): string {
-  const name = (typeof v === 'string' ? v : '').slice(0, PLANET_NAME_MAX);
-  return /[\uD800-\uDBFF]$/.test(name) ? name.slice(0, -1) : name;
+  return clampText(v, PLANET_NAME_MAX, { trim: false }) ?? '';
 }
 
 export function serializeTemplate(t: MapTemplate): SerializedTemplate {

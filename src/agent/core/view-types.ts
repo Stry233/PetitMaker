@@ -3,19 +3,53 @@ import type { CellBox, ToolFacts } from './tool-facts';
 import type {
   ErrorClass, GateOption, JobOutcome, OrderRegion, PlanStage, ToolResultDetail,
 } from './types';
-import type { SkillRef } from './types';
+import type { JobStopCause, SkillRef } from './types';
 
 export type SessionPhase =
   | 'idle' | 'thinking' | 'streaming' | 'executing' | 'gated' | 'retrying'
   | 'pausing' | 'paused' | 'aborted' | 'incident';
 
-/** The phases in which a job still owns the map: in flight (gates, retry backoff and a pending
- *  pause included), or held and resuming onto it. */
-const MAP_OWNING: ReadonlySet<SessionPhase> = new Set<SessionPhase>(['thinking', 'streaming', 'executing', 'gated', 'retrying', 'pausing', 'paused']);
+/** What a session phase means for the loop and its job. */
+export interface PhaseTraits {
+  /** The job proceeds under its own power. */
+  running: boolean;
+  /** The loop still owns a job, including gates, retry backoff and a pending pause. */
+  inFlight: boolean;
+  /** No job is moving that Stop could reach. */
+  atRest: boolean;
+  /** The job is on hold and offers Resume. */
+  onHold: boolean;
+  /** Provider stream silence counts toward the stall notice; local tool execution does not. */
+  awaitingStream: boolean;
+  /** Pause is admitted: the job moves, so the loop grants one at its next step. Any other phase in flight admits only Stop. */
+  pausable: boolean;
+  /** The job waits on the user's answer or on a retry clock, where Stop reaches it with or without a loop. */
+  waiting: boolean;
+  /** The job waits on a clock alone, so a pause parks it there; under a gate a pause would hide the question. */
+  parkable: boolean;
+}
 
-/** Whether a job in `phase` still owns the map. */
+const NONE: PhaseTraits = {
+  running: false, inFlight: false, atRest: false, onHold: false, awaitingStream: false,
+  pausable: false, waiting: false, parkable: false,
+};
+
+export const PHASE_TRAITS: Readonly<Record<SessionPhase, PhaseTraits>> = {
+  idle: { ...NONE, atRest: true },
+  thinking: { ...NONE, running: true, inFlight: true, awaitingStream: true, pausable: true },
+  streaming: { ...NONE, running: true, inFlight: true, awaitingStream: true, pausable: true },
+  executing: { ...NONE, running: true, inFlight: true, pausable: true },
+  gated: { ...NONE, inFlight: true, waiting: true },
+  retrying: { ...NONE, inFlight: true, waiting: true, parkable: true },
+  pausing: { ...NONE, inFlight: true },
+  paused: { ...NONE, atRest: true, onHold: true },
+  aborted: { ...NONE, atRest: true },
+  incident: { ...NONE, atRest: true },
+};
+
+/** Whether a job in `phase` still owns the map: in flight, or held and resuming onto it. */
 export function jobOwnsMap(phase: SessionPhase): boolean {
-  return MAP_OWNING.has(phase);
+  return PHASE_TRAITS[phase].inFlight || PHASE_TRAITS[phase].onHold;
 }
 
 export interface OpRow {
@@ -29,7 +63,8 @@ export interface OpRow {
   /** `skipped` is a user decline; `cut` is a call left unresolved when its job ended. */
   status: 'run' | 'ok' | 'revert' | 'error' | 'blocked' | 'skipped' | 'cut' | 'words' | 'pending-gate';
   summary: string; detail?: ToolResultDetail; isRead: boolean;
-  /** Plan stage active when the call was registered. */
+  /** The plan stage the call is filed under: the one active when the log registered it, or the
+   *  one being worked for a call still arriving. Absent on a job with no plan. */
   stageIndex?: number;
   /** A successful `load_skill`'s identity, for the op row's skill chip. */
   skill?: SkillRef;
@@ -65,8 +100,12 @@ export interface AskRecord {
   callId?: string;
   /** Absent while the ask is still open. */
   verdict?: GateVerdict;
-  /** What the user typed, on a `words` answer. */
+  /** The sentence a `words` answer carried: typed, or the offer that was taken. */
   words?: string;
+  /** How a `words` answer was given: an option card taken (`picked`), a quick answer, or typed. */
+  answeredBy?: 'option' | 'quick' | 'typed';
+  /** The index of the option taken, where `answeredBy` is `option`. */
+  picked?: number;
   /** Proposed stages carried by a gated `update_plan` call before approval. */
   stages?: PlanStage[];
   /** Quick answers offered with the question. */
@@ -97,6 +136,8 @@ export interface JobView {
   checkpoints: { undoIndex: number; label: string; stageIndex?: number }[];
   /** Undo depth at settlement, paired with the first checkpoint to bound the job's writes. */
   endUndoIndex?: number;
+  /** Why an aborted job stopped, where the user did not stop it (`types.ts:JobStopCause`). */
+  stoppedBy?: JobStopCause;
   /** First occurrence of each side stamp, positioned among operation and thought rows. */
   stamps: { kind: 'compaction' | 'damper' | 'interrupted'; beforeIndex: number }[];
   /** Done-job classification: issued write, text-only answer, or no output. */

@@ -1,28 +1,10 @@
 /*
- * The Objects bar's tabs and sizes. The rows span the viewport from its bottom edge; the art keeps the
- * design's numbers through `units.ts:SHELF_SCALE`, the layout is authored in css px. Every row scrolls
- * (`row-scroll.ts`).
+ * The Objects bar's sizes; what it shows is `state/object-shelf-view.ts`. The rows span the viewport
+ * from its bottom edge; the art keeps the design's numbers through `units.ts:SHELF_SCALE`, the layout
+ * is authored in css px. Every row scrolls (`row-scroll.ts`).
  */
-import type { CatalogItem } from '../../../../core/model/types';
-import { type Locale } from '../../../../core/model/locale';
-import { getCatalogByCategory, landmarkItems } from '../../../../state/catalog';
-import { searchCatalog } from '../../../../state/catalog-search';
-import { landmarkSpec } from '../../../../core/game/profile';
 import { EDGE, EDGE_RIGHT, PLATE_BAND, RAIL, SHELF_SCALE, SHELF_TABS, standsInNameRow } from '../../units';
 import { DARK_GROOVE, SHELF_THUMB } from '../../../design/tokens';
-import { CATEGORY_BY_ID, placedCategories, ItemCategory } from '../../../../config/catalog/categories';
-import { categorySearchTerms } from '../../../../i18n/terms/category-terms';
-import type { I18nKey } from '../../../../i18n/keys';
-
-/** A category tab: the drawn order, with the short name a tab has room for. `menu.place_*` is the
- *  action catalogue's own name for the category ("Place building" in Chinese), a sentence where this is a label. */
-interface ShelfTab {
-  category: ItemCategory;
-  labelKey: I18nKey;
-}
-
-/** The tabs left to right: every category placed item by item (roads are a brush surface of their own). */
-export const TABS: readonly ShelfTab[] = placedCategories('shelfRank').map((c) => ({ category: c.id, labelKey: c.placement.tabKey }));
 
 /**
  * The shelf's own box in css px. `left` is the edge both shelves hang their names from; `right` keeps the
@@ -139,19 +121,3 @@ export const CARD = {
   ring: (8 / 280) * CARD_SIZE,
   radius: (32 / 280) * CARD_SIZE,
 } as const;
-
-/**
- * What the row shows: the search result while there is a query (active locale and English), the tab's
- * category otherwise; items of a category with no tab are never offered.
- */
-export function shelfItems(query: string, category: ItemCategory, locale: Locale): CatalogItem[] {
-  const found = searchCatalog(query, locale, categorySearchTerms(locale));
-  if (query.trim()) return found.filter((item) => !!CATEGORY_BY_ID.get(item.category)?.placement);
-  return getCatalogByCategory(category);
-}
-
-/** What the planet session's shelf offers: the landmarks the planet editor places, in profile order.
- *  The placer lays each at its profile footprint, unturned. */
-export function planetShelfItems(): CatalogItem[] {
-  return landmarkItems().filter((item) => landmarkSpec(item.id)?.editorPlaceable);
-}

@@ -8,6 +8,7 @@ import type { CSSProperties } from 'react';
 import { FOCUS_RING, PLATE, PLATE_INK, rgbaOf } from '../../design/tokens';
 import { radii, shadows } from '../../design/styles';
 import { roleFont, type TextRole } from '../../design/text-weight';
+import { waapiTiming } from '../../design/motion';
 
 /** A figure's own plated label: the house plate, at whatever role and padding the figure needs.
  *  `alpha` under 1 lets a narration caption sit translucent over the picture it annotates;
@@ -53,7 +54,7 @@ const PRESS_PULSE_KEYFRAMES: Keyframe[] = [
  *  (HelpDemo's own imperative cursor) and a mounted mark (`PressPulse` below) fire. */
 export function firePressPulse(el: HTMLElement, opts?: { repeat?: boolean }): void {
   if (typeof el.animate !== 'function') return;
-  el.animate(PRESS_PULSE_KEYFRAMES, { duration: 420, easing: 'ease-out', iterations: opts?.repeat ? Infinity : 1 });
+  el.animate(PRESS_PULSE_KEYFRAMES, { ...waapiTiming('help.figure.press'), iterations: opts?.repeat ? Infinity : 1 });
 }
 
 /** A mounted press mark, centred on `x, y`: one bloom by default, or a standing attention pulse

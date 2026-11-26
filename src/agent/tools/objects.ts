@@ -1,7 +1,7 @@
 /** Object write tools: place, remove and rotate one object, lay a road, scatter many. */
 import { placeObjectCommand, removeObjectCommand } from '../../core/model/command-build';
 import { CommandType, ROTATIONS, type Command, type MacroCoord, type PlacedObject, type Rotation } from '../../core/model/types';
-import { rectsOverlap } from '../../core/grid/rect';
+import { rectsOverlap, regionBounds } from '../../core/grid/rect';
 import { isBuildableZone } from '../../core/game/zones';
 import { makeRng } from '../../core/base/rng';
 import { cellSet } from '../../core/grid/grids';
@@ -218,17 +218,38 @@ export const buildRoadTool = defineTool({
   },
 });
 
+/**
+ * `count` stops from `lo` to `hi`, the outer two as far from the ends as the stops are from each
+ * other and the set its own mirror image about the middle, so a row reads centred and evenly spaced.
+ */
+function evenStops(lo: number, hi: number, count: number): number[] {
+  const span = hi - lo + 1, n = Math.min(count, span);
+  const stops: number[] = [];
+  for (let i = 0; i < Math.floor(n / 2); i++) {
+    const off = Math.floor(((2 * i + 1) * span) / (2 * n));
+    stops.push(lo + off, hi - off);
+  }
+  if (n % 2 === 1) stops.push(lo + Math.floor((span - 1) / 2));
+  return stops.sort((a, b) => a - b);
+}
+
 export const scatterObjectsTool = defineTool({
-  description: 'Place many items at once. Choose pattern explicitly: "scatter" distributes across the entire area for groves and meadows; "fill" visits cells in row order until count is reached; "grid" uses every step-th cell. For separate flower beds, make one call per small bed rectangle with its intended species and enough count to fill that rectangle. A low count over a large rect makes a partial row, not a compact bed. Illegal spots are skipped. One undo step. Returns counts and placed anchors.',
+  description: 'Place many items at once in an ordered pattern over a rectangle. "grid" (the default) plants a lattice on every step-th cell, an orchard or a bed of evenly spaced plants; '
+    + '"fill" covers every cell in row order, a solid bed; "border" lines the rectangle\'s edge, a hedge or a flower frame around a plot, a pool or a house (around water or a platform painted under x1,y1..x2,y2 the nearest clear border is the rectangle two cells larger on every side, which the paint result names); '
+    + '"checker" takes alternate cells, and two checker calls with offset 0 and 1 weave two species. "scatter" places at random and is for a wild look the user asked for. '
+    + 'One species per call reads as one bed; make one call per bed, row or frame with enough count to complete it. Illegal spots are skipped. One undo step. Returns counts and placed anchors.',
   input: obj({
-    catalogIds: req(list(str(), { description: 'Pool to sample from (ONE id for ordered patterns; mix species only for natural scatter).' })),
+    catalogIds: req(list(str(), { description: 'ONE id for an ordered pattern; several are drawn from at random, for scatter only.' })),
     count: req(int({ min: 1, max: 200 })),
     ...coordProps,
     rect: obj(corners, { description: 'Scatter area; the flat corners x1,y1,x2,y2 mean the same.' }),
     ...zoneArg,
-    pattern: oneOf(['scatter', 'fill', 'grid'], { description: 'scatter = natural arrangement (default); fill = solid row-major fill; grid = a lattice of every step-th cell.' }),
+    pattern: oneOf(['grid', 'fill', 'even', 'border', 'checker', 'scatter'], { description: 'grid = a lattice of every step-th cell (default); fill = every cell; even = columns x rows spread evenly across the rectangle, equal gaps and equal margins; border = the edge of the rectangle; checker = alternate cells; scatter = random.' }),
+    columns: int({ min: 1, max: 40, description: 'For pattern "even": how many across.' }),
+    rows: int({ min: 1, max: 40, description: 'For pattern "even": how many down.' }),
+    offset: int({ min: 0, max: 1, description: 'Which half of the checker to take (default 0).' }),
     step: int({ min: 2, max: 6, description: 'Grid pitch for pattern "grid" (default 2: an open lattice).' }),
-    spacing: int({ min: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid.' }),
+    spacing: int({ min: 0, description: 'Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Read by pattern "scatter" only.' }),
   }),
   access: 'write',
   example: () => `catalogIds: ["${firstTreeId()}"], count: 20, x1: 10, y1: 10, x2: 20, y2: 18`,
@@ -250,14 +271,29 @@ export const scatterObjectsTool = defineTool({
     if (pool.length === 0) {
       return argError('no area to scatter over, pass the rect corners or a zone, or have the user select a region first.', 'x1: 10, y1: 10, x2: 20, y2: 18');
     }
-    const pattern = input.pattern ?? 'scatter';
+    const pattern = input.pattern ?? 'grid';
     const spacing = pattern === 'scatter' ? input.spacing ?? 0 : 0;
+    if (pattern === 'border' || pattern === 'checker') {
+      const { x1: minX, y1: minY, x2: maxX, y2: maxY } = regionBounds(pool)!;
+      const half = input.offset ?? 0;
+      const kept = pattern === 'border'
+        ? pool.filter((c) => c.x === minX || c.x === maxX || c.y === minY || c.y === maxY)
+        : pool.filter((c) => (c.x - minX + c.y - minY) % 2 === half);
+      pool.length = 0;
+      pool.push(...kept);
+    }
+    if (pattern === 'even') {
+      const { x1: minX, y1: minY, x2: maxX, y2: maxY } = regionBounds(pool)!;
+      const xs = new Set(evenStops(minX, maxX, input.columns ?? 1)), ys = new Set(evenStops(minY, maxY, input.rows ?? 1));
+      const kept = pool.filter((c) => xs.has(c.x) && ys.has(c.y));
+      pool.length = 0;
+      pool.push(...kept);
+    }
     if (pattern === 'grid') {
       // A lattice anchored at the pool's own top-left, so two adjacent grid calls with the same
       // step line up.
       const step = input.step ?? 2;
-      let minX = Infinity, minY = Infinity;
-      for (const c of pool) { if (c.x < minX) minX = c.x; if (c.y < minY) minY = c.y; }
+      const { x1: minX, y1: minY } = regionBounds(pool)!;
       const kept = pool.filter((c) => (c.x - minX) % step === 0 && (c.y - minY) % step === 0);
       pool.length = 0;
       pool.push(...kept);
@@ -272,7 +308,7 @@ export const scatterObjectsTool = defineTool({
         [pool[i], pool[j]] = [pool[j]!, pool[i]!];
       }
     }
-    // fill and grid keep resolveCells' row-major order: an ordered pattern lands as drawn.
+    // The ordered patterns keep resolveCells' row-major order: each lands as drawn.
     const exec = deps.getExecutor();
     const placedAt: MacroCoord[] = [];
     const placed: PlacedObject[] = [];

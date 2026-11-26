@@ -5,8 +5,11 @@
 import { modesInSession, type BuildMode } from '../../state/editing/edit-mode';
 import type { PlanetSession } from '../../state/slices/planet-session';
 import type { ModalId } from '../../state/slices/shell';
+import type { FramePose } from '../../state/frame-pose';
+import { sessionOffers, sessionOpens } from '../../state/session-offer';
 import type { TourTargetId } from '../chrome/tour/steps';
-import type { HelpPageId } from '../help/page-schema';
+import { MODE_HELP_PAGE } from '../../editor/help/mode-pages';
+import type { HelpPageId } from '../../editor/help/page-schema';
 import {
   BLOCK_W, BLOCK_W_ON, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_INK_DEPTH, MODE, MODE_PLATE_W, TOP_RIGHT_GAP,
   MODE_SCALE, RAIL,
@@ -52,8 +55,6 @@ export interface FrameArt {
   /** The focus ring's corner radius, for a drawing that is not the rounded rectangle
    *  `FOCUS_SHAPE_RADIUS` assumes. */
   focusRadius?: number;
-  /** The control stays in the corner during a planet session. */
-  inSession?: boolean;
 }
 
 /** A block of the top-left row: its resting drawing and the separate, heavier one drawn for selection. */
@@ -69,7 +70,7 @@ export interface ModeArt extends BlockArt {
   /** i18n key for the name inside a planet session, where the mode shapes the ground rather than
    *  mountains. Absent when the name is the same there. */
   sessionLabelKey?: I18nKey;
-  /** The Help page the block teaches; the three terrain surfaces share one page. */
+  /** The Help page the block teaches (`editor/help/mode-pages.ts:MODE_HELP_PAGE`). */
   helpTarget: HelpPageId;
 }
 
@@ -77,7 +78,7 @@ export interface ModeArt extends BlockArt {
 const atWidth = (drawn: { w: number; h: number }, w: number) => ({ w, h: (drawn.h * w) / drawn.w });
 
 /**
- * The five build modes left to right at the sizes the design draws them; `MODES` brings each to one
+ * The six build modes left to right at the sizes the design draws them; `MODES` brings each to one
  * block width, since the grass cube is the unit the row is read by.
  */
 const MODES_DRAWN: readonly {
@@ -86,28 +87,29 @@ const MODES_DRAWN: readonly {
   on: string;
   labelKey: I18nKey;
   sessionLabelKey?: I18nKey;
-  helpTarget: HelpPageId;
   rest: { w: number; h: number };
   sel: { w: number; h: number };
 }[] = [
-  { id: 'object', src: MODE_ICONS.object.rest, on: MODE_ICONS.object.pressed, labelKey: 'mode.object', helpTarget: 'objects',
+  { id: 'object', src: MODE_ICONS.object.rest, on: MODE_ICONS.object.pressed, labelKey: 'mode.object',
     rest: { w: 172, h: 184 }, sel: { w: 207, h: 212 } },
-  { id: 'road', src: MODE_ICONS.road.rest, on: MODE_ICONS.road.pressed, labelKey: 'mode.road', helpTarget: 'terrain',
+  { id: 'road', src: MODE_ICONS.road.rest, on: MODE_ICONS.road.pressed, labelKey: 'mode.road',
     rest: { w: 172, h: 190 }, sel: { w: 207, h: 200 } },
-  { id: 'mountain', src: MODE_ICONS.mountain.rest, on: MODE_ICONS.mountain.pressed, labelKey: 'mode.mountain', sessionLabelKey: 'mode.terrain', helpTarget: 'terrain',
+  { id: 'mountain', src: MODE_ICONS.mountain.rest, on: MODE_ICONS.mountain.pressed, labelKey: 'mode.mountain', sessionLabelKey: 'mode.terrain',
     rest: { w: 172, h: 165 }, sel: { w: 207, h: 187 } },
-  { id: 'water', src: MODE_ICONS.water.rest, on: MODE_ICONS.water.pressed, labelKey: 'mode.water', helpTarget: 'terrain',
+  { id: 'water', src: MODE_ICONS.water.rest, on: MODE_ICONS.water.pressed, labelKey: 'mode.water',
     rest: { w: 172, h: 168 }, sel: { w: 207, h: 200 } },
-  { id: 'generate', src: MODE_ICONS.generate.rest, on: MODE_ICONS.generate.pressed, labelKey: 'mode.generate', helpTarget: 'generate',
+  { id: 'blueprint', src: MODE_ICONS.blueprint.rest, on: MODE_ICONS.blueprint.pressed, labelKey: 'mode.blueprint',
+    rest: { w: 176, h: 192 }, sel: { w: 208, h: 202 } },
+  { id: 'generate', src: MODE_ICONS.generate.rest, on: MODE_ICONS.generate.pressed, labelKey: 'mode.generate',
     rest: { w: 176, h: 174 }, sel: { w: 208, h: 180 } },
 ];
 
-/** The five, every drawing at the row's own block width. */
+/** The six, every drawing at the row's own block width. */
 export const MODES: readonly ModeArt[] = MODES_DRAWN.map((art) => ({
   id: art.id,
   src: art.src,
   labelKey: art.labelKey,
-  helpTarget: art.helpTarget,
+  helpTarget: MODE_HELP_PAGE[art.id],
   ...(art.sessionLabelKey ? { sessionLabelKey: art.sessionLabelKey } : {}),
   ...atWidth(art.rest, BLOCK_W),
   selected: { src: art.on, ...atWidth(art.sel, BLOCK_W_ON) },
@@ -205,12 +207,12 @@ export const ASSISTANT_INK = {
  * unequal `trim`s are judged by eye at rendered size against a rail disc (the disc needs none).
  */
 export const TOP_RIGHT: readonly FrameArt[] = [
-  { id: 'load', labelKey: 'hud.region_load', w: 157, h: 157, botSlack: 0, apparent: 175.7 },
+  { id: 'load', labelKey: 'hud.region_load', w: 157, h: 157, botSlack: 0, apparent: 175.7, opens: 'regionLoad' },
   { id: 'share', src: shareButton, labelKey: 'a11y.save_share', w: 130, h: 136, botSlack: 3.8, apparent: 125.9, trim: 0.84,
     opens: 'share', tourTarget: 'share', helpTarget: 'share' },
   // A disc, so its focus ring is one too.
   { id: 'menu', src: menuButton, labelKey: 'a11y.open_menu', w: 131, h: 132, botSlack: 1, apparent: 140.5, trim: 0.95,
-    opens: 'menu', tourTarget: 'menu', helpTarget: 'frame', focusRadius: 999, inSession: true },
+    opens: 'menu', tourTarget: 'menu', helpTarget: 'frame', focusRadius: 999 },
 ];
 
 /** A top-right drawing's height in css px: where its ink reads at a rail button's size, times `trim`. */
@@ -223,12 +225,19 @@ export function topRightSlack(art: FrameArt): number {
   return ((art.botSlack ?? 0) / art.h) * topRightHeight(art);
 }
 
-/** The top-right controls over a map, and the one a planet session keeps: the menu, whose rows
- *  follow the session (`MenuSheet.tsx:menuRows`). */
-export function cornerArt(inSession: boolean): readonly FrameArt[] {
-  return inSession ? SESSION_CORNER : TOP_RIGHT;
+/** The top-right controls `pose` keeps: those whose window, or the menu's command, a session offers
+ *  (`state/session-offer.ts`); the menu's rows follow it too (`MenuSheet.tsx:menuRows`). */
+export function cornerArt(pose: FramePose): readonly FrameArt[] {
+  return CORNERS[pose];
 }
-const SESSION_CORNER: readonly FrameArt[] = TOP_RIGHT.filter((art) => art.inSession);
+const cornerOffered = (pose: FramePose, { opens }: FrameArt): boolean => (
+  opens === undefined || (opens === 'menu' ? sessionOffers(pose, 'app.menu') : sessionOpens(pose, opens))
+);
+const CORNERS: Readonly<Record<FramePose, readonly FrameArt[]>> = {
+  map: TOP_RIGHT,
+  planet: TOP_RIGHT.filter((art) => cornerOffered('planet', art)),
+  repair: TOP_RIGHT.filter((art) => cornerOffered('repair', art)),
+};
 
 /** How wide a corner cluster of these drawings stands, in css px. */
 export function cornerWidth(arts: readonly FrameArt[]): number {
@@ -396,8 +405,7 @@ export const GLYPHS = {
   ),
 } as const;
 
-/** The layer stack's drawing (the readout pill's own glyph). Exported here beside the `GLYPHS` so
- *  every picture of the control (the rail, the Help Center's inline art) draws the one file. */
+/** The layer readout's arrow plate drawing: two arrows the design draws as one shape. */
 export const LAYERS_STACK_SRC = layersStack;
 
 /** The fit-to-view stroke icon's ink in its own 24-unit box, measured the same way, so the one

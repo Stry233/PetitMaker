@@ -10,14 +10,18 @@
  */
 export type ToastType = 'error' | 'info' | 'warning';
 
-type ToastPresenter = (text: string, type: ToastType) => void;
+/** A press a toast offers beside its text, such as Undo; `label` is already translated. */
+export interface ToastAction { label: string; run: () => void }
+
+type ToastPresenter = (text: string, type: ToastType, action?: ToastAction) => void;
 
 let presenter: ToastPresenter | null = null;
 
 /** Post a message, already translated in the current locale: a toast outlives no locale change, so
  *  it carries text rather than a key. Silently dropped when nothing is presenting. */
-export function showToast(text: string, type: ToastType = 'info'): void {
-  presenter?.(text, type);
+export function showToast(text: string, type: ToastType = 'info', action?: ToastAction): void {
+  if (action) presenter?.(text, type, action);
+  else presenter?.(text, type);
 }
 
 /** Register the presenter for as long as it is mounted; returns its unregister. */

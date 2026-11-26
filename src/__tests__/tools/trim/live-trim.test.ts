@@ -17,7 +17,7 @@ const MICRO = { x: 0, y: 0 };
 function world(brush = 3, content: ContentType = 'mountain', autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(40, 40);
   const executor = makeExecutor(state);
-  const ctx = makeToolCtx(state, executor, brush, 1, { autoEdgeCut });
+  const ctx = makeToolCtx(state, executor, brush, { autoEdgeCut });
   const tool = new DrawingTool();
   arm(ctx, { shape: 'free', contentType: content });
   tool.onActivate(ctx);

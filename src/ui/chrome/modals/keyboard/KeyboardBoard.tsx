@@ -12,6 +12,7 @@ import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { useWeightVars } from '../../../design/scale';
 import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
+import { commandOnCombo } from '../../../../state/keymap/resolve';
 import { BOARD_IN, CLUSTER_IN, ROW_IN, ROW_IN_REDUCED } from './motion';
 import { KEY_ROWS, NUMPAD, NUMPAD_COLS, NUMPAD_ROWS_N, NAV, NAV_COLS, NAV_ROWS_N, CATEGORY_COLOR, comboFor, type KeyDef, type Layer } from './layout';
 import { useInteractionProfiles } from '../../../design/input-mode';
@@ -57,7 +58,7 @@ export function KeyboardBoard({ layer, index, aliases, selectedId, label, zoom, 
     if (key.spacer) return <div key={`${ri}-${ki}`} style={{ width, height: KEY_H, flex: '0 0 auto' }} />;
     const grid = key.col != null;
     const combo = comboFor(key, layer);
-    const cmdId = combo ? (index.get(combo) ?? aliases.get(combo)) : undefined;
+    const cmdId = combo ? commandOnCombo(combo, index, aliases) : undefined;
     const cmd = cmdId ? COMMAND_BY_ID.get(cmdId) : undefined;
     // An alias key (arrow→pan, backspace→delete, ctrl+y→redo) shows its command but isn't the
     // command's editable primary binding — mark it with a dashed border.

@@ -3,18 +3,16 @@ import { captureImageAttribution } from '../save/image-attribution';
 import { clampNotes } from '../../core/model/notes';
 import type { GridState } from '../../core/model/types';
 import { parseSave } from '../save/parse';
-import type { LandmarkClearance } from '../../state/landmark-clearance';
+import type { LandmarkClearance } from '../../tools/repair';
 import { loadParsedSave } from '../import/open-save';
 import { upgradeLandmarks } from '../../core/model/planet';
 import { resolveTemplate } from '../../config/maps/resolve';
-import { DEFAULT_LIMITS, type ShareLimits } from './errors';
 import { ImportError, type ImportWarning } from '../save/import-error';
 import { decodeGlyphAsync, type PixelOwnership } from './glyph/decode-async';
 import { decodeMapPayload, type ProvenanceInfo } from './codec/payload';
 import { isGenerationConfig } from '../save/generation-record';
-import { toSaveJSON } from '../save/canonical';
+import { toSaveFile } from '../save/canonical';
 import { importDriftWarnings } from './validate';
-import { decodePng, type RasterImage } from './raster/png-raster';
 
 export interface ImportSuccess { ok: true; state: GridState; warnings: ImportWarning[]; provenance: ProvenanceInfo; cleared?: LandmarkClearance }
 export interface ImportFailure { ok: false; error: ImportError }
@@ -31,12 +29,23 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
   try {
     const read = await decodeGlyphAsync(rgba, width, height, ownership);
     if (!read.payload) return { ok: false, error: GLYPH_REFUSALS[read.found]() };
-    const dec = await decodeMapPayload(read.payload); // throws corrupt / future-version / decode-failed
+    return await importFromPayload(read.payload);
+  } catch (e) {
+    // Anything but a reader's refusal is a fault, left to the caller to log.
+    if (e instanceof ImportError) return { ok: false, error: e };
+    throw e;
+  }
+}
+
+/** The map a share code's payload carries, however the payload travelled: a picture's band or a link. */
+export async function importFromPayload(payload: Uint8Array): Promise<ImportResult> {
+  try {
+    const dec = await decodeMapPayload(payload); // throws corrupt / future-version / decode-failed
     // A carried planet's landmarks take the profile's footprints, and the map the planet's new id.
     const planet = dec.template && upgradeLandmarks(dec.template);
     const templateId = planet ? planet.id : dec.canonical.templateId;
-    const saveJson = toSaveJSON({ ...dec.canonical, templateId }, dec.annotations);
-    const { state, cleared } = loadParsedSave(parseSave(JSON.parse(saveJson), { template: resolveTemplate(templateId, planet) }));
+    const save = toSaveFile({ ...dec.canonical, templateId }, dec.annotations);
+    const { state, cleared } = loadParsedSave(parseSave(save, { template: resolveTemplate(templateId, planet) }));
     if (isGenerationConfig(dec.generation)) state.generation = dec.generation;
     state.notes = dec.notes ?? clampNotes({ title: dec.provenance.title });
     if (!dec.provenance.aiUsed && !dec.provenance.proceduralUsed) {
@@ -56,18 +65,4 @@ export async function importFromRaster(rgba: Uint8Array, width: number, height: 
     if (e instanceof ImportError) return { ok: false, error: e };
     throw e;
   }
-}
-
-/** PNG bytes entry (node + tests). The UI decodes any raster format via createImageBitmap and
- *  calls importFromRaster directly. */
-export async function importFromBytes(input: ArrayBuffer | Uint8Array, limits: ShareLimits = DEFAULT_LIMITS): Promise<ImportResult> {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  let img: RasterImage;
-  try {
-    img = await decodePng(bytes, limits);
-  } catch (e) {
-    if (e instanceof ImportError) return { ok: false, error: e };
-    throw e;
-  }
-  return importFromRaster(img.data, img.width, img.height);
 }

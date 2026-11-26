@@ -9,36 +9,79 @@ import type { MapPort } from '../session/context';
 import type { EditContext } from '../../core/commands/edit-context';
 import { newMap } from './map';
 import { buildTransfer, anchorOffset, type TransferCounts } from '../../tools/generation/transfer';
-import type { TransferPreview } from '../../tools/generation/run';
+import { requestTransferPreview, type TransferPreview } from '../../tools/generation/run';
 import type { GridState } from '../../core/model/types';
-import { mapRevisionOf } from '../../state/map-revision';
+import { mapVersionKey } from '../../core/model/grid-model';
+import { createSignal } from '../../core/base/signal';
+import { onAfterPaint } from '../../platform/async/after-paint';
 
 export { hasCarriableContent } from '../../tools/generation/transfer';
 
-/** What a transfer preview was worked out from: the map's revision, whether it ignores the chunk
- *  load, and the store's notes epoch, since plan notes change in place without moving the revision.
- *  A preview answers only while this key holds. */
-export function transferPreviewKey(state: GridState, notesEpoch: number): string {
-  return `${mapRevisionOf(state)}|${!!state.ignoreChunkLoad}|${notesEpoch}`;
+/** What a transfer preview was worked out from: the map under the rules (`mapVersionKey`), and the
+ *  store's notes epoch, since plan notes change in place without moving the revision. A preview
+ *  answers only while this key holds. */
+function transferPreviewKey(state: GridState, notesEpoch: number): string {
+  return `${mapVersionKey(state)}|${notesEpoch}`;
 }
 
 /** One transfer preview per map version and destination, so a view change never asks again. */
 const previews = new WeakMap<GridState, { key: string; byTarget: Map<string, TransferPreview> }>();
+/** Counts the previews remembered, for a reader waiting on one. */
+const remembered = createSignal(0);
 
-/** The preview remembered for `state` under `key` (`transferPreviewKey`) and `target`, or null. */
-export function cachedTransferPreview(state: GridState, key: string, target: MapTemplate): TransferPreview | null {
+/** The carry preview remembered for `state` with its notes at `notesEpoch` onto `target`, or null. */
+export function cachedCarryPreview(state: GridState, notesEpoch: number, target: MapTemplate): TransferPreview | null {
   const entry = previews.get(state);
-  return entry && entry.key === key ? entry.byTarget.get(target.id) ?? null : null;
+  return entry && entry.key === transferPreviewKey(state, notesEpoch) ? entry.byTarget.get(target.id) ?? null : null;
 }
 
-/** Remembers `preview` for `state` under `key` (`transferPreviewKey`) and `target`. */
-export function rememberTransferPreview(state: GridState, key: string, target: MapTemplate, preview: TransferPreview): void {
+function rememberTransferPreview(state: GridState, key: string, target: MapTemplate, preview: TransferPreview): void {
   let entry = previews.get(state);
   if (!entry || entry.key !== key) {
     entry = { key, byTarget: new Map() };
     previews.set(state, entry);
   }
   entry.byTarget.set(target.id, preview);
+  remembered.emit(remembered.get() + 1);
+}
+
+export function subscribeCarryPreviews(listener: () => void): () => void {
+  return remembered.subscribe(listener);
+}
+
+/** Changes whenever a carry preview is remembered. */
+export function carryPreviewsVersion(): number {
+  return remembered.get();
+}
+
+/**
+ * Works out the build as it would arrive on `target` and remembers it (`cachedCarryPreview`). The
+ * transfer replays the whole build, far longer than a frame, so it runs in a worker; where none runs
+ * it waits `settleMs` for the asking surface's motion to land and then runs after the next painted
+ * frame. An answer worked out from a map or notes (`notesEpoch`, read as it lands) that have moved on
+ * is dropped. Returns the cancel, after which nothing is remembered.
+ */
+export function requestCarryPreview(
+  state: GridState, target: MapTemplate, opts: { notesEpoch: () => number; settleMs: number },
+): () => void {
+  const key = transferPreviewKey(state, opts.notesEpoch());
+  const controller = new AbortController();
+  const { signal } = controller;
+  let settle: ReturnType<typeof setTimeout> | undefined;
+  let cancelPaint = (): void => {};
+  const whenIdle = () => new Promise<void>((resolve) => {
+    settle = setTimeout(() => { cancelPaint = onAfterPaint(resolve); }, opts.settleMs);
+  });
+  void requestTransferPreview(state, target, { signal, whenIdle }).then((preview) => {
+    // An edit since the request is a newer map than the one the answer was worked out from.
+    if (!preview || signal.aborted || transferPreviewKey(state, opts.notesEpoch()) !== key) return;
+    rememberTransferPreview(state, key, target, preview);
+  });
+  return () => {
+    controller.abort();
+    if (settle !== undefined) clearTimeout(settle);
+    cancelPaint();
+  };
 }
 
 export interface TransferOutcome {

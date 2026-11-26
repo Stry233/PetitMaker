@@ -24,6 +24,7 @@ let waapi: ReturnType<typeof installWebAnimations> | null = null;
 let stopWiring = () => {};
 
 afterEach(() => {
+  vi.useRealTimers();
   stopWiring();
   stopWiring = () => {};
   cleanup();
@@ -49,7 +50,7 @@ async function mountAt(w: number, h: number, motion: 'full' | 'reduced' = 'full'
     s.setMotionPref(motion);
     s.setEditMode({ mode: 'object' });
   });
-  render(<EditorRoot dockRef={NO_DOCK} onRestoreSession={() => {}}><div /></EditorRoot>);
+  render(<EditorRoot dockRef={NO_DOCK}><div /></EditorRoot>);
   stopWiring = installDeviceWiring();
   await wait(1500);
 }
@@ -110,16 +111,21 @@ describe('the layout-shape morph', () => {
   spec('UI-28', 'a turn reported before the window turns holds the chrome until the window has turned, then plays', async () => {
     waapi = installWebAnimations('[data-morph], [inert]');
     await mountAt(1180, 820);
+    // The hold's own wait runs on the test's clock, so a slow machine never lets it lapse between steps.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const step = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
     await reportTurn('portrait');
-    await wait(50);
+    await step(50);
     expect(held().length, 'the pieces stand where they stood').toBeGreaterThan(0);
     expect(playing()).toEqual([]);
     // A size on the way that is not yet upright keeps them held.
     turn(1100, 1000);
-    await wait(50);
+    await step(50);
     expect(playing()).toEqual([]);
     expect(document.documentElement.hasAttribute('data-morphing')).toBe(true);
     turn(820, 1180);
+    await step(50);
+    vi.useRealTimers();
     await waitFor(() => expect(playing().length, 'played once the window has turned').toBeGreaterThan(0));
     expect(document.documentElement.hasAttribute('data-morphing')).toBe(false);
   });
@@ -138,12 +144,18 @@ describe('the layout-shape morph', () => {
   spec('UI-28', 'closing the editor while a turn is held leaves no morph behind', async () => {
     waapi = installWebAnimations('[data-morph], [inert]');
     await mountAt(1180, 820);
+    // The hold's own wait runs on the test's clock, so a slow machine never lets it lapse before the close.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const step = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
     await reportTurn('portrait');
-    await wait(50);
+    await step(50);
     expect(document.documentElement.hasAttribute('data-morphing')).toBe(true);
     stopWiring();
     stopWiring = () => {};
     cleanup();
+    // Whatever the closed editor left on the clock runs out, then the animations end in real time.
+    await step(500);
+    vi.useRealTimers();
     await wait(500);
     expect(document.documentElement.hasAttribute('data-morphing')).toBe(false);
     expect(held().concat(playing()), 'every animation of it ended').toEqual([]);

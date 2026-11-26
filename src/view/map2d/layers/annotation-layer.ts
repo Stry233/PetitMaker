@@ -28,6 +28,7 @@ import { isMotionReduced } from '../../../platform/channels/motion-state';
 import { hexStringToNumber } from '../../../core/base/color';
 import { MAP_INK, MAP_TEXT as MAP_TEXT_HEX } from '../../../assets/brand-palette';
 import { animConfig, easeOutQuad } from '../../shared/motion/anim-config';
+import { settleAtOnce, type Beat, type PlayBeat } from '../../shared/viewport/frame-loop';
 import {
   ANNOTATION_LINE, annotationDashes, annotationLineCells, annotationLineColor, dashRuns, zoneBorderPaths,
 } from '../../shared/annotation/annotation-line';
@@ -64,8 +65,9 @@ interface NoteNode {
   parts: PIXI.Container[];
   /** Its line graphics, stroked again when the view's cell size moves the line width too far. */
   restroke: Restroke[];
-  /** A fade in flight: negative-going means the note is leaving and the parts go at 0. */
-  fade?: { from: number; to: number; start: number };
+  /** A fade in flight: negative-going means the note is leaving and the parts go at 0. `start` is
+   *  the loop time of its first frame. */
+  fade?: { from: number; to: number; start: number | null };
 }
 
 export class AnnotationLayer {
@@ -74,13 +76,20 @@ export class AnnotationLayer {
   private readonly routePass = new PIXI.Container();
   private readonly labelPass = new PIXI.Container();
   private readonly nodes = new Map<string, NoteNode>();
-  private fadeRaf = 0;
+  /** The beat stepping every fade, while one runs, and its cancel. */
+  private fading: Beat | null = null;
+  private stopFading: () => void = () => {};
   /** The line width in cells the standing lines were stroked at. */
   private lineCells = annotationLineCells(TILE_SIZE);
 
-  /** `requestRender` opens the owning renderer's render window; `fadeMs` is how long a note takes to
-   *  arrive or leave, 0 for a layer whose owner fades it whole (the note ghost). */
-  constructor(readonly requestRender: () => void, private readonly fadeMs: number = animConfig.noteFade.durationMs) {
+  /** `requestRender` opens the owning renderer's render window and `play` runs the fades on its frame
+   *  loop (without one a note arrives and leaves at once); `fadeMs` is how long a note takes to arrive
+   *  or leave, 0 for a layer whose owner fades it whole (the note ghost). */
+  constructor(
+    readonly requestRender: () => void,
+    private readonly play: PlayBeat = settleAtOnce,
+    private readonly fadeMs: number = animConfig.noteFade.durationMs,
+  ) {
     this.container.addChild(this.washPass);
     this.container.addChild(this.routePass);
     this.container.addChild(this.labelPass);
@@ -128,7 +137,9 @@ export class AnnotationLayer {
 
   /** Every fade ends where it is heading now: arriving notes stand whole, leaving ones are gone. */
   settleFades(): void {
-    for (const [id, node] of [...this.nodes]) if (node.fade) this.settleFade(id, node, node.fade.to);
+    this.stopFading();
+    this.fading = null;
+    this.settleAll();
     this.requestRender();
   }
 
@@ -140,7 +151,8 @@ export class AnnotationLayer {
   }
 
   destroy(): void {
-    if (this.fadeRaf) cancelAnimationFrame(this.fadeRaf);
+    this.stopFading();
+    this.fading = null;
     for (const [, node] of this.nodes) this.drop(node);
     this.nodes.clear();
   }
@@ -199,7 +211,7 @@ export class AnnotationLayer {
       this.settleFade(id, node, to);
       return;
     }
-    node.fade = { from, to, start: performance.now() };
+    node.fade = { from, to, start: null };
     for (const part of node.parts) part.alpha = from;
     this.tickFades();
   }
@@ -214,26 +226,36 @@ export class AnnotationLayer {
     }
   }
 
+  private settleAll(): void {
+    for (const [id, node] of [...this.nodes]) if (node.fade) this.settleFade(id, node, node.fade.to);
+  }
+
+  /** One open-ended beat steps every fade in flight; each starts on its own first frame. */
   private tickFades(): void {
-    if (this.fadeRaf) return;
-    const step = () => {
-      this.fadeRaf = 0;
-      const now = performance.now();
-      let live = false;
-      for (const [id, node] of this.nodes) {
-        const f = node.fade;
-        if (!f) continue;
-        const t = Math.min(1, (now - f.start) / this.fadeMs);
-        const eased = easeOutQuad(t);
-        const alpha = f.from + (f.to - f.from) * eased;
-        for (const part of node.parts) part.alpha = alpha;
-        if (t >= 1) this.settleFade(id, node, f.to);
-        else live = true;
-      }
-      this.requestRender();
-      if (live) this.fadeRaf = requestAnimationFrame(step);
+    if (this.fading) return;
+    const beat: Beat = {
+      step: (now) => {
+        let live = false;
+        for (const [id, node] of [...this.nodes]) {
+          const f = node.fade;
+          if (!f) continue;
+          f.start ??= now;
+          const t = Math.min(1, (now - f.start) / this.fadeMs);
+          const alpha = f.from + (f.to - f.from) * easeOutQuad(t);
+          for (const part of node.parts) part.alpha = alpha;
+          if (t >= 1) this.settleFade(id, node, f.to);
+          else live = true;
+        }
+        if (!live && this.fading === beat) this.fading = null;
+        return live;
+      },
+      settle: () => {
+        if (this.fading === beat) this.fading = null;
+        this.settleAll();
+      },
     };
-    this.fadeRaf = requestAnimationFrame(step);
+    this.fading = beat;
+    this.stopFading = this.play(beat);
   }
 }
 

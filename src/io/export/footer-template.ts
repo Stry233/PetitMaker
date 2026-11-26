@@ -37,7 +37,10 @@ export function formatFooterDate(d: Date = new Date()): string {
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 }
 
-type FooterSeg = { t: 'text'; v: string } | { t: 'token'; id: string };
+/** The longest template the remembered choices keep. */
+export const FOOTER_TEMPLATE_MAX = 400;
+
+export type FooterSeg = { t: 'text'; v: string } | { t: 'token'; id: string };
 
 /** Parse a template into ordered segments (literal text + tokens, incl. {fill}). */
 export function parseFooter(tpl: string): FooterSeg[] {
@@ -52,6 +55,18 @@ export function parseFooter(tpl: string): FooterSeg[] {
   }
   if (last < tpl.length) segs.push({ t: 'text', v: tpl.slice(last) });
   return segs;
+}
+
+/** The template `segs` spell, which `parseFooter` reads back: a token in braces, and text without
+ *  the braces that would make it one. */
+export function footerTemplateOf(segs: readonly FooterSeg[]): string {
+  return segs.map((seg) => (seg.t === 'token' ? `{${seg.id}}` : seg.v.replace(/[{}]/g, ''))).join('');
+}
+
+/** The tokens `tpl` names that the footer does not have, which resolve to nothing. */
+export function unknownFooterTokens(tpl: string): string[] {
+  const known = new Set([...FOOTER_TOKENS.map((token) => token.id), FOOTER_FILL]);
+  return parseFooter(tpl).flatMap((seg) => (seg.t === 'token' && !known.has(seg.id) ? [seg.id] : []));
 }
 
 /** Resolve a template to its left/right-aligned strings, substituting token values. Unknown tokens

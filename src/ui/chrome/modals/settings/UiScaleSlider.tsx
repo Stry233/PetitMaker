@@ -1,26 +1,21 @@
 /** The interface size slider, which mirrors the keyboard's zoom keys. */
-import { cssMotion, framerMotion } from '../../../design/motion';
+import { cssMotion } from '../../../design/motion';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { clientPoint } from '../../../../platform/device/viewport-space';
 import { useState, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { font, radii, cursors, shadows } from '../../../design/styles';
+import { font, radii, cursors } from '../../../design/styles';
 import { inkTint } from '../../../design/tokens';
 import { skin } from '../../../design/window-skin';
 import { roleFont, TEXT_ROLES } from '../../../design/text-weight';
-import { scaleLattice, UI_SCALE_STEP, useReadableWeight, useScaleReach } from '../../../design/scale';
+import { useReadableWeight, useScaleReach } from '../../../design/scale';
+import { pressCommand } from '../../../../editor/commands/run';
 import { useEditorStore } from '../../../../state/store';
 import { helpTargetAttr } from '../../../session/help-targets';
-import { visualRect } from '../../../design/visual-rect';
-import { useSliderGlide } from '../../../primitives/use-slider-glide';
 import { useCurrentInputMode, useLayoutShape } from '../../../design/input-mode';
-import { UI_ZOOM_DEFAULTS, scaleProfileOf } from '../../../../platform/storage/prefs';
-import { TouchReach } from '../../../primitives/TouchReach';
+import { UI_SCALE_STEP, UI_ZOOM_DEFAULTS, scaleLattice, scaleProfileOf, uiZoomStep } from '../../../../platform/storage/facts';
+import { StepSlider } from '../../../primitives/StepSlider';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { ResetIcon } from '../../../primitives/line-glyphs';
 
-/** The track's height, in the window's px. */
-const TRACK_H = 34;
 /** The least track length one row may leave before the slider takes a row of its own, in the window's px. */
 const TRACK_MIN = 96;
 /** What the one-row arrangement spends beside the track: both A marks, the specimen, the reset chip and the gaps. */
@@ -33,15 +28,12 @@ const ROW_BESIDE_TRACK = 190;
 export function UiScaleSlider({ label }: { label: string }) {
   const weightAt = useReadableWeight();
   const uiZoom = useEditorStore((s) => s.uiZoom);
-  const setUiZoom = useEditorStore((s) => s.setUiZoom);
-  const ref = useRef<HTMLDivElement>(null);
+  const setUiZoom = (value: number) => pressCommand('settings.interface_zoom', { value });
   // While dragging, `dragZoom` holds the un-committed value; null otherwise. `dragRef`
   // mirrors it so `commitDrag` can read the pending value without a stale closure and
   // without calling setUiZoom from inside a setState updater.
   const [dragZoom, setDragZoom] = useState<number | null>(null);
   const dragRef = useRef<number | null>(null);
-  const [hover, setHover] = useState(false);
-  const dragging = dragZoom !== null;
   const setDrag = (v: number) => { dragRef.current = v; setDragZoom(v); };
   // What the knob/fill/bubble/specimen show — the live drag value while dragging, else the store value.
   // The track ends at the last step this window still answers to; the saved preference may lie past it.
@@ -50,18 +42,8 @@ export function UiScaleSlider({ label }: { label: string }) {
   const { lo: min, hi: max, snap } = scaleLattice(fallback, reach);
   const shownZoom = dragZoom ?? uiZoom;
   const pct = Math.round(shownZoom * 100);
-  const ratio = Math.min(1, Math.max(0, (shownZoom - min) / (max - min)));
-  // The knob, fill and reading glide to the shown value; a drag still commits only on release.
-  const glide = useSliderGlide(ratio);
   const isDefault = Math.round(uiZoom * 100) === Math.round(fallback * 100);
 
-  const zoomFromClientX = (clientX: number): number => {
-    const el = ref.current;
-    if (!el) return uiZoom;
-    const r = visualRect(el);
-    const frac = r.width > 0 ? Math.min(1, Math.max(0, (clientX - r.left) / r.width)) : 0;
-    return snap(min + frac * (max - min));
-  };
   // Commit the pending drag value to the store on release (idempotent — a no-op if not dragging).
   const commitDrag = () => {
     if (dragRef.current !== null) setUiZoom(dragRef.current);
@@ -72,14 +54,17 @@ export function UiScaleSlider({ label }: { label: string }) {
   // step reads the mode and scale in force now, not this render's.
   const onKeyDown = (e: ReactKeyboardEvent) => {
     const live = useEditorStore.getState();
+    const steps = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 0;
+    if (steps !== 0) {
+      e.preventDefault();
+      const next = uiZoomStep(live, reach, steps);
+      if (next !== null) setUiZoom(next);
+      return;
+    }
+    if (e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
     const lattice = scaleLattice(UI_ZOOM_DEFAULTS[scaleProfileOf(live.inputMode, live.layoutShape)], reach);
-    const now = lattice.snap(live.uiZoom);
-    let next: number | null = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = now + UI_SCALE_STEP;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = now - UI_SCALE_STEP;
-    else if (e.key === 'Home') next = lattice.lo;
-    else if (e.key === 'End') next = lattice.hi;
-    if (next !== null) { e.preventDefault(); setUiZoom(lattice.snap(next)); }
+    setUiZoom(e.key === 'Home' ? lattice.lo : lattice.hi);
   };
 
   // The flanking `A` marks are the ladder's own ends: the smallest rank on one side of the track,
@@ -104,66 +89,10 @@ export function UiScaleSlider({ label }: { label: string }) {
   const track = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
       <span style={flankA('caption')} aria-hidden>A</span>
-      <div
-        ref={ref}
-        role="slider"
-        tabIndex={0}
-        aria-label={label}
-        aria-valuemin={Math.round(min * 100)}
-        aria-valuemax={Math.round(max * 100)}
-        aria-valuenow={pct}
-        aria-valuetext={`${pct}%`}
-        onKeyDown={onKeyDown}
-        onDoubleClick={() => { dragRef.current = null; setDragZoom(null); setUiZoom(fallback); }}
-        onPointerEnter={() => setHover(true)}
-        onPointerLeave={() => setHover(false)}
-        onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setDrag(zoomFromClientX(clientPoint(e).x)); }}
-        onPointerMove={(e) => { if (e.buttons) setDrag(zoomFromClientX(clientPoint(e).x)); }}
-        onPointerUp={commitDrag}
-        onPointerCancel={commitDrag}
-        onLostPointerCapture={commitDrag}
-        style={{ position: 'relative', flex: 1, height: TRACK_H, cursor: cursors.clickable, touchAction: 'none', outline: 'none' }}
-     >
-        <TouchReach h={TRACK_H} sides={{ left: false, right: false }} />
-        <div style={{ position: 'absolute', top: 8, left: 0, right: 0, height: 10, background: skin.track, borderRadius: radii.pill }} />
-        <motion.div style={{ position: 'absolute', top: 8, left: 0, width: glide.percent, height: 10, background: skin.active, borderRadius: radii.pill }} />
-        {Array.from({ length: tickCount }, (_, i) => {
-          const v = min + i * UI_SCALE_STEP;
-          const mid = Math.round(v * 100) === Math.round(fallback * 100);
-          return (
-            <span
-              key={i}
-              style={{
-                position: 'absolute',
-                top: 22,
-                left: `${(i / (tickCount - 1)) * 100}%`,
-                width: 1.5,
-                height: mid ? 8 : 5,
-                background: mid ? skin.muted : skin.track,
-                opacity: mid ? 0.55 : 1,
-                transform: 'translateX(-50%)',
-              }}
-            />
-          );
-        })}
-        <motion.div style={{ position: 'absolute', top: 13, left: glide.percent, width: 20, height: 20, x: '-50%', y: '-50%', borderRadius: '50%', background: skin.active, boxShadow: shadows.knob }} />
-        {/* Value bubble over the knob: dark fill, white bold %, soft shadow, down-pointing tail.
-            Framer x:'-50%' centering, never a CSS transform on the animated element — framer owns
-            the transform. Shows on hover or drag. */}
-        <AnimatePresence>
-          {(hover || dragging) && (
-            <motion.div key="bubble"
-              initial={{ opacity: 0, scale: 0.6, x: '-50%', y: 4 }}
-              animate={{ opacity: 1, scale: 1, x: '-50%', y: 0 }}
-              exit={{ opacity: 0, scale: 0.6, x: '-50%', y: 4 }}
-              transition={framerMotion('surface.arrive')}
-              style={{ position: 'absolute', left: glide.percent, bottom: '100%', marginBottom: 8, transformOrigin: 'bottom center', background: skin.ink, color: skin.onDark, fontFamily: font.family, ...roleFont('menu'), lineHeight: 1, padding: '4px 10px', borderRadius: radii.md, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: shadows.float }}>
-              {`${pct}%`}
-              <span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: `6px solid ${skin.ink}` }} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <StepSlider label={label} stops={tickCount} value={Math.round((shownZoom - min) / UI_SCALE_STEP)} valueText={`${pct}%`}
+        mark={Math.round((fallback - min) / UI_SCALE_STEP)} aria={{ min: Math.round(min * 100), max: Math.round(max * 100), now: pct }}
+        onPick={(stop) => setDrag(snap(min + stop * UI_SCALE_STEP))} onRelease={commitDrag} onKeyDown={onKeyDown}
+        onDoubleClick={() => { dragRef.current = null; setDragZoom(null); setUiZoom(fallback); }} />
       <span style={flankA('title')} aria-hidden>A</span>
     </div>
   );

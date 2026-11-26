@@ -1,11 +1,8 @@
 import type { ReactNode } from 'react';
-import type { AskRecord, GateOption, JobView, LiveConnection, PanelView } from '../../agent/panel';
+import type { AskRecord, GateOption, JobView, LiveConnection, PanelView, PanelZone, ProviderId, RepairAct } from '../../agent/panel';
 import type { RegionBounds } from '../../core/grid/rect';
 import type { DockEdge } from '../shell/panel-frame';
-import type { Checkpoint } from './record/ticket-parts';
-import type { LaneView } from './record/Lane';
-import type { RepairAct } from './derive/repair';
-import type { PanelZone } from './derive/zone';
+import type { LaneViews } from './record/Lane';
 
 /** The projection and the shell's own state: what is shown, and whether the panel is open. */
 export interface PanelViewProps {
@@ -20,18 +17,22 @@ export interface PanelViewProps {
   initialZone?: PanelZone;
   /** Clock override used by deterministic mounts. */
   now?: number;
+  /** When the in-flight turn's parts last moved, as the session store stamps it. */
+  liveAt?: number;
   /** Maximum height supplied by the surrounding frame. */
   maxHeight?: string;
   /** Current map name for the status card's metadata. */
   mapName?: string;
   /** Ephemeral helper progress, kept outside the replayable PanelView. */
-  lane?: LaneView;
+  lane?: LaneViews;
   /** Optional idle sketch card, already rendered by the caller. */
   sketchbook?: ReactNode;
   /** External composer fill; seq distinguishes repeated identical text. */
   fill?: { text: string; seq: number };
   /** Whether CharacterHost owns the live character outside this tree. */
   hosted?: boolean;
+  /** The interface is hidden, and the panel with it. */
+  veiled?: boolean;
 }
 
 /** The connection the panel runs on. */
@@ -47,6 +48,8 @@ export interface PanelConnectionProps {
   /** Connection captured by the running job. */
   liveConnection?: LiveConnection;
   connectionMeta?: string;
+  /** The armed provider where the user can sign in with it, and when its held key came from a sign-in. */
+  signIn?: { provider: ProviderId; at?: number };
 }
 
 /** The records: which are filed, cleared or belong to another map, and how storage holds them. */
@@ -91,9 +94,11 @@ export interface PanelDockProps {
   pinBlocked?: boolean;
   onTogglePin?(): void;
   onSwitchSide?(): void;
-  /** Hides the panel without changing runner state. */
-  onCollapse?(): void;
 }
+
+/** What a gate's card answers with: a verdict, the user's words (typed, or a quick answer taken) or
+ *  one of the options it offered, by index. */
+export type GateReply = 'allow' | 'skip' | { words: string } | { option: number };
 
 /** Every verb the panel routes out to the runner and the record store. */
 export interface PanelVerbProps {
@@ -101,13 +106,13 @@ export interface PanelVerbProps {
   onStop(): void;
   onPause(): void;
   onResume?(): void;
-  /** `words` carries a quick answer or selected option back as user guidance. */
-  onGateAnswer(gateId: string, answer: 'allow' | 'skip' | 'words', words?: string): void;
+  onGateAnswer(gateId: string, reply: GateReply): void;
   onRetryNow?(): void;
   /** A repair from the desk card, a banner or a held offer, after the panel took its own part. */
   onRepair?(act: RepairAct): void;
   onRecallSteer?(steerSeq: number): void;
-  onRewind?(checkpoint: Checkpoint): void;
+  /** Takes `job` back to its checkpoint at this index. */
+  onRewind?(job: JobView, checkpointIndex: number): void;
   onRollBack?(job: JobView): void;
   onRewindAll?(job: JobView): void;
   onKeepGoing?(job: JobView): void;

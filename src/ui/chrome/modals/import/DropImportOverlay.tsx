@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import type { CSSProperties } from 'react';
 import { useEditorStore } from '../../../../state/store';
+import { mapHeld } from '../../../../state/frame-pose';
 import { autosaveWorthy } from '../../../../io/storage/facts';
 import { ImportDropZone, IMPORT_CARD_WIDTH } from './ImportDropZone';
 import { windowColumn, windowFrame } from '../../../primitives/Window';
@@ -18,11 +19,11 @@ import { useImportFlow, type ImportRouting } from './use-import-flow';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { useSizeGlide } from '../../../primitives/use-size-glide';
 import { WindowStep } from '../WindowStep';
+import { carriesFiles } from '../../../primitives/use-file-pick';
 
-const carriesFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
-/** A planet session's canvas is not a map a file can replace; its drags are still claimed, so the
- *  browser never opens the file in place of the app. */
-const inSession = () => useEditorStore.getState().planetSession !== null;
+/** A held map is not one a file can replace; its drags are still claimed, so the browser never opens
+ *  the file in place of the app. */
+const held = () => mapHeld(useEditorStore.getState());
 
 const ROUTING: ImportRouting = { map: 'read', planet: 'hand', video: 'hand', unknown: 'read' };
 
@@ -43,13 +44,13 @@ export function DropImportOverlay() {
 
   const asking = flow.pending !== null;
   const open = hover || flow.busy || asking;
-  const body = useSizeGlide<HTMLDivElement>(asking, { axis: 'height', motionId: 'modal.resize' });
+  const body = useSizeGlide<HTMLDivElement>({ change: asking, axis: 'height', motionId: 'modal.resize' });
 
   useEffect(() => {
     const onDragEnter = (e: DragEvent) => {
       if (!carriesFiles(e)) return; // ignore an in-page text/element drag
       e.preventDefault();
-      if (importModalOpen || inSession()) return; // the window's own drop zone owns this drag
+      if (importModalOpen || held()) return; // the window's own drop zone owns this drag
       depthRef.current += 1;
       if (idle()) setHovering(true);
     };
@@ -67,7 +68,7 @@ export function DropImportOverlay() {
       e.preventDefault();
       depthRef.current = 0;
       setHovering(false);
-      if (importModalOpen || inSession() || !idle()) return;
+      if (importModalOpen || held() || !idle()) return;
       const file = e.dataTransfer?.files?.[0];
       if (file) void take(file, file.name); // decode on release; the card asks before anything is replaced
     };

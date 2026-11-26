@@ -4,7 +4,7 @@ vi.mock('../../../editor/host/host', () => ({
   host: { camera: { get2d: () => undefined, get3d: () => undefined } },
 }));
 
-import { readAutosave, readRestorableAutosave } from '../../../io/storage/autosave';
+import { readRestorableAutosave } from '../../../io/storage/autosave';
 import { autosaveWorthy } from '../../../io/storage/facts';
 import { autosave } from '../../../editor/session/autosave';
 import { listPlanets } from '../../../io/storage/planet-library';
@@ -71,21 +71,21 @@ describe('autosave on a custom planet', () => {
     autosave.schedule(createGridState(t));
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
     autosave.flush();
-    expect(readAutosave()?.state.template.id).toBe(t.id);
+    expect(readRestorableAutosave()?.state.template.id).toBe(t.id);
   });
 
   it('adds nothing to the planet library while offering or declining a restore', () => {
     autosave.schedule(createGridState(planetFixture()));
     autosave.flush();
     expect(readRestorableAutosave()).not.toBeNull();
-    expect(readAutosave()).not.toBeNull();
+    expect(readRestorableAutosave()).not.toBeNull();
     expect(listPlanets()).toEqual([]);
   });
 
   it('restores painted cells', () => {
     autosave.schedule(paintedPlanet());
     autosave.flush();
-    expect(readAutosave()?.state.cells[8]![8]!.terrain?.elevation).toBe(1);
+    expect(readRestorableAutosave()?.state.cells[8]![8]!.terrain?.elevation).toBe(1);
   });
 
   it('keeps the template through each quota fallback step', () => {
@@ -96,7 +96,7 @@ describe('autosave on a custom planet', () => {
       autosave.schedule(paintedPlanet());
       autosave.flush();
       expect(storedTemplate()).toEqual(serializeTemplate(planetFixture()));
-      expect(readAutosave()?.state.template.id).toBe(planetFixture().id);
+      expect(readRestorableAutosave()?.state.template.id).toBe(planetFixture().id);
     }
   });
 
@@ -106,19 +106,21 @@ describe('autosave on a custom planet', () => {
     const raw = JSON.parse(decodeRecord(storage.getItem(STORAGE_KEY)!));
     raw.template.zones = raw.template.zones.replace(/2/, '7');
     storage.setItem(STORAGE_KEY, JSON.stringify(raw));
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   it('restores a record without a template id on the default map', () => {
     const state = createGridState(DEFAULT_MAP);
     const spot = state.cells.flatMap((row, y) => row.map((c, x) => ({ c, x, y }))).find(({ c }) => c.zone === CellZone.Grass)!;
     spot.c.terrain = { type: TerrainType.Mountain, elevation: 1 };
+    // A note makes the map one worth offering back, wherever the landmark clearance leaves the cell.
+    state.annotations = { items: [{ kind: 'zone', id: 'zone-1', cells: [{ x: 30, y: 30 }], color: '#FF8A7A', tag: null, num: 1, size: 'm' }], visible: true, locked: false };
     autosave.schedule(state);
     autosave.flush();
     const raw = JSON.parse(decodeRecord(storage.getItem(STORAGE_KEY)!));
     delete raw.templateId;
     storage.setItem(STORAGE_KEY, JSON.stringify(raw));
-    expect(readAutosave()?.state.template.id).toBe(DEFAULT_MAP.id);
+    expect(readRestorableAutosave()?.state.template.id).toBe(DEFAULT_MAP.id);
   });
 
   it('reads null for an unknown custom id without an embedded template', () => {
@@ -127,6 +129,6 @@ describe('autosave on a custom planet', () => {
     const raw = JSON.parse(decodeRecord(storage.getItem(STORAGE_KEY)!));
     delete raw.template;
     storage.setItem(STORAGE_KEY, JSON.stringify(raw));
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 });

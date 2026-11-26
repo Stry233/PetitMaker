@@ -71,7 +71,7 @@ describe('docs/ASSET_LICENSES.md', () => {
   const A = read('docs/ASSET_LICENSES.md');
 
   it('names the licence of each scope: code, original art, third-party assets', () => {
-    expect(A).toContain('Apache-2.0');
+    expect(A).toContain('FSL-1.1-ALv2');
     expect(A).toContain('All Rights Reserved');
     expect(A).toContain('SIL Open Font License 1.1');
   });
@@ -95,7 +95,7 @@ describe('docs/ASSET_LICENSES.zh-CN.md', () => {
   });
 
   it('keeps the licence names in English, which a reader matches against other documents', () => {
-    for (const term of ['Apache-2.0', 'All Rights Reserved', 'SIL Open Font License 1.1']) expect(ZH).toContain(term);
+    for (const term of ['FSL-1.1-ALv2', 'All Rights Reserved', 'SIL Open Font License 1.1']) expect(ZH).toContain(term);
   });
 
   it('carries the affiliation disclaimer and the IP-request channel', () => {
@@ -133,7 +133,7 @@ describe('CONTRIBUTING.md', () => {
   it('requires DCO sign-off under the code licence', () => {
     expect(C).toContain('Developer Certificate of Origin');
     expect(C).toContain('git commit -s');
-    expect(C).toContain('Apache-2.0');
+    expect(C).toContain('FSL-1.1-ALv2');
   });
 });
 
@@ -151,7 +151,7 @@ describe('README.md', () => {
   it('carries the affiliation disclaimer, the code licence and the contact', () => {
     expect(R).toContain('not affiliated');
     expect(R).toContain('HoYoverse');
-    expect(R).toContain('Apache-2.0');
+    expect(R).toContain('FSL-1.1-ALv2');
     expect(R).toContain(LEGAL.privacyContactEmail);
   });
 

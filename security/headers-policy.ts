@@ -72,6 +72,8 @@ export const HEADERS_POLICY: HeadersPolicy = {
     // The build moves the map check's model and OCR files into a folder named after their content
     // hash (`moderation/<hash>/`), so a changed file arrives under a new URL.
     { path: '/moderation/*', cacheControl: IMMUTABLE },
+    // The sign-in return page and its script keep their names across builds.
+    { path: '/connect/*', cacheControl: REVALIDATE },
   ],
 };
 

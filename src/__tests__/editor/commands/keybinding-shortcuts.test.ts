@@ -15,6 +15,7 @@ import { KEY_ROWS, NAV, NUMPAD, comboFor, type Layer } from '../../../ui/chrome/
 import { translations } from '../../../i18n/translations';
 import { TOOLBAR_CONTEXTS } from '../../../state/keymap/toolbar';
 import { useEditorStore } from '../../../state/store';
+import { regionOf } from '../../../state/editing/region';
 import { setStoreState } from '../../_support/store';
 import { makeState, makeObject } from '../../_support/map-state';
 import { createDefaultRegistry } from '../../../rules/index';
@@ -60,43 +61,45 @@ describe('command registry (single source of truth)', () => {
   describe('history.undo/redo step the region lane while selecting a region', () => {
     const executor = createExecutor(makeState(), createDefaultRegistry());
     const painted = [{ x: 1, y: 1 }];
+    /** Generate's scope holding `cells` on the map the store holds (none here). */
+    const scope = (cells: typeof painted) => ({ generator: { cells, map: null } });
 
     afterEach(() => {
-      setStoreState({ selectingRegion: false, commandExecutor: null, region: [], regionUndoLane: [], regionRedoLane: [] });
+      setStoreState({ selectingRegion: false, commandExecutor: null, regions: {}, regionUndoLane: [], regionRedoLane: [] });
       vi.restoreAllMocks();
     });
 
     // The reroute keys off the command, not off a combo, so it holds wherever undo/redo are bound.
     it('the undo command steps the region back, never the map executor, while selectingRegion is on', () => {
       const executorUndo = vi.spyOn(executor, 'undo');
-      setStoreState({ selectingRegion: true, commandExecutor: executor, region: painted, regionUndoLane: [[]], regionRedoLane: [] });
+      setStoreState({ selectingRegion: true, regionSelectionOwner: 'generator', commandExecutor: executor, regions: scope(painted), regionUndoLane: [[]], regionRedoLane: [] });
       COMMAND_BY_ID.get('history.undo')!.run(noopCtx);
-      expect(useEditorStore.getState().region).toEqual([]);
+      expect(regionOf(useEditorStore.getState(), 'generator')).toEqual([]);
       expect(useEditorStore.getState().regionRedoLane).toEqual([painted]);
       expect(executorUndo).not.toHaveBeenCalled();
     });
 
     it('an empty region lane still does not fall through to the map executor', () => {
       const executorUndo = vi.spyOn(executor, 'undo');
-      setStoreState({ selectingRegion: true, commandExecutor: executor, region: painted, regionUndoLane: [] });
+      setStoreState({ selectingRegion: true, regionSelectionOwner: 'generator', commandExecutor: executor, regions: scope(painted), regionUndoLane: [] });
       COMMAND_BY_ID.get('history.undo')!.run(noopCtx);
-      expect(useEditorStore.getState().region).toEqual(painted);
+      expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(painted);
       expect(executorUndo).not.toHaveBeenCalled();
     });
 
     it('undo reaches the map executor as usual once selectingRegion is off', () => {
       const executorUndo = vi.spyOn(executor, 'undo').mockImplementation(() => false);
-      setStoreState({ selectingRegion: false, commandExecutor: executor, region: painted, regionUndoLane: [[]] });
+      setStoreState({ selectingRegion: false, commandExecutor: executor, regions: scope(painted), regionUndoLane: [[]] });
       COMMAND_BY_ID.get('history.undo')!.run(noopCtx);
       expect(executorUndo).toHaveBeenCalledTimes(1);
-      expect(useEditorStore.getState().region).toEqual(painted);
+      expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(painted);
     });
 
     it('the redo command mirrors the same routing', () => {
       const executorRedo = vi.spyOn(executor, 'redo').mockImplementation(() => true);
-      setStoreState({ selectingRegion: true, commandExecutor: executor, region: [], regionUndoLane: [], regionRedoLane: [painted] });
+      setStoreState({ selectingRegion: true, regionSelectionOwner: 'generator', commandExecutor: executor, regions: {}, regionUndoLane: [], regionRedoLane: [painted] });
       COMMAND_BY_ID.get('history.redo')!.run(noopCtx);
-      expect(useEditorStore.getState().region).toEqual(painted);
+      expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(painted);
       expect(executorRedo).not.toHaveBeenCalled();
     });
   });
@@ -144,6 +147,18 @@ describe('keyboard layout', () => {
 
   it('never binds a fixed (modifier/space) key', () => {
     for (const row of KEY_ROWS) for (const k of row) if (k.fixed) expect(comboFor(k, BASE)).toBeNull();
+  });
+
+  it('draws a key fixed exactly when the keymap refuses a binding on it', () => {
+    try {
+      for (const key of [...KEY_ROWS.flat(), ...NAV, ...NUMPAD]) {
+        if (key.spacer) continue;
+        useKeybinds.getState().resetAll();
+        expect(useKeybinds.getState().rebind('history.undo', key.base).ok, key.base).toBe(!key.fixed);
+      }
+    } finally {
+      useKeybinds.getState().resetAll();
+    }
   });
 
   it('resolves the same combos the registry ships (per active layer)', () => {

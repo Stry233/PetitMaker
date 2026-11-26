@@ -6,7 +6,7 @@ interface RawFailure { status?: number; message: string; retryAfterMs?: number; 
 // Context-window and request-size messages across supported providers.
 const OVERFLOW_MESSAGE = /context.length|maximum context|too many tokens|prompt is too long|exceed context limit/i;
 // Browser, Node, Safari and SDK connection-failure messages.
-const NETWORK_MESSAGE = /failed to fetch|networkerror|econnreset|enotfound|load failed|connection error/i;
+const NETWORK_MESSAGE = /failed to fetch|networkerror|network error|econnreset|enotfound|load failed|connection error|socket hang up|other side closed|^(?:typeerror: )?terminated$/i;
 // SDK, gateway and local idle-stream timeout messages.
 const TIMEOUT_MESSAGE = /timed out|timeout/i;
 
@@ -24,6 +24,13 @@ export const NO_ENDPOINT_ADDRESS = 'No endpoint address is configured for the cu
 
 /** The one wording above, as the pattern `classify` reads it by. */
 const CONFIG_MESSAGE = /no endpoint address is configured/i;
+
+/**
+ * A refusal that asks something of the account, not of the key: a provider that serves a key only
+ * once its account is linked, verified or completed answers 401 or 403 in these words. Read as a
+ * refused key, it would have the user throw away a key that works.
+ */
+const ACCOUNT_MESSAGE = /bind your [\w ]*account|real-name verif|email verification|complete your profile/i;
 
 /** Model-specific absence or invalidity messages. Bare `not found` remains an endpoint error. */
 const MODEL_MESSAGE = new RegExp([
@@ -50,6 +57,7 @@ export function classify(input: RawFailure): TurnError {
 function classifyCls(status: number | undefined, message: string, aborted: boolean | undefined): ErrorClass {
   if (aborted) return 'abort';
   if (status !== undefined) {
+    if ((status === 401 || status === 403) && ACCOUNT_MESSAGE.test(message)) return 'account';
     const kind = httpFailureKind(status, message);
     if (kind === 'auth' || kind === 'quota' || kind === 'rate-limit') return kind;
     // Status zero represents the custom adapter's opaque browser response.

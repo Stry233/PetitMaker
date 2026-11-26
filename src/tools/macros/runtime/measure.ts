@@ -5,8 +5,10 @@
  * crossing's clearance, so a size delta nets those removals against the roads and can report zero
  * for a run that paved half the planet.
  */
-import { getCell } from '../../../core/model/grid-model';
-import type { GridState, MacroCell } from '../../../core/model/types';
+import type { HistoryEntry } from '../../../core/commands/command-apply';
+import { cellKey } from '../../../core/grid/rect';
+import { getCell, sameTerrain } from '../../../core/model/grid-model';
+import type { CellSnapshot, GridState, MacroCoord, TerrainCell } from '../../../core/model/types';
 
 /** Call before the macro body; the returned function counts the objects whose presence differs
  *  since — arrivals plus departures. A run whose only effect was removing objects still leaves an
@@ -22,24 +24,30 @@ export function objectsChanged(state: GridState): () => number {
   };
 }
 
-/** Legacy point builders count structural changes; complete gestures also count corner edits. */
-function terrainMark(cell: MacroCell | null, includeCorners: boolean): string {
-  const t = cell?.terrain;
-  if (includeCorners) return JSON.stringify(t);
-  return t ? `${t.type}:${t.elevation}:${t.patchOnly ? 1 : 0}` : '';
+/** Whether a cell's terrain counts as unchanged: a complete gesture compares every field, corners
+ *  included; a legacy point builder only type, height and patch flag. */
+function sameCount(a: TerrainCell | null, b: TerrainCell | null, includeCorners: boolean): boolean {
+  if (includeCorners) return sameTerrain(a, b, { patchOnly: 'exact' });
+  if (!a || !b) return !a && !b;
+  return a.type === b.type && a.elevation === b.elevation && !!a.patchOnly === !!b.patchOnly;
 }
 
-/** Call before the macro body; the returned function counts the cells whose terrain differs since.
- *  The terrain macros lay no objects, so `changes` is otherwise zero for a run that raised a hill. */
-export function cellsChanged(state: GridState, includeCorners = false): () => number {
-  const { width, height } = state.template;
-  const before: string[] = [];
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) before.push(terrainMark(getCell(state.cells, x, y), includeCorners));
-  return () => {
-    let changed = 0, i = 0;
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++, i++) {
-      if (terrainMark(getCell(state.cells, x, y), includeCorners) !== before[i]) changed++;
+/** The terrain cells whose terrain differs from what they held before `entries`, a stroke's history
+ *  oldest first, in the order the entries first touch them: each touched cell's first pre-image
+ *  against its terrain now. A cell no entry names cannot differ. The terrain macros lay no objects,
+ *  so this is what tells a run that raised a hill from one that laid nothing. */
+export function terrainChanged(state: GridState, entries: readonly HistoryEntry[], includeCorners = false): MacroCoord[] {
+  const first = new Map<string, CellSnapshot>();
+  for (const entry of entries) {
+    for (const snap of entry.before) {
+      const key = cellKey(snap.coord.x, snap.coord.y);
+      if (!first.has(key)) first.set(key, snap);
     }
-    return changed;
-  };
+  }
+  const changed: MacroCoord[] = [];
+  for (const { coord, cell } of first.values()) {
+    const now = getCell(state.cells, coord.x, coord.y)?.terrain ?? null;
+    if (!sameCount(cell.terrain, now, includeCorners)) changed.push(coord);
+  }
+  return changed;
 }

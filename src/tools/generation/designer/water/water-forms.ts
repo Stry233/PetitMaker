@@ -4,9 +4,8 @@
  * its dry islets and outer rim stay at the water tier or above, so it exposes no uncapped face.
  * Pure planning only: terrain and masks in, cells out.
  */
-import { flatIndex, type Rect } from '../../../../core/grid/rect';
-import { NEIGHBORS4 } from '../../../../core/grid/directions';
-import { enclosedPieces } from '../../../../core/grid/cell-sets';
+import { cellsBounds, flatIndex, rectsTouch, type Rect } from '../../../../core/grid/rect';
+import { enclosedPieces, largestComponent } from '../../../../core/grid/cell-sets';
 import type { MacroCoord } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../terrain-plan/types';
 import type { MovementLine, WaterWant } from '../composition/movement-line';
@@ -14,7 +13,7 @@ import type { DesignPlan } from '../types';
 import { boundsOfCells, cellsFit, floodCells, freeAt, surfaceOf } from './water-cut';
 import { fieldNoise, ringPull, type RingProfile, WET_BAND } from '../seeded';
 import { lerpClamped } from '../../../../core/base/math';
-import { FORMS, type WaterForm, fitForm, formCells, key, unkey } from './water-form-shapes';
+import { FORMS, type WaterForm, fitForm, formCells, key } from './water-form-shapes';
 import { hashInt32 } from '../../../../core/base/hash';
 
 /**
@@ -258,7 +257,8 @@ function cutOne(
     const fitted = fitForm(form, room);
     if (!fitted) continue;
     const rect = setIntoStep(t, fitted, room, tier);
-    if (placed.some((r) => touches(r, rect, FORM_GAP))) continue;
+    // Boxes within `FORM_GAP` cells would read as one body.
+    if (placed.some((r) => rectsTouch(r, rect, FORM_GAP))) continue;
     // One 4-CONNECTED body, which is the unit every reading downstream is taken in. A lobed outline can
     // leave a corner cell attached only diagonally, and that cell then reads as a body of its own — and
     // worse, its absence from the figure can open an islet onto the outline, which is how a figure the
@@ -384,28 +384,10 @@ function sites(input: FormsInput): Site[] {
 
 /** The largest 4-connected component of a drawn figure: the body a reader sees. */
 function mainComponent(cells: readonly MacroCoord[]): MacroCoord[] {
-  const all = new Set(cells.map((c) => key(c.x, c.y)));
-  let best: MacroCoord[] = [];
-  const seen = new Set<number>();
-  for (const start of all) {
-    if (seen.has(start)) continue;
-    const part: MacroCoord[] = [];
-    const stack = [start];
-    seen.add(start);
-    while (stack.length) {
-      const k = stack.pop()!;
-      const at = unkey(k);
-      part.push(at);
-      for (const [dx, dy] of NEIGHBORS4) {
-        const nk = key(at.x + dx, at.y + dy);
-        if (!all.has(nk) || seen.has(nk)) continue;
-        seen.add(nk);
-        stack.push(nk);
-      }
-    }
-    if (part.length > best.length) best = part;
-  }
-  return best;
+  const box = cellsBounds(cells);
+  if (!box) return [];
+  const local = cells.map((c) => flatIndex(c.x - box.x, c.y - box.y, box.w));
+  return largestComponent(local, box.w).map((i) => ({ x: box.x + (i % box.w), y: box.y + ((i / box.w) | 0) }));
 }
 
 /**
@@ -437,13 +419,6 @@ function regionField(plan: DesignPlan, W: number, H: number): Uint8Array {
     }
   }
   return out;
-}
-
-/** Whether two boxes come within `gap` cells of each other, so the bodies inside them would read as
- *  one. */
-function touches(a: Rect, b: Rect, gap: number): boolean {
-  return a.x - gap < b.x + b.w && b.x - gap < a.x + a.w
-    && a.y - gap < b.y + b.h && b.y - gap < a.y + a.h;
 }
 
 /** The area a fitted box covers, 0 where the form does not fit the room at all. */

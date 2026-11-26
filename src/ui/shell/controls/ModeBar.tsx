@@ -5,48 +5,103 @@
  * under 1 makes a stacking context that would otherwise pass under the screen's vignette.
  */
 import { useUiPreviewPose, type UiPreviewPose } from '../../design/preview';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { ItemCategory } from '../../../config/catalog/categories';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence, motion, usePresence, useReducedMotionConfig } from 'framer-motion';
 import type { BuildMode } from '../../../state/editing/edit-mode';
-import { useEditorStore, type EditorStore } from '../../../state/store';
-import { presence } from '../../design/motion';
-import { useBeat, useTransition } from '../../design/motion/use-motion';
+import { barInFront, type BarFront } from '../../../state/keymap/toolbar';
+import { useEditorStore } from '../../../state/store';
+import { arrangementFadeCss, fadeTimings } from '../../design/motion';
+import { useBeat } from '../../design/motion/use-motion';
 import { z } from '../../design/styles';
+import { useEffectEvent } from '../../primitives/use-effect-event';
+import { useAway } from '../../primitives/away';
 import { SurfaceBoundary } from '../../chrome/guards/SurfaceBoundary';
 import { BarFailure } from '../bars/BarFailure';
 import { EditToolbar } from '../bars/EditToolbar';
 import { ObjectShelf } from '../bars/objects/ObjectShelf';
 import { MultiSelectBar } from '../bars/selection/MultiSelectBar';
-import { planetShelfItems } from '../bars/objects/object-shelf';
+import { planetShelfItems } from '../../../state/object-shelf-view';
 import { ScopeScreen } from '../bars/generate/ScopeScreen';
 import { ObjectBrushBar } from '../bars/objects/ObjectBrushBar';
 import type { ContentType } from '../../../state/editing/edit-mode';
 import { GenerateShelf } from '../edition-surfaces';
+import { BlueprintShelf } from '../bars/blueprint/BlueprintShelf';
+import { FrameStep } from '../bars/blueprint/FrameStep';
+import { SaveDock } from '../bars/blueprint/SaveDock';
+import { useRunCommand } from '../use-shell-commands';
 
-/** What stands in the bar's place: the scope screen while a region is being selected, for the assistant
- *  or the generate shelf, or the object shelf's brush bar (EDIT-64). */
-type Cover = 'scope' | 'brush';
-const coverOf = (s: EditorStore): Cover | null =>
-  s.selectingRegion ? 'scope' : s.objectBrushBar && s.editMode.mode === 'object' ? 'brush' : null;
+/** What stands in the bar's place (`state/keymap/toolbar.ts:barInFront`). */
+type Cover = BarFront;
 const posedCover = (pose: UiPreviewPose, mode: BuildMode): Cover | null =>
-  pose.regionScreen ? 'scope' : pose.objectBrush && mode === 'object' ? 'brush' : null;
-const covering = (): boolean => coverOf(useEditorStore.getState()) !== null;
-const finishScope = () => useEditorStore.getState().setSelectingRegion(false);
-const finishBrush = () => useEditorStore.getState().setObjectBrushBar(false);
-const coverScreen = (cover: Cover) => (cover === 'brush' ? <ObjectBrushBar onDone={finishBrush} /> : <ScopeScreen onDone={finishScope} />);
+  pose.regionScreen ? 'scope' : pose.blueprintSave && mode === 'blueprint' ? 'save' : pose.objectBrush && mode === 'object' ? 'brush' : null;
 /** A bar that throws stands its slot's band in its place; choosing another mode or toolbar mounts that one fresh. */
 const barFailure = (retry: () => void) => <BarFailure onRetry={retry} />;
 
+/** The handover between the bar and a screen standing in its place. */
+const COVER = 'mode.bar.cover';
+
+/** The screen in the bar's place fades on Web Animations, which start on the first frame after the
+ *  commit that mounts or ends it; a Framer fade starts at the press and loses its first frames to that
+ *  commit. `wait` holds its arrival until the bar it covers has gone. */
+function CoverFade({ wait, children }: { wait: boolean; children: ReactNode }) {
+  const [present, safeToRemove] = usePresence();
+  const ref = useRef<HTMLDivElement>(null);
+  const fade = useRef<Animation | null>(null);
+  const play = useEffectEvent((shown: boolean) => {
+    const el = ref.current;
+    // Leaving reports done after the commit, once the presence has marked the screen as leaving.
+    if (!el || typeof el.animate !== 'function') { if (!shown) void Promise.resolve().then(() => safeToRemove?.()); return; }
+    // A turn back mid-fade starts from where the screen stands, a fresh fade from its resting state.
+    const was = fade.current;
+    const midway = was !== null && (was.playState === 'running' || was.pending);
+    const from = midway ? Number(getComputedStyle(el).opacity) : shown ? 0 : 1;
+    was?.cancel();
+    const fades = fadeTimings(COVER);
+    fade.current = shown
+      ? el.animate([{ opacity: from }, { opacity: 1 }], { delay: wait ? fades.in.delay * 1000 : 0, duration: fades.in.duration * 1000, easing: fades.in.css, fill: 'backwards' })
+      : el.animate([{ opacity: from }, { opacity: 0 }], { duration: fades.out.duration * 1000, easing: fades.out.css, fill: 'forwards' });
+    if (!shown) fade.current.finished.then(() => safeToRemove?.(), () => {});
+  });
+  useLayoutEffect(() => { play(present); }, [present]);
+  useEffect(() => () => { fade.current?.cancel(); fade.current = null; }, []);
+  const away = useAway();
+  return <div ref={ref} {...away} style={{ position: 'relative', zIndex: z.panel }}>{children}</div>;
+}
+
+/** One bar in the handover, away from its first exit frame while it fades where it stood. */
+function BarFade({ reduced, arriving, leaving, children }: {
+  reduced: boolean | null; arriving: Record<string, unknown>; leaving: Record<string, unknown>; children: ReactNode;
+}) {
+  const away = useAway();
+  return (
+    <motion.div
+      {...away}
+      initial={reduced ? false : { opacity: 0 }}
+      animate={{ opacity: 1, transition: arriving }}
+      exit={{ opacity: 0, transition: leaving }}
+      style={{ position: 'relative', zIndex: z.panel }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 /**
- * A region selection, or the object shelf's brush bar, replaces the bar: the bar fades out before the
- * screen enters, and the screen leaves before the bar returns, the bar staying mounted and inert in
- * between, so the bar that opened the screen keeps its claim on what it offers and the shelf its tab.
- * Reduced motion swaps before paint.
+ * A region selection, Blueprint's frame or save step, or the object shelf's brush bar replaces the bar
+ * on one clock (`mode.bar.cover`): what leaves fades where it stands early and what arrives fades in
+ * late, so the two never stand together, and leaving the screen plays the same in reverse. The bar
+ * stays mounted and inert under the screen, so it keeps its claim on what it offers and the shelf its
+ * tab, and upright the band glides between the two panels' heights meanwhile. Both fades start on the
+ * frame after the commit (a CSS transition and `CoverFade`). Reduced motion swaps before paint.
  */
 export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentType | null }) {
   const pose = useUiPreviewPose();
-  const liveCover = useEditorStore(coverOf);
+  const run = useRunCommand();
+  // Each Done presses its command's off, whose body stands beside the state's back-out row (`editor/back/back-out.ts`).
+  const coverScreen = (cover: Cover) => (cover === 'brush' ? <ObjectBrushBar onDone={() => run('objects.brush_bar', { on: false })} />
+    : cover === 'frame' ? <FrameStep /> : cover === 'save' ? <SaveDock /> : <ScopeScreen onDone={() => run('region.paint', { on: false })} />);
+  const liveCover = useEditorStore(barInFront);
   // A picture stands the region screen or the brush bar where its pose says and never the live editor's cover.
   const cover: Cover | null = pose ? posedCover(pose, mode) : liveCover;
   const covered = cover !== null;
@@ -63,63 +118,45 @@ export function ModeBar({ mode, surface }: { mode: BuildMode; surface: ContentTy
   const shelfTab = useRef<ItemCategory | null>(null);
   useEffect(() => { if (mode !== 'object') shelfTab.current = null; }, [mode]);
   const toolbar = multi ? null : surface ?? (mode === 'annotate' ? 'notes' : null);
-  // A picture of the region screen stands nothing under it: the live bar there is hidden and only holds its claim.
-  const bar = pose?.regionScreen ? null
+  // A picture of the region screen or the save step stands nothing under it: the live bar there is hidden and only holds its claim.
+  const bar = pose?.regionScreen || pose?.blueprintSave ? null
     : multi ? <MultiSelectBar />
     : toolbar ? <EditToolbar bar={toolbar} />
     : mode === 'object' ? <ObjectShelf source={planetShelfItems} leftTab={shelfTab} />
-      : mode === 'generate' ? <GenerateShelf /> : null;
-  const scopeLeave = useTransition('mode.bar.leave');
-  const scopeEnter = useTransition('mode.bar.enter');
-  const [scopeReady, setScopeReady] = useState(covered);
-  const hidden = covered || (!reduced && scopeReady);
+      : mode === 'generate' ? <GenerateShelf />
+        : mode === 'blueprint' ? <BlueprintShelf /> : null;
   const hasBar = bar !== null;
   const barKey = multi ? 'multi-select' : toolbar ? 'toolbar' : mode;
   const surfaceKey = multi ? 'multi-select' : toolbar ?? mode;
-
-  useLayoutEffect(() => {
-    if (reduced) setScopeReady(covered);
-    else if (!hasBar && covered) setScopeReady(true);
-  }, [covered, reduced, hasBar]);
+  const coveredAway = useAway(covered);
 
   return (
     <>
-      <motion.div
+      <div
         data-testid="shell-mode-bar"
-        aria-hidden={hidden || undefined}
-        {...(hidden ? { inert: '' } : {})}
-        initial={false}
-        animate={hidden ? 'hidden' : 'visible'}
-        variants={{
-          hidden: { opacity: 0, transition: scopeLeave, transitionEnd: { visibility: 'hidden' } },
-          visible: { opacity: 1, visibility: 'visible', transition: scopeEnter },
+        {...coveredAway}
+        style={{
+          position: 'relative', zIndex: z.panel, display: reduced && covered ? 'none' : undefined,
+          opacity: covered ? 0 : 1, visibility: covered ? 'hidden' : undefined,
+          transition: arrangementFadeCss(COVER, !covered, ['opacity', 'visibility'], reduced),
         }}
-        onAnimationComplete={(definition) => { if (definition === 'hidden' && covering()) setScopeReady(true); }}
-        style={{ position: 'relative', zIndex: z.panel, display: reduced && covered ? 'none' : undefined }}
       >
         {/* Nothing beside the bar moves by layout projection, so its presence re-renders nothing around it. */}
         <AnimatePresence presenceAffectsLayout={false}>
           {bar ? (
-            <motion.div
-              key={barKey}
-              initial={reduced ? false : { opacity: 0 }}
-              animate={{ opacity: 1, transition: arriving }}
-              exit={{ opacity: 0, transition: leaving }}
-              style={{ position: 'relative', zIndex: z.panel }}
-            >
+            <BarFade key={barKey} reduced={reduced} arriving={arriving} leaving={leaving}>
               <SurfaceBoundary name={`${surfaceKey} bar`} resetKey={surfaceKey} fallback={barFailure}>{bar}</SurfaceBoundary>
-            </motion.div>
+            </BarFade>
           ) : null}
         </AnimatePresence>
-      </motion.div>
+      </div>
       {reduced ? (
         cover && coverScreen(cover)
       ) : (
-        <AnimatePresence onExitComplete={() => { if (!covering()) setScopeReady(false); }}>
-          {covered && scopeReady && (
-            <motion.div key={shownCover.current} {...presence('mode.bar.enter', { opacity: 0 }, { leave: 'mode.bar.leave' })} style={{ position: 'relative', zIndex: z.panel }}>
-              {coverScreen(shownCover.current)}
-            </motion.div>
+        <AnimatePresence>
+          {covered && (
+            // A screen arriving where no bar stands has nothing to wait out.
+            <CoverFade key={shownCover.current} wait={hasBar}>{coverScreen(shownCover.current)}</CoverFade>
           )}
         </AnimatePresence>
       )}

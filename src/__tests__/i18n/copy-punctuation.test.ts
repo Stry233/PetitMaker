@@ -1,6 +1,6 @@
 /**
- * No dot separator (· or •) and no em dash in the app's copy: facts join with the locale's own
- * punctuation or split into lines. Locale strings are checked for both marks; source that writes text
+ * No dot separator (· or •), no em dash and no three-dot ellipsis in the app's copy: facts join with
+ * the locale's own punctuation or split into lines, and an ellipsis is the single character `…`. Locale strings are checked for both marks; source that writes text
  * inline is scanned for dot separators outside comments, where a dot may stand for arithmetic.
  */
 import { describe, it, expect } from 'vitest';
@@ -74,6 +74,16 @@ describe('no dot separator in user-facing text', () => {
     for (const [locale, table] of TABLES) {
       for (const [key, value] of Object.entries(table)) {
         if (value.includes(EM_DASH)) problems.push(`${locale} ${key}`);
+      }
+    }
+    expect(problems.join('\n')).toBe('');
+  });
+
+  it('[UI-05] every ellipsis is the single character', () => {
+    const problems: string[] = [];
+    for (const [locale, table] of TABLES) {
+      for (const [key, value] of Object.entries(table)) {
+        if (value.includes('...')) problems.push(`${locale} ${key}`);
       }
     }
     expect(problems.join('\n')).toBe('');

@@ -44,7 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => { stopPlanetEditing(); });
+  act(() => { stopPlanetEditing({ discard: true }); });
   host.camera.takeQueued();
   uninstall?.();
   uninstall = null;
@@ -85,7 +85,7 @@ describe('installPlanetOverlays', () => {
     enter();
     paintGround(rect(100, 100, 4, 4));
     await waitFor(() => expect(show).toHaveBeenLastCalledWith({ x0: 96, y0: 96, cols: 1, rows: 1 }));
-    act(() => { stopPlanetEditing(); });
+    act(() => { stopPlanetEditing({ discard: true }); });
     expect(show).toHaveBeenLastCalledWith(null);
   });
 });

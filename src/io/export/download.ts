@@ -1,8 +1,9 @@
 /** Export file names and the browser download of a finished Blob or JSON string. */
 
-/** A file-name fragment: letters, digits, underscore and hyphen; a run of anything else becomes one hyphen. */
-export function safeName(name: string): string {
-  return name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'planet';
+/** A file-name fragment: letters, digits, underscore and hyphen; a run of anything else becomes one
+ *  hyphen, and a name left with none of them becomes `fallback`. */
+export function safeName(name: string, fallback = 'planet'): string {
+  return name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || fallback;
 }
 
 /** Every file the app hands out is named `petitmaker-<part>-<part>.<ext>`. */

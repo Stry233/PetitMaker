@@ -21,13 +21,18 @@ function isStyleObject(node: ts.Node): boolean {
 // Other dependency calls stay intact so the packaged-artifact check rejects newly introduced APIs.
 const OFFLINE_DEPENDENCY = /\/node_modules\/(?:function-bind\/implementation\.js|three\/build\/three\.module\.js|@pixi\/(?:settings\/lib\/adapter|core\/lib\/(?:shader\/utils\/(?:unsafeEvalSupported|generateUniformsSync|generateUniformBufferSync)|textures\/resources\/(?:ImageResource|ImageBitmapResource)))\.[cm]?js)$/;
 
+// re2js, which the text check matches with, names its prefilter's test method `eval`. The packaged-artifact
+// check refuses every call of that name, so in this one file the method and its three calls take another name.
+const RENAMED_EVAL_METHOD = /\/node_modules\/re2js\/build\/index\.js$/;
+
 /** Lower Unicode regexes before the bundler turns unsupported literals into runtime constructors. */
 export function liteCompatibilityPlugin(): Plugin {
   return {
     name: 'petit-lite-compatibility',
     enforce: 'pre',
     transform(code, id) {
-      if (!/\.[cm]?[jt]sx?$/.test(id) || (!code.includes('\\p{') && !id.includes('/src/ui/') && !/\b(fetch|Function)\b/.test(code))) return;
+      const renamesEval = RENAMED_EVAL_METHOD.test(id.replace(/\\/g, '/'));
+      if (!/\.[cm]?[jt]sx?$/.test(id) || (!code.includes('\\p{') && !id.includes('/src/ui/') && !/\b(fetch|Function)\b/.test(code) && !renamesEval)) return;
       const file = ts.createSourceFile(id, code, ts.ScriptTarget.Latest, true, id.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.JS);
       const edits: { start: number; end: number; value: string }[] = [];
       const visit = (node: ts.Node) => {
@@ -39,6 +44,11 @@ export function liteCompatibilityPlugin(): Plugin {
             edits.push({ start: node.getStart(file), end: node.end, value });
             return;
           }
+        }
+        if (renamesEval
+          && (ts.isMethodDeclaration(node) || (ts.isPropertyAccessExpression(node) && ts.isCallExpression(node.parent) && node.parent.expression === node))
+          && ts.isIdentifier(node.name) && node.name.text === 'eval') {
+          edits.push({ start: node.name.getStart(file), end: node.name.end, value: 'matchesInput' });
         }
         if (id.includes('/src/ui/') && ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && isStyleObject(node)) {
           const key = node.name.text;

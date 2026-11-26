@@ -9,6 +9,7 @@ import { useSurfaceZoom } from '../../../design/scale';
 import { toolbarLabel } from '../../../../state/keymap/toolbar';
 import { useToolbarContext } from '../../../session/use-toolbar-context';
 import { SUPPORTS_JSON_FILES } from '../../../../platform/build/edition';
+import { JSON_ACCEPT } from '../../../../io/import/facts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
@@ -19,7 +20,9 @@ import { ModalShell } from '../../../primitives/ModalShell';
 import { BOARD_OUTER_W, BOARD_RING, KEYBOARD_H, KeyboardBoard } from './KeyboardBoard';
 import { WINDOW_PADDING_X, WindowHeader, windowFrame } from '../../../primitives/Window';
 import { FloatMenu } from '../../../primitives/FloatMenu';
-import { ChevronIcon } from '../../../primitives/line-glyphs';
+import { ChevronIcon, SearchIcon } from '../../../primitives/line-glyphs';
+import { TextField } from '../../../primitives/TextField';
+import { InfoLine } from '../../../primitives/InfoLine';
 import { useTransition } from '../../../design/motion/use-motion';
 import { useWindow, type WindowProps } from '../use-window';
 import { useScrollFadeBoth } from '../../../primitives/scroll-fade';
@@ -27,12 +30,14 @@ import { useWheelToHorizontal } from '../../../primitives/wheel-horizontal';
 import { showToast } from '../../../../platform/channels/toast-bus';
 import { downloadKeymap, readKeymapFile } from '../../../../editor/export/files';
 import { COMMANDS, COMMAND_BY_ID, type EditorCommand } from '../../../../editor/commands/commands';
-import { aliasIndex, bindingIndex, effectiveCombo, detectPreset } from '../../../../state/keymap/resolve';
+import { pressCommand } from '../../../../editor/commands/run';
+import { aliasIndex, bindingIndex, comboChanged, commandNameMatches, effectiveCombo, detectPreset, reverseCombos } from '../../../../state/keymap/resolve';
 import { useKeybinds } from '../../../../state/keymap/store';
 import { comboFromEvent, prettyCombo } from '../../../../platform/input/combo';
 import { PRESETS } from '../../../../state/keymap/registry';
 import { CATEGORY_COLOR, CATEGORY_ORDER, type Layer } from './layout';
 import { useObservedSize } from '../../../primitives/use-observed-size';
+import { useFilePick } from '../../../primitives/use-file-pick';
 import { boardZoomFor, BoardHBar } from './BoardHBar';
 
 const BASE_LAYER: Layer = { ctrl: false, alt: false, shift: false };
@@ -91,7 +96,6 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
   const rebind = useKeybinds((s) => s.rebind);
   const clear = useKeybinds((s) => s.clear);
   const restoreDefault = useKeybinds((s) => s.restoreDefault);
-  const resetAll = useKeybinds((s) => s.resetAll);
   const applyBinds = useKeybinds((s) => s.applyBinds);
 
   const [layer, setLayer] = useState<Layer>(BASE_LAYER);
@@ -104,7 +108,6 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
   const presetRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const turn = useTransition('surface.arrive');
-  const fileRef = useRef<HTMLInputElement>(null);
   const kbdRef = useRef<HTMLDivElement>(null);
   const kbdFade = useScrollFadeBoth(kbdRef);
   // When the window is short enough that only sideways travel remains, a mouse's vertical
@@ -133,17 +136,16 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
   const activePreset = useMemo(() => detectPreset(overrides), [overrides]);
 
   const onExport = (): void => downloadKeymap(overrides);
-  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-importing the same file
-    if (!file) return;
+  const onImportFile = async (file: File): Promise<void> => {
     const res = await readKeymapFile(file);
     if (res.ok && res.binds) { applyBinds(res.binds, res.overrides); setSelectedId(null); showToast(t('kbd.imported'), 'info'); }
     else showToast(t('kbd.import_failed'), 'error');
   };
+  const keymapFile = useFilePick({ accept: JSON_ACCEPT, onFile: (f) => { void onImportFile(f); } });
 
   const index = useMemo(() => bindingIndex(overrides, toolbar), [overrides, toolbar]);
   const aliases = useMemo(() => aliasIndex(), []);
+  const waysBack = useMemo(() => reverseCombos(overrides, toolbar, index), [overrides, toolbar, index]);
   const selected = selectedId ? COMMAND_BY_ID.get(selectedId) : undefined;
   const label = useCallback((id: string): string => {
     const c = COMMAND_BY_ID.get(id);
@@ -165,9 +167,9 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
       const combo = comboFromEvent(e);
       if (!combo) return; // bare modifier / space — keep listening
       const r = rebind(selectedId, combo, toolbar);
-      // The one refusal a recorded chord can hit: a shifted twin of a live UI-scale binding, which
-      // the UI-scale listener answers on the same keycap.
-      if (!r.ok) setNote(t('kbd.reserved'));
+      // A recorded chord is refused on a key the browser or the system takes, and on a shifted twin
+      // of a live UI-scale binding, which the UI-scale listener answers on the same keycap.
+      if (!r.ok) setNote(t(r.reason === 'unbindable-key' ? 'kbd.key_taken' : 'kbd.reserved'));
       else setNote(r.displaced ? t('kbd.reassigned_from', { action: label(r.displaced) }) : null);
       setRecording(false);
     };
@@ -179,17 +181,16 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
   const toggleMod = (mod: 'ctrl' | 'alt' | 'shift'): void => setLayer((l) => ({ ...l, [mod]: !l[mod] }));
 
   const searchHits: EditorCommand[] = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return COMMANDS.filter((c) => (t(toolbarLabel(toolbar, c.id) ?? c.labelKey)).toLowerCase().includes(q)).slice(0, 7);
+    return COMMANDS.filter((c) => commandNameMatches(t(toolbarLabel(toolbar, c.id) ?? c.labelKey), search)).slice(0, 7);
   }, [search, t, toolbar]);
 
   /* ── detail strip ───────────────────────────────────────────────────────── */
   const selCombo = selectedId ? effectiveCombo(overrides, selectedId, toolbar) : null;
   const detail = (() => {
-    if (!selected) return <span style={{ ...roleFont('body'), color: skin.muted, fontFamily: font.family }}>{t('kbd.hint')}</span>;
+    if (!selected) return <span style={{ ...roleFont('note'), color: skin.muted, fontFamily: font.family }}><InfoLine>{t('kbd.hint')}</InfoLine></span>;
     const clearOff = !selCombo;
-    const resetOff = effectiveCombo({}, selected.id, toolbar) === selCombo;
+    const resetOff = !comboChanged(overrides, selected.id, toolbar);
+    const aside = note ?? (waysBack.has(selected.id) ? t('kbd.reverse_hint') : null);
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ width: 13, height: 13, borderRadius: radii.sm, background: CATEGORY_COLOR[selected.category], flex: '0 0 auto' }} />
@@ -202,7 +203,7 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
         <Pill on="inset" style={pillPad} disabled={resetOff}
           onClick={() => { restoreDefault(selected.id, toolbar); setNote(null); }}
         >{t('kbd.reset')}</Pill>
-        {note && <span style={{ ...roleFont('caption'), color: skin.muted, fontFamily: font.family }}>{note}</span>}
+        {aside && <span style={{ ...roleFont('note'), color: skin.muted, fontFamily: font.family }}>{aside}</span>}
       </div>
     );
   })();
@@ -216,16 +217,8 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
           wide is a metre of empty paper, and its results list would inherit that span. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
         <div ref={searchRef} style={{ flex: '0 1 460px' }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('kbd.search')}
-            style={{
-              width: '100%', boxSizing: 'border-box', fontFamily: font.family, ...roleFont('field'),
-              padding: '10px 16px', borderRadius: radii.pill, border: `1.5px solid ${skin.line}`,
-              background: skin.inset, color: skin.ink, outline: 'none',
-            }}
-          />
+          <TextField shape="pill" type="search" leading={<SearchIcon size={16} />} value={search} onChange={setSearch}
+            placeholder={t('kbd.search')} label={t('kbd.search')} />
           <FloatMenu
             row={null}
             anchor={searchRef}
@@ -246,7 +239,7 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
           />
         </div>
         <div style={{ flex: '1 1 auto' }} />
-        <Pill variant="danger" style={pillPad} onClick={() => { resetAll(); setNote(null); }}>{t('kbd.reset_all')}</Pill>
+        <Pill variant="danger" style={pillPad} onClick={() => { pressCommand('keymap.reset'); setNote(null); }}>{t('kbd.reset_all')}</Pill>
       </div>
 
       {/* modifier-layer chips (left) + shortcut-style preset picker & JSON import/export (right) */}
@@ -271,15 +264,15 @@ function KeyboardBody({ onClose }: { onClose: () => void }) {
           onOpen={() => setPresetOpen(true)}
           onClose={() => setPresetOpen(false)}
           activeId={activePreset}
-          onPick={(id) => { const preset = PRESETS.find((p) => p.id === id); if (preset) { applyBinds(preset.binds); setSelectedId(null); } }}
+          onPick={(id) => { if (PRESETS.some((p) => p.id === id)) { pressCommand('keymap.preset', { value: id }); setSelectedId(null); } }}
           items={PRESETS.map((p) => ({ id: p.id, label: t(p.labelKey) }))}
           aria-label={t('kbd.preset')}
         />
 
         {SUPPORTS_JSON_FILES && <>
-          <Pill style={pillPad} onClick={() => fileRef.current?.click()}>{t('kbd.import')}</Pill>
+          <Pill style={pillPad} onClick={keymapFile.pick}>{t('kbd.import')}</Pill>
           <Pill style={pillPad} onClick={onExport}>{t('kbd.export')}</Pill>
-          <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: 'none' }} />
+          <input {...keymapFile.input} />
         </>}
       </div>
 

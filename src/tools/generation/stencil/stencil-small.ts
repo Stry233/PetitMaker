@@ -5,7 +5,9 @@
  */
 import type { Stencil } from '../recipe';
 import type { ToneRange } from './stencil';
-import { HUE_CHROMA_MIN, blendColor, hueMatched, hueOf, luma, nearestEntry, signedTurn } from './color';
+import { HUE_CHROMA_MIN, hueMatched, hueOf, luma, nearestEntry, signedTurn } from './color';
+import { lerpColor } from '../../../core/base/color';
+import { clamp01 } from '../../../core/base/math';
 import {
   AREA_MIN, allocateEntries, areaSalience, cellDepths, coherentAreas, figureRim, fuseAreas, mergeToTarget, regionFlatness, regionTarget,
   type Area,
@@ -209,7 +211,7 @@ export function readSmallBox(stencil: Stencil, input: SmallBoxInput): SmallBoxRe
     wanted: (i) => {
       if (!matchable(i)) return null;
       const own = colorAt(i);
-      return has[i] ? blendColor(own, target[i]!, share * told[i]!) : own;
+      return has[i] ? lerpColor(own, target[i]!, clamp01(share * told[i]!)) : own;
     },
     // Dither remains only where the gate and region gradients leave per-cell tone to express.
     damping: damping * (1 - share * mean),

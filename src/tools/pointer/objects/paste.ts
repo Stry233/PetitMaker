@@ -12,18 +12,18 @@ import { pasteNotices } from '../../../i18n/terms/copy-notices';
 import type { PasteOutcome } from '../../objects/arrangement';
 import type { NoticeTone } from '../runtime/types';
 import type { ToolOverlay } from '../runtime/view-seam';
+import { ghostParts } from '../runtime/placement-ghost';
 
-/** Draws `objects` as a copy's ghost: their footprints washed by `valid` and a body for each. */
+/** Draws `objects` as a copy's ghost: their footprints outlined, marked refused unless `valid`, with
+ *  each object drawn as itself. */
 export function showCopyGhost(overlay: Pick<ToolOverlay, 'showGhost' | 'showGroupPlacementGhost'>, objects: readonly PlacedObject[], valid: boolean): void {
   const cells = objects.flatMap((obj) => {
     const r = objectRect(obj);
     return getFootprint(r.x, r.y, r.w, r.h);
   });
-  overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { wash: 'placement', valid });
-  overlay.showGroupPlacementGhost(objects.map((obj) => ({
-    catalogId: obj.catalogId, x: obj.position.x, y: obj.position.y, rotation: obj.rotation, elevation: obj.elevation,
-    ...(obj.spanLength ? { spanLength: obj.spanLength } : null),
-  })), valid);
+  const { tiles, members } = ghostParts(objects);
+  overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { placement: true, valid, tiles });
+  overlay.showGroupPlacementGhost(members, valid);
 }
 
 /** Says what `outcome` came to through `notify`, in `t`'s words. */

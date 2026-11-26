@@ -1,11 +1,9 @@
 import type { RefObject } from 'react';
 import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { DANGER_INK } from '../../design/tokens';
-import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
 import { amplitude, framerMotion } from '../../design/motion';
 import { Icon } from '../parts/sprite';
-import { FIELD_STYLE, INPUT_STYLE } from './setup-parts';
+import { TextField } from '../../primitives/TextField';
 
 /** How far the refused field shakes, per its own declaration. */
 const SHAKE = amplitude('panel.setup.refuse') ?? 0;
@@ -32,34 +30,21 @@ export function SetupKeyField({
   onEnter?: () => void;
 }) {
   const t = useT();
+  const hint = t(optional ? 'agent.setup_key_optional' : 'agent.setup_key_placeholder');
   return (
-    <motion.label
+    <motion.div
       data-testid="setup-key-field"
-      className={FIELD_WRAP_CLASS}
       data-danger={refused || undefined}
       // Alternating targets replay repeated refusals without remounting the focused field.
       animate={refused
         ? { x: shakeSeq % 2 === 0 ? [0, -SHAKE, SHAKE, 0] : [0, SHAKE, -SHAKE, 0] }
         : { x: 0 }}
       transition={framerMotion('panel.setup.refuse')}
-      style={refused ? { ...FIELD_STYLE, borderColor: DANGER_INK } : FIELD_STYLE}
     >
-      <Icon id="pw-key" size={17} />
-      <input
-        ref={inputRef}
-        type={masked ? 'password' : 'text'}
-        data-testid="setup-key-input"
-        className={FIELD_INPUT_CLASS}
-        spellCheck={false}
-        autoComplete="off"
-        placeholder={t(optional ? 'agent.setup_key_optional' : 'agent.setup_key_placeholder')}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onEnter?.(); } }}
-        onFocus={() => onFocus?.()}
-        onBlur={(e) => onBlur?.(e.target.value)}
-        style={INPUT_STYLE}
-      />
-    </motion.label>
+      <TextField inputRef={inputRef} type={masked ? 'password' : 'text'} data-testid="setup-key-input" danger={refused}
+        leading={<Icon id="pw-key" size={17} />} spellCheck={false} autoComplete="off" label={hint} placeholder={hint}
+        value={value} onChange={onChange} onEnter={() => onEnter?.()}
+        onFocus={() => onFocus?.()} onBlur={(e) => onBlur?.(e.target.value)} />
+    </motion.div>
   );
 }

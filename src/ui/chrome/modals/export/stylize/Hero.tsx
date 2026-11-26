@@ -4,18 +4,18 @@
  * and Start creating stays disabled rather than absent, so a refusal never moves a control.
  */
 import { cursors, font, radii, UNAVAILABLE, shadows } from '../../../../design/styles';
-import { DANGER_INK, rgbaOf } from '../../../../design/tokens';
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion, useAnimationControls, useMotionValue, useReducedMotionConfig, useSpring, useTransform, type MotionValue } from 'framer-motion';
-import { skin } from '../../../../design/window-skin';
+import { pickedRing, skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { FloatMenu } from '../../../../primitives/FloatMenu';
+import { Disclosure } from '../../../../primitives/Disclosure';
 import { Spinner } from '../../../../primitives/Spinner';
 import { useT } from '../../../../../i18n/context';
 import { illustrationProviderName } from '../../../../../i18n/terms/providers';
 import { STYLE_PACKS, STYLIZE_PROVIDERS, type StylizeProvider } from '../../../../../pipelines/stylize/facts';
-import { packSampleUrl } from './sample-assets';
-import { Field, GhostVerb, PrimaryVerb, SampleTile, StatusSlot, WindowFoot, entering, fieldBox, fieldLabel } from './stylize-parts';
+import { packSampleUrl } from '../../../../../assets/style-sample-urls';
+import { Field, GhostVerb, PrimaryVerb, SampleTile, StatusSlot, WindowFoot, entering, fieldLabel } from './stylize-parts';
 import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion';
 
 import type { StylizeConnection } from './use-stylize-connection';
@@ -236,42 +236,23 @@ export function Hero({ conn, onStart, onDismiss }: {
 
       <Row index={1}>
         <motion.div animate={shake}>
-          <Field label={t('stylize.key')}>
-            <input
-              type="password"
-              value={conn.key}
-              placeholder={t('stylize.key_ph')}
-              onChange={(e) => conn.setKey(e.target.value)}
-              style={{ ...fieldBox, borderColor: conn.status ? DANGER_INK : skin.line }}
-            />
-          </Field>
+          <Field label={t('stylize.key')} type="password" value={conn.key} placeholder={t('stylize.key_ph')}
+            onChange={conn.setKey} danger={!!conn.status} />
         </motion.div>
       </Row>
 
-      {/* The address row is the custom endpoint's alone. It stays in the tree at zero height so
-          the rows below it never re-mount, and unfolds where the provider needs it. */}
-      <motion.div
-        initial={false}
-        animate={{ height: custom ? 'auto' : 0, opacity: custom ? 1 : 0 }}
-        transition={framerMotion('stylize.address.unfold')}
-        style={{ overflow: 'hidden' }}
-     >
-        <Field label={t('stylize.base_url')}>
-          <input
-            type="text"
-            value={conn.baseUrl}
-            onChange={(e) => conn.setBaseUrl(e.target.value)}
-            style={fieldBox}
-          />
-        </Field>
-      </motion.div>
+      {/* The address row is the custom endpoint's alone. It stays in the tree folded, out of the tab
+          order, so the rows below it never re-mount, and unfolds where the provider needs it. */}
+      <Disclosure open={custom} motionId="stylize.address.unfold">
+        <Field label={t('stylize.base_url')} type="text" value={conn.baseUrl} onChange={conn.setBaseUrl} />
+      </Disclosure>
 
       <Row index={3}>
         {conn.modelsState === 'ready' ? (
           <motion.div
             key={conn.arrivedNonce}
-            initial={{ boxShadow: `0 0 0 3px ${skin.active}` }}
-            animate={{ boxShadow: `0 0 0 3px ${rgbaOf(skin.active, 0)}` }}
+            initial={{ boxShadow: pickedRing(true) }}
+            animate={{ boxShadow: pickedRing(false) }}
             transition={framerMotion('stylize.model.arrive')}
             style={{ borderRadius: radii.md, display: 'flex', flexDirection: 'column', gap: 4 }}
          >
@@ -290,15 +271,7 @@ export function Hero({ conn, onStart, onDismiss }: {
             />
           </motion.div>
         ) : conn.modelsState === 'unlisted' ? (
-          <Field label={t('stylize.model')}>
-            <input
-              type="text"
-              value={conn.model}
-              placeholder={t('stylize.model_typed_ph')}
-              onChange={(e) => conn.setModel(e.target.value)}
-              style={fieldBox}
-            />
-          </Field>
+          <Field label={t('stylize.model')} type="text" value={conn.model} placeholder={t('stylize.model_typed_ph')} onChange={conn.setModel} />
         ) : (
           <>
             <span style={fieldLabel}>{t('stylize.model')}</span>

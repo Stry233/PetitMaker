@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { createDefaultRegistry } from '../../../rules';
-import { ruleHint } from '../../../agent/tools/rule-hints';
+import { createDefaultRegistry, createPlanetRegistry } from '../../../rules';
+import { TRAIT_DESCRIPTIONS } from '../../../rules/placement';
+import { CommandType } from '../../../core/model/types';
 import { BANNERS } from '../../../agent/tools/feedback';
-import { buildSystemPrompt } from '../../../agent/prompts';
+import { buildSystemPrompt, districtSystemPrompt, helperSystemPrompt } from '../../../agent/prompts';
 import { getAllItems } from '../../../state/catalog';
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe('buildSystemPrompt', () => {
   const registry = createDefaultRegistry();
@@ -22,9 +25,31 @@ describe('buildSystemPrompt', () => {
     for (const { id } of registry.getRules()) expect(prompt).toContain(id);
   });
 
-  it('every rule the editor registers has an assistant hint (drift guard)', () => {
-    for (const { id } of registry.getRules()) {
-      expect(ruleHint(id), `rule ${id} has no entry in agent/tools/rule-hints.ts`).toBeTruthy();
+  it("lists every registered rule with the rule's own description", () => {
+    for (const { id, phase, description } of registry.getRules()) {
+      expect(description, id).not.toBe('');
+      expect(prompt).toContain(`- ${id} [${phase}]: ${description}`);
+    }
+  });
+
+  it('lists a rule the moment a registry holds it, in the words it was registered with', () => {
+    const planet = createPlanetRegistry();
+    const held = planet.getRules().find((rule) => rule.id === 'V-PLANET-01')!;
+    expect(prompt).not.toContain('V-PLANET-01');
+    expect(buildSystemPrompt(planet)).toContain(`- V-PLANET-01 [pre-command]: ${held.description}`);
+
+    const own = createDefaultRegistry();
+    own.register({ id: 'V-TEST-QUIET', description: 'Nothing may be placed beside a sleeping cat.', phase: 'pre-command', appliesTo: [CommandType.PlaceObject], validate: () => [] });
+    expect(buildSystemPrompt(own)).toContain('- V-TEST-QUIET [pre-command]: Nothing may be placed beside a sleeping cat.');
+  });
+
+  it("lists every placement trait with the trait's own description", () => {
+    const traits = new Set(getAllItems().flatMap((item) => item.traits.map((trait) => trait.type)));
+    expect(traits.size).toBeGreaterThan(0);
+    for (const type of traits) {
+      const description = TRAIT_DESCRIPTIONS.get(type)!;
+      expect(description, type).not.toBe('');
+      expect(prompt).toMatch(new RegExp(`^- ${type}[^:\\n]*: ${escapeRegExp(description)}`, 'm'));
     }
   });
 
@@ -68,5 +93,15 @@ describe('buildSystemPrompt', () => {
 
   it('asks when a missing fact would materially change the requested result', () => {
     expect(prompt).toContain('missing information materially changes the result');
+  });
+
+  it('tells a helper and a district lead only about tools they are offered: the app tools read in the lead\'s prompt alone', () => {
+    for (const name of ['list_app_actions', 'run_app_action']) {
+      expect(prompt, name).toContain(name);
+      expect(helperSystemPrompt(prompt), name).not.toContain(name);
+      expect(districtSystemPrompt(prompt), name).not.toContain(name);
+    }
+    expect(helperSystemPrompt(prompt)).toContain('# BUILDING A PLACE');
+    expect(districtSystemPrompt(prompt)).toContain('# LEADING A DISTRICT');
   });
 });

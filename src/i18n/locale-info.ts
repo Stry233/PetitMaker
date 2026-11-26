@@ -37,3 +37,9 @@ export function joinList(locale: Locale, values: readonly string[], { conjunctio
   const { sep, and } = LOCALE_INFO[locale].list;
   return `${values.slice(0, -1).join(sep)}${conjunction ? and : sep}${values[values.length - 1]}`;
 }
+
+/** A day as the locale writes it short, with the month and no year ("Nov 3", "11月3日"), for a
+ *  timestamp in ms. */
+export function shortDate(locale: Locale, at: number): string {
+  return new Date(at).toLocaleDateString(localeTag(locale), { month: 'short', day: 'numeric' });
+}

@@ -8,7 +8,7 @@ import { type CurveAnchor } from '../../../core/base/spline';
 import type { MacroToolContext } from './tool-context';
 import type { MacroContext } from '../../macros/context';
 import { previewMacroAsync } from '../../macros/runtime/preview';
-import { buildMacroRun, EMPTY_KEY, hasMacroBuildRunner, landMacroRun, MACROS, prepareMacro, type MacroBuild, type MacroId, type MacroOpts } from '../../macros/run';
+import { buildMacroThen, EMPTY_KEY, landMacroRun, MACROS, type MacroBuild, type MacroId, type MacroOpts } from '../../macros/run';
 import { stampMap, stillStamped, type MapStamp } from '../../../core/model/fingerprint';
 import { StrokePreimage } from '../paint/restore';
 import { TERRAIN_GRID } from '../../../core/game/profile';
@@ -133,11 +133,7 @@ export class SmartDrag {
         if (this.current(g)) this.refusal(g);
       }
     };
-    if (!hasMacroBuildRunner(context)) {
-      try { finish(buildMacroRun(context, g.id, opts)); } catch (error) { failed(error); }
-      return;
-    }
-    void prepareMacro(context, g.id, opts).then(finish).catch(failed);
+    void buildMacroThen(context, g.id, opts, { land: finish, failed });
   }
 
   private adjustmentOptions(a: Adjustment, anchors: CurveAnchor[]): DragOpts {

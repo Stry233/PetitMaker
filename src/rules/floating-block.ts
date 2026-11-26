@@ -13,10 +13,11 @@ import { GROUND_SUPPORT_LAYER, TERRAIN_GRID } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
 import { definePreRule } from './define';
 
-/** The rule `id` refusing a paint of `targetType` that skips a layer. */
-function floatingBlockRule<Id extends string>(id: Id, targetType: TerrainType): PreCommandRule & { readonly id: Id } {
+/** The rule `id` refusing a paint of `targetType`, which prose calls `word`, that skips a layer. */
+function floatingBlockRule<Id extends string>(id: Id, targetType: TerrainType, word: string): PreCommandRule & { readonly id: Id } {
   return definePreRule({
     id,
+    description: `Painting ${word} at elevation N>${GROUND_SUPPORT_LAYER} requires terrain reaching at least elevation N-1 in the same cell.`,
     appliesTo: [CommandType.PaintTerrain],
     validate(cmd, state, fail) {
       if (cmd.terrainType !== targetType) return [];
@@ -36,7 +37,7 @@ function floatingBlockRule<Id extends string>(id: Id, targetType: TerrainType): 
 }
 
 /** V-MTN-02: a mountain paint above the ground's own layer needs terrain one layer below in the same cell. */
-export const mountainFloatingRule = floatingBlockRule('V-MTN-02', TerrainType.Mountain);
+export const mountainFloatingRule = floatingBlockRule('V-MTN-02', TerrainType.Mountain, 'mountain');
 
 /** V-WTR-01: a water paint above the ground's own layer needs terrain one layer below in the same cell. */
-export const waterFloatingRule = floatingBlockRule('V-WTR-01', TerrainType.Water);
+export const waterFloatingRule = floatingBlockRule('V-WTR-01', TerrainType.Water, 'water');

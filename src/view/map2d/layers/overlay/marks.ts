@@ -12,6 +12,7 @@ import { HOVER_BOX, SELECTION_MARKS, bracketArm, ringRadius } from '../../../sha
 import { MAP_TEXT, MAP_INK, MAP_EDGE_ALPHA } from '../../../../assets/brand-palette';
 import type { OverlayHost } from './host';
 import type { WorldRect } from './paint';
+import { timedBeat } from '../../../shared/viewport/frame-loop';
 import { layerNumeral } from '../../../../i18n/terms/layer-name';
 
 /** Selection marks wear the map-label treatment: warm off-white ink with a translucent dark edge. */
@@ -36,32 +37,28 @@ export class OverlayMarks {
   private selectionLabel: PIXI.Text | null = null;
 
   private lastSelKey = '';
-  private selAnimId: number | null = null;
+  private stopPop: (() => void) | null = null;
 
   /** Brief scale-pop of the selection ring when a new block is selected —
    *  scales the selectionGraphics around the ring's center. Skipped under
    *  reduced motion. */
   private popSelection(cx: number, cy: number, spanPx: number): void {
     if (this.host.disposed || isMotionReduced()) return;
-    if (this.selAnimId !== null) { cancelAnimationFrame(this.selAnimId); this.selAnimId = null; }
+    this.stopPop?.();
+    this.stopPop = null;
     const g = this.selectionGraphics;
     g.pivot.set(cx, cy);
     g.position.set(cx, cy);
     const amp = selectionPopAmplitude(spanPx);
-    const { durationMs } = animConfig.selectionPop;
-    const start = performance.now();
-    const animate = () => {
-      this.host.requestRender();
-      const t = Math.min((performance.now() - start) / durationMs, 1);
+    let ended = false;
+    const stop = this.host.play(timedBeat(animConfig.selectionPop.durationMs, (t) => {
       g.scale.set(1 - amp + amp * easeOutBack(t));
-      if (t < 1) {
-        this.selAnimId = requestAnimationFrame(animate);
-      } else {
-        g.scale.set(1, 1); g.pivot.set(0, 0); g.position.set(0, 0);
-        this.selAnimId = null;
-      }
-    };
-    this.selAnimId = requestAnimationFrame(animate);
+      if (t < 1) return;
+      g.scale.set(1, 1); g.pivot.set(0, 0); g.position.set(0, 0);
+      this.stopPop = null;
+      ended = true;
+    }));
+    if (!ended) this.stopPop = stop;
   }
 
   private lastHoverKey = '';
@@ -231,7 +228,7 @@ export class OverlayMarks {
   }
 
   dispose(): void {
-    if (this.selAnimId !== null) cancelAnimationFrame(this.selAnimId);
-    this.selAnimId = null;
+    this.stopPop?.();
+    this.stopPop = null;
   }
 }

@@ -16,7 +16,7 @@ function crashing() {
   const obj = cabin();
   state.objects.set(obj.id, obj);
   registry.register({
-    id: 'throws', phase: 'pre-command', appliesTo: [CommandType.PlaceObject],
+    id: 'throws', description: 'A rule this test registers.', phase: 'pre-command', appliesTo: [CommandType.PlaceObject],
     validate: () => { throw new Error('rule crashed'); },
   });
   return { state, exec, obj };

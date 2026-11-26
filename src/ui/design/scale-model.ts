@@ -5,7 +5,7 @@
  * surface lifted for a fingertip at a fixed multiple of it (`liftOf`). The slider's reach, the hit-area
  * spacing and the dock's room are read off the same function, so nothing re-derives a scale beside it.
  */
-import { UI_ZOOM_MAX, UI_ZOOM_MIN } from '../../platform/storage/prefs';
+import { UI_ZOOM_MAX, UI_ZOOM_MIN } from '../../platform/storage/facts';
 
 /** The window the fixed layout was judged in; below it the whole interface scales down to the tighter
  *  axis. Browser page zoom divides the css viewport and multiplies `devicePixelRatio` by the same
@@ -165,5 +165,8 @@ export function reachOf(view: ScaleView): number {
   }
   const { axis, size } = view.dock;
   if (axis !== 'x' || size <= 0) return hi;
-  return Math.max(UI_ZOOM_MIN, Math.min(hi, (view.vw / FIT_FLOOR - FIT_REF.w) / size));
+  const room = (view.vw / FIT_FLOOR - FIT_REF.w) / size;
+  // The division can land one rounding step past the boundary `sideDockFits` multiplies out to.
+  const standing = sideDockFits(view.vw, size, room) ? room : room * (1 - Number.EPSILON * 8);
+  return Math.max(UI_ZOOM_MIN, Math.min(hi, standing));
 }

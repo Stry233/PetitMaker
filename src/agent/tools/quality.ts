@@ -7,8 +7,6 @@
  */
 import { TerrainType, type GridState } from '../../core/model/types';
 import { objectRect } from '../../state/object-geometry';
-import { NEIGHBORS4 } from '../../core/grid/directions';
-import { isBuildableZone } from '../../core/game/zones';
 import { getPlaceableByRole, isDecoration, getCatalogItem, roleOf } from '../../state/catalog';
 import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
 import { computeLockedCorners } from '../../core/domain/edge-cut/trim-lock';
@@ -16,8 +14,9 @@ import { roadLookup } from '../../state/object-index';
 import { detectWaterfalls } from '../../core/domain/terrain/waterfall-geometry';
 import { isCoatingItem, isCrossing } from '../../core/model/traits';
 import { SQUARE_CORNERS } from '../../core/model/corners';
-import { readMap, waterBodies, type MapMasks } from '../../tools/reading';
+import { readMap, type MapMasks } from '../../tools/reading';
 import { cellKey } from '../../core/grid/rect';
+import { labelComponents } from '../../core/grid/cell-sets';
 import { BUILDABLE_ZONES } from './game-terms';
 
 interface QualityDimension { score: number; hints: string[] }
@@ -58,7 +57,6 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
   const groups = new Map<number, number[]>();
   plants.forEach((_, i) => { const r = find(i); (groups.get(r) ?? groups.set(r, []).get(r)!).push(i); });
   const findings: SpeckleFinding[] = [];
-  const solidFloraBlocks: { w: number; h: number; at: string }[] = [];
   for (const members of groups.values()) {
     if (members.length < 4) {
       // A lone, paired or tripled tree is a specimen moment; flowers that small are strays — a
@@ -96,7 +94,6 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
     // ground. A broad panel (a flower field) is a legitimate block, so only bands 3x as long as
     // they are wide count.
     const allFlora = members.every((i) => roleOf(plants[i]!) === 'groundcover');
-    if (solid && allFlora && members.length >= 9) solidFloraBlocks.push({ w, h, at: `(${x1},${y1})-(${x2},${y2})` });
     const wideBed = solid && allFlora && isBroadBand(w, h);
     // A lattice the size of a district is wallpaper, not an orchard: the reference bounds an
     // orchard to one court (~6x8) beside the homes it belongs to.
@@ -110,17 +107,6 @@ export function speckleFindings(state: GridState): { findings: SpeckleFinding[];
     ].join(', ');
     findings.push({ rect: `(${x1},${y1})-(${x2},${y2})`, n: members.length, why });
   }
-  // Five or more plots stamped at one size read as a machine tell even in the formal dialect:
-  // the reference's side-by-side plots carry slight size differences and their own rims.
-  const dims = new Map<string, { n: number; at: string }>();
-  for (const g of solidFloraBlocks) {
-    const k = `${g.w}x${g.h}`;
-    const cur = dims.get(k) ?? { n: 0, at: g.at };
-    dims.set(k, { n: cur.n + 1, at: cur.at });
-  }
-  for (const [k, v] of dims) {
-    if (v.n >= 5) findings.push({ rect: v.at, n: v.n, why: `${v.n} identical ${k} plots — vary one or two (a different size, a water rim) so the field reads tended, not stamped` });
-  }
   findings.sort((a, b) => b.n - a.n);
   return { findings, plantCount: plants.length };
 }
@@ -131,114 +117,64 @@ export function isBroadBand(w: number, h: number): boolean {
   return Math.min(w, h) >= 3 && Math.max(w, h) >= 12 && Math.max(w, h) >= 3 * Math.min(w, h);
 }
 
-function connectivity(state: GridState): QualityDimension {
-  const { width, height } = state.template;
+function connectivity(state: GridState, g: MapMasks): QualityDimension {
+  const { W, H } = g;
   // Crossing footprints (+1 apron) let the walk change elevation or cross water.
-  const cross = new Set<number>();
+  const cross = new Uint8Array(W * H);
   for (const o of state.objects.values()) {
     if (o.locked) continue;
     if (!isCrossing(getCatalogItem(o.catalogId))) continue;
     const r = objectRect(o);
     for (let y = Math.floor(r.y) - 1; y <= r.y + r.h; y++)
       for (let x = Math.floor(r.x) - 1; x <= r.x + r.w; x++)
-        if (x >= 0 && y >= 0 && x < width && y < height) cross.add(y * width + x);
+        if (x >= 0 && y >= 0 && x < W && y < H) cross[y * W + x] = 1;
   }
-  const walk = (x: number, y: number): { ok: boolean; e: number } => {
-    const c = state.cells[y]?.[x];
-    if (!c || !isBuildableZone(c.zone)) return { ok: false, e: -1 };
-    if (c.terrain?.type === TerrainType.Water) return { ok: cross.has(y * width + x), e: 0 };
-    return { ok: true, e: c.terrain?.elevation ?? 0 };
-  };
-  // Label connected components over all walkable cells, then measure how much
-  // of the land belongs to the largest one. Start-point independent: a flood
-  // fill from any fixed cell (say the map centre) can start on an isolated
-  // plateau and invert the score.
-  const isLand = (x: number, y: number): boolean =>
-    state.cells[y]![x]!.terrain?.type !== TerrainType.Water;
-  const comp = new Int32Array(width * height).fill(-1);
-  const landSizes: number[] = [];
-  const samples: { x: number; y: number }[] = [];
-  let totalLand = 0;
-  for (let sy = 0; sy < height; sy++) for (let sx = 0; sx < width; sx++) {
-    const si = sy * width + sx;
-    if (comp[si] !== -1 || !walk(sx, sy).ok) continue;
-    const id = landSizes.length;
-    let land = 0;
-    let sample: { x: number; y: number } | null = null;
-    const q: number[] = [si];
-    comp[si] = id;
-    while (q.length) {
-      const i = q.pop()!;
-      const x = i % width, y = (i / width) | 0;
-      if (isLand(x, y)) { land++; sample ??= { x, y }; }
-      const here = walk(x, y);
-      for (const [dx, dy] of NEIGHBORS4) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const j = ny * width + nx;
-        if (comp[j] !== -1) continue;
-        const there = walk(nx, ny);
-        if (!there.ok) continue;
-        if (Math.abs(there.e - here.e) >= 1 && !(cross.has(i) || cross.has(j))) continue;
-        comp[j] = id;
-        q.push(j);
-      }
-    }
-    landSizes.push(land);
-    samples.push(sample ?? { x: sx, y: sy });
-    totalLand += land;
+  // Walkable: buildable ground, and water only where a crossing spans it, which the walk treats as level 0.
+  const walkable = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) walkable[i] = g.land[i] && (!g.water[i] || cross[i]) ? 1 : 0;
+  const level = (i: number): number => (g.water[i] ? 0 : g.elev[i]!);
+  // Components over every walkable cell, so the score does not depend on where a walk starts: a
+  // flood from a fixed cell can start on an isolated plateau and invert it.
+  const { labels, sizes } = labelComponents(walkable, W, H, false, (i, j) => level(i) === level(j) || !!cross[i] || !!cross[j]);
+  const landSizes = new Array<number>(sizes.length).fill(0);
+  const samples: ({ x: number; y: number } | undefined)[] = new Array(sizes.length).fill(undefined);
+  for (let i = 0; i < W * H; i++) {
+    const id = labels[i]!;
+    if (!id || g.water[i]) continue;
+    landSizes[id]!++;
+    samples[id] ??= { x: i % W, y: (i / W) | 0 };
   }
-  let largestId = -1;
-  for (let i = 0; i < landSizes.length; i++) if (largestId === -1 || landSizes[i]! > landSizes[largestId]!) largestId = i;
+  let totalLand = 0, largestId = -1;
+  for (let id = 1; id < sizes.length; id++) {
+    totalLand += landSizes[id]!;
+    if (largestId === -1 || landSizes[id]! > landSizes[largestId]!) largestId = id;
+  }
   const largest = largestId >= 0 ? landSizes[largestId]! : 0;
   const cov = totalLand ? largest / totalLand : 1;
   const hints: string[] = [];
   if (cov < 1) {
     // point at the biggest cut-off piece, not an arbitrary one
     let worst = -1;
-    for (let i = 0; i < landSizes.length; i++) if (i !== largestId && (worst === -1 || landSizes[i]! > landSizes[worst]!)) worst = i;
+    for (let id = 1; id < sizes.length; id++) if (id !== largestId && (worst === -1 || landSizes[id]! > landSizes[worst]!)) worst = id;
     const s = samples[worst]!;
     hints.push(`${totalLand - largest} walkable cells are cut off from the main landmass (largest isolated piece near (${s.x},${s.y})) -- add a ramp or bridge to join them.`);
   }
   return { score: clamp10(cov * 10), hints };
 }
 
-function terrainInterest(state: GridState): QualityDimension {
-  const { width, height } = state.template;
-  const seen = new Set<number>();
-  let land = 0, largestFlat = 0;
+function terrainInterest(g: MapMasks): QualityDimension {
+  const { W, H } = g;
   const tiers = new Set<number>();
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const c = state.cells[y]![x]!;
-    if (!isBuildableZone(c.zone)) continue;
-    land++;
-    if (c.terrain?.type === TerrainType.Mountain) tiers.add(c.terrain.elevation);
-    const i = y * width + x;
-    if (seen.has(i) || c.terrain?.type === TerrainType.Water) continue;
-    // Flood-fill the same-elevation flat expanse.
-    const e = c.terrain?.elevation ?? 0;
-    let size = 0;
-    const fq = [i];
-    seen.add(i);
-    while (fq.length) {
-      const j = fq.pop()!;
-      size++;
-      const jx = j % width, jy = (j / width) | 0;
-      for (const [dx, dy] of NEIGHBORS4) {
-        const nx = jx + dx, ny = jy + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const k = ny * width + nx;
-        const n = state.cells[ny]![nx]!;
-        if (seen.has(k) || !isBuildableZone(n.zone)) continue;
-        if (n.terrain?.type === TerrainType.Water) continue;
-        if ((n.terrain?.elevation ?? 0) !== e) continue;
-        seen.add(k);
-        fq.push(k);
-      }
-    }
-    largestFlat = Math.max(largestFlat, size);
+  const dry = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    if (!g.land[i]) continue;
+    if (g.mountain[i]) tiers.add(g.elev[i]!);
+    if (!g.water[i]) dry[i] = 1;
   }
-  const flatRatio = land ? largestFlat / land : 1;
+  // The same-elevation flat expanses: dry buildable ground joined at equal height.
+  const { sizes } = labelComponents(dry, W, H, false, (i, j) => g.elev[i] === g.elev[j]);
+  const largestFlat = sizes.reduce((most, n, id) => (id > 0 && n > most ? n : most), 0);
+  const flatRatio = g.landCells ? largestFlat / g.landCells : 1;
   const hints: string[] = [];
   if (flatRatio > 0.5) hints.push(`Too flat: largest same-elevation expanse is ${Math.round(flatRatio * 100)}% of the land -- break it up with terraces, cliffs, or water.`);
   if (tiers.size < 2) hints.push(`Only ${tiers.size} mountain tier(s) in use -- professional maps layer 2-4 elevations.`);
@@ -255,18 +191,6 @@ function water(state: GridState, g: MapMasks): QualityDimension {
     if (g.elev[i]! > 0) elevated++;
   }
   const hints: string[] = [];
-  // Congruent pools read as one stamp used twice; experts vary each body (islets, a
-  // different outline, a border) even when the terraces holding them repeat. Pairs are judged
-  // in raster order of each body's first cell, so a pair's hint names its bodies in reading order.
-  const pools = waterBodies(g, state)
-    .map((body) => ({ first: body.cells[0]!, x: body.x0, y: body.y0, w: body.x1 - body.x0 + 1, h: body.y1 - body.y0 + 1, n: body.cells.length }))
-    .sort((p, q) => p.first - q.first);
-  for (let i = 0; i < pools.length; i++) for (let j = i + 1; j < pools.length; j++) {
-    const a = pools[i]!, b = pools[j]!;
-    if (a.w >= 3 && a.h >= 3 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1 && Math.abs(a.n - b.n) <= Math.ceil(a.n * 0.15)) {
-      hints.push(`Two water bodies are congruent ${a.w}x${a.h} stamps (at (${a.x},${a.y}) and (${b.x},${b.y})) -- vary one: islets, a different outline, or a distinct border.`);
-    }
-  }
   let score = 0;
   if (cells === 0) hints.push('No water anywhere -- a river or lake adds life (carve_river, paint_terrain water).');
   else {
@@ -305,7 +229,7 @@ function silhouette(state: GridState): QualityDimension {
     [1, 0, 0, 1],   // SE: E, S
   ];
   let candidates = 0, trimmed = 0;
-  let maxRun = 0, runX = -1, runY = -1;
+  let maxRun = 0;
   // horizontal wall runs (exposed north/south faces) per row
   for (let y = 0; y < height; y++) {
     let runN = 0, runS = 0;
@@ -315,7 +239,7 @@ function silhouette(state: GridState): QualityDimension {
       const e = isCliff ? t.elevation : -1;
       runN = isCliff && surf(x, y - 1) < e ? runN + 1 : 0;
       runS = isCliff && surf(x, y + 1) < e ? runS + 1 : 0;
-      if (Math.max(runN, runS) > maxRun) { maxRun = Math.max(runN, runS); runX = x; runY = y; }
+      maxRun = Math.max(maxRun, runN, runS);
       if (!isCliff) continue;
       // convex corner census (both edge neighbours strictly lower), minus locked corners
       let locked: readonly boolean[] | null = null;
@@ -339,7 +263,7 @@ function silhouette(state: GridState): QualityDimension {
       const e = isCliff ? t.elevation : -1;
       runW = isCliff && surf(x - 1, y) < e ? runW + 1 : 0;
       runE = isCliff && surf(x + 1, y) < e ? runE + 1 : 0;
-      if (Math.max(runW, runE) > maxRun) { maxRun = Math.max(runW, runE); runX = x; runY = y; }
+      maxRun = Math.max(maxRun, runW, runE);
     }
   }
   if (candidates === 0 && maxRun < 12) {
@@ -349,12 +273,6 @@ function silhouette(state: GridState): QualityDimension {
   const trimFrac = candidates > 0 ? trimmed / candidates : 1;
   const wallPenalty = Math.max(0, Math.min(1, (maxRun - 10) / 20));
   const hints: string[] = [];
-  if (candidates >= 6 && trimFrac < 0.5) {
-    hints.push(`${candidates - trimmed} of ${candidates} convex cliff corners are raw squares -- smooth them (paint_terrain smooth:'round', sculpt_terrace, or trim_corner) so cliffs read organic.`);
-  }
-  if (maxRun >= 12) {
-    hints.push(`A dead-straight cliff wall runs ${maxRun} cells near (${runX},${runY}) -- break it with insets, curves, or a terrace step.`);
-  }
   return { score: clamp10(trimFrac * 7 + (1 - wallPenalty) * 3), hints };
 }
 
@@ -382,7 +300,7 @@ function decoration(state: GridState): QualityDimension {
   const target = (width * height) / 80; // ~1 decoration per 80 cells per quadrant
   const names = ['NW', 'NE', 'SW', 'SE'];
   quad.forEach((n, i) => {
-    if (n < target / 4) hints.push(`${names[i]} quadrant is barely decorated (${n} flora/trees) -- scatter_objects or plant in drifts.`);
+    if (n < target / 4) hints.push(`${names[i]} quadrant is barely decorated (${n} flora/trees) -- plant it in beds, rows or an orchard lattice.`);
   });
   // Noise costs the grade: what the sweep names as speckle is disorder, not decoration.
   const { findings } = speckleFindings(state);
@@ -444,30 +362,16 @@ function roads(state: GridState): QualityDimension {
   const frac = connected / buildingsArr.length;
   const hints: string[] = [];
   if (frac < 1) hints.push(`${buildingsArr.length - connected} of ${buildingsArr.length} buildings have no road within 6 cells -- build_road to connect them.`);
-  // Four-way crossings are the reference's one banned junction: side streets tee into a trunk at
-  // staggered points, they never run straight across it. A crossing core is a road cell with all
-  // four orthogonal neighbors road and at most one diagonal road neighbor -- the diagonal test is
-  // what keeps a 2-wide road's interior (all diagonals paved too) from reading as a crossing.
-  const road = (x: number, y: number) => roadCells.has(cellKey(x, y));
-  const crossings: string[] = [];
-  for (const key of roadCells) {
-    const [x, y] = key.split(',').map(Number) as [number, number];
-    if (!(road(x + 1, y) && road(x - 1, y) && road(x, y + 1) && road(x, y - 1))) continue;
-    const diag = [road(x + 1, y + 1), road(x + 1, y - 1), road(x - 1, y + 1), road(x - 1, y - 1)].filter(Boolean).length;
-    if (diag <= 1) crossings.push(`(${x},${y})`);
-  }
-  if (crossings.length > 0) {
-    hints.push(`${crossings.length} four-way crossing(s) at ${crossings.slice(0, 4).join(' ')}${crossings.length > 4 ? ' and more' : ''} -- the reference never crosses two streets: stagger one so it tees INTO the other and stops (T or offset junctions only).`);
-  }
-  return { score: clamp10(frac * 10 - Math.min(3, crossings.length)), hints };
+  return { score: clamp10(frac * 10), hints };
 }
 
 /** The evaluate_map report: every dimension's grade and hints for the current map. */
 export function qualityReport(state: GridState): QualityReport {
+  const g = readMap(state);
   return {
-    connectivity: connectivity(state),
-    terrainInterest: terrainInterest(state),
-    water: water(state, readMap(state)),
+    connectivity: connectivity(state, g),
+    terrainInterest: terrainInterest(g),
+    water: water(state, g),
     buildings: buildings(state),
     decoration: decoration(state),
     roads: roads(state),

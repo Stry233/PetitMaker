@@ -15,6 +15,7 @@ import type { Locale } from '../../../core/model/locale';
 import { BASE_SUPPORT, CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
 import { deserializeLog } from '../../../agent/session/log-codec';
 import { eventsOf } from '../../../agent/core/log';
+import { drawnIcon } from '../../_support/agent/drawn-icon';
 
 /** One operation row as every list draws it: a single-row `OpsList`. */
 function OpRow({ op }: { op: OpRowData }) {
@@ -153,15 +154,6 @@ describe('plan stage history', () => {
     fireEvent.click(doneButton!);
     await waitFor(() => expect(done!.querySelectorAll('[data-testid="op-row"]')).toHaveLength(0));
   });
-
-  it('keeps ungrouped legacy operations accessible after every stage completes', () => {
-    const { getAllByTestId, queryAllByTestId } = renderWithI18n(<JobTicket job={makeJob({
-      plan: { ...plan, currentIndex: 2, doneCount: 2 }, ops: [makeOp()],
-    })} />);
-    expect(queryAllByTestId('op-row')).toHaveLength(0);
-    fireEvent.click(getAllByTestId('plan-stage-label')[1]!);
-    expect(queryAllByTestId('op-row')).toHaveLength(1);
-  });
 });
 
 describe('OpRow: one line, expandable detail, muted read tools', () => {
@@ -229,13 +221,13 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     expect(stages[2]!.getAttribute('data-state')).toBe('todo');
 
     const boxes = getAllByTestId('stage-box');
-    expect(boxes[0]!.querySelector('use')?.getAttribute('href')).toBe('#pw-check');
+    expect(drawnIcon(boxes[0])).toBe('pw-check');
   });
 
-  it('keeps ungrouped legacy reverts on the active stage', () => {
+  it('rolls a stage\'s reverts up beside the stage they were filed under', () => {
     const ops = [
-      makeOp({ name: 'carve_river', status: 'revert' }),
-      makeOp({ name: 'place_object', status: 'ok' }),
+      makeOp({ name: 'carve_river', status: 'revert', stageIndex: 1 }),
+      makeOp({ name: 'place_object', status: 'ok', stageIndex: 1 }),
     ];
     const { getAllByTestId, getAllByTestId: all } = renderWithI18n(<JobTicket job={makeJob({ plan, ops })} live />);
     const rollups = all('stage-rollup');
@@ -263,7 +255,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
   });
 
   it('nests the active stage\'s live op row under it, and only there', () => {
-    const ops = [makeOp({ name: 'place_object', status: 'run' })];
+    const ops = [makeOp({ name: 'place_object', status: 'run', stageIndex: 1 })];
     const job = makeJob({ plan, ops });
     const { getAllByTestId } = renderWithI18n(<JobTicket job={job} live />);
     const stages = getAllByTestId('plan-stage');
@@ -272,7 +264,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     expect(stages[2]!.querySelector('[data-testid="op-row"]')).toBeNull();
   });
 
-  it('offers a done stage its own rewind, asks first, and hands the answer the whole checkpoint', () => {
+  it('offers a done stage its own rewind, asks first, and hands the answer the job and its checkpoint', () => {
     const onRewind = vi.fn();
     const checkpoints: JobView['checkpoints'] = [
       { undoIndex: 7, label: 'stage', stageIndex: 0 },
@@ -285,8 +277,16 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     fireEvent.click(buttons[0]!);
     expect(onRewind, 'the press asks, as every take-back does').not.toHaveBeenCalled();
     fireEvent.click(document.querySelector<HTMLElement>('[data-testid="plan-rewind-confirm"]')!);
-    // `undoIndex` is the watermark the shell rewinds to.
-    expect(onRewind).toHaveBeenCalledWith({ undoIndex: 7, label: 'stage', stageIndex: 0 });
+    // The verb is handed the job and which of its checkpoints to rewind to.
+    expect(onRewind).toHaveBeenCalledWith(job, 0);
+  });
+
+  it('offers a done stage no rewind once the stack stands at its checkpoint, since the press would take nothing back', () => {
+    const job = makeJob({ plan, ops: [], checkpoints: [{ undoIndex: 7, label: 'stage', stageIndex: 0 }] });
+    const { queryAllByTestId } = renderWithI18n(
+      <JobTicket job={job} live takeBack={{ running: false, undoDepth: 7 }} onRewind={() => {}} />,
+    );
+    expect(queryAllByTestId('plan-rewind').length).toBe(0);
   });
 
   it('names a stage the model left blank rather than drawing a nameless rung', () => {
@@ -318,7 +318,7 @@ describe('PlanRail (via JobTicket): stages and the active stage\'s nested ops', 
     const onLast: NonNullable<JobView['plan']> = {
       stages: [{ label: 'A' }, { label: 'B' }], currentIndex: 1, doneCount: 1, revision: 1,
     };
-    const job = makeJob({ plan: onLast, ops: [makeOp({ status: 'run' })] });
+    const job = makeJob({ plan: onLast, ops: [makeOp({ status: 'run', stageIndex: 1 })] });
     const { getAllByTestId } = renderWithI18n(<JobTicket job={job} live />);
     expect(getAllByTestId('plan-stage')[1]!.querySelector('[data-testid="stage-connector"]')).not.toBeNull();
   });
@@ -435,7 +435,7 @@ describe('OpRow: a reverted row', () => {
     expect(translations.ru['agent.op_detail_sent_back']).not.toContain('Ответ модели');
   });
 
-  it('[ASST-11] renders a region-blocked row with the shield, the kept-in-region chip and its reason', () => {
+  it('[ASST-11] renders a region-blocked row with the shield, the outside-region chip and its reason', () => {
     const op = makeOp({
       name: 'place_object',
       status: 'blocked',
@@ -449,20 +449,21 @@ describe('OpRow: a reverted row', () => {
     expect(container.textContent).not.toContain('OUT OF REGION');
     // The chip shows once the row is folded shut.
     fireEvent.click(getByTestId('op-row'));
-    expect(getByTestId('op-chip').textContent).toBe('kept in your region');
+    expect(getByTestId('op-chip').textContent).toBe(translations.en['agent.op_chip_region']);
   });
 
-  /** A call cut off mid-arguments never reached a tool; the model was sent the loop's `(system)` note. */
+  /** A call cut off mid-arguments never reached a tool; the model was sent the loop's own note. */
   it('renders an unreadable call in the panel\'s own words, never the system note', () => {
     const op = makeOp({
       name: 'build_road',
       status: 'error',
       summary: '(system) The turn was cut off before the arguments were complete.',
+      detail: { loopNote: true },
     });
     const { getByTestId, container, queryByTestId } = renderWithI18n(<OpRow op={op} />);
     expect(getByTestId('op-row').getAttribute('data-open')).toBe('true');
     expect(queryByTestId('op-chip')).toBeNull();
-    expect(getByTestId('op-detail').textContent).toContain('asked for that wrong');
+    expect(getByTestId('op-detail').textContent).toBe(translations.en['agent.op_detail_unreadable']);
     expect(container.textContent).not.toContain('(system)');
   });
 
@@ -485,10 +486,10 @@ describe('OpRow: a reverted row', () => {
   /** Only a style skill is a playbook. */
   it('chips a loaded skill with its title and stamps a playbook under the row', () => {
     const styled = renderWithI18n(
-      <OpRow op={makeOp({ name: 'load_skill', isRead: true, skill: { name: 'cozy', kind: 'style', title: 'Cozy Village' } })} />,
+      <OpRow op={makeOp({ name: 'load_skill', isRead: true, skill: { name: 'cozy', kind: 'style', title: 'Figure Landscape' } })} />,
     );
-    expect(styled.getByTestId('op-chip').textContent).toBe('Cozy Village');
-    expect(styled.getByTestId('stamp').textContent).toBe('Building from the Cozy Village playbook');
+    expect(styled.getByTestId('op-chip').textContent).toBe('Figure Landscape');
+    expect(styled.getByTestId('stamp').textContent).toBe('Building from the Figure Landscape playbook');
     styled.unmount();
 
     const method = renderWithI18n(
@@ -686,11 +687,11 @@ describe('JobTicket: a job on hold', () => {
     const first = renderWithI18n(
       <JobTicket job={makeJob({ plan: { ...plan, currentIndex: 0, doneCount: 0 } })} live paused />,
     );
-    expect(first.getByTestId('pausemark').textContent).toContain('step boundary');
+    expect(first.getByTestId('pausemark').textContent).toContain(translations.en['agent.ticket_paused_boundary']);
     first.unmount();
 
     const planless = renderWithI18n(<JobTicket job={makeJob()} live paused />);
-    expect(planless.getByTestId('pausemark').textContent).toContain('step boundary');
+    expect(planless.getByTestId('pausemark').textContent).toContain(translations.en['agent.ticket_paused_boundary']);
   });
 
   it('stands the hold\'s own two verbs under the ticket, and only while it is held', () => {

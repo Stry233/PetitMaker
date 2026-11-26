@@ -9,6 +9,7 @@ import { EventBus } from '../../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../../state/editing/events';
 import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
+import { regionOf } from '../../../../state/editing/region';
 import { Rail } from '../../../../ui/shell/Rail';
 import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
 import { setToastPresenter } from '../../../../platform/channels/toast-bus';
@@ -84,15 +85,15 @@ describe('the history pair while a region is painted', () => {
     expect(built(), 'the map has an edit to undo').toBe(TerrainType.Mountain);
     const painted = [{ x: 2, y: 3 }];
     useEditorStore.setState({
-      gridState: state, selectingRegion: true, commandExecutor: executor, region: painted, regionUndoLane: [[]], regionRedoLane: [],
+      gridState: state, selectingRegion: true, regionSelectionOwner: 'generator', regions: { generator: { cells: painted, map: state } }, commandExecutor: executor, regionUndoLane: [[]], regionRedoLane: [],
     });
     mount();
     expect(redo()).toHaveProperty('disabled', true);
     fireEvent.click(undo());
-    expect(useEditorStore.getState().region).toEqual([]);
+    expect(regionOf(useEditorStore.getState(), 'generator')).toEqual([]);
     expect(built(), 'the map kept its edit').toBe(TerrainType.Mountain);
     fireEvent.click(redo());
-    expect(useEditorStore.getState().region).toEqual(painted);
-    useEditorStore.setState({ selectingRegion: false, commandExecutor: null, gridState: null, region: [], regionUndoLane: [], regionRedoLane: [] });
+    expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(painted);
+    useEditorStore.setState({ selectingRegion: false, commandExecutor: null, gridState: null, regions: {}, regionUndoLane: [], regionRedoLane: [] });
   });
 });

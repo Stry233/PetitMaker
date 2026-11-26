@@ -1,12 +1,13 @@
 /**
  * My planets as the planet windows use it: the library's reads and writes (`io/storage/planet-library.ts`),
- * a planet file read into it or written out of it, a copy under its translated name, and a planet read
- * from a video opened as a draft. Each verb raises its own failure notice.
+ * a planet file read into it or written out of it, a copy under its translated name, a planet read
+ * from a video opened as a draft, and the background check of names not yet checked. Each verb raises
+ * its own failure notice.
  */
 import type { Locale } from '../../core/model/locale';
 import { translate } from '../../i18n/context';
 import { showToast } from '../../platform/channels/toast-bus';
-import { downloadBlob, exportFileName, safeName } from '../../io/export/download';
+import { downloadJSON, exportFileName, safeName } from '../../io/export/download';
 import { clampName, readPlanetFile, writePlanetFile } from '../../io/save/planet-codec';
 import { readImportText } from '../../io/import/read-blob';
 import {
@@ -14,13 +15,21 @@ import {
   removePlanet, renamePlanet, savePlanet, shownAs, type PlanetEntry,
 } from '../../io/storage/planet-library';
 import type { PlanetDraft } from '../operations/planet-session';
+import { uncheckedPlanetName } from '../../state/planet-name-verdict';
+import { useEditorStore } from '../../state/store';
 import type { ScanOutcome } from '../../pipelines/planet-scan';
-import { defaultPlanetName } from './planet-names';
+import { defaultPlanetName, shownEntryName } from './planet-names';
 
 export {
-  adoptPlanet, duplicatePlanet, listPlanets, onPlanetLibraryChange, planetEntryFor, planetLibraryVersion, removePlanet, renamePlanet, savePlanet, shownAs,
+  adoptPlanet, duplicatePlanet, listPlanets, onPlanetLibraryChange, planetEntryFor, planetLibraryVersion, removePlanet, renamePlanet, savePlanet,
   type PlanetEntry,
 };
+
+/** The library's entries as a surface shows them: each under its approved name, or its default name
+ *  while that is unchecked or refused. */
+export function shownPlanetEntries(locale: Locale): PlanetEntry[] {
+  return listPlanets().map((e, i) => { const shown = shownEntryName(e, i, locale); return shown === e.name ? e : shownAs(e, shown); });
+}
 
 /** The entry a planet file names in the library: the existing entry for its planet, or a new one under
  *  the file's name (unreviewed until the text check settles it) or the next default name. Null when the
@@ -65,7 +74,7 @@ export function removePlanetEntry(entry: PlanetEntry): boolean {
 
 /** Downloads `entry` as a planet file. */
 export function downloadPlanetFile(entry: PlanetEntry): void {
-  downloadBlob(new Blob([writePlanetFile(entry.name, entry.template)], { type: 'application/json' }), exportFileName([safeName(entry.name)], 'planet.json'));
+  downloadJSON(writePlanetFile(entry.name, entry.template), exportFileName([safeName(entry.name)], 'planet.json'));
 }
 
 /** A planet read from a video, as the planet editor opens it: a new planet with its cells to check. */
@@ -74,4 +83,24 @@ export function draftFromScan(outcome: ScanOutcome): PlanetDraft {
     template: outcome.template, rimSand: outcome.rimSand,
     review: { cells: outcome.review, landmark: outcome.landmark !== null, unplaced: outcome.unplaced },
   };
+}
+
+/** Runs `review` (the edition's planet name check) whenever a name still waits for it: a library entry
+ *  not yet checked, or the open map's own planet that no entry names, as the editor starts, after
+ *  every library write and as another planet opens. Returns the stop. */
+export function watchUncheckedPlanetNames(review: () => void): () => void {
+  const check = (): void => {
+    const entries = listPlanets();
+    const template = useEditorStore.getState().gridState?.template;
+    if (entries.some((e) => !e.nameReviewed) || (template && uncheckedPlanetName(template, entries) !== null)) review();
+  };
+  let template = useEditorStore.getState().gridState?.template;
+  const offStore = useEditorStore.subscribe((next) => {
+    if (next.gridState?.template === template) return;
+    template = next.gridState?.template;
+    check();
+  });
+  const offLibrary = onPlanetLibraryChange(check);
+  check();
+  return () => { offStore(); offLibrary(); };
 }

@@ -4,14 +4,14 @@ import { useT } from '../../../i18n/context';
 import { GlyphIcon } from '../GlyphIcon';
 import { SCALE } from '../units';
 import { FREE_SHAPE_COMMAND, TOOL_CELLS, commandLabel } from './terrain-cells';
-import { OptionPill } from './OptionPill';
+import { OptionPill, OPTION_GLYPH } from './OptionPill';
 import { useCommandTitle } from './bar-atoms';
 
 /** A brush shape's drawing, at `scale` times the shape group's own size: the tool cell's glyph, or
  *  the loose stroke the free figure, which has no cell, is drawn as. */
 export function ShapeGlyph({ shape, scale = 1 }: { shape: BuildShape; scale?: number }) {
   const cell = TOOL_CELLS.find(cell => cell.shows.shape === shape);
-  return cell ? <GlyphIcon glyph={cell.glyph.mountain} size={51 * SCALE * scale}/> : <svg width={64 * SCALE * scale} height={58 * SCALE * scale} viewBox="0 0 28 20" aria-hidden>
+  return cell ? <GlyphIcon glyph={cell.glyph.mountain} size={OPTION_GLYPH * scale}/> : <svg width={64 * SCALE * scale} height={58 * SCALE * scale} viewBox="0 0 28 20" aria-hidden>
     <path d="M2 15C8-3 11 22 17 7S26 0 25 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
   </svg>;
 }

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { extendRouteFit, fitRoutePath, routeFitAnchors, startRouteFit } from '../../../../core/model/annotation/route-fit';
+import { extendRouteFit, routeFitAnchors, startRouteFit } from '../../../../core/model/annotation/route-fit';
+import type { CurveAnchor } from '../../../../core/base/spline';
 import type { MacroCoord } from '../../../../core/model/types';
+
+/** A whole sampled path through the fit, as a drag over it draws it. */
+function fitRoutePath(points: readonly MacroCoord[], cellPixels: number): CurveAnchor[] {
+  const fit = startRouteFit(points[0]!, cellPixels);
+  for (const p of points.slice(1)) extendRouteFit(fit, p);
+  return routeFitAnchors(fit);
+}
 
 /** A pointer path in screen px: `steps` samples along each leg of a polyline. */
 function screenPath(corners: Array<[number, number]>, steps = 40): Array<[number, number]> {

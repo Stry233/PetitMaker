@@ -16,7 +16,7 @@ import { frameCells } from '../terrain/landmark';
 import type { TerrainSculpt } from '../terrain/terrain-sculpt';
 import { BRIDGE_COUNT, layBridges, layFlights, layLineDecks } from './crossings';
 import { mouthPaved, paveApproach, paveBand, paveHubApron, type Paving } from './paving';
-import type { Scope } from './scope';
+import type { Scope } from '../../terrain-plan/scope';
 
 /** The plans the network is laid from. */
 interface NetworkDesign {

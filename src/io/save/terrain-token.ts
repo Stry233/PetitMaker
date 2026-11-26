@@ -14,11 +14,6 @@ const CORNER_DECODE: Record<string, CornerTrim> = {
   S: 'square', F: 'fan', T: 'tri-NW', '1': 'tri-NW', '2': 'tri-NE', '3': 'tri-SW', '4': 'tri-SE', E: 'empty',
 };
 
-/** Four known corner trims. */
-export function isValidCorners(v: unknown): v is Corners {
-  return Array.isArray(v) && v.length === 4 && v.every((c) => typeof c === 'string' && Object.prototype.hasOwnProperty.call(CORNER_CODE, c));
-}
-
 /** Encodes corners as a four-character suffix, omitting the all-square default. */
 export function encodeCorners(corners: Corners): string | undefined {
   const suffix = corners.map((c: CornerTrim) => CORNER_CODE[c] ?? 'S').join('');

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Import planet's window: it asks how to import, routes a planet file to Change Planet's picker and
- * a game video through the guide, the reading and its stages, Cancel, and each refusal.
+ * a game video through the guide, the reading and its stages, Cancel, and each refusal. The read is
+ * the scan session's (`editor/session/planet-scan.ts`), scripted here.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -9,9 +10,10 @@ import { MotionConfig } from 'framer-motion';
 import { I18nProvider, translate } from '../../../../../i18n/context';
 import { useEditorStore } from '../../../../../state/store';
 import { PlanetImportWindow } from '../../../../../ui/chrome/modals/planet/PlanetImportWindow';
+import { createPlanetScan, type PlanetScan } from '../../../../../editor/session/planet-scan';
 import { FAILURE_COPY } from '../../../../../ui/chrome/modals/planet/VideoImportGuide';
-import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../../../ui/chrome/modals/planet/video-guide';
-import { HELP_PAGES } from '../../../../../ui/help/catalog';
+import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../../../editor/help/video-guide';
+import { HELP_PAGES } from '../../../../../editor/help/catalog';
 import { acceptsVideo } from '../../../../../io/import/kind';
 import { translations } from '../../../../../i18n/translations';
 import { SCAN_FAILURES } from '../../../../../pipelines/planet-scan/errors';
@@ -48,19 +50,25 @@ function scripted() {
 }
 
 /** Mounts the window under reduced motion unless `motion` asks for the full transitions, so a case
- *  that is not about motion waits on no animation. */
-function mount(props: Partial<Parameters<typeof PlanetImportWindow>[0]> = {}, motion = false) {
+ *  that is not about motion waits on no animation. Its read is a session over `scan`, whose planet
+ *  the planet editor takes unless `opens` says it cannot open now; `session` mounts over one kept
+ *  from an earlier window. */
+function mount(
+  { scan, opens = () => true, session, ...props }: Partial<Parameters<typeof PlanetImportWindow>[0]> & { scan?: ScanVideo; opens?: () => boolean } = {},
+  motion = false,
+) {
   const onClose = vi.fn();
-  const onScanned = vi.fn((_: ScanOutcome) => true);
+  const onScanned = vi.fn((_: ScanOutcome) => opens());
   const onPickFile = vi.fn();
+  const read: PlanetScan = session ?? createPlanetScan(scan ?? (() => new Promise<ScanOutcome>(() => {})), onScanned);
   const utils = render(
     <MotionConfig reducedMotion={motion ? 'never' : 'always'}>
       <I18nProvider>
-        <PlanetImportWindow open onClose={onClose} onScanned={onScanned} onPickFile={onPickFile} canEdit {...props} />
+        <PlanetImportWindow open onClose={onClose} onPickFile={onPickFile} canEdit session={read} {...props} />
       </I18nProvider>
     </MotionConfig>,
   );
-  return { ...utils, onClose, onScanned, onPickFile };
+  return { ...utils, onClose, onScanned, onPickFile, session: read };
 }
 
 /** Fakes only the window's own timers, leaving the animation frames real, so a case can step the
@@ -259,9 +267,7 @@ describe('a planet the editor cannot open yet', () => {
   it('keeps the planet with the reason and opens it on a second try', async () => {
     const { scan, calls } = scripted();
     let allowed = false;
-    const onScanned = vi.fn(() => allowed);
-    const onClose = vi.fn();
-    render(<MotionConfig reducedMotion="always"><I18nProvider><PlanetImportWindow open onClose={onClose} onScanned={onScanned} canEdit scan={scan} /></I18nProvider></MotionConfig>);
+    const { onScanned, onClose } = mount({ scan, opens: () => allowed });
     fireEvent.click(screen.getByTestId('planet-import-video'));
     await screen.findByTestId('scan-file');
     choose();
@@ -275,13 +281,37 @@ describe('a planet the editor cannot open yet', () => {
     expect(onScanned).toHaveBeenLastCalledWith(OUTCOME);
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('keeps the planet when the window closes, and the next opening offers it again', async () => {
+    const { scan, calls } = scripted();
+    let allowed = false;
+    const first = mount({ scan, opens: () => allowed });
+    fireEvent.click(screen.getByTestId('planet-import-video'));
+    await screen.findByTestId('scan-file');
+    choose();
+    await screen.findByTestId('scan-progress');
+    await act(async () => { calls[0]!.resolve(OUTCOME); });
+    await screen.findByTestId('scan-open-failed');
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await waitFor(() => expect(first.onClose).toHaveBeenCalled());
+    first.unmount();
+    expect(first.session.snapshot().held, 'the planet outlives its window').toBe(OUTCOME);
+
+    const again = mount({ session: first.session });
+    expect((await screen.findByTestId('scan-open-failed')).textContent).toBe(t('planet.scan_open_failed'));
+    allowed = true;
+    fireEvent.click(screen.getByTestId('planet-import-retry'));
+    expect(first.onScanned).toHaveBeenLastCalledWith(OUTCOME);
+    expect(again.onClose).toHaveBeenCalled();
+    expect(first.session.snapshot().held).toBeNull();
+  });
 });
 
 describe('Change Planet', () => {
   it('opens Import planet as its own window, and From a planet file reaches the planet file picker', async () => {
     newMap(editorPort, 'hexia');
     act(() => { useEditorStore.getState().setModal('planetImport', false); });
-    render(<MotionConfig reducedMotion="always"><I18nProvider><ChangePlanetModal open onSwitch={() => {}} onClose={() => {}} onEditPlanet={() => {}} /></I18nProvider></MotionConfig>);
+    render(<MotionConfig reducedMotion="always"><I18nProvider><ChangePlanetModal open onSwitch={() => {}} onClose={() => {}} /></I18nProvider></MotionConfig>);
     const input = screen.getByTestId('planet-file') as HTMLInputElement;
     const click = vi.spyOn(input, 'click');
     fireEvent.click(screen.getByTestId('planet-import'));

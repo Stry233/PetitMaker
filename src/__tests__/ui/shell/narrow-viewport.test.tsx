@@ -7,7 +7,12 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ToolType } from '../../../state/editing/vocabulary';
-import { declineRestoreOffer } from '../../../ui/session/restore-offer';
+import { RESTORE_AFTER_MS, __setRestoreOffer, declineRestoreOffer, restoreDeadline, restoreOffer } from '../../../editor/session/restore';
+import { newMap } from '../../../editor/operations';
+import { editorPort } from '../../../editor/session/context';
+import { getMapTemplate } from '../../../config/maps';
+import { createGridState } from '../../../core/model/template';
+import type { RestoredAutosave } from '../../../io/storage/autosave';
 import { I18nProvider, translate } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
@@ -40,7 +45,7 @@ vi.stubGlobal('localStorage', {
 function mountShell() {
   return render(
     <I18nProvider>
-      <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+      <Shell><div data-testid="map-views" /></Shell>
     </I18nProvider>,
   );
 }
@@ -145,22 +150,25 @@ describe('a mode block', () => {
 });
 
 describe('the restore offer', () => {
-  const noop = () => {};
-  const shelf = (onRestore = noop, onDismiss = noop) => render(
+  /** A saved session on offer; its map is real, since an answer may restore it. */
+  const saved = (): RestoredAutosave => ({ state: createGridState(getMapTemplate('tafa')) });
+  const shelf = (splashActive = false) => (
     <I18nProvider>
-      <RestoreShelf state={{} as never} onRestore={onRestore} onDismiss={onDismiss} />
-    </I18nProvider>,
+      <RestoreShelf state={{} as never} splashActive={splashActive} />
+    </I18nProvider>
   );
-  /** The seconds the offer tells a screen reader it waits before pressing itself. */
-  const announcedWait = (): number => {
+  /** The words a screen reader hears about the card's self-press. */
+  const selfPressHint = (): string => {
     const button = document.querySelector('[aria-describedby]')!;
-    return Number(/\d+/.exec(document.getElementById(button.getAttribute('aria-describedby')!)!.textContent!)![0]);
+    return document.getElementById(button.getAttribute('aria-describedby')!)!.textContent!;
   };
+
+  afterEach(() => { cleanup(); __setRestoreOffer(null); });
 
   /** The saved map's card is itself the resume control, with the words beside it and both answers
    *  as pills under them. */
   it('is a card that presses itself, with the words beside it and both answers as pills', () => {
-    shelf();
+    render(shelf());
     const card = screen.getByTestId('restore-card');
     expect(card.tagName).toBe('BUTTON');
     // `aria-label` replaces the card's text, so it carries the title as well as the action.
@@ -173,89 +181,75 @@ describe('the restore offer', () => {
     expect(card.contains(fresh), 'no button nested in a button').toBe(false);
     const resume = screen.getByTestId('restore-resume');
     expect(card.contains(resume), 'no button nested in a button').toBe(false);
+    expect(selfPressHint()).toContain(String(RESTORE_AFTER_MS / 1000));
   });
 
   it('names what it is and one way to decline, and nothing behind it is locked out', () => {
-    shelf();
+    render(shelf());
     expect(screen.getByText(translate('restore.title'))).toBeTruthy();
     expect(screen.getByText(translate('restore.fresh'))).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('calls back the choice the visitor made, and nothing else', () => {
-    const restore = vi.fn();
-    const dismiss = vi.fn();
-    shelf(restore, dismiss);
+  it('Start fresh lets the saved session go and leaves the open map', () => {
+    newMap(editorPort, 'hexia');
+    const open = useEditorStore.getState().gridState;
+    __setRestoreOffer(saved());
+    render(shelf());
     fireEvent.click(screen.getByText(translate('restore.fresh')));
-    expect(dismiss).toHaveBeenCalledTimes(1);
-    expect(restore).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId('restore-card'));
-    expect(restore).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByTestId('restore-resume'));
-    expect(restore).toHaveBeenCalledTimes(2);
+    expect(restoreOffer()).toBeNull();
+    expect(useEditorStore.getState().gridState).toBe(open);
   });
 
-  it('presses itself when nothing answers it, and resumes rather than starting fresh', async () => {
-    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
-    try {
-      const restore = vi.fn();
-      const dismiss = vi.fn();
-      shelf(restore, dismiss);
-      expect(restore).not.toHaveBeenCalled();
-      // Ignoring the offer resumes: starting fresh is recoverable from, discarding the save is not.
-      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
-      expect(restore).toHaveBeenCalled();
-      expect(dismiss).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it.each(['restore-card', 'restore-resume'])('a press on %s resumes the saved session', (control) => {
+    newMap(editorPort, 'hexia');
+    const offer = saved();
+    __setRestoreOffer(offer);
+    render(shelf());
+    fireEvent.click(screen.getByTestId(control));
+    expect(restoreOffer()).toBeNull();
+    expect(useEditorStore.getState().gridState).toBe(offer.state);
   });
 
   /** The frame is drawn behind the boot splash, so the countdown must not run until the splash
    *  clears. */
-  it('does not spend its clock while the boot splash still covers it', async () => {
-    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
-    try {
-      const restore = vi.fn();
-      const draw = (splashActive: boolean) => (
-        <I18nProvider>
-          <RestoreShelf state={{} as never} splashActive={splashActive} onRestore={restore} onDismiss={noop} />
-        </I18nProvider>
-      );
-      const view = render(draw(true));
-      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
-      expect(restore, 'nobody has seen the offer yet').not.toHaveBeenCalled();
-
-      view.rerender(draw(false));
-      // The full wait remains after the splash.
-      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() - 1) * 1000); });
-      expect(restore).not.toHaveBeenCalled();
-      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-      expect(restore).toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('does not spend its clock while the boot splash still covers it', () => {
+    __setRestoreOffer(saved());
+    const view = render(shelf(true));
+    expect(restoreDeadline()).toMatchObject({ running: false, spentMs: 0 });
+    view.rerender(shelf(false));
+    expect(restoreDeadline().running).toBe(true);
   });
 
-  it('holds the clock while keyboard focus rests on a pill, the same as a hovering pointer', async () => {
-    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
-    try {
-      const restore = vi.fn();
-      const dismiss = vi.fn();
-      shelf(restore, dismiss);
-      fireEvent.focus(screen.getByTestId('restore-fresh'));
-      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
-      expect(restore).not.toHaveBeenCalled();
-      expect(dismiss).not.toHaveBeenCalled();
+  it('holds the clock while keyboard focus rests on a pill, the same as a hovering pointer', () => {
+    __setRestoreOffer(saved());
+    render(shelf());
+    expect(restoreDeadline().running).toBe(true);
+    fireEvent.focus(screen.getByTestId('restore-fresh'));
+    expect(restoreDeadline()).toMatchObject({ running: false, stopped: false });
+    fireEvent.blur(screen.getByTestId('restore-fresh'));
+    expect(restoreDeadline().running).toBe(true);
+    fireEvent.pointerEnter(screen.getByTestId('restore-card'));
+    expect(restoreDeadline().running).toBe(false);
+    fireEvent.pointerLeave(screen.getByTestId('restore-card'));
+    expect(restoreDeadline().running).toBe(true);
+  });
 
-      fireEvent.blur(screen.getByTestId('restore-fresh'));
-      await act(async () => { await vi.advanceTimersByTimeAsync((announcedWait() + 1) * 1000); });
-      expect(restore).toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('no longer presses itself once keyboard focus reaches the card, and says so', () => {
+    __setRestoreOffer(saved());
+    render(shelf());
+    fireEvent.focus(screen.getByTestId('restore-card'));
+    expect(restoreDeadline()).toMatchObject({ running: false, stopped: true });
+    expect(selfPressHint()).toBe(translate('timed.stopped'));
+  });
+
+  it('stops its clock as it leaves the screen', () => {
+    __setRestoreOffer(saved());
+    const view = render(shelf());
+    expect(restoreDeadline().running).toBe(true);
+    view.unmount();
+    expect(restoreDeadline().running).toBe(false);
+    expect(restoreOffer(), 'leaving the screen is no answer').not.toBeNull();
   });
 });
 

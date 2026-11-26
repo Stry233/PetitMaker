@@ -1,64 +1,97 @@
 /*
- * The closed set of curves a shell motion may use.
- *
- * Every entry is one the interface already moves on, taken from `ui/design/styles.ts` rather than restated
- * here, so every surface accelerates the same way and a curve has one definition. Adding one is a
- * deliberate act with a reason, which is the point of the set being closed: the drift this system
- * exists to stop began as one call site choosing its own number.
+ * The closed set of curves every motion uses, in both spellings: a Framer transition (`CURVES`) and a
+ * CSS timing function (`CSS_CURVES`), each derived from the one definition below. Each curve has one
+ * job, so two surfaces doing the same thing move the same way; adding one is a deliberate act with a
+ * job no member already does.
  */
-import { bezierOf, easing, springs } from '../styles';
+
+/** Every tween's control points, as CSS. Only this module spells a `cubic-bezier`. */
+export const easing = {
+  /** Decelerates into its mark and stops flat. */
+  punchy: 'cubic-bezier(0.2, 0, 0, 1)',
+  /** Still gaining speed when it goes. */
+  accel: 'cubic-bezier(0.4, 0, 1, 1)',
+  /** Comes to rest at both ends. */
+  settle: 'cubic-bezier(0.3, 0, 0.55, 1)',
+  /** Slows into each end and out of it. */
+  swing: 'cubic-bezier(0.42, 0, 0.58, 1)',
+  /** A body falling under gravity: leaves its height at rest and is fastest as it lands. */
+  gravity: 'cubic-bezier(0.55, 0, 1, 0.45)',
+  /** A body thrown upward: leaves fastest and comes to rest at the top of its arc. */
+  toss: 'cubic-bezier(0, 0.55, 0.45, 1)',
+  /** A light body falling against drag: gathers speed over its first tenth, then falls at a steady
+   *  speed to the end (within 0.3% of an approach whose time constant is 8% of the fall). */
+  drift: 'cubic-bezier(0.12, 0, 0.38, 0.34)',
+  /** Lands past its mark by about 8% and settles back. */
+  snap: 'cubic-bezier(0.2, 1.5, 0.4, 1)',
+  /** `springs.stiff` over `DURATIONS.quick`, its 1% settle, within 1% of the spring. */
+  springStiff: 'cubic-bezier(0.25, 0.1, 0.3, 0.96)',
+  /** `springs.bouncy` over its 0.5 s settle as closely as one overshoot can follow a spring that rings
+   *  (within 9%). */
+  springBouncy: 'cubic-bezier(0.5, 2.2, 0, 0.8)',
+} as const;
+
+/** The same four control points as an `easing` entry, for a Framer `ease` array. */
+export function bezierOf(id: keyof typeof easing): [number, number, number, number] {
+  const parts = easing[id].slice('cubic-bezier('.length, -1).split(',').map((n) => Number(n));
+  return [parts[0]!, parts[1]!, parts[2]!, parts[3]!];
+}
+
+/** Control points as a CSS timing function: a stretch of a member curve read over part of its way
+ *  (`design/motion:fadeTimings`), which is that curve, not another. */
+export function cssBezier([x1, y1, x2, y2]: readonly [number, number, number, number]): string {
+  return `cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`;
+}
+
+/** The two springs, as Framer configurations. */
+export const springs = {
+  bouncy: { type: 'spring' as const, stiffness: 400, damping: 15, mass: 0.8 },
+  stiff: { type: 'spring' as const, stiffness: 600, damping: 30, mass: 0.5 },
+} as const;
+
+/**
+ * Rest thresholds for a spring driving `scale`, spread over the spring (`settleScale` in the registry).
+ * The defaults suit pixels: within `restDelta` (0.01) of its target a spring is declared done and
+ * Framer writes the target, which on a scale is a whole percent of the element, half a pixel on a
+ * 300 px card appearing in one frame. These thresholds keep the last movement under a tenth of a pixel.
+ */
+export const scaleRest = { restDelta: 0.0002, restSpeed: 0.02 } as const;
 
 export const CURVES = {
-  /** Arrives with a small overshoot. A thing appearing, where the overshoot reads as it landing. */
-  bouncy: springs.bouncy,
-  /** Arrives fast and stops. The default for anything the user is waiting on. */
-  stiff: springs.stiff,
-  /** Arrives slowly and evenly. Ambient motion, and anything that must not draw the eye. */
-  gentle: springs.gentle,
-  /** Leaves at once and settles flat. The shelves already arrive on this bezier; it is `easing
-   *  .punchy`'s own control points, so the two spellings are one curve. A tween rather than a
-   *  spring, so a motion naming it also gives a duration and one naming any other must not. */
+  /** Travel, arrivals, a change in place and a departure that stands alone: decelerates into its mark
+   *  with no overshoot, so most of the change shows at once and the end is flat. The default tween. */
   punchy: { ease: bezierOf('punchy') },
-  expand: { ease: bezierOf('expand') },
-  breathing: { ease: bezierOf('breathing') },
-  roll: { ease: bezierOf('roll') },
-  fade: { ease: bezierOf('fade') },
-  ease: { ease: [0.25, 0.1, 0.25, 1] },
-  easeOut: { ease: 'easeOut' },
-  /**
-   * Leaves from rest and is still gaining speed when it goes. The shape of a departure that has
-   * nothing left to show: a card turning edge-on before its new face is even written accelerates
-   * away rather than easing to a stop it never reaches. It is the only curve here that does not
-   * settle, which is why nothing may name it for an arrival.
-   */
+  /** The departure half of a turn or a crossing (`outCurve` only): still gaining speed when the
+   *  second half takes over, so the speed is greatest where the two meet. */
   accel: { ease: bezierOf('accel') },
-  /**
-   * Comes to rest with no overshoot of its own, gently at both ends. For the last segment of a
-   * motion whose overshoot is already in its keyframes: `punchy` would decelerate hard into the
-   * mark and read as a second bounce on top of the one the keyframes describe, so the settle back
-   * from past-flat runs on this instead.
-   */
+  /** The landing segment after an overshoot keyframe (`landCurve` only): the overshoot is in the
+   *  keyframes, and `punchy` there would read as a second bounce. */
   settle: { ease: bezierOf('settle') },
-  /** The two halves of a ballistic arc: `gravity` falls from rest at the top and lands at full
-   *  speed, `toss` leaves the ground at full speed and stops at the top. A bounce alternates them,
-   *  so its speed is continuous at every turn and every landing. */
+  /** A control's part and a surface that may be re-aimed mid-flight: a spring keeps its velocity
+   *  through a retarget where a tween restarts, and this one stops without visible overshoot. */
+  stiff: springs.stiff,
+  /** Something deliberately landing (a card answering a press, a callout popping): a spring that
+   *  overshoots and settles. Nothing that only travels takes it. */
+  bouncy: springs.bouncy,
+  /** A move from rest to rest that is not an arrival: a back-and-forth (a shake, a pulse, a breath, a
+   *  marquee), a hand moving a pictured pointer or a pencil, the splash and the app sliding apart. For
+   *  a repeating motion its length is one whole cycle. */
+  swing: { ease: bezierOf('swing') },
+  /** The two halves of a ballistic arc: `gravity` falls from rest and lands at full speed, `toss`
+   *  leaves the ground at full speed and stops at the top. A bounce alternates them, so its speed is
+   *  continuous at every turn and every landing. */
   gravity: { ease: bezierOf('gravity') },
   toss: { ease: bezierOf('toss') },
-  /** Slows into each extreme and out of it again. The shape of a thing that swings rather than one
-   *  that arrives: a back-and-forth on any of the three above has a corner at the turn, which reads
-   *  as a machine reversing. A tween, and for a repeating motion its length is one whole cycle. */
-  swing: { ease: 'easeInOut' },
+  /** Paper, petals, a leaf: a fall that drag holds to a steady speed, so what the body does on the way
+   *  (a sway, a turn) keeps one rhythm, where `gravity` would make it hang and then rush. */
+  drift: { ease: bezierOf('drift') },
+  /** A deliberate landing played as Web Animations, where a spring cannot run: the character landing
+   *  a pose, a pip or a glyph popping into her sketch. */
+  snap: { ease: bezierOf('snap') },
   /**
-   * No shape at all, and that is the reason it is here: it is the curve for a motion whose shape is
-   * not the registry's to choose. Two kinds qualify, and nothing else does.
-   *
-   * A pattern that repeats seamlessly has to travel at a constant rate: any of the four above would
-   * slow into the end of a cycle and leave again from the start of the next, so the loop would
-   * visibly pulse at a seam the drawing itself does not have. A crawling stripe, a turning badge.
-   *
-   * And a sampled track already carries its shape in its own frames — the character's leap plays
-   * fifty keyframes off a damped-oscillator spring, so a second easing over the top of them would
-   * be two curves multiplied together. `motion-registry.test.ts` holds the pair to those two cases.
+   * No shape at all, for a motion whose shape is not the registry's to choose: a pattern that repeats
+   * seamlessly (any other curve would pulse at the seam), and a sampled track whose frames already
+   * carry its shape. `motion-registry.test.ts` holds it to those two cases.
    */
   linear: { ease: 'linear' },
 } as const;
@@ -71,23 +104,18 @@ export function isTween(id: CurveId): boolean {
   return !('type' in CURVES[id]);
 }
 
-/** Every curve as a CSS timing function, for a motion driven by a transition rather than by Framer
- *  (a spring as its nearest bezier). Kept beside the Framer spellings so the two cannot drift apart. */
+/** Every curve as a CSS timing function, for a motion driven by a transition or Web Animations rather
+ *  than by Framer; a spring as its nearest bezier. */
 export const CSS_CURVES = {
-  bouncy: easing.springBouncy,
-  stiff: easing.springStiff,
-  gentle: easing.springGentle,
   punchy: easing.punchy,
-  expand: easing.expand,
-  breathing: easing.breathing,
-  roll: easing.roll,
-  fade: easing.fade,
-  ease: 'ease',
-  easeOut: 'ease-out',
   accel: easing.accel,
   settle: easing.settle,
+  stiff: easing.springStiff,
+  bouncy: easing.springBouncy,
+  swing: easing.swing,
   gravity: easing.gravity,
   toss: easing.toss,
-  swing: 'ease-in-out',
+  drift: easing.drift,
+  snap: easing.snap,
   linear: 'linear',
 } as const satisfies Record<CurveId, string>;

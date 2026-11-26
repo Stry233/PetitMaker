@@ -11,14 +11,13 @@ import {
   loadStylizeKey,
   saveStylizeKey,
 } from '../../../io/storage/stylize-settings';
-import { PREFS, PREF_STORAGE_KEYS } from '../../../platform/storage/prefs';
+import { PREFS } from '../../../platform/storage/prefs';
 
 const STORAGE_KEY = PREFS.stylize.key;
 
 describe('stylize settings — PREFS declaration', () => {
   it('declares its storage key in PREFS, the single enumeration of everything persisted', () => {
     expect(STORAGE_KEY).toBe('petit-planet-stylize-v1');
-    expect(PREF_STORAGE_KEYS).toContain('petit-planet-stylize-v1');
   });
 });
 

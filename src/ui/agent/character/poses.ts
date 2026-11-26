@@ -5,6 +5,8 @@
  */
 import type { SessionPhase } from '../../../agent/panel';
 import type { BadgeId } from './badges';
+import { CSS_CURVES } from '../../design/motion/curves';
+import { timeline } from '../../design/motion/timeline';
 
 export type PoseName =
   | 'idle' | 'thinking' | 'working' | 'asking' | 'celebrating'
@@ -83,21 +85,11 @@ interface PoseSpec {
   staticBadge?: BadgeId;
 }
 
-export const CURVES = {
-  snap: 'cubic-bezier(.2,1.5,.4,1)',
-  pop: 'cubic-bezier(.3,1.9,.45,1)',
-  boing: 'cubic-bezier(.25,2.4,.45,.9)',
-  out: 'cubic-bezier(.2,.8,.3,1)',
-  inn: 'cubic-bezier(.55,0,.8,.4)',
-  ease: 'ease-in-out',
-  beat: 'cubic-bezier(.4,0,.6,1)',
-} as const;
-
-export const POSES: Record<PoseName, PoseSpec> = {
+export const POSES: Record<PoseName, PoseSpec> = timeline({
   idle: {
     badge: null, lids: false,
     loops: [
-      { part: 'body', dur: 3000, easing: CURVES.ease, keyframes: [
+      { part: 'body', dur: 3000, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scaleY(1)' }, { transform: 'scaleY(1.015)', offset: .5 }, { transform: 'scaleY(1)' }] },
     ],
     timers: [
@@ -109,11 +101,11 @@ export const POSES: Record<PoseName, PoseSpec> = {
   thinking: {
     badge: 'idea', lids: false,
     enter: [
-      { part: 'pose', dur: 460, easing: CURVES.snap, keyframes: [
+      { part: 'pose', dur: 460, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'rotate(0deg)' }, { transform: 'rotate(-2.5deg)', offset: .22 }, { transform: 'rotate(6deg)' }] },
     ],
     loops: [
-      { part: 'body', dur: 1200, easing: CURVES.ease, keyframes: [
+      { part: 'body', dur: 1200, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'rotate(-1.5deg)' }, { transform: 'rotate(1.5deg)', offset: .5 }, { transform: 'rotate(-1.5deg)' }] },
     ],
     timers: [{ every: 7000, jitter: 2000, run: 'blink' }],
@@ -122,26 +114,26 @@ export const POSES: Record<PoseName, PoseSpec> = {
   working: {
     badge: 'refresh', lids: false,
     loops: [
-      { part: 'pose', dur: 420, easing: CURVES.beat, keyframes: [
+      { part: 'pose', dur: 420, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'translateY(3px) scale(1.05,.94)' },
         { transform: 'translateY(-2px) scale(.97,1.04)', offset: .45 },
         { transform: 'translateY(3px) scale(1.05,.94)' }] },
-      { part: 'body', dur: 840, easing: CURVES.ease, keyframes: [
+      { part: 'body', dur: 840, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'rotate(-1.6deg)' }, { transform: 'rotate(1.6deg)', offset: .5 }, { transform: 'rotate(-1.6deg)' }] },
     ],
-    badgeTick: { every: 420, rotateBy: 90, dur: 150, easing: CURVES.snap },
+    badgeTick: { every: 420, rotateBy: 90, dur: 150, easing: CSS_CURVES.snap },
     static: 'translateY(1px)',
   },
   asking: {
     badge: 'ask', badgeCurve: 'boing', lids: false,
     enter: [
-      { part: 'flip', dur: 480, easing: CURVES.snap, keyframes: [
+      { part: 'flip', dur: 480, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'scaleX(1)' }, { transform: 'scaleX(-1)', offset: .4 }, { transform: 'scaleX(1)' }] },
-      { part: 'pose', at: 480, dur: 340, easing: CURVES.out, keyframes: [
+      { part: 'pose', at: 480, dur: 340, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'none' }, { transform: 'rotate(3.5deg) translateY(1px)' }] },
     ],
     loops: [
-      { part: 'body', at: 820, dur: 2000, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 820, dur: 2000, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'translateY(0)' }, { transform: 'translateY(1.5px) rotate(.8deg)', offset: .5 }, { transform: 'translateY(0)' }] },
     ],
     timers: [{ every: 5200, jitter: 1200, run: 'blink' }],
@@ -150,17 +142,17 @@ export const POSES: Record<PoseName, PoseSpec> = {
   celebrating: {
     badge: 'spark', badgeAt: 390, lids: false, oneShot: true, settleTo: 'idle', settleAt: 1350,
     seq: [
-      { part: 'pose', at: 0, dur: 150, easing: CURVES.inn, keyframes: [
+      { part: 'pose', at: 0, dur: 150, easing: CSS_CURVES.gravity, keyframes: [
         { transform: 'none' }, { transform: 'translateY(3px) scale(1.1,.88)' }] },
-      { part: 'pose', at: 150, dur: 240, easing: CURVES.out, keyframes: [
+      { part: 'pose', at: 150, dur: 240, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'translateY(3px) scale(1.1,.88)' }, { transform: 'translateY(-17px) scale(.9,1.12)' }] },
-      { part: 'pose', at: 390, dur: 180, easing: CURVES.inn, keyframes: [
+      { part: 'pose', at: 390, dur: 180, easing: CSS_CURVES.gravity, keyframes: [
         { transform: 'translateY(-17px) scale(.9,1.12)' }, { transform: 'translateY(2px) scale(1.12,.86)' }], puffAt: 170 },
-      { part: 'pose', at: 570, dur: 200, easing: CURVES.out, keyframes: [
+      { part: 'pose', at: 570, dur: 200, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'translateY(2px) scale(1.12,.86)' }, { transform: 'translateY(-7px) scale(.96,1.05)' }] },
-      { part: 'pose', at: 770, dur: 160, easing: CURVES.inn, keyframes: [
+      { part: 'pose', at: 770, dur: 160, easing: CSS_CURVES.gravity, keyframes: [
         { transform: 'translateY(-7px) scale(.96,1.05)' }, { transform: 'translateY(1px) scale(1.06,.93)' }], puffAt: 150 },
-      { part: 'pose', at: 930, dur: 300, easing: CURVES.snap, keyframes: [
+      { part: 'pose', at: 930, dur: 300, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'translateY(1px) scale(1.06,.93)' }, { transform: 'none' }] },
     ],
     static: '', staticBadge: 'spark',
@@ -168,11 +160,11 @@ export const POSES: Record<PoseName, PoseSpec> = {
   paused: {
     badge: 'pause', lids: false,
     enter: [
-      { part: 'pose', dur: 600, easing: CURVES.out, keyframes: [
+      { part: 'pose', dur: 600, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'none' }, { transform: 'translateY(4px) rotate(-2.5deg) scaleY(.97)' }] },
     ],
     loops: [
-      { part: 'body', at: 600, dur: 3400, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 600, dur: 3400, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scaleY(1)' }, { transform: 'scaleY(.982) translateY(1px)', offset: .38 },
         { transform: 'scaleY(.982) translateY(1px)', offset: .55 }, { transform: 'scaleY(1)' }] },
     ],
@@ -182,7 +174,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
   trouble: {
     badge: 'exclaim', lids: false,
     enter: [
-      { part: 'pose', dur: 520, easing: CURVES.out, keyframes: [
+      { part: 'pose', dur: 520, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'none' },
         { transform: 'translate(-9px,-5px) scale(.96,1.06)', offset: .25 },
         { transform: 'translate(-3px,0) scale(1.05,.95)', offset: .45 },
@@ -191,7 +183,7 @@ export const POSES: Record<PoseName, PoseSpec> = {
         { transform: 'translateX(-3px) rotate(-2deg)' }] },
     ],
     loops: [
-      { part: 'body', at: 520, dur: 110, easing: 'linear', keyframes: [
+      { part: 'body', at: 520, dur: 110, easing: CSS_CURVES.linear, keyframes: [
         { transform: 'translateX(-.6px)' }, { transform: 'translateX(.6px)', offset: .5 }, { transform: 'translateX(-.6px)' }] },
     ],
     static: 'translateX(-3px) rotate(-2deg)',
@@ -199,14 +191,14 @@ export const POSES: Record<PoseName, PoseSpec> = {
   sleeping: {
     badge: 'zzz', lids: true,
     enter: [
-      { part: 'pose', dur: 900, easing: CURVES.out, keyframes: [
+      { part: 'pose', dur: 900, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'none' }, { transform: 'translateY(7px) rotate(-4deg) scaleY(.94)' }] },
     ],
     loops: [
       // The sleeping breath is two-axis, and the 1% narrowing is what makes it read as a chest rather
       // than a vertical stretch: at 72px of art the rise is 2.8px against 1.9px for a scaleY-only
       // 1.03.
-      { part: 'body', at: 900, dur: 3600, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 900, dur: 3600, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scale(1,1)' }, { transform: 'scale(.99,1.045)', offset: .5 }, { transform: 'scale(1,1)' }] },
     ],
     static: 'translateY(7px) rotate(-4deg) scaleY(.94)',
@@ -219,11 +211,11 @@ export const POSES: Record<PoseName, PoseSpec> = {
   keylean: {
     badge: null, lids: false,
     enter: [
-      { part: 'pose', dur: 520, easing: CURVES.snap, keyframes: [
+      { part: 'pose', dur: 520, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'none' }, { transform: 'rotate(-2.5deg)', offset: .22 }, { transform: 'rotate(9deg) translateY(1px)' }] },
     ],
     loops: [
-      { part: 'body', at: 520, dur: 2600, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 520, dur: 2600, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scaleY(1)' }, { transform: 'scaleY(1.012)', offset: .5 }, { transform: 'scaleY(1)' }] },
     ],
     timers: [{ every: 5200, jitter: 1400, run: 'blink' }],
@@ -234,15 +226,15 @@ export const POSES: Record<PoseName, PoseSpec> = {
   pleased: {
     badge: 'spark', badgeAt: 300, badgeCurve: 'boing', lids: false,
     enter: [
-      { part: 'pose', at: 0, dur: 140, easing: CURVES.inn, keyframes: [
+      { part: 'pose', at: 0, dur: 140, easing: CSS_CURVES.gravity, keyframes: [
         { transform: 'none' }, { transform: 'translateY(3px) scale(1.08,.9)' }] },
-      { part: 'pose', at: 140, dur: 220, easing: CURVES.out, keyframes: [
+      { part: 'pose', at: 140, dur: 220, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'translateY(3px) scale(1.08,.9)' }, { transform: 'translateY(-12px) scale(.94,1.08)' }] },
-      { part: 'pose', at: 360, dur: 260, easing: CURVES.snap, keyframes: [
+      { part: 'pose', at: 360, dur: 260, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'translateY(-12px) scale(.94,1.08)' }, { transform: 'translateY(-2px)' }] },
     ],
     loops: [
-      { part: 'body', at: 620, dur: 2400, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 620, dur: 2400, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scaleY(1)' }, { transform: 'scaleY(1.02)', offset: .5 }, { transform: 'scaleY(1)' }] },
     ],
     static: 'translateY(-2px)', staticBadge: 'spark',
@@ -252,11 +244,11 @@ export const POSES: Record<PoseName, PoseSpec> = {
   watching: {
     badge: null, lids: false,
     enter: [
-      { part: 'pose', dur: 520, easing: CURVES.snap, keyframes: [
+      { part: 'pose', dur: 520, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'none' }, { transform: 'rotate(2deg)', offset: .22 }, { transform: 'rotate(-8deg) translateX(-2px)' }] },
     ],
     loops: [
-      { part: 'body', at: 520, dur: 2600, easing: CURVES.ease, keyframes: [
+      { part: 'body', at: 520, dur: 2600, easing: CSS_CURVES.swing, keyframes: [
         { transform: 'scaleY(1)' }, { transform: 'scaleY(1.012)', offset: .5 }, { transform: 'scaleY(1)' }] },
     ],
     timers: [{ every: 5200, jitter: 1400, run: 'blink' }],
@@ -265,47 +257,51 @@ export const POSES: Record<PoseName, PoseSpec> = {
   noted: {
     badge: 'note', badgeAt: 60, badgeOutAt: 950, lids: false, oneShot: true, settleTo: 'idle', settleAt: 1150,
     seq: [
-      { part: 'body', at: 0, dur: 90, easing: CURVES.out, keyframes: [
+      { part: 'body', at: 0, dur: 90, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'none' }, { transform: 'scaleY(1.045)' }] },
-      { part: 'pose', at: 90, dur: 260, easing: CURVES.snap, keyframes: [
+      { part: 'pose', at: 90, dur: 260, easing: CSS_CURVES.snap, keyframes: [
         { transform: 'none' }, { transform: 'rotate(4deg) translateY(2px)', offset: .45 }, { transform: 'none' }] },
-      { part: 'body', at: 350, dur: 180, easing: CURVES.out, keyframes: [
+      { part: 'body', at: 350, dur: 180, easing: CSS_CURVES.toss, keyframes: [
         { transform: 'scaleY(1.045)' }, { transform: 'none' }] },
     ],
     static: '', staticBadge: 'note',
   },
-};
+});
 
 /**
  * The wake beat as the key screen lands: it starts from the sleeping still and lands on the overshoot
  * curve. It has no fill and runs outside the pose machine, so a newer pose on the same part takes over.
  */
-export const WAKE_BEAT: PoseTrack = {
-  part: 'pose', dur: 620, easing: CURVES.snap, keyframes: [
+export const WAKE_BEAT: PoseTrack = timeline({
+  part: 'pose', dur: 620, easing: CSS_CURVES.snap, keyframes: [
     { transform: 'translateY(7px) rotate(-4deg) scaleY(.94)' },
     { transform: 'translateY(-3px) rotate(1deg) scaleY(1.03)', offset: .62 },
     { transform: 'none' },
   ],
-};
+});
 
 /**
  * Her acknowledgement when pressed: one springy squash in place. Additive for the ear-flick's reason: the breath loops on the same part and
  * property. `Character.tsx`'s `acknowledge` verb is the one player.
  */
-export const PRESS_SQUASH: PoseTrack = {
-  part: 'body', dur: 320, easing: 'linear', composite: 'add', keyframes: [
+export const PRESS_SQUASH: PoseTrack = timeline({
+  part: 'body', dur: 320, easing: CSS_CURVES.linear, composite: 'add', keyframes: [
     { transform: 'scale(1,1)', offset: 0 },
     { transform: 'scale(1.12,.86)', offset: .3 },
     { transform: 'scale(.95,1.06)', offset: .62 },
     { transform: 'scale(1,1)', offset: 1 },
   ],
-};
+});
 
 /** Ambient one-shot gestures on a jittered interval, composited additively so the breath loop on the same part never stutters. */
-export const MICRO: Record<'earflick', PoseTrack> = {
-  earflick: { part: 'body', dur: 120, easing: CURVES.out, composite: 'add', keyframes: [
+export const MICRO: Record<'earflick', PoseTrack> = timeline({
+  earflick: { part: 'body', dur: 120, easing: CSS_CURVES.toss, composite: 'add', keyframes: [
     { transform: 'rotate(0deg)' }, { transform: 'rotate(2deg)', offset: .5 }, { transform: 'rotate(0deg)' }] },
-};
+});
+
+/** The badge's own beats, in ms: the old one shrinking away, the gap before the new one, and the ask
+ *  badge's boing, a heavier landing than the ordinary pop (`panel.badge.pop`). */
+export const BADGE_BEATS = timeline({ swapOut: 110, swapGap: 60, boing: 420 });
 
 /**
  * How long a pose is worn before another may land, in ms. The phase moves several times a second
@@ -317,7 +313,7 @@ export const POSE_DWELL = 520;
 /** The dust three puffs kick up under the feet as a jump lands: how long one takes, how far apart
  *  they are struck, and how long after that the element is taken out of the layer (past the end, so
  *  the last frame is not swept away mid-paint). `Character.tsx:puff` is the one reader. */
-export const PUFF = { dur: 340, stagger: 20, clearAfter: 460 };
+export const PUFF = timeline({ dur: 340, stagger: 20, clearAfter: 460 });
 
 /** The phase's pose. A disconnected session sleeps whatever the phase, and `aborted` settles to `idle`. */
 export function poseForPhase(phase: SessionPhase, opts: { connected: boolean }): PoseName {

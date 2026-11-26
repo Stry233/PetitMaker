@@ -208,6 +208,22 @@ describe('the planet library', () => {
     expect(listPlanets()[0]!.name).toBe('Bay');
   });
 
+  it('leaves a list a reader holds as it was through every write', () => {
+    const bay = savePlanet('Bay', planetFixture());
+    if (!bay.ok) throw new Error('save failed');
+    adoptPlanet(planetFixture({ plaza: NO_PLAZA }), 'Reef');
+    const held = listPlanets();
+    const seen = () => held.map((e) => [e.entryId, e.name, e.nameReviewed, e.updatedAt, e.template.name.en]);
+    const before = seen();
+    const reef = held.find((e) => e.name === 'Reef')!;
+    settlePlanetName(reef.entryId, 'Reef', 'Cove');
+    renamePlanet(bay.entry.entryId, 'Harbour');
+    duplicatePlanet(bay.entry.entryId, 'Harbour copy');
+    removePlanet(reef.entryId);
+    expect(seen()).toEqual(before);
+    expect(listPlanets().map((e) => e.name)).toEqual(['Harbour', 'Harbour copy']);
+  });
+
 });
 
 describe('the planet library when storage fails', () => {

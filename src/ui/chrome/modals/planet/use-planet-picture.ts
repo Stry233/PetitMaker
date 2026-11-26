@@ -5,7 +5,6 @@
  */
 import { useEffect, useState } from 'react';
 import { planetPicture, type PlanetPaintInput } from '../../../../view/map2d/capture/planet-painter';
-import { onMapRenderer } from '../../../../view/map2d/scene/renderer-registry';
 import { useEditorStore } from '../../../../state/store';
 
 export function usePlanetPicture(input: PlanetPaintInput, longSidePx: number, enabled = true): HTMLCanvasElement | null {
@@ -18,20 +17,11 @@ export function usePlanetPicture(input: PlanetPaintInput, longSidePx: number, en
 
   useEffect(() => {
     if (!enabled) return undefined;
-    let live = true;
-    let unsubscribe: (() => void) | null = null;
-    const take = (): void => {
-      void planetPicture({
+    const asked = new AbortController();
+    void planetPicture({
       template, ...(state ? { state } : {}), ...(revision !== undefined ? { revision } : {}), ...(flagged ? { flagged } : {}),
-    }, longSidePx).then((picture) => {
-        if (!live) return;
-        if (picture) { setShown({ subject, picture }); return; }
-        // No renderer stands yet: the picture is taken once one does.
-        unsubscribe ??= onMapRenderer(() => { unsubscribe?.(); unsubscribe = null; take(); });
-      });
-    };
-    take();
-    return () => { live = false; unsubscribe?.(); };
+    }, longSidePx, asked.signal).then((picture) => { if (picture) setShown({ subject, picture }); });
+    return () => asked.abort();
   }, [enabled, subject, state, template, revision, flagged, longSidePx, notes, locale]);
 
   return shown && shown.subject === subject ? shown.picture : null;

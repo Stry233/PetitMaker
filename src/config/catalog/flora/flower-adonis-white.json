@@ -1,0 +1,36 @@
+{
+  "id": "flower-adonis-white",
+  "category": "flora",
+  "name": {
+    "en": "White Winter Adonis",
+    "zh": "白冰凉花",
+    "ja": "ホワイトフクジュソウ",
+    "ru": "Белый адонис",
+    "th": "อะโดนิสขาว",
+    "id": "Adonis Putih",
+    "fr": "Adonis blanc"
+  },
+  "aliases": [
+    "白",
+    "white"
+  ],
+  "icon": "flower-adonis-white",
+  "iconColor": "#e9ccad",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-adonis",
+    "colorFamily": "white"
+  }
+}

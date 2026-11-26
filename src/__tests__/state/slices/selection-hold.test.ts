@@ -64,9 +64,20 @@ describe('arming a tool with a selection standing', () => {
     expect(seen).toEqual([[0, ToolType.TerrainBrush]]);
   });
 
-  it('keeps it for a tool that holds one', () => {
+  it('drops it in the update that arms an item, though the placer holds one made under it', () => {
     s().setSelection([house]);
+    const seen: Array<[number, ToolType]> = [];
+    const off = useEditorStore.subscribe((st) => seen.push([st.selection.length, activeToolOf(st)]));
     s().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: 'tree-apple' } });
+    off();
+    expect(seen).toEqual([[0, ToolType.ObjectPlacer]]);
+  });
+
+  it('keeps it for a tool that holds one while nothing new is armed to place', () => {
+    s().setSelection([house]);
+    s().setEditMode({ mode: 'blueprint' });
+    expect(activeToolOf(s())).toBe(ToolType.Blueprint);
+    s().setEditMode({ mode: null });
     expect(s().selection).toEqual([house]);
   });
 });

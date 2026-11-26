@@ -14,6 +14,7 @@ import { rememberedRoster, rosterKey } from './model-roster';
 import {
   connectionGaps, providerForSavedKey, providerRegion, runnerSettings, useAgentConnection, type AgentConnectionState,
 } from './store';
+import { createSignal } from '../../core/base/signal';
 
 /** How long typing must rest before a draft key or address is acted on, in ms. */
 export const IDLE_MS = 900;
@@ -23,10 +24,30 @@ function endpointOwed(a: { provider: ProviderId; customBaseUrl: string }): boole
   return a.provider === 'custom' && a.customBaseUrl === '';
 }
 
-/** Setup entry point selected by a repair action. */
-export type SetupEntry = 'key' | 'chooser' | 'endpoint';
+/**
+ * Where setup opens. `key` asks for a key, whatever is held; `chooser` asks which provider;
+ * `endpoint` asks for the custom address; `resume` takes up a held key whose connection still owes
+ * something, by checking it. Asking and resuming are separate entries so that neither is guessed
+ * from the connection: a key screen opened over a whole connection would ask for a key it holds.
+ */
+export type SetupEntry = 'key' | 'chooser' | 'endpoint' | 'resume';
 
 type SetupPhase = 'key' | 'custom' | 'checking' | 'manage';
+
+/**
+ * A recovery setup offers at its foot: `recheck` uses the same key again, `manual` names the
+ * provider by hand, `address` gives the custom endpoint and `reenter` goes back to the key.
+ */
+export type SetupRepair = 'recheck' | 'manual' | 'address' | 'reenter';
+
+/** A refused key is tried again or given its provider, a missing address is asked for, and a
+ *  pending check can be left for the key. */
+function setupRepairs(a: { refused: boolean; needsEndpoint: boolean; waiting: boolean }): readonly SetupRepair[] {
+  if (a.refused) return ['recheck', 'manual'];
+  if (a.needsEndpoint) return ['address'];
+  if (a.waiting) return ['reenter'];
+  return [];
+}
 
 interface KeyReadingState {
   phase: SetupPhase;
@@ -49,6 +70,11 @@ interface KeyReadingState {
   needsEndpoint: boolean;
   /** Automatic destination after the key remains idle, excluding the user-initiated endpoint step. */
   gate: Exclude<KeyDestination, 'endpoint'>;
+  /** The recoveries the reading offers as it stands, in order. */
+  repairs: readonly SetupRepair[];
+  /** Setup may be left: before a key is held, or once the connection is whole. Between the two, a
+   *  held key with something still owed would leave the panel on a connection it cannot use. */
+  canLeave: boolean;
 }
 
 interface KeyReadingOptions {
@@ -81,6 +107,7 @@ interface KeyReading {
   chooseByHand(): void;
   pickProvider(id: ProviderId, region?: ProviderRegion): void;
   detectAutomatically(): void;
+  /** Leaves setup for the surface that opened it; nothing where `canLeave` does not hold. */
   leave(): void;
   /** A changed key invalidates pending results and re-enables idle advance. */
   editKey(next: string): void;
@@ -97,9 +124,9 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
   let phase: SetupPhase = (() => {
     if (pasted !== undefined) return 'key';
     if (entry === 'endpoint') return 'custom';
-    if (entry === 'chooser') return 'key';
+    if (entry !== 'resume') return 'key';
     const gaps = connectionGaps(conn());
-    return gaps.includes('key') || gaps.length === 0 ? 'key' : gaps.includes('endpoint') ? 'custom' : 'checking';
+    return gaps.includes('key') ? 'key' : gaps.includes('endpoint') ? 'custom' : 'checking';
   })();
   let keyDraft = pasted ?? (phase === 'custom' ? runnerSettings({ ...conn(), provider: 'custom' }).apiKey : '');
   let keyMasked = keyDraft.length > 0;
@@ -129,7 +156,7 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
     },
   );
 
-  const listeners = new Set<() => void>();
+  const published = createSignal();
   let snap: KeyReadingState;
 
   function derive(): KeyReadingState {
@@ -152,6 +179,8 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
     return {
       phase, keyDraft, keyMasked, refused, shakeSeq: discovery.get().refusals, rowOpen,
       provider, pinned, shape, regionProvider, accepted, gaps, needsEndpoint, gate,
+      repairs: setupRepairs({ refused, needsEndpoint, waiting: gate !== null || phase === 'checking' }),
+      canLeave: gaps.length === 0 || gaps.includes('key'),
     };
   }
 
@@ -189,7 +218,7 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
     busy += 1;
     try { settleFacts(); } finally { busy -= 1; }
     armIdle();
-    for (const listener of [...listeners]) listener();
+    published.emit();
   }
 
   function settleFacts(): void {
@@ -242,10 +271,7 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
 
   return {
     get: () => snap,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
+    subscribe: (listener) => published.subscribe(listener),
     start() {
       started = true;
       const off = useAgentConnection.subscribe(() => { if (busy === 0) settle(); });
@@ -321,6 +347,7 @@ export function createKeyReading(initial: KeyReadingOptions): KeyReading {
       phase = 'key';
     }),
     leave: act(() => {
+      if (!derive().canLeave) return;
       discovery.supersede();
       conn().clearProviderPin();
       options.onLeave?.();

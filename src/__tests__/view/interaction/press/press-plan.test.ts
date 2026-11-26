@@ -19,9 +19,9 @@ const facts = ({ tool = ToolType.Hand, ...over }: Partial<PressFacts> & { tool?:
   return {
     button: 0,
     inputMode: 'pc',
-    selectMode: declared.selectMode({ armedItem: over.armedItemId ?? null } as ToolArming),
+    selectMode: declared.selectMode({ armedItem: over.armedPlacement ?? null } as ToolArming),
     brush: declared.brush,
-    armedItemId: null,
+    armedPlacement: null,
     copyHeld: false,
     selection: [],
     selectingRegion: false,
@@ -30,6 +30,7 @@ const facts = ({ tool = ToolType.Hand, ...over }: Partial<PressFacts> & { tool?:
     toolSelectHit: null,
     clickOnlyStroke: false,
     armedStrokes: false,
+    lookOnly: false,
     panDragHeld: false,
     multiSelectHeld: false,
     moveLatched: false,
@@ -41,11 +42,35 @@ const facts = ({ tool = ToolType.Hand, ...over }: Partial<PressFacts> & { tool?:
     hit: null,
     placementAllowed: true,
     pendingGesture: false,
+    inPlacement: false,
+    group: null,
     ...over,
   };
 };
 
 const kinds = (intents: readonly PressIntent[]): string[] => intents.map((i) => i.kind);
+
+describe('resolvePress: over a stand-in the map only moves', () => {
+  const hit = { id: 'o1', draggable: true, locked: false };
+  const group = { refs: [{ kind: 'object', id: 'o1' }] as BlockRef[], selected: false };
+  it('a mouse press over anything selects nothing, and its drag pans', () => {
+    for (const over of [{}, { hit }, { group }, { pick: { x: 4, y: 5 } }, { inPlacement: true }]) {
+      const p = resolvePress(facts({ ...over, lookOnly: true }));
+      expect([...p.down, ...p.onTap].map((i) => i.kind)).toEqual([]);
+      expect(p.onDrag).toEqual([{ kind: 'pan-camera', source: 'left-drag' }]);
+    }
+  });
+  it('a finger waits to pan or zoom, and a tap or hold selects nothing', () => {
+    const p = resolvePress(facts({ inputMode: 'touch', hit, lookOnly: true }));
+    expect(p.pending).toBe(true);
+    expect(kinds([...p.onTap, ...(p.onHold ?? [])])).toEqual([]);
+    expect(kinds(p.onDrag)).toEqual(['pan-camera']);
+    expect(kinds(p.onDoubleTap ?? [])).toEqual(['zoom-in']);
+  });
+  it('a right tap opens no menu', () => {
+    expect(resolveNavTap(facts({ button: 2, hit, lookOnly: true }))).toEqual([]);
+  });
+});
 
 describe('resolvePress: the camera always wins', () => {
   it('pans while the pan-drag key is held, whatever the tool', () => {
@@ -169,7 +194,7 @@ describe('resolvePress: the multi-select modifier', () => {
 describe('resolvePress: an armed item', () => {
   it('places where the placement is legal', () => {
     const p = resolvePress(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED,
       hit: { id: 'house', draggable: true, locked: false }, placementAllowed: true,
     }));
     expect(kinds(p.down)).toEqual(['tool-stroke']);
@@ -177,7 +202,7 @@ describe('resolvePress: an armed item', () => {
 
   it('selects the object in the way where the placement is refused', () => {
     const p = resolvePress(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED,
       hit: { id: 'house', draggable: true, locked: false }, placementAllowed: false,
     }));
     expect(p.down).toEqual([{ kind: 'select', block: { kind: 'object', id: 'house' } }]);
@@ -185,7 +210,7 @@ describe('resolvePress: an armed item', () => {
 
   it('lets a locked object take its own refusal', () => {
     const p = resolvePress(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED,
       hit: { id: 'plaza', draggable: false, locked: true }, placementAllowed: false,
     }));
     expect(kinds(p.down)).toEqual(['tool-stroke']);
@@ -199,25 +224,27 @@ describe('resolvePress: when a left drag pans', () => {
   });
 
   it('leaves an armed placer drag to the tool', () => {
-    const p = resolvePress(facts({ tool: ToolType.ObjectPlacer, armedItemId: ARMED }));
+    const p = resolvePress(facts({ tool: ToolType.ObjectPlacer, armedPlacement: ARMED }));
     expect(kinds(p.onDrag)).toEqual([]);
   });
 });
 
 describe('resolveNavTap', () => {
-  it('selects what it hit and opens the menu on it', () => {
+  // The menu opens last, over the map and arming the selection leaves (a Ctrl selection puts an
+  // armed card down), so what it stands over is what it was opened on (EDIT-78).
+  it('selects what it hit and then opens the menu on it', () => {
     const t = resolveNavTap(facts({ button: 2, hit: { id: 'house', draggable: true, locked: false } }));
     expect(t).toEqual([
-      { kind: 'context-menu', block: { kind: 'object', id: 'house' } },
       { kind: 'select', block: { kind: 'object', id: 'house' } },
+      { kind: 'context-menu', block: { kind: 'object', id: 'house' } },
     ]);
   });
 
-  it('follows the multi-select rule a left click follows', () => {
+  it('follows the multi-select rule a left click follows, the menu after', () => {
     const t = resolveNavTap(facts({
       button: 2, multiSelectHeld: true, hit: { id: 'house', draggable: true, locked: false },
     }));
-    expect(kinds(t)).toEqual(['context-menu', 'toggle-select']);
+    expect(kinds(t)).toEqual(['toggle-select', 'context-menu']);
   });
 
   it('leaves the selection untouched over bare ground with the modifier held', () => {
@@ -299,7 +326,7 @@ describe('cursorFactsFor: the cursor reads the plan the press executes', () => {
 
   it('promises a select where an armed press would select instead of place', () => {
     const c = cursorFactsFor(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED,
       hit: { id: 'a', draggable: true, locked: false }, placementAllowed: false,
     }));
     expect(c.pressSelects).toBe(true);
@@ -316,24 +343,24 @@ describe('an armed press that selects instead of placing', () => {
 
   it('only fires for an armed placer, unmodified, over an object, where the placement is refused', () => {
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit, placementAllowed: false,
     }))).toBe(true);
     // A legal placement wins, so coating over a road and a crossing snapping from a decorated
     // anchor cell still place.
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit, placementAllowed: true,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit, placementAllowed: true,
     }))).toBe(false);
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit: null, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit: null, placementAllowed: false,
     }))).toBe(false);
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, multiSelectHeld: true, hit, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, multiSelectHeld: true, hit, placementAllowed: false,
     }))).toBe(false);
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, selectingRegion: true, hit, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, selectingRegion: true, hit, placementAllowed: false,
     }))).toBe(false);
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: null, hit, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: null, hit, placementAllowed: false,
     }))).toBe(false);
   });
 
@@ -342,10 +369,10 @@ describe('an armed press that selects instead of placing', () => {
     // object; swallowing the press would also swallow the placement's refusal.
     const plaza = { id: 'plaza', draggable: false, locked: true };
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit: plaza, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit: plaza, placementAllowed: false,
     }))).toBe(false);
     expect(selectsInstead(facts({
-      tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit, placementAllowed: false,
+      tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit, placementAllowed: false,
     }))).toBe(true);
   });
 });
@@ -355,7 +382,7 @@ describe('the cursor promises a grab only where the press would pick something u
     // An armed placer is not a selecting mode, so a drag here places rather than moves.
     const c = cursorFactsFor(facts({
       tool: ToolType.ObjectPlacer,
-      armedItemId: ARMED,
+      armedPlacement: ARMED,
       selection: [{ kind: 'object', id: 'a' }],
       hit: { id: 'a', draggable: true, locked: false },
       placementAllowed: true,
@@ -467,7 +494,7 @@ describe('resolvePress in touch mode', () => {
   });
 
   it('[EDIT-41] waits with an item armed: a tap places, a drag or a still hold previews', () => {
-    const p = resolvePress(touch({ tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit }));
+    const p = resolvePress(touch({ tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit }));
     expect(p.pending).toBe(true);
     expect(p.down).toEqual([]);
     expect(p.onTap).toEqual([{ kind: 'tool-stroke' }]);
@@ -476,7 +503,7 @@ describe('resolvePress in touch mode', () => {
   });
 
   it('selects instead of placing on a tap where the placement is refused', () => {
-    const p = resolvePress(touch({ tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit, placementAllowed: false }));
+    const p = resolvePress(touch({ tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit, placementAllowed: false }));
     expect(p.onTap).toEqual([{ kind: 'select', block: objectA }]);
   });
 
@@ -489,7 +516,7 @@ describe('resolvePress in touch mode', () => {
   });
 
   it('leaves the pan-drag key, the region brush and an armed item\'s multi-select modifier as a mouse has them', () => {
-    const armedCtrl = { tool: ToolType.ObjectPlacer, armedItemId: ARMED, hit, multiSelectHeld: true, placementAllowed: false };
+    const armedCtrl = { tool: ToolType.ObjectPlacer, armedPlacement: ARMED, hit, multiSelectHeld: true, placementAllowed: false };
     for (const over of [{ panDragHeld: true }, { selectingRegion: true }, armedCtrl]) {
       expect(resolvePress(touch(over))).toEqual(resolvePress(facts(over)));
     }
@@ -524,5 +551,43 @@ describe('resolvePress in touch mode', () => {
     expect(resolvePress(touch({ moveLatched: true })).onDrag, 'with nothing selected it pans')
       .toEqual([{ kind: 'pan-camera', source: 'left-drag' }]);
     expect(resolvePress(facts(latched)), 'a mouse ignores it').toEqual(resolvePress(facts({ selection: latched.selection })));
+  });
+});
+
+describe('a press on a placed blueprint in Blueprint mode', () => {
+  const members: BlockRef[] = [{ kind: 'object', id: 'tree' }, { kind: 'terrain', x: 7, y: 8 }];
+  const tree = { id: 'tree', draggable: true, locked: false };
+
+  it('selects the whole group from any of its members, as a click selects one house', () => {
+    for (const over of [{ hit: tree }, {}]) {
+      const mouse = resolvePress(facts({ ...over, group: { refs: members, selected: false } }));
+      expect(mouse.down[0]).toEqual({ kind: 'select-group', blocks: members });
+      const finger = resolvePress(facts({ ...over, inputMode: 'touch', group: { refs: members, selected: false } }));
+      expect(finger.onTap).toEqual([{ kind: 'select-group', blocks: members }]);
+    }
+  });
+
+  it('on the group selected, a tap puts it down and a drag carries it whole', () => {
+    const selected = { selection: members, group: { refs: members, selected: true } };
+    const onTree = resolvePress(facts({ ...selected, hit: tree }));
+    expect(onTree.onTap).toEqual([{ kind: 'deselect' }]);
+    expect(onTree.onDrag).toEqual([{ kind: 'move-selection', anchorId: 'tree' }]);
+    expect(resolvePress(facts(selected)).onDrag).toEqual([{ kind: 'move-placement' }]);
+  });
+
+  it('with the multi-select key a press on a member still toggles that member alone', () => {
+    const plan = resolvePress(facts({ hit: tree, multiSelectHeld: true, group: { refs: members, selected: false } }));
+    expect(plan.down).toEqual([{ kind: 'toggle-select', block: { kind: 'object', id: 'tree' } }]);
+  });
+
+  it('drags the whole placement from any cell of its footprint, and a click there still selects the cell', () => {
+    const terrain: BlockRef = { kind: 'terrain', x: 7, y: 8 };
+    const mouse = resolvePress(facts({ inPlacement: true, selection: [terrain, { kind: 'terrain', x: 8, y: 8 }] }));
+    expect(mouse.down).toEqual([]);
+    expect(mouse.onDrag).toEqual([{ kind: 'move-placement' }]);
+    expect(mouse.onTap).toEqual([{ kind: 'select-on-release', select: { kind: 'select', block: terrain, pick: { x: 4, y: 5 } } }]);
+    const finger = resolvePress(facts({ inputMode: 'touch', inPlacement: true, selection: [terrain, { kind: 'terrain', x: 8, y: 8 }] }));
+    expect(finger.onDrag).toEqual([{ kind: 'move-placement' }]);
+    expect(finger.onTap).toEqual([{ kind: 'select', block: terrain, pick: { x: 4, y: 5 } }]);
   });
 });

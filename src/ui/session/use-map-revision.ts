@@ -1,11 +1,11 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { onMapEdited } from '../../core/commands/map-edits';
 import { subscribeMapStats } from '../../state/map-stats';
-import { mapRevisionOf } from '../../state/map-revision';
+import { mapRevisionOf } from '../../core/model/grid-model';
 import { useEditorStore } from '../../state/store';
 
 /**
- * The live map's edit revision (`state/map-revision.ts:mapRevisionOf`), the one "the map changed" signal for
+ * The live map's edit revision (`core/model/grid-model.ts:mapRevisionOf`), the one "the map changed" signal for
  * React surfaces: re-read after every edit, undo and redo included (`'edit'`), or once in the frame
  * after edits (`'frame'`) for a surface that reads the live `getMapStats` view, which a stroke changes
  * many times a frame. With `listening` off the hook subscribes to nothing and re-reads only on render.

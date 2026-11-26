@@ -3,6 +3,7 @@ import type { EditorView, ToolOverlay, ViewProjection } from '../../tools/pointe
 import { createToolHost, HEADLESS_OVERLAY, type HostedToolContext } from '../../tools/pointer/runtime/host';
 import type { ToolArming } from '../../state/editing/arming';
 import { ToolType } from '../../state/editing/vocabulary';
+import { REST_BLUEPRINT_UI } from '../../state/slices/blueprint';
 import { editorCurves } from '../../editor/session/tool-wiring';
 import { headlessViewVerbs } from './tool-manager';
 import type { MacroCoord, Rotation } from '../../core/model/types';
@@ -20,8 +21,7 @@ export function testArming(over: Partial<ToolArming> = {}): ToolArming {
     tool: ToolType.TerrainBrush,
     shape: 'free',
     contentType: 'mountain',
-    floor: 1,
-    layerPinned: false,   // the store's default: nobody has chosen a layer by hand
+    terrainThickness: 1,
     brushSize: 1,
     layerVisibility: {},
     autoEdgeCut: 'off',
@@ -48,6 +48,7 @@ export function testArming(over: Partial<ToolArming> = {}): ToolArming {
     objectBrush: 'place',
     objectPaintShape: 'free',
     objectPaintSpacing: 0,
+    blueprint: REST_BLUEPRINT_UI,
     ...over,
     // The picks follow the armed item unless a test names them, as the store's do.
     picks: over.picks ?? (over.armedItem ? [over.armedItem] : []),
@@ -62,11 +63,11 @@ export function arm(ctx: { arming: ToolArming }, patch: Partial<ToolArming>): vo
 }
 
 /** A hosted tool context over a test map + executor, through the live host builder, with a headless
- *  view (an overlay that draws nothing) and `testArming` at the given brush size and floor. `over`
+ *  view (an overlay that draws nothing) and `testArming` at the given brush size. `over`
  *  names only the fields a test is about, applied last so they win. A test may replace `overlay`
  *  or `viewport` afterwards as a view switch would. */
 export function makeToolCtx(
-  state: any, executor: CommandExecutor, brushSize = 1, floor = 1,
+  state: any, executor: CommandExecutor, brushSize = 1,
   over: ToolCtxOver = {},
 ): TestToolContext {
   const { overlay, viewport, ...rest } = over;
@@ -76,7 +77,7 @@ export function makeToolCtx(
     overlay: { get: () => view.overlay, set: (next: ToolOverlay) => { view.overlay = next; }, enumerable: true },
     viewport: { get: () => view.projection, set: (next: ViewProjection) => { view.projection = next; }, enumerable: true },
   });
-  const arming: Partial<ToolArming> = { brushSize, floor };
+  const arming: Partial<ToolArming> = { brushSize };
   const members: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rest)) {
     if (ARMING_KEYS.has(key)) (arming as Record<string, unknown>)[key] = value;

@@ -1,48 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useEditorStore } from '../../../../../state/store';
-import { MAP_REVIEW_UNAVAILABLE, forgetMapReview, knownMapReview, reviewLiveMap, type MapReview } from '../../../../../editor/review/map-review';
+import { createMapReviewSession, type MapReviewInput } from '../../../../../editor/review/map-session';
 import { useStylizeVersions } from '../stylize/use-stylize-versions';
 import { useUiPreview } from '../../../../design/preview';
 import { useMapRevision } from '../../../../session/use-map-revision';
 
-const EMPTY = MAP_REVIEW_UNAVAILABLE;
-const CLEAR: MapReview = { status: 'clear' };
-
+/** One export surface's map check (`editor/review/map-session.ts`), over the live map, its notes where
+ *  `includeAnnotations` and the chosen illustration where `illustration`. */
 export function useMapReview(open: boolean, automatic: boolean, illustration: boolean, includeAnnotations = true) {
   const pictured = useUiPreview();
   const map = useEditorStore(s => s.gridState);
-  const annotations = useEditorStore(s => s.annotationsEpoch);
+  const notes = useEditorStore(s => s.annotationsEpoch);
   const { selected } = useStylizeVersions();
   const revision = useMapRevision();
-  const key = `${revision}:${includeAnnotations ? annotations : "off"}:${illustration ? selected?.id ?? '' : ''}`;
-  const [snapshot, setSnapshot] = useState<{ map: typeof map; key: string; result: MapReview } | null>(null);
-  const [pending, setPending] = useState(false);
-  const active = useRef<{ controller: AbortController; promise: Promise<MapReview> } | null>(null);
-  const cancel = useCallback(() => {
-    active.current?.controller.abort(); active.current = null; setPending(false);
-  }, []);
-  useEffect(() => { cancel(); return cancel; }, [open, map, key, cancel]);
-  const known = map ? knownMapReview({ map, key }) : null;
-  const result = pictured ? CLEAR : snapshot?.map === map && snapshot?.key === key ? snapshot.result : known;
-  const check = useCallback(async (): Promise<MapReview> => {
-    if (!open || !map) return EMPTY;
-    if (result) return result;
-    if (active.current) return active.current.promise;
-    const controller = new AbortController();
-    setPending(true);
-    const promise = (async () => {
-      try {
-        const verdict = await reviewLiveMap({ illustration, annotations: includeAnnotations }, controller.signal, { map, key });
-        setSnapshot({ map, key, result: verdict });
-        return verdict;
-      } finally {
-        if (active.current?.controller === controller) { active.current = null; setPending(false); }
-      }
-    })();
-    active.current = { controller, promise };
-    return promise;
-  }, [open, map, key, result, illustration, includeAnnotations]);
-  useEffect(() => { if (open && automatic && !result) void check().catch(() => {}); }, [open, automatic, result, check]);
-  const retry = useCallback(() => { cancel(); forgetMapReview(); setSnapshot(null); }, [cancel]);
-  return { result, pending, check, retry, cancel, revision: key, previewReady: !!result && result.status !== 'blocked' };
+  const [session] = useState(createMapReviewSession);
+  const input: MapReviewInput = {
+    open, automatic, map, revision, pictured,
+    notes: includeAnnotations ? notes : null, illustration: illustration ? selected?.id ?? '' : null,
+  };
+  // Read for this render's map: a verdict never shows for pictures it was not reached on, even for a render.
+  const state = useSyncExternalStore(session.subscribe, () => session.snapshot(input));
+  // After the paint: a check that starts here begins with the map's capture.
+  useEffect(() => { session.watch(input); });
+  useEffect(() => () => session.release(), [session]);
+  return { ...state, check: session.check, retry: session.retry, cancel: session.cancel };
 }

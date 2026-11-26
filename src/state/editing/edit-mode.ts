@@ -17,7 +17,10 @@ import { REPAIR_BUILD_MODES } from '../slices/repair-session';
  *  layer: it has no block in the mode row — the layer panel's Notes row and the export modal's
  *  note-editing door arm it — but it is a build mode, so which bar is up and who owns the pointer
  *  stay one fact. */
-export type BuildMode = 'object' | 'road' | 'mountain' | 'water' | 'generate' | 'annotate' | null;
+export type BuildMode = typeof BUILD_MODES[number] | null;
+
+/** Every build mode but rest. */
+export const BUILD_MODES = ['object', 'road', 'mountain', 'water', 'generate', 'blueprint', 'annotate'] as const;
 
 /** The mode-row modes `session` offers, ground first, or none at all during a hand repair
  *  (`repairing`); null outside both, where the row offers every mode. */
@@ -48,9 +51,46 @@ export function clampBrushSize(size: number): number {
   return Math.max(BRUSH_SIZE.min, Math.min(BRUSH_SIZE.max, size));
 }
 
+/** How many layers one mountain stroke raises or lowers a cell by. Source: owner ruling 2026-11-07. */
+export const TERRAIN_THICKNESS = { min: 1, max: 3 } as const;
+
+/** Whether the armed tool takes a thickness: the mountain brush, its shapes and the mountain eraser,
+ *  outside the planet editor, whose ground is one layer. */
+export function takesThickness(surface: ContentType, tool: BuildTool, planetSession: boolean): boolean {
+  return surface === 'mountain' && !planetSession && (tool === 'brush' || tool === 'shape' || tool === 'erase');
+}
+
+/** A tool of a surface's tool row. */
+export type SurfaceTool = Exclude<BuildTool, 'shape' | 'none'>;
+
+const SURFACE_TOOLS: readonly SurfaceTool[] = ['brush', 'erase', 'trim', 'smart'];
+const PAINT_TOOLS: readonly SurfaceTool[] = ['brush', 'erase'];
+
+/** The tools `surface`'s row offers, in row order: all four, or the brush and the eraser alone in the
+ *  planet editor and while the road brush lays a transparent print, where no edge is cut (by the
+ *  tool or by the auto edge cut that goes with it) and nothing is smart-built. */
+export function surfaceTools(surface: ContentType, { planetSession, printArmed }: { planetSession: boolean; printArmed: boolean }): readonly SurfaceTool[] {
+  return planetSession || (surface === 'road' && printArmed) ? PAINT_TOOLS : SURFACE_TOOLS;
+}
+
+/** Whether a brush drawing `shape` takes a size: a rectangle and a circle are sized by their drag. */
+export function shapeTakesSize(shape: BuildShape): boolean {
+  return shape !== 'rect' && shape !== 'circle';
+}
+
+/** Whether the armed tool takes a brush size: Smart Build, and the brush or the eraser drawing
+ *  `shape`, the figure in force for that tool (the eraser keeps its own). */
+export function toolTakesSize(tool: BuildTool, shape: BuildShape): boolean {
+  return tool === 'smart' || ((tool === 'brush' || tool === 'shape' || tool === 'erase') && shapeTakesSize(shape));
+}
+
+/** Every thickness, thinnest first: the bar's options and the order its key steps them. */
+export const TERRAIN_THICKNESSES: readonly number[] = Array.from(
+  { length: TERRAIN_THICKNESS.max - TERRAIN_THICKNESS.min + 1 }, (_, i) => TERRAIN_THICKNESS.min + i);
+
 /** The surfaces that take content, named as their build modes: the surface a build brush lays and the
  *  bar that lays it are one fact. Roads are a tile coating; the other two are terrain. */
-export type ContentType = Exclude<BuildMode, null | 'object' | 'generate' | 'annotate'>;
+export type ContentType = Exclude<BuildMode, null | 'object' | 'generate' | 'blueprint' | 'annotate'>;
 
 /** The grid each surface lies on: terrain on the terrain grid, a road coating on the placement grid
  *  every catalog item stands on. Its keys are the surfaces. */
@@ -143,7 +183,7 @@ export type EditModeInputs =
   // arming here, but the surface resumes with what it held when the bar comes back. Annotate rides
   // the same arm: which annotation tool is armed is the annotation slice's own field, the way
   // `eraserShape` is the eraser's, so the mode carries no arming of its own.
-  | Inputs<null | 'generate' | 'annotate', Arming>;
+  | Inputs<null | 'generate' | 'blueprint' | 'annotate', Arming>;
 
 /** A change to `editMode`: the mode to open (omitted keeps the current one) and what to arm on it
  *  (omitted carries what that mode held). */
@@ -166,7 +206,7 @@ export const REST_INPUTS: EditModeInputs = {
 };
 
 function resolveEditMode(inputs: EditModeInputs): EditModeState {
-  // A switch, not an if-chain: `inputs.mode`'s rest arm is the union `null | 'generate'`, and only
+  // A switch, not an if-chain: `inputs.mode`'s rest arm is the union `null | 'generate' | 'blueprint'`, and only
   // a switch's case-by-case narrowing carries that arm's `inputs.arming` down to the branch below
   // as the right member of the union — an if/else on the same checks leaves it unnarrowed.
   switch (inputs.mode) {
@@ -175,6 +215,10 @@ function resolveEditMode(inputs: EditModeInputs): EditModeState {
     case null:
     case 'generate':
       return REST;
+    // The blueprint tool owns the pointer in its mode; with nothing armed it stands down as the Hand
+    // tool does, so the map behaves as at rest.
+    case 'blueprint':
+      return { ...REST, toolType: ToolType.Blueprint };
     // The annotate tool owns the pointer while the plan-notes layer is being edited; the four
     // content facts are inert (nothing here lays terrain or arms an item).
     case 'annotate':
@@ -279,11 +323,16 @@ function carriedContent(prev: EditModeInputs, surface: ContentType): ContentArmi
   return held;
 }
 
-/** `inputs` with the road tools a transparent print lacks (trim and smart build) put down to the brush. */
+/** `inputs` with an armed tool its surface does not offer while a print is armed (`surfaceTools`) put
+ *  down to the brush. The planet session's half is its row's and its keys' alone, since a parked
+ *  map's arming is restored while the session still stands. */
 export function withSurfaceTools(inputs: EditModeInputs, printArmed: boolean): EditModeInputs {
-  return inputs.mode === 'road' && printArmed && (inputs.arming.kind === 'trim' || inputs.arming.kind === 'smart')
-    ? { ...inputs, arming: { kind: 'brush' }, heldShape: 'free' }
-    : inputs;
+  const { mode } = inputs;
+  if (!isContentMode(mode)) return inputs;
+  const tool = TOOL_OF[inputs.arming.kind];
+  const offered = surfaceTools(mode, { planetSession: false, printArmed });
+  const lacked = SURFACE_TOOLS.some((known) => known === tool) && !offered.some((known) => known === tool);
+  return lacked ? { ...inputs, mode, arming: { kind: 'brush' }, heldShape: 'free' } : inputs;
 }
 
 /** The inputs `change` makes of `prev`. What the change arms outranks what the mode carried. */
@@ -292,7 +341,7 @@ export function nextEditMode(prev: EditModeInputs, change: EditModeChange): Edit
   const { arm } = change;
   const shape = arm?.kind === 'shape' ? arm.shape : arm?.kind === 'brush' ? 'free' : prev.heldShape;
 
-  if (mode === null || mode === 'generate' || mode === 'annotate') {
+  if (mode === null || mode === 'generate' || mode === 'blueprint' || mode === 'annotate') {
     return { mode, arming: prev.arming, heldShape: shape, heldObject: heldObjectAfter(prev) };
   }
   if (mode === 'object') {
@@ -318,9 +367,11 @@ function resolvedOf(s: { editMode: EditModeInputs }): EditModeState {
   return state;
 }
 
-/** The tools a selection may stand under: the Hand tool, and the placer, since an armed placer
- *  still reaches the selection through the modifier and select-instead-of-place. */
-const SELECTION_HOLDERS: ReadonlySet<ToolType> = new Set([ToolType.Hand, ToolType.ObjectPlacer]);
+/** The tools a selection may stand under: the Hand tool, and the placer and the blueprint tool, since
+ *  armed they still reach the selection through the modifier and select-instead-of-place, and a
+ *  blueprint placed by touch stays selected for the selection card to turn. Their arming ends the
+ *  selection standing before it (`intent.ts:movesOn`). */
+const SELECTION_HOLDERS: ReadonlySet<ToolType> = new Set([ToolType.Hand, ToolType.ObjectPlacer, ToolType.Blueprint]);
 /** The terrain brushes (build brush, eraser, edge cut): the multi-select modifier reaches the
  *  selection path from them, and a selection written while one is up puts it away for the Hand tool. */
 const BRUSHES: ReadonlySet<ToolType> = new Set([ToolType.TerrainBrush, ToolType.Eraser, ToolType.EdgeCut]);

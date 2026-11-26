@@ -11,12 +11,14 @@ import { CellZone } from '../../core/game/zones';
 import { createGrid } from '../../core/model/grid-model';
 import { templateLandmarkObjects } from '../../core/model/landmarks';
 import { generateObjectId } from '../../core/model/object-id';
-import { admitSaveObject, isValidObjectId } from './admission';
+import { admitSaveObject } from './admission';
+import { isValidId } from '../../core/base/guards';
 import { MAX_OBJECTS_PER_CELL } from './limits';
 import { CURRENT_VERSION, type SaveFile, type SaveObject, type PersistedCamera } from './format';
 import { serializeProvenance, deserializeProvenance, markLegacyUnknown } from '../../core/provenance/serialize';
 import { cellToToken, decodeCorners, encodeCorners, tokenToCell } from './terrain-token';
 import { decodeAnnotations } from './annotations-codec';
+import { decodeGroups, encodeGroups } from './groups-codec';
 import { APP_VERSION } from '../../platform/build/build-info';
 
 /* Save files are migrated to the schema in ./format/types before decoding. */
@@ -56,6 +58,7 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
     objectList.push(saved);
   }
 
+  const groups = encodeGroups(state);
   const saveFile: SaveFile = {
     version: CURRENT_VERSION,
     templateId: template.id,
@@ -69,6 +72,7 @@ export function buildSaveFile(state: GridState, camera?: PersistedCamera): SaveF
     ...(state.imageAttribution ? { imageAttribution: state.imageAttribution } : {}),
     // An empty annotation layer has no persisted visibility or lock state.
     ...(state.annotations && (state.annotations.items.length > 0 || state.annotations.customTags?.length) ? { annotations: state.annotations } : {}),
+    ...(groups ? { groups } : {}),
     ...(camera && (camera.view2d || camera.view3d) ? { camera } : {}),
   };
 
@@ -114,7 +118,7 @@ export function decodeSave(parsed: ParsedSave): GridState {
     if (!admitted) continue;
     const { catalogId } = admitted;
     // Object IDs can enter model context; replace values outside the app's emitted alphabet.
-    const id = isValidObjectId(obj.id) ? obj.id : generateObjectId();
+    const id = isValidId(obj.id) ? obj.id : generateObjectId();
     if (id !== obj.id && typeof obj.id === 'string') reIdedObjects.set(obj.id, id);
     const placed: PlacedObject = {
       id,
@@ -165,6 +169,8 @@ export function decodeSave(parsed: ParsedSave): GridState {
   }
   const annotations = decodeAnnotations(save.annotations);
   if (annotations) result.annotations = annotations;
+  const groups = decodeGroups(save.groups, result);
+  if (groups) result.groups = groups;
   return result;
 }
 

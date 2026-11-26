@@ -9,6 +9,7 @@ import { makeRng, mix } from '../../../../core/base/rng';
 import { clamp01, lerpClamped } from '../../../../core/base/math';
 import type { DesignInput } from '../types';
 import type { CompositionPlan } from '../composition/composition';
+import type { PlanetReading } from '../planet';
 import type { MovementLine } from '../composition/movement-line';
 import { cutDistricts } from './blocks';
 import { makeBoard } from './board';
@@ -32,12 +33,13 @@ const CROSSING_COUNT = { low: 1, high: 3 } as const;
 /** The street layer of one map: the lines, the pavement they lay, the flights that carry them over
  *  the composition's tier steps, and the districts the two of them cut the planet into. */
 export function planStreets(
-  { seed, template, composition, richness, line }: DesignInput & { composition: CompositionPlan; line?: MovementLine },
+  { seed, template, composition, richness, line, planet }:
+    DesignInput & { composition: CompositionPlan; line?: MovementLine; planet: PlanetReading },
 ): StreetPlan {
   const r = clamp01(richness);
   // Avalanche neighboring seeds before sampling flight geometry and appearance.
   const rng = makeRng(mix(seed, 0x2b7e1516));
-  const board = makeBoard(template, composition);
+  const board = makeBoard(template, composition, planet);
 
   const laid = layStreets(board, composition, r, seed, line);
   // Draw the flight salt before catalog shuffling so new styles cannot advance its random stream.

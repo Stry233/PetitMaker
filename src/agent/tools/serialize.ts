@@ -1,19 +1,20 @@
 /**
  * Compact text serialization of editor state for the LLM agent.
  *
- * One char per cell so grids stay column-aligned in the model's context:
- * mountain elevation N → the digit N; water elevation N → 'A' + N; bare zones
- * use glyphs (see TOKEN_LEGEND). Detailed reads are tool-driven and capped at
- * REGION_CAP per axis — the agent subdivides rather than dumping whole maps.
+ * One char per object cell so grids stay column-aligned in the model's context, each saying what
+ * an object on that cell would stand on (`groundUnder`): mountain elevation N → the digit N; water
+ * elevation N → 'A' + N; bare zones use glyphs; a cell whose ground is not one piece reads as an
+ * edge (see TOKEN_LEGEND). The model never sees the terrain grid. Detailed reads are tool-driven and
+ * capped at REGION_CAP per axis — the agent subdivides rather than dumping whole maps.
  */
 import { TerrainType, type GridState, type MacroCoord, type PlacedObject } from '../../core/model/types';
 import { isBuildableZone, isOpenSeaZone, isRimZone, type CellZone } from '../../core/game/zones';
 import { getCell } from '../../core/model/grid-model';
-import { cellKey } from '../../core/grid/rect';
-import { terrainCellsUnder } from '../../core/grid/footprint';
+import { cellKey, regionBounds } from '../../core/grid/rect';
+import { footprintCells, terrainCellsUnder, wholeCellsInRegion } from '../../core/grid/footprint';
 import { isCoating } from '../../core/model/traits';
 import { getCatalogItem } from '../../state/catalog';
-import { objectRect } from '../../state/object-geometry';
+import { doorOf, hasGate, objectRect } from '../../state/object-geometry';
 import { getMapStats } from '../../state/map-stats';
 import { isChunkLoadEnforced, roundLoad } from '../../core/model/load';
 import { chunkName, mapChunkOrigin } from '../../core/grid/map-chunks';
@@ -31,19 +32,26 @@ const zoneLegend = (zone: CellZone): string =>
   `${zoneGlyph(zone)} ${zoneName(zone)}${isBuildableZone(zone) ? ' (buildable)' : isRimZone(zone) ? ' (unbuildable)' : ''}`;
 const ANCHOR = anchorTerm();
 
+/** A cell resting partly on water. */
+const BANK_GLYPH = '=';
+/** A cell resting on ground at two heights, none of it water. */
+const STEP_GLYPH = '^';
+
 const TOKEN_LEGEND =
-  `Legend: o object footprint (occupied: painting or placing there is refused; get_objects names them); ` +
+  `Legend: each token is what an object on that cell stands on. ` +
+  `o object footprint (occupied: placing there is refused, and terrain painted under it or under a cell touching it leaves the object's ground out; get_objects names them); ` +
   `P ${ANCHOR ? `${ANCHOR} or ` : ''}locked structure (permanent); 1-${ELEVATION_MAX} mountain at that elevation; ` +
   `A-${WATER_GLYPH_MAX} water at elevation 0-${ELEVATION_MAX} (A=0); ` +
+  `${BANK_GLYPH} bank (the cell touching water: part of its ground is water); ${STEP_GLYPH} step (the cell touching a height change: its ground is at two heights); ` +
+  `only bridges and ramps go on ${BANK_GLYPH} and ${STEP_GLYPH}, and painting terrain under the cells that show a token gives exactly the terrain read; ` +
   `${ZONE_ORDER.map(zoneLegend).join('; ')}.`;
 
 /**
  * The solid objects' cells, locked and unlocked apart, built once per grid render and handed into
  * the per-cell tokenizer (a per-cell scan of state.objects is the cost the object index exists to
- * avoid). Cells are collected with the terrain cells V-PLACE-BLOCK tests (`terrainCellsUnder`), so a cell
- * marked here is one where a paint would be refused. Coatings (roads) mark nothing: they follow a
- * surface change rather than blocking it, and an 'o' over every paved cell would hide the terrain
- * the road lies on.
+ * avoid). A marked cell is one the object's footprint covers, wholly or in part. Coatings (roads)
+ * mark nothing: they follow a surface change rather than blocking it, and an 'o' over every paved
+ * cell would hide the ground the road lies on.
  */
 interface ObjectMarks { solid: Set<string>; locked: Set<string> }
 
@@ -53,7 +61,8 @@ function objectMarks(state: GridState): ObjectMarks {
   for (const obj of state.objects.values()) {
     const item = getCatalogItem(obj.catalogId);
     if (item && isCoating(item)) continue;
-    for (const { x, y } of terrainCellsUnder(objectRect(obj))) {
+    const r = objectRect(obj);
+    for (const { x, y } of footprintCells(r.x, r.y, r.w, r.h)) {
       solid.add(cellKey(x, y));
       if (obj.locked) locked.add(cellKey(x, y));
     }
@@ -61,19 +70,53 @@ function objectMarks(state: GridState): ObjectMarks {
   return { solid, locked };
 }
 
-/** Objects over terrain in the glyph order, because occupancy is the question an exact grid gets
+/** What an object standing on one cell would rest on. */
+type Ground =
+  | { kind: 'water' | 'mountain'; elevation: number }
+  | { kind: 'bare'; zone: CellZone }
+  | { kind: 'bank' | 'step' }
+  | { kind: 'off' };
+
+/**
+ * The ground under object cell (x, y): the terrain cells it rests on, read as one. Where they are the
+ * same terrain at the same elevation the cell reads as that, which is what painting under the cell
+ * would lay, so a grid read and painted back changes nothing. Where they differ the cell is an edge
+ * and names no terrain: a bank where any of it is water, else a step. Bare ground across two zones
+ * reads as the zone that is not buildable.
+ */
+export function groundUnder(state: GridState, x: number, y: number): Ground {
+  let first: { type: TerrainType | undefined; elevation: number } | undefined;
+  let zone: CellZone | undefined;
+  let mixed = false, wet = false;
+  for (const t of terrainCellsUnder({ x, y, w: 1, h: 1 })) {
+    const cell = getCell(state.cells, t.x, t.y);
+    if (!cell) continue;
+    const here = { type: cell.terrain?.type, elevation: cell.terrain?.elevation ?? 0 };
+    if (here.type === TerrainType.Water) wet = true;
+    if (!first) first = here;
+    else if (first.type !== here.type || first.elevation !== here.elevation) mixed = true;
+    if (zone === undefined || (isBuildableZone(zone) && !isBuildableZone(cell.zone))) zone = cell.zone;
+  }
+  if (!first || zone === undefined) return { kind: 'off' };
+  if (mixed) return { kind: wet ? 'bank' : 'step' };
+  if (first.type === TerrainType.Water) return { kind: 'water', elevation: first.elevation };
+  if (first.type === TerrainType.Mountain) return { kind: 'mountain', elevation: first.elevation };
+  return { kind: 'bare', zone };
+}
+
+/** Objects over ground in the glyph order, because occupancy is the question an exact grid gets
  *  asked (where can I paint or place): an invisible footprint was the one thing the grid could not
- *  answer, and the terrain under an object is still readable from the cells around it. */
+ *  answer, and the ground under an object is still readable from the cells around it. */
 function cellToken(state: GridState, x: number, y: number, marks: ObjectMarks): string {
-  const cell = getCell(state.cells, x, y);
-  if (!cell) return ' ';
+  const g = groundUnder(state, x, y);
+  if (g.kind === 'off') return ' ';
   const key = cellKey(x, y);
   if (marks.locked.has(key)) return 'P';
   if (marks.solid.has(key)) return 'o';
-  const t = cell.terrain;
-  if (t?.type === TerrainType.Mountain) return String(Math.min(t.elevation, ELEVATION_MAX));
-  if (t?.type === TerrainType.Water) return String.fromCharCode(65 + Math.min(t.elevation, ELEVATION_MAX));
-  return zoneGlyph(cell.zone);
+  if (g.kind === 'mountain') return String(Math.min(g.elevation, ELEVATION_MAX));
+  if (g.kind === 'water') return String.fromCharCode(65 + Math.min(g.elevation, ELEVATION_MAX));
+  if (g.kind === 'bank') return BANK_GLYPH;
+  return g.kind === 'bare' ? zoneGlyph(g.zone) : STEP_GLYPH;
 }
 
 /** The token a bare cell of `zone` reads as in a map view: buildable ground, the shore rim, open sea,
@@ -114,9 +157,22 @@ export function regionTokens(state: GridState, r: { x1: number; y1: number; x2: 
   return lines.join('\n');
 }
 
+/** The compass side a unit step points to; +y is south on the map. */
+function sideOf(step: MacroCoord): string {
+  return step.x > 0 ? 'east' : step.x < 0 ? 'west' : step.y > 0 ? 'south' : 'north';
+}
+
+/** Where a building's door is and the cell a path to it ends on, so a road meets the door and not the wall. */
+function doorNote(o: PlacedObject): string {
+  const item = getCatalogItem(o.catalogId);
+  if (!item || !hasGate(item)) return '';
+  const { gate, facing } = doorOf(objectRect(o, item), o.rotation);
+  return ` door=(${gate.x},${gate.y}) faces ${sideOf(facing)}, path ends at (${gate.x + facing.x},${gate.y + facing.y})`;
+}
+
 export function objectLine(o: PlacedObject): string {
   const span = o.spanLength !== undefined ? ` span=${o.spanLength}` : '';
-  return `${o.id}: ${o.catalogId} at (${o.position.x},${o.position.y}) rot=${o.rotation} elev=${o.elevation}${span}${o.locked ? ' [locked]' : ''}`;
+  return `${o.id}: ${o.catalogId} at (${o.position.x},${o.position.y}) rot=${o.rotation} elev=${o.elevation}${span}${doorNote(o)}${o.locked ? ' [locked]' : ''}`;
 }
 
 /** The share of a region's limit from which the map summary names the region. */
@@ -160,9 +216,12 @@ export function mapSummary(state: GridState): string {
   const mountainStr =
     [...mountain.entries()].sort((a, b) => a[0] - b[0]).map(([e, n]) => `elev ${e}: ${n}`).join(', ') || 'none';
   const objStr = [...byCat.entries()].map(([c, n]) => `${c}: ${n}`).join(', ') || 'none';
+  // The cells objects can stand on: those resting wholly on the buildable ground.
+  const stand = maxX >= minX ? wholeCellsInRegion([{ x: minX, y: minY }, { x: maxX, y: maxY }]) : null;
+  const bounds = stand ? `(${stand.x},${stand.y})-(${stand.x + stand.w - 1},${stand.y + stand.h - 1})` : 'none';
   const lines = [
-    `Map ${width}x${height}. Buildable (${BUILDABLE_ZONES}) bounds: (${minX},${minY})-(${maxX},${maxY}).`,
-    `Mountain cells — ${mountainStr}. Water cells: ${water}.`,
+    `Map ${width}x${height}. Buildable (${BUILDABLE_ZONES}) bounds: ${bounds}.`,
+    `Mountain area, in cells — ${mountainStr}. Water area: ${water}.`,
     `Objects (${state.objects.size}) — ${objStr}.`,
   ];
   const origin = mapChunkOrigin(state.template);
@@ -207,15 +266,14 @@ export function mapOverview(state: GridState): string {
       for (let y = by; y < Math.min(by + k, height); y++) {
         for (let x = bx; x < Math.min(bx + k, width); x++) {
           total++;
-          const cell = state.cells[y]![x]!;
-          const t = cell.terrain;
-          if (t?.type === TerrainType.Mountain) {
+          const g = groundUnder(state, x, y);
+          if (g.kind === 'mountain') {
             mountains++;
-            if (t.elevation > maxMtn) maxMtn = t.elevation;
-          } else if (t?.type === TerrainType.Water) {
+            if (g.elevation > maxMtn) maxMtn = g.elevation;
+          } else if (g.kind === 'water') {
             water++;
-            if (t.elevation > maxWtr) maxWtr = t.elevation;
-          } else if (isBuildableZone(cell.zone)) buildable++;
+            if (g.elevation > maxWtr) maxWtr = g.elevation;
+          } else if (g.kind === 'bare' && isBuildableZone(g.zone)) buildable++;
         }
       }
       if (water >= total * 0.25 && water >= mountains) row += String.fromCharCode(65 + Math.min(maxWtr, ELEVATION_MAX));
@@ -233,17 +291,8 @@ export function selectionContext(region: MacroCoord[]): string {
   if (region.length === 0) {
     return `User selection: none (operate anywhere on ${BUILDABLE_ZONES}, or ask the user to select a region).`;
   }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const c of region) {
-    if (c.x < minX) minX = c.x;
-    if (c.x > maxX) maxX = c.x;
-    if (c.y < minY) minY = c.y;
-    if (c.y > maxY) maxY = c.y;
-  }
-  return `User selection: ${region.length} cells in bbox (${minX},${minY})-(${maxX},${maxY}). When the user says "here"/"the selected area", they mean this region. `
+  const { x1, y1, x2, y2 } = regionBounds(region)!;
+  return `User selection: ${region.length} cells in bbox (${x1},${y1})-(${x2},${y2}). When the user says "here"/"the selected area", they mean this region. `
     + 'It is also a HARD BOUNDARY while it is set: every cell you paint or erase, and the whole footprint '
     + 'of every object you place or remove, must lie inside it. An edit that reaches outside is refused '
     + 'and applies nothing, so plan within these cells.';

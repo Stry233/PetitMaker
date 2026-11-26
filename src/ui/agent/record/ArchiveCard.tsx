@@ -2,10 +2,9 @@
 import { Pill } from '../../primitives/Pill';
 import { ModelProse } from '../parts/model-prose';
 import { OpsList } from './OpRow';
-import { buildHistory } from '../derive/build-history';
+import { buildHistory, type JobView } from '../../../agent/panel';
 import { ConfirmPill } from '../parts/ConfirmPill';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
 import { FOOT, HEAD_STAMP, HEADLINE, ON_MAP, OutcomeStamp, SPACER, StepList, stepName, TICKET } from './ticket-parts';
 
 /** Shared archive footer with a primary Back action and in-place confirmed Clear action. */

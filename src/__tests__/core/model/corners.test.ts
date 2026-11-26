@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Corners } from '../../../core/model/types';
-import { CORNERS, CORNER_INDEX, cornersOnSide, copyCorners, mapCorners } from '../../../core/model/corners';
+import { CORNERS, cornersOnSide, copyCorners, mapCorners } from '../../../core/model/corners';
 import { SIDES } from '../../../core/grid/directions';
 import { INNER_TRI, OUTER_TRI } from '../../../core/domain/edge-cut/cut-validator';
 
@@ -31,7 +31,6 @@ describe('corner adjacency', () => {
       ['BL', 'SW', ['S', 'W'], [[-1, 0], [0, 1]], [-1, 1]],
       ['BR', 'SE', ['S', 'E'], [[1, 0], [0, 1]], [1, 1]],
     ]);
-    expect(CORNER_INDEX).toEqual({ TL: 0, TR: 1, BL: 2, BR: 3 });
   });
 
   it('lists the corners on each side in index order', () => {

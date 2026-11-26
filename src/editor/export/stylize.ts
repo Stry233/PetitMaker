@@ -2,22 +2,25 @@
  * and style reference, a local pack take with its seed roll, each minted onto the version shelf and
  * remembered as the next direction; and the provider connection's reading, target and filing, which
  * `stylize-connection.ts` drives. The studio keeps its drafts, timers and status slots. */
+import { packSampleUrl, packSwatchUrl } from '../../assets/style-sample-urls';
 import { useEditorStore } from '../../state/store';
 import { versionSrc, versionStore } from '../../state/stylize-versions';
 import { isAbortError } from '../../platform/async/abort';
+import { loadImage } from '../../platform/async/load-image';
 import { sanitizeEndpointUrl } from '../../platform/remote/endpoint-url';
 import { reviewText, ReviewWorkerLease } from '../../pipelines/moderation';
 import {
   CUSTOM_DIRECTION_ID, CUSTOM_PROMPT_MAX, DIALECTS, STYLE_PACKS, STYLIZE_PROVIDERS, StylizeError, loadProcRenderer,
-  procPackMeta, resolveRecipe, runEngine, toStylizeStatus,
+  neuralPacksUsableNow, procPackMeta, resolveRecipe, runEngine, toStylizeStatus,
   type DialectConfig, type DirectionId, type EngineDeps, type Recipe, type StylizeDialect, type StylizeDirection,
   type StylizeProvider, type StylizeStatus,
 } from '../../pipelines/stylize';
+import { PROC_PACK_META } from '../../pipelines/stylize/facts';
 import { canonicalBytes, canonicalize } from '../../io/save/canonical';
 import { loadStylizeKey, loadStylizeSettings, saveStylizeKey, saveStylizeSettings, type StylizeSettings } from '../../io/storage/stylize-settings';
 import { host } from '../host/host';
 
-export { neuralPacksUsable, neuralPacksUsableNow, retainNeuralRuntime } from '../../pipelines/stylize';
+export { neuralPacksUsable, retainNeuralRuntime } from '../../pipelines/stylize';
 export { loadProcRenderer, runEngine };
 export type { DialectConfig, StylizeDialect, StylizeStatus };
 
@@ -40,21 +43,21 @@ interface ModelTakeRequest {
   text: string;
   dialect: StylizeDialect;
   cfg: DialectConfig;
-  /** The pack's sample picture, which a pack take's style reference falls back to. */
-  packAnchor: string | null;
   run: RunStylize;
 }
 
 /** Local render width matching the largest export preset. */
 const PROC_RENDER_PX = 2400;
 
+/** The long side the studio's original is captured at where no provider sets one. */
+const ORIGINAL_CAPTURE_PX = 2048;
+
+/** The long side, in px, the studio captures the map's own picture at: what the connected provider
+ *  takes, so the comparison shows what a take is drawn from. */
+export const originalCaptureEdge = (dialect: StylizeDialect | null): number => dialect?.maxEdge ?? ORIGINAL_CAPTURE_PX;
+
 function loadDataUrl(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new StylizeError('bad_response'));
-    img.src = url;
-  });
+  return loadImage(url).catch(() => { throw new StylizeError('bad_response'); });
 }
 
 /** One studio session's jobs; its check worker lives until `dispose`. */
@@ -66,7 +69,7 @@ export class StylizeStudioJobs {
   }
 
   /** A provider take. A kept take of the same direction is the style reference, else the pack's
-   *  sample; custom words pass the local text check before they go to the provider. */
+   *  sample or swatch; custom words pass the local text check before they go to the provider. */
   async generateModel(request: ModelTakeRequest, signal: AbortSignal): Promise<TakeOutcome> {
     const gridState = useEditorStore.getState().gridState;
     const { direction: dir, dialect, cfg, text } = request;
@@ -75,7 +78,8 @@ export class StylizeStudioJobs {
     const shelf = versionStore.getState();
     const kept = shelf.selectedId ? shelf.versions.find((v) => v.id === shelf.selectedId) : null;
     const keptSrc = kept && kept.direction === dir ? versionSrc(kept) : null;
-    const packAnchor = pack ? request.packAnchor : null;
+    // A pack take with no kept take to follow is anchored on the pack's sample, else its swatch.
+    const packAnchor = pack ? packSampleUrl(pack.id) ?? packSwatchUrl(pack.id) : null;
     const styleRef = keptSrc
       ? { url: keptSrc, kind: 'take' as const }
       : packAnchor
@@ -159,10 +163,24 @@ export class StylizeStudioJobs {
   }
 }
 
-/** The studio's stored direction and custom words, read once as it opens. */
+/** The directions the studio offers, in the booklet's order: the local packs, those an on-device
+ *  model draws only where the engine can run them (taken as so until its probe has answered), then
+ *  the provider packs and the user's own words. */
+export function offeredDirections(): StylizeDirection[] {
+  const neural = neuralPacksUsableNow() ?? true;
+  return [
+    ...PROC_PACK_META.filter((pack) => neural || !pack.neural).map((pack) => pack.id),
+    ...STYLE_PACKS.map((pack) => pack.id),
+    CUSTOM_DIRECTION_ID,
+  ];
+}
+
+/** The studio's stored direction and custom words, read once as it opens; a stored direction the
+ *  studio no longer offers gives way to the first it does. */
 export function storedStylizeInputs(): Pick<StylizeSettings, 'direction' | 'customPrompt'> {
   const { direction, customPrompt } = loadStylizeSettings();
-  return { direction, customPrompt };
+  const offered = offeredDirections();
+  return { direction: offered.includes(direction) ? direction : offered[0]!, customPrompt };
 }
 
 /* ── The provider connection ─────────────────────────────── */

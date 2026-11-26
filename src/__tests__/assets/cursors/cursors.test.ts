@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { CURSORS, CURSOR_IDS, CURSOR_SIZE, FORBIDDABLE, type CursorId } from '../../../assets/cursors/cursor-spec';
-import { cursorArt, busyFrame, BADGED_IDS, BUSY_FRAME_COUNT } from '../../../assets/cursors/cursor-art';
-import { decodePng } from '../../../io/share/raster/png-raster';
+import { CURSORS, CURSOR_SIZE, FORBIDDABLE, type CursorId } from '../../../assets/cursors/cursor-spec';
+import { cursorArt, busyFrame, BUSY_FRAME_COUNT } from '../../../assets/cursors/cursor-art';
+
+const CURSOR_IDS = Object.keys(CURSORS) as CursorId[];
+import { decodePng } from '../../_support/png-raster';
 
 /**
  * One generated SVG per drawing; painted ones embed their 2x render as a data-URI PNG. The files
@@ -40,11 +42,6 @@ const NEAR = 8;
 const KEYWORDS = ['default', 'crosshair', 'grab', 'grabbing', 'move', 'copy', 'progress', 'not-allowed', 'pointer', 'all-scroll', 'text', 'help'];
 
 describe('cursor catalogue', () => {
-  it('describes every id exactly once', () => {
-    expect(CURSOR_IDS.length).toBe(new Set(CURSOR_IDS).size);
-    expect(Object.keys(CURSORS).sort()).toEqual([...CURSOR_IDS].sort());
-  });
-
   it('puts every hotspot inside the image', () => {
     for (const id of CURSOR_IDS) {
       const [x, y] = CURSORS[id].hotspot;
@@ -229,7 +226,7 @@ describe('cursor art', () => {
   it('draws a badged variant for exactly the cursors that can refuse', () => {
     // The extractor places the badge per silhouette; a `FORBIDDABLE` id missing from its table
     // would refuse with its plain art.
-    expect([...BADGED_IDS].sort()).toEqual([...FORBIDDABLE].sort());
+    expect(CURSOR_IDS.filter((id) => cursorArt(id, { forbidden: true }) !== cursorArt(id)).sort()).toEqual([...FORBIDDABLE].sort());
   });
 
   it('uses the badged file only when asked, and it adds the sign beside the untouched drawing', async () => {
@@ -252,7 +249,6 @@ describe('cursor art', () => {
   it('never reaches for a second badge on art that already refuses', () => {
     // `blocked` is the sign itself, so `forbidden` changes nothing.
     expect(cursorArt('blocked', { forbidden: true })).toBe(cursorArt('blocked'));
-    expect(BADGED_IDS.has('blocked')).toBe(false);
   });
 
   it('tells the user what a Ctrl+click will do, in the arrow\'s own geometry', () => {

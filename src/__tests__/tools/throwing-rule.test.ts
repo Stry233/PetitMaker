@@ -15,7 +15,7 @@ function world(throws: (cmd: Command, state: GridState) => boolean, size = 20) {
   const state = makeState(size, size);
   const registry = createDefaultRegistry();
   registry.register({
-    id: 'T-THROW', phase: 'pre-command', appliesTo: [CommandType.PlaceObject, CommandType.RemoveObject],
+    id: 'T-THROW', description: 'A rule this test registers.', phase: 'pre-command', appliesTo: [CommandType.PlaceObject, CommandType.RemoveObject],
     validate: (cmd, s) => { if (throws(cmd, s)) throw new Error('rule fault'); return []; },
   });
   const executor = makeExecutor(state, registry);
@@ -40,7 +40,7 @@ describe('a throwing rule', () => {
     let placements = 0;
     const { state, executor } = world((cmd) => cmd.type === CommandType.PlaceObject && cmd.object.catalogId === 'building-stall' && ++placements === 2);
     state.objects.set('road', { id: 'road', catalogId: 'path-overgrown-dirt', position: { x: 5, y: 5 }, rotation: 0, elevation: 0 });
-    const ctx = makeToolCtx(state, executor, 1, 1, { armedItem: 'building-stall' });
+    const ctx = makeToolCtx(state, executor, 1, { armedItem: 'building-stall' });
     expect(() => new ObjectPlacerTool().onPointerDown(cell({ x: 5, y: 5 }), point({ x: 5, y: 5 }), ctx)).toThrow('rule fault');
     expect(placements, 'the probe passed and the placement threw').toBe(2);
     expect(objectsByCatalog(state, 'path-overgrown-dirt')).toHaveLength(1);
@@ -55,7 +55,7 @@ describe('a throwing rule', () => {
     let live: GridState | null = null;
     const { state, executor } = world((cmd, s) => armed && s === live && cmd.type === CommandType.PlaceObject, 40);
     live = state;
-    const ctx: HostedToolContext = makeToolCtx(state, executor, undefined, undefined, {
+    const ctx: HostedToolContext = makeToolCtx(state, executor, undefined, {
       armedMacro: 'patch-tree',
       overlay: { ...HEADLESS_OVERLAY, showGhost: vi.fn(), clearGhost: vi.fn() },
     });

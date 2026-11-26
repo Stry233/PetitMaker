@@ -15,6 +15,7 @@ import { Icon } from '../parts/sprite';
 import { MarkedShot } from '../parts/map-shot';
 import { amplitude, framerMotion } from '../../design/motion';
 import { edge } from '../panel-skin';
+import { useAway } from '../../primitives/away';
 import type { Translate } from '../../../i18n/keys';
 
 /** Composer-chip vignette size in CSS pixels. */
@@ -106,11 +107,14 @@ export function RegionChip({ bounds, vignette, onMark, onClear }: {
   const t = useT();
   const clearName = useNameReveal(t('agent.region_detach'));
   const markName = useNameReveal(t('agent.region_remark'));
+  const leaving = useAway();
   return (
     <motion.span
+      {...leaving}
       data-testid="composer-region-chip"
       initial={{ opacity: 0, scale: 1 - CHIP_GROWTH }}
       animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 1 - CHIP_GROWTH }}
       transition={framerMotion('panel.steer.chip')}
       title={cellsSaid(t, bounds.count)}
       style={{

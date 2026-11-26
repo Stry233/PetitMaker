@@ -1,10 +1,10 @@
 /** A rail button and the group it stands in, shared by the rail's three groups. */
 import { ActionButton } from '../../primitives/ActionButton';
 import { useRef, type CSSProperties, type ReactNode } from 'react';
-import { motion, type TargetAndTransition } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
 import { helpTargetAttr } from '../../session/help-targets';
-import type { HelpPageId } from '../../help/page-schema';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import { btnReset, cursors, pressable, z, radii, UNAVAILABLE } from '../../design/styles';
 import { usePressRepeat } from './use-press-repeat';
 import { useReveal } from '../../primitives/use-reveal';
@@ -14,7 +14,8 @@ import { useTransition } from '../../design/motion/use-motion';
 import { cssMotion } from '../../design/motion';
 import { ACTIVE, INK, PLATE, PLATE_INK, plateShapeEdge } from '../../design/tokens';
 import { useFrameReadableWeight, useFrameZoom } from '../use-frame-zoom';
-import { RAIL, TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
+import { RAIL } from '../units';
 import { useLocalReflow } from './use-local-reflow';
 import { useNaturalWidth } from './use-natural-width';
 import { useMorph } from '../../primitives/morph';
@@ -43,17 +44,16 @@ export const inGroup: CSSProperties = { pointerEvents: 'auto' };
  *  other button in the app answers with (`styles.ts:pressable`) rather than restated, so the rail
  *  acknowledges a pointer by the same amount the modals and the mode blocks do. */
 const HOVER_SCALE = pressable.whileHover.scale;
-/** Rail cells and groups glide between discrete reflows on the rail's own reflow motion, or ride a scale
- *  glide a refold happens in (`useLocalReflow`). `drawnY` is where a group stands that the live rail
- *  writer has moved since the last render. */
-export const useRailReflow = (x: number, y: number, place: string, enabled = true, drawnY?: () => number | null) =>
-  useLocalReflow(x, y, place, { motionId: 'rail.group.reflow', enabled, ...(drawnY ? { drawnY } : {}) });
+/** A rail cell glides between discrete reflows on the rail's own reflow motion, or rides a scale glide a
+ *  refold happens in (`useLocalReflow`), a refold a resize makes included: its group keeps to the
+ *  window's edge (`LayoutState.byWindow`) while the cell travels inside it. */
+const useRailReflow = (x: number, y: number, place: string) => useLocalReflow(x, y, place, { motionId: 'rail.group.reflow' });
 /**
  * A round rail control: a fixed hit box under a pointer-transparent plate that grows with its localized
  * name toward the map, the glyph never moving.
  */
 export function RailButton({
-  morph, label, onPress, disabled, on, arrival, files, grow, repeat, cell, veiled, dim, unavailable, tourTarget, helpTarget, children,
+  morph, label, onPress, disabled, on, files, grow, repeat, cell, veiled, dim, unavailable, tourTarget, helpTarget, children,
 }: {
   /** Its piece of the chrome's morph (`primitives/morph.ts`), unique on the page: a rail button moves
    *  on its own, its group drawing nothing, so a refold carries each button to its new cell. */
@@ -63,9 +63,6 @@ export function RailButton({
   disabled?: boolean;
   /** In force: the drawing marks a held state by filling the same plate yellow. */
   on?: boolean;
-  /** For a button its group only offers sometimes: how it comes and goes. Each target carries its
-   *  own transition rather than replacing the button's, so the press feedback is untouched. */
-  arrival?: { initial: TargetAndTransition; animate: TargetAndTransition; exit: TargetAndTransition };
   /** Grid column count used to animate changes to this button's cell. */
   files?: number;
   /**
@@ -121,7 +118,7 @@ export function RailButton({
       ref={nameRef}
       style={{
         flex: 'none', whiteSpace: 'nowrap', color: on ? INK : PLATE_INK,
-        fontSize: TEXT.tab, fontWeight: weightAt(800, TEXT.tab), lineHeight: 1,
+        fontSize: roleSize('label'), fontWeight: weightAt(800, roleSize('label')), lineHeight: 1,
         [grow === 'left' ? 'paddingLeft' : 'paddingRight']: RAIL.namePad,
       }}
     >
@@ -131,7 +128,6 @@ export function RailButton({
   return (
     <ActionButton
       interaction="tap" dim="caller"
-      {...arrival}
       {...(repeating ? held : { onClick: onPress })}
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
@@ -156,10 +152,10 @@ export function RailButton({
         gridRowStart: cell?.row,
         width: RAIL.button, height: RAIL.button, borderRadius: radii.pill,
         color: INK, flex: 'none',
-        // Visibility only on the button: Framer drives the arriving opacity on the drawing, so a CSS opacity
-        // transition here would be a second clock.
-        visibility: veiled ? 'hidden' : 'visible',
-        transition: veilTransition(!!veiled, 'visibility'),
+        // The veil is the button's own, so a morph that veils or unveils it fades the whole piece.
+        visibility: veiled ? 'hidden' : undefined,
+        opacity: veiled ? 0 : 1,
+        transition: veilTransition(!!veiled, 'visibility', 'opacity'),
         cursor: disabled || unavailable ? cursors.blocked : cursors.clickable,
         transformOrigin: anchor,
       }}
@@ -174,10 +170,9 @@ export function RailButton({
           height: RAIL.button, borderRadius: radii.pill, overflow: 'hidden',
           background: on ? ACTIVE : PLATE,
           display: 'flex', alignItems: 'center',
-          // The button's whole ink, so the veil and the two dimmings are drawn here rather than on
-          // the element (see its style above): a fade of the drawing is a fade of the button.
-          opacity: veiled ? 0 : disabled || unavailable ? UNAVAILABLE : dim && !reveal.shown ? 0.45 : 1,
-          transition: veilTransition(!!veiled, 'opacity'),
+          // The button's whole ink, so the two dimmings are drawn here: a dimmed drawing is a dimmed button.
+          opacity: disabled || unavailable ? UNAVAILABLE : dim && !reveal.shown ? 0.45 : 1,
+          transition: veilTransition(false, 'opacity'),
           // The drawing takes no pointer events, so the square underneath it is the whole of what
           // hit-testing sees whatever this shape is doing.
           pointerEvents: 'none',

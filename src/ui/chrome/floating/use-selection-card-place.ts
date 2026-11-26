@@ -4,10 +4,11 @@
  * change, writes the box imperatively, and glides it on a relocation of its own. A wheel the card
  * does not use itself keeps driving the map.
  */
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { viewportSize } from '../../../platform/device/viewport-space';
-import type { GridState, PlacedObject } from '../../../core/model/types';
+import type { GridState, PlacedObject, Rotation } from '../../../core/model/types';
+import { DIR_OFFSETS, ROTATION_FACING } from '../../../core/grid/directions';
 import { type BlockRef, groupBounds, groupMembers, selectedObjectIds, singleSelection } from '../../../state/selection';
 import { getActiveView, onProjectionChange } from '../../../view/active-view';
 import { forwardMapWheel } from '../../../view/interaction/map-wheel';
@@ -16,7 +17,7 @@ import { useEditorStore } from '../../../state/store';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { GROUP_ROTATION_CAUSE } from '../../../editor/editing/group-edit';
 import { terrainCellRect } from '../../../core/grid/grid-convert';
-import { cellKey } from '../../../core/grid/rect';
+import { cellKey, rectsBounds } from '../../../core/grid/rect';
 import { isWebKitEngine } from '../../design/shape-edge';
 import { easingCss, seconds } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
@@ -25,25 +26,22 @@ import { useObservedSize } from '../../primitives/use-observed-size';
 import {
   cardBoxStyle, holdPlace, placeFittedCard, tailStyle, type Area, type HeldPlace, type ScreenBounds, type ViewportSize,
 } from './selection-card-layout';
+import { selectedGroup } from '../../../state/placed-groups';
+import { groupScreenBox, projectedBox } from './projected-box';
+import { screenAngleOf } from './map-direction';
 
 /** Screen bounds of what is selected, in visual px, or null when it cannot be placed. */
 function selectionBounds(sel: readonly BlockRef[], gs: GridState, proj: ViewProjection): ScreenBounds | null {
-  const boxOf = (corners: { x: number; y: number; behind?: boolean }[]) => {
-    if (corners.some((p) => p.behind)) return null;
-    const x = Math.min(...corners.map((p) => p.x)), y = Math.min(...corners.map((p) => p.y));
-    return { x, y, w: Math.max(...corners.map((p) => p.x)) - x, h: Math.max(...corners.map((p) => p.y)) - y };
-  };
-  const footprint = (x: number, y: number, w: number, h: number) => boxOf([
-    proj.cellToScreen(x, y), proj.cellToScreen(x + w, y), proj.cellToScreen(x, y + h), proj.cellToScreen(x + w, y + h),
-  ]);
+  const footprint = (x: number, y: number, w: number, h: number) => projectedBox(proj, { x, y, w, h });
+  const group = selectedGroup({ gridState: gs, selection: sel, editMode: useEditorStore.getState().editMode });
+  if (group) {
+    return groupScreenBox(proj, gs, group);
+  }
   if (sel.length > 1) {
     const members = groupMembers(gs, selectedObjectIds(sel));
     if (members.length === 0) return null;
     if (proj.objectScreenBox) {
-      const boxes = members.map((m) => proj.objectScreenBox!(m.id)).filter((b): b is ScreenBounds => !!b);
-      if (boxes.length === 0) return null;
-      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
-      return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
+      return rectsBounds(members.map((m) => proj.objectScreenBox!(m.id)).filter((b): b is ScreenBounds => !!b));
     }
     const b = groupBounds(members);
     return footprint(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
@@ -81,17 +79,12 @@ function memberRotations(sel: readonly BlockRef[], gs: GridState): string {
   return sel.map((b) => (b.kind === 'object' ? gs.objects.get(b.id)?.rotation ?? '-' : '')).join(';');
 }
 
-/** Map direction of an item's front for each facing: south at 0 degrees, turning clockwise. */
-const FRONT: Record<string, [number, number]> = { '0': [0, 1], '90': [-1, 0], '180': [0, -1], '270': [1, 0] };
-
 /** Screen angle, clockwise from up, of a facing's front through the active projection. */
-export function facingAngle(facing: string, obj: PlacedObject | null, proj: ViewProjection | undefined): number {
-  const [dx, dy] = FRONT[facing] ?? [0, 1];
-  if (!obj || !proj) return Math.atan2(dx, -dy) * 180 / Math.PI;
-  const size = getPlacedObjectSize(obj);
-  const cx = obj.position.x + size.w / 2, cy = obj.position.y + size.h / 2;
-  const a = proj.cellToScreen(cx, cy), b = proj.cellToScreen(cx + dx, cy + dy);
-  return Math.atan2(b.x - a.x, a.y - b.y) * 180 / Math.PI;
+export function facingAngle(facing: Rotation, obj: PlacedObject | null, proj: ViewProjection | undefined): number {
+  const { dx, dy } = DIR_OFFSETS[ROTATION_FACING[facing]];
+  const size = obj && getPlacedObjectSize(obj);
+  const centre = obj && size ? { x: obj.position.x + size.w / 2, y: obj.position.y + size.h / 2 } : null;
+  return screenAngleOf(dx, dy, centre, proj);
 }
 
 /** The longest the header's name may run, and the least it shortens to for a narrow map area, in css px. */
@@ -128,20 +121,22 @@ const LIVE_PLACE: CardPlaceSource = {
 interface CardRefs {
   box: RefObject<HTMLDivElement>;
   header: RefObject<HTMLDivElement>;
-  body: RefObject<HTMLDivElement>;
+  /** The details' body, laid out at its opened height however far it is folded. */
+  body: MutableRefObject<HTMLElement | null>;
   tail: RefObject<HTMLSpanElement>;
   scroll: RefObject<HTMLDivElement>;
 }
 
-/** Places the card for a header `row` css px tall with a pointer of side `tail`, drawn at `zoom`:
- *  the refs to attach to its parts, whether its details grow upward from the header, and whether
- *  the header's name has been cut short for this card. */
+/** Places the card for `selection`, its header `row` css px tall with a pointer of side `tail`,
+ *  drawn at `zoom`: the refs to attach to its parts, whether its details grow upward from the
+ *  header, and whether the header's name has been cut short for this card. */
 export function useSelectionCardPlace(
-  zoom: number, locale: string, row: number, tail: number, source: CardPlaceSource = LIVE_PLACE,
+  zoom: number, locale: string, { row, tail }: { row: number; tail: number }, selection: readonly BlockRef[],
+  source: CardPlaceSource = LIVE_PLACE,
 ): { refs: CardRefs; growUp: boolean; nameCut: boolean } {
   const box = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLDivElement>(null);
-  const body = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLElement | null>(null);
   const pointer = useRef<HTMLSpanElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const refs = useRef<CardRefs>({ box, header, body, tail: pointer, scroll }).current;
@@ -171,7 +166,7 @@ export function useSelectionCardPlace(
     const positions = memberPositions(sel, gsLive);
     // A move or a turn removes a member before placing it back; wait for it to land.
     if (hold.current && positions.includes('-')) return;
-    const drawn = box.style.visibility === 'visible' ? visualRect(header) : null;
+    const drawn = box.style.visibility !== 'hidden' ? visualRect(header) : null;
     // The header is read with its name at its natural width, so the fit below never feeds on itself.
     const title = header.querySelector<HTMLElement>('[data-card-title]');
     box.style.setProperty('--title-max', `${TITLE_MAX}px`);
@@ -190,7 +185,7 @@ export function useSelectionCardPlace(
     if (!bounds) { box.style.visibility = 'hidden'; hold.current = null; return; }
     // A relocation of the card's own (a moved member, a new side, a new size) travels; following
     // the camera does not, or the card would trail the map it rides on.
-    const travel = decision.travel && !reducedRef.current && box.style.visibility === 'visible';
+    const travel = decision.travel && !reducedRef.current && box.style.visibility !== 'hidden';
     const from = travel ? drawn : null;
     if (!travel) { moveAnim.current?.cancel(); moveAnim.current = null; }
     // The right-hand column narrows the map only level with its own controls, here the header's row;
@@ -209,14 +204,14 @@ export function useSelectionCardPlace(
     }
     hold.current = { ...next, bounds, side: p.visible ? p.side : undefined };
     if (!p.visible) { box.style.visibility = 'hidden'; return; }
-    box.style.visibility = 'visible';
+    box.style.visibility = '';
     box.dataset.grow = p.growUp ? 'up' : 'down';
     const at = cardBoxStyle(p, size, vp, area, { zoom: z, minRoom: row * 2 });
     // Where nothing holds the whole opened card, the details scroll inside the room there is.
     box.style.setProperty('--details-max', `${at.detailsMax}px`);
     const obj = sel.length === 1 && sel[0]!.kind === 'object' ? gsLive.objects.get(sel[0]!.id) ?? null : null;
     for (const arrow of box.querySelectorAll<SVGElement>('[data-facing]')) {
-      arrow.style.transform = `rotate(${facingAngle(arrow.dataset.facing!, obj, proj)}deg)`;
+      arrow.style.transform = `rotate(${facingAngle(Number(arrow.dataset.facing) as Rotation, obj, proj)}deg)`;
     }
     box.style.left = `${at.left}px`;
     box.style.top = at.top === null ? 'auto' : `${at.top}px`;
@@ -252,10 +247,10 @@ export function useSelectionCardPlace(
     const box = source.wheel ? refs.box.current : null;
     const onWheel = (e: WheelEvent) => {
       const scroller = refs.scroll.current;
-      if (scroller && e.target instanceof Node && scroller.contains(e.target) && !e.ctrlKey) {
-        const room = e.deltaY > 0 ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : scroller.scrollTop;
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && room > 0) return;
-      }
+      // Details that scroll keep a vertical wheel, at either end too, so a scroll run past the end
+      // never turns into a zoom of the map; a pinch, a sideways wheel or details that fit go on to it.
+      if (scroller && e.target instanceof Node && scroller.contains(e.target) && !e.ctrlKey
+        && Math.abs(e.deltaY) > Math.abs(e.deltaX) && scroller.scrollHeight > scroller.clientHeight + 1) return;
       forwardMapWheel(e);
     };
     box?.addEventListener('wheel', onWheel, { passive: false });
@@ -268,5 +263,9 @@ export function useSelectionCardPlace(
   useObservedSize(() => [refs.header.current, refs.body.current], () => place(), [place], { immediate: false });
   // A chrome-scale change rescales the `zoom` subtree without emitting anything.
   useLayoutEffect(() => { place(); }, [zoom, locale, place]);
+  // A placed blueprint moved or turned whole is laid again under new ids and selected once it has
+  // landed, under the same card; every edit event before that found a member off the map and
+  // waited, so the new selection is what places it.
+  useLayoutEffect(() => { place(); }, [selection, place]);
   return { refs, growUp, nameCut };
 }

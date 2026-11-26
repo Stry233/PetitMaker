@@ -17,6 +17,7 @@ const PROVIDER_NAME_KEYS = {
   moonshot: 'provider.name_moonshot',
   doubao: 'provider.name_doubao',
   perplexity: 'provider.name_perplexity',
+  modelscope: 'provider.name_modelscope',
   custom: 'provider.name_custom',
 } as const satisfies Record<string, I18nKey>;
 
@@ -26,13 +27,16 @@ const ILLUSTRATION_NAME_KEYS = {
   openai: PROVIDER_NAME_KEYS.openai,
   siliconflow: 'stylize.provider_siliconflow',
   stepfun: 'stylize.provider_stepfun',
-  modelscope: 'stylize.provider_modelscope',
+  modelscope: PROVIDER_NAME_KEYS.modelscope,
   doubao: PROVIDER_NAME_KEYS.doubao,
   custom: 'stylize.provider_custom',
 } as const satisfies Record<string, I18nKey>;
 
+/** The assistant providers a name is written for. */
+export type AssistantProviderId = keyof typeof PROVIDER_NAME_KEYS;
+
 /** An assistant provider's name. */
-export function providerName(id: keyof typeof PROVIDER_NAME_KEYS, t: Translate): string {
+export function providerName(id: AssistantProviderId, t: Translate): string {
   return t(PROVIDER_NAME_KEYS[id]);
 }
 

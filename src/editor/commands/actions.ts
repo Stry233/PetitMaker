@@ -1,6 +1,7 @@
 /**
  * Everything the editor offers as a single tap: open a file dialog, pick a build surface, pick a
- * placement category, generate, move; and `runTileAction`, which does it.
+ * placement category, generate, move; `runTileAction`, which does it; and `setMode`, the one body
+ * under a mode's tile and its key.
  *
  * A shell decides where these appear and what they look like. The keyboard registry reaches the
  * same actions, so a key and a tap run one code path.
@@ -8,9 +9,10 @@
 import { placedCategories } from '../../config/catalog/categories';
 import { inEdition, SUPPORTS_JSON_FILES } from '../../platform/build/edition';
 import type { I18nKey } from '../../i18n/keys';
-import { contentTypeOf, designModeArming, isAnnotating, isContentMode, modeOpenIn, type ContentType } from '../../state/editing/edit-mode';
+import { contentTypeOf, designModeArming, isAnnotating, isContentMode, modeOpenIn, type BuildMode } from '../../state/editing/edit-mode';
 import type { DesignMode } from '../../state/editing/vocabulary';
 import { useEditorStore } from '../../state/store';
+import { showNotesForEditing } from '../editing/annotation-edit';
 
 interface EditorAction {
   id: string;
@@ -61,8 +63,40 @@ export function openBuildSurface(design: DesignMode): void {
   s.setEditMode({ mode: surface, arm: designModeArming(design) });
 }
 
-/** Runs a tap action: a file window the edition offers, a build surface with its brush, the object
- *  shelf on its own remembered category, Generate, or the move tile, which is rest. */
+/**
+ * Opens `mode`, or rests for null: the one body of a mode's tile and its key. A tile resumes the
+ * mode as it was left. A key opens it `afresh`: a build surface takes the free brush whatever it
+ * held, the object shelf puts an armed card down, and rest ends a region selection itself, at rest
+ * too, where a tile's rest ends one only as the mode changes and sets the assistant's region
+ * history aside for its brush to pick up again. Notes open shown, where they can open at all.
+ */
+export function setMode(mode: BuildMode, afresh = false): void {
+  const s = useEditorStore.getState();
+  if (mode === null) {
+    // Both arm the pointer, and a region left on would hand every press to the brush that paints a scope.
+    if (afresh) s.setSelectingRegion(false);
+    s.setEditMode({ mode: null });
+  } else if (mode === 'annotate') {
+    showNotesForEditing();
+  } else if (afresh && isContentMode(mode)) {
+    s.setEditMode({ mode, arm: { kind: 'brush' } });
+  } else if (afresh && mode === 'object' && s.editMode.arming.kind === 'item') {
+    s.setEditMode({ mode, arm: { kind: 'none' } });
+  } else {
+    s.setEditMode({ mode });
+  }
+}
+
+/** The mode each tap action opens; a build action's payload is its surface's mode. */
+const TILE_MODE: Record<Exclude<EditorAction['action'], 'file'>, (action: EditorAction) => BuildMode> = {
+  move: () => null,
+  build: (action) => action.payload as BuildMode,
+  placement: () => 'object',
+  generate: () => 'generate',
+};
+
+/** Runs a tap action: a file window the edition offers, or a mode opened afresh as its key opens it
+ *  (`setMode`), the move tile being rest. */
 export function runTileAction(action: EditorAction): void {
   const s = useEditorStore.getState();
   if (action.action === 'file') {
@@ -74,22 +108,5 @@ export function runTileAction(action: EditorAction): void {
     else if (action.payload === 'import') s.setModal('import', true);
     return;
   }
-  if (action.action === 'move') {
-    // Rest: nothing armed, no bar, and the region brush put away with it; both arm the pointer,
-    // and a region left on would hand every press to the brush that paints a scope.
-    s.setSelectingRegion(false);
-    s.setEditMode({ mode: null });
-    return;
-  }
-  if (action.action === 'build') {
-    s.setEditMode({ mode: action.payload as ContentType, arm: { kind: 'brush' } });
-    return;
-  }
-  if (action.action === 'placement') {
-    // Pressed with a card armed, the key puts the card down; otherwise the shelf resumes its card.
-    const held = s.editMode.arming;
-    s.setEditMode(held.kind === 'item' ? { mode: 'object', arm: { kind: 'none' } } : { mode: 'object' });
-    return;
-  }
-  s.setEditMode({ mode: 'generate' });
+  setMode(TILE_MODE[action.action](action), true);
 }

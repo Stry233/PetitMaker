@@ -5,9 +5,8 @@
  * The bound is the analysis, not a radius. `placeNature` walks noise fields over `analysis.open`
  * and has no extent of its own, so confining the placeable mask is what confines the planting.
  *
- * The body runs inside the caller's stroke group and pushes no provenance of its own. Its two
- * callers commit differently: `applyMacro` attributes the planting to the generator,
- * the agent's `plant_forest` attributes it to the model that asked for it.
+ * The body runs inside the caller's stroke group and pushes no provenance of its own; `applyMacro`
+ * attributes the planting to the generator.
  */
 import { removeObjectCommand } from '../../../core/model/command-build';
 import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
@@ -51,7 +50,7 @@ interface PatchInput {
   heldIds?: ReadonlySet<string>;
 }
 
-/** Plants a patch (the agent's `plant_forest`) and returns how many objects it laid. Planting
+/** Plants a patch over an area and returns how many objects it laid. Planting
  *  removes nothing, so the change count and the planted count are the same number here. An area
  *  that fits one patch takes the community chosen for its centre, as a press does for its aim
  *  point (see `plantPatchTiers`); a larger one varies its community by patch (`buildAreaCommunity`). */

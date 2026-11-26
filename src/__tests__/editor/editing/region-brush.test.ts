@@ -7,20 +7,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
 import { startRegionBrush } from '../../../editor/editing/region-brush';
 import { useEditorStore } from '../../../state/store';
-import { paintRegionCell, previewRegionCell, cancelRegionStroke, finishRegionStroke, clearRegionSelection, cancelPendingRegion, undoPendingRegionStep } from '../../../tools/pointer/region';
-import { DEFAULT_REGION_REQUEST } from '../../../state/editing/vocabulary';
+import { regionOf } from '../../../state/editing/region';
+import { paintRegionCell, previewRegionCell, cancelRegionStroke, finishRegionStroke, clearRegionSelection, cancelPendingRegion, undoPendingRegionStep } from '../../../view/interaction/pointer/region-channel';
+import { DEFAULT_REGION_REQUEST, type RegionRequest } from '../../../state/editing/vocabulary';
 import { setActiveView } from '../../../view/active-view';
 import type { MacroCoord } from '../../../core/model/types';
 import { splineCells } from '../../../core/grid/shapes';
 
 let stop: (() => void) | null = null;
 /** Turns region selection on or off and mounts the brush as the shell does. */
-function selecting(on: boolean): void {
-  act(() => { useEditorStore.getState().setSelectingRegion(on); });
+function selecting(on: boolean, request?: RegionRequest): void {
+  act(() => { if (on) useEditorStore.getState().setSelectingRegion(true, 'generator', request); else useEditorStore.getState().setSelectingRegion(false); });
   stop?.();
   stop = on ? startRegionBrush() : null;
 }
-const region = () => useEditorStore.getState().region;
+const region = () => regionOf(useEditorStore.getState(), 'generator');
 const undo = () => { let ok = false; act(() => { ok = useEditorStore.getState().undoRegion(); }); return ok; };
 const redo = () => { let ok = false; act(() => { ok = useEditorStore.getState().redoRegion(); }); return ok; };
 afterEach(() => { stop?.(); stop = null; useEditorStore.setState({ selectingRegion: false, regionUndoLane: [], regionRedoLane: [] }); });
@@ -30,7 +31,7 @@ const done = () => act(() => finishRegionStroke());
 
 describe('region brush history (separate from map history)', () => {
   beforeEach(() => {
-    useEditorStore.setState({ regionTool: 'free', regionBrushSize: 1, region: [] });
+    useEditorStore.setState({ regionTool: 'free', regionBrushSize: 1, regions: {} });
   });
 
   it('a whole brush drag (many moves) undoes as ONE unit, not one cell', () => {
@@ -191,7 +192,7 @@ describe('region previews', () => {
   const clearGhost = vi.fn();
   beforeEach(() => {
     showGhost.mockClear(); clearGhost.mockClear();
-    useEditorStore.setState({ gridState: null, regionTool: 'free', regionBrushSize: 3, region: [] });
+    useEditorStore.setState({ gridState: null, regionTool: 'free', regionBrushSize: 3, regions: {} });
     setActiveView({ overlay: { showGhost, clearGhost, showBuildableRegion: vi.fn(), clearBuildableRegion: vi.fn() } } as never);
   });
   afterEach(() => { setActiveView(null); useEditorStore.setState({ regionRequest: DEFAULT_REGION_REQUEST }); });
@@ -209,9 +210,8 @@ describe('region previews', () => {
   });
 
   it('previews the clamped minimum rectangle before pressing', () => {
-    useEditorStore.getState().claimRegionRequest({ ...DEFAULT_REGION_REQUEST, single: true, minSide: 20 });
     useEditorStore.setState({ regionTool: 'rect' });
-    selecting(true);
+    selecting(true, { ...DEFAULT_REGION_REQUEST, single: true, minSide: 20 });
     act(() => previewRegionCell({ x: 10, y: 10 }));
     const cells = showGhost.mock.calls[showGhost.mock.calls.length - 1]![0].cells;
     expect(cells).toHaveLength(400);

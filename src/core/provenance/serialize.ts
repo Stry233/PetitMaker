@@ -1,3 +1,4 @@
+import { ID_MAX_LENGTH } from '../base/guards';
 import { cellKey, parseCellKey } from '../grid/rect';
 import { LEDGER_MAX, ProvenanceTracker, type TaintDelta } from './tracker';
 import {
@@ -90,12 +91,12 @@ export function readTaintDelta(raw: unknown, width: number, height: number): Tai
   for (const o of r.objects as unknown[]) {
     if (!o || typeof o !== 'object') return null;
     const { id, before, after } = o as Record<string, unknown>;
-    if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null;
+    if (typeof id !== 'string' || id.length === 0 || id.length > ID_MAX_LENGTH) return null;
     const b = deltaSide(before), a = deltaSide(after);
     if (!b.ok || !a.ok) return null;
     objects.push({ id, before: b.taint, after: a.taint });
   }
-  if (!(r.opIds as unknown[]).every((id) => typeof id === 'string' && id.length <= 64)) return null;
+  if (!(r.opIds as unknown[]).every((id) => typeof id === 'string' && id.length <= ID_MAX_LENGTH)) return null;
   return { cells, objects, opIds: [...(r.opIds as string[])] };
 }
 
@@ -120,7 +121,7 @@ export function deserializeProvenance(raw: SerializedProvenance | undefined, wid
   }
   for (const { id, t } of Array.isArray(raw.objects) ? raw.objects : []) {
     const clean = sanitizeTaint(t);
-    if (clean && typeof id === 'string') objectTaint.set(id.slice(0, 64), clean);
+    if (clean && typeof id === 'string') objectTaint.set(id.slice(0, ID_MAX_LENGTH), clean);
   }
   const s = (raw.session ?? {}) as ProvenanceState['session'];
   const session: ProvenanceState['session'] = {

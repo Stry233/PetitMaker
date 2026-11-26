@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { bindingIndex, detectPreset, effectiveCombo } from '../../../state/keymap/resolve';
 import { parseKeybinds, serializeKeybinds } from '../../../state/keymap/file';
 import { useKeybinds } from '../../../state/keymap/store';
-import { CONTEXT_FREE_TOOLBAR, CONTEXT_KEYS, TOOLBAR_CONTEXTS, toolbarDefault, keyContext, toolbarContextOf, toolbarLabel, type KeyContextInputs } from '../../../state/keymap/toolbar';
+import { CONTEXT_FREE_TOOLBAR, CONTEXT_KEYS, TOOLBAR_CONTEXTS, barInFront, brushBarOpen, toolbarDefault, keyContext, toolbarContextOf, toolbarLabel, type KeyContextInputs } from '../../../state/keymap/toolbar';
+import { DEFAULT_REGION_REQUEST } from '../../../state/editing/vocabulary';
+import { REST_STEP, type BlueprintStep } from '../../../state/slices/blueprint';
 import { COMMAND_META, META_BY_ID } from '../../../state/keymap/registry';
 import { translations } from '../../../i18n/translations';
 
@@ -78,7 +80,9 @@ describe('contextual toolbar bindings', () => {
 });
 
 describe('the key context', () => {
-  const at = (over: Partial<KeyContextInputs>): KeyContextInputs => ({ selectingRegion: false, objectBrushBar: false, editMode: { mode: null }, annotationTool: 'none', ...over });
+  const at = (over: Partial<KeyContextInputs>): KeyContextInputs => ({
+    blueprintStep: REST_STEP, selectingRegion: false, regionSelectionOwner: null, objectBrushBar: false, editMode: { mode: null }, annotationTool: 'none', ...over,
+  });
 
   it('puts the region brush first, then the notes by their tool, then a terrain surface, then the map', () => {
     expect(keyContext(at({ selectingRegion: true, editMode: { mode: 'annotate' } }))).toBe('region');
@@ -89,6 +93,24 @@ describe('the key context', () => {
     expect(keyContext(at({ editMode: { mode: 'object' }, objectBrushBar: true }))).toBe('objects');
     expect(keyContext(at({ selectingRegion: true, editMode: { mode: 'object' }, objectBrushBar: true }))).toBe('region');
     expect(toolbarContextOf(at({ editMode: { mode: 'object' } }))).toBe('terrain');
+  });
+
+  it('names the one surface in the bar\'s place: the save step, then a painted region, then the brush bar', () => {
+    const saving: BlueprintStep = { at: 'save', id: 1, frame: { x: 0, y: 0, w: 1, h: 1 }, start: 'strip', setAside: [], request: DEFAULT_REGION_REQUEST, pending: false };
+    const brushBar = at({ editMode: { mode: 'object' }, objectBrushBar: true });
+    expect(barInFront(at({ editMode: { mode: 'object' } }))).toBeNull();
+    expect(barInFront(brushBar)).toBe('brush');
+    // The bar is asked for only by the object shelf: another mode's bar is its own.
+    expect(barInFront(at({ editMode: { mode: 'road' }, objectBrushBar: true }))).toBeNull();
+    const painted = { ...brushBar, selectingRegion: true, regionSelectionOwner: 'agent' };
+    expect(barInFront(painted)).toBe('scope');
+    expect(barInFront(at({ editMode: { mode: 'generate' }, selectingRegion: true, regionSelectionOwner: 'generator' }))).toBe('scope');
+    expect(barInFront(at({ editMode: { mode: 'blueprint' }, selectingRegion: true, regionSelectionOwner: 'blueprint' }))).toBe('frame');
+    expect(barInFront(at({ editMode: { mode: 'blueprint' }, blueprintStep: saving }))).toBe('save');
+    // A region screen over the brush bar leaves the bar open under it, and its keys are the region's.
+    expect(brushBarOpen(painted)).toBe(true);
+    expect(keyContext(painted)).toBe('region');
+    expect(keyContext(at({ editMode: { mode: 'blueprint' }, blueprintStep: saving }))).toBe('map');
   });
 
   it('labels a key from the same row that names its action, with a label every locale carries', () => {

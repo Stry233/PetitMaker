@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildObjectInstances } from '../../../../view/map3d/geometry/object-meshes';
+import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { GROUND_SLAB_Y, LAYER_HEIGHT, SPAN_DECK_CLEARANCE, PLATFORM_UNIT_H, ROAD_DECAL_LIFT, platformTopY } from '../../../../view/map3d/geometry/coords';
 import { __setCatalogItem } from '../../../../state/catalog';
 import { TerrainType } from '../../../../core/model/types';
@@ -19,19 +19,25 @@ function emptyGrid(w: number, h: number, objects: PlacedObject[]): GridState {
   return { template, cells, objects: map, objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set() };
 }
 
+/** The instance `obj` places as on `state` and the group it joins, as the 3D view places it. */
+function placed(state: GridState, obj: PlacedObject) {
+  const one = objectInstance(state, obj);
+  expect(one, `${obj.id} is instanced`).not.toBeNull();
+  return one!;
+}
+
 describe('preview3d/object-meshes', () => {
   it('groups objects under their catalog category archetype', () => {
     __setCatalogItem({ id: 'oak', category: ItemCategory.Tree, name: { en: 'Oak' }, width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point', traits: [] });
     const obj: PlacedObject = { id: 'a', catalogId: 'oak', position: { x: 2, y: 2 }, rotation: 0, elevation: 0 };
-    const groups = buildObjectInstances(emptyGrid(8, 8, [obj]));
-    expect(groups.get('a:' + ItemCategory.Tree)!.length).toBe(1);
+    expect(placed(emptyGrid(8, 8, [obj]), obj).groupKey).toBe('a:' + ItemCategory.Tree);
   });
 
   it('an item with a bespoke 3D model groups under m:<catalogId> at scale 1', () => {
     // building-stall has a model3d in the catalog (a real catalog item).
     const obj: PlacedObject = { id: 's', catalogId: 'building-stall', position: { x: 3, y: 3 }, rotation: 0, elevation: 0 };
-    const groups = buildObjectInstances(emptyGrid(8, 8, [obj]));
-    const inst = groups.get('m:building-stall')![0]!;
+    const { groupKey, inst } = placed(emptyGrid(8, 8, [obj]), obj);
+    expect(groupKey).toBe('m:building-stall');
     expect(inst.scaleX).toBe(1); // model is authored at the item's footprint, not scaled
     expect(inst.scaleZ).toBe(1);
   });
@@ -41,9 +47,8 @@ describe('preview3d/object-meshes', () => {
     const state = emptyGrid(8, 8, [plaza]);
     // A layer-1 mountain on the terrain cells [1, 4) x [1, 3) rests on.
     for (let y = 1; y <= 3; y++) for (let x = 1; x <= 4; x++) state.cells[y]![x]!.terrain = { type: TerrainType.Mountain, elevation: 1 };
-    const groups = buildObjectInstances(state);
-    expect(groups.get('a:platform')!.length).toBe(1);
-    const inst = groups.get('a:platform')![0]!;
+    const { groupKey, inst } = placed(state, plaza);
+    expect(groupKey).toBe('a:platform');
     expect(inst.scaleX).toBeCloseTo(3);
     expect(inst.scaleZ).toBeCloseTo(2);
     // A platform floor has no thickness of its own: it lies on the mountain's top, lifted only by
@@ -56,7 +61,8 @@ describe('preview3d/object-meshes', () => {
 
   it('a platform on flat ground lies on the ground slab', () => {
     const plaza: PlacedObject = { id: '__plaza__', catalogId: '__plaza__', position: { x: 1, y: 1 }, rotation: 0, elevation: 0, width: 3, height: 2, color: '#e2e8f0', locked: true };
-    const inst = buildObjectInstances(emptyGrid(8, 8, [plaza])).get('a:platform')![0]!;
+    const { groupKey, inst } = placed(emptyGrid(8, 8, [plaza]), plaza);
+    expect(groupKey).toBe('a:platform');
     expect(inst.y).toBe(GROUND_SLAB_Y);
     expect(inst.scaleY).toBe(1);
   });
@@ -64,7 +70,8 @@ describe('preview3d/object-meshes', () => {
   it('a 90°-rotated 2×1 object orients via rotationY but keeps unrotated scale', () => {
     __setCatalogItem({ id: 'hall', category: ItemCategory.Building, name: { en: 'Hall' }, width: 2, height: 1, loadValue: 0, rotatable: true, placementMode: 'point', traits: [] });
     const obj: PlacedObject = { id: 'b', catalogId: 'hall', position: { x: 0, y: 0 }, rotation: 90, elevation: 0 };
-    const inst = buildObjectInstances(emptyGrid(8, 8, [obj])).get('a:' + ItemCategory.Building)![0]!;
+    const { groupKey, inst } = placed(emptyGrid(8, 8, [obj]), obj);
+    expect(groupKey).toBe('a:' + ItemCategory.Building);
     expect(inst.scaleX).toBeCloseTo(2);  // unrotated width
     expect(inst.scaleZ).toBeCloseTo(1);  // unrotated height
     // Yaw = 2D-rotation + π (models front their door on −Z, but 2D fronts rot 0 south).
@@ -74,7 +81,8 @@ describe('preview3d/object-meshes', () => {
   it('a ramp sits at the LOW elevation (n−drop) and spans up one layer, facing the right way', () => {
     __setCatalogItem({ id: 'ramp1', category: ItemCategory.Ramp, name: { en: 'Ramp' }, width: 1, height: 2, loadValue: 0, rotatable: true, placementMode: 'point', traits: [{ type: 'heightDrop', layers: 1 }] });
     const obj: PlacedObject = { id: 'rp', catalogId: 'ramp1', position: { x: 0, y: 0 }, rotation: 0, elevation: 2 };
-    const inst = buildObjectInstances(emptyGrid(8, 8, [obj])).get('a:' + ItemCategory.Ramp)![0]!;
+    const { groupKey, inst } = placed(emptyGrid(8, 8, [obj]), obj);
+    expect(groupKey).toBe('a:' + ItemCategory.Ramp);
     expect(inst.y + inst.scaleY).toBeCloseTo(LAYER_HEIGHT * 2 + SPAN_DECK_CLEARANCE);
     expect(inst.y).toBeLessThan(LAYER_HEIGHT * 1);              // low tip tucked just below layer n−1=1 (a road meeting it sits on top)
     expect(inst.y).toBeGreaterThan(LAYER_HEIGHT * 1 - 0.2);     // …only slightly
@@ -92,8 +100,7 @@ describe('ground-level placement sits on the visible surface', () => {
       id: 'f', catalogId: 'flower-bellflower', position: { x: 3, y: 3 },
       rotation: 0, elevation: 0,
     };
-    const groups = buildObjectInstances(emptyGrid(10, 10, [flora]));
-    const inst = [...groups.values()].flat()[0]!;
+    const { inst } = placed(emptyGrid(10, 10, [flora]), flora);
     expect(inst.y).toBeCloseTo(GROUND_SLAB_Y, 6);
   });
 
@@ -106,8 +113,7 @@ describe('ground-level placement sits on the visible surface', () => {
     // fixture that raised only the stored number would assert a stale elevation.
     const grid = emptyGrid(10, 10, [flora]);
     grid.cells[3]![3]!.terrain = { type: TerrainType.Mountain, elevation: 2, corners: ['square', 'square', 'square', 'square'] };
-    const groups = buildObjectInstances(grid);
-    const inst = [...groups.values()].flat()[0]!;
+    const { inst } = placed(grid, flora);
     expect(inst.y).toBeCloseTo(LAYER_HEIGHT * 2, 6);
   });
 });

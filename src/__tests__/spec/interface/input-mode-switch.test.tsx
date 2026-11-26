@@ -23,7 +23,7 @@ function Corner() {
   return (
     <I18nProvider>
       <InputModeProvider inputMode={mode}>
-        <CornerActions inSession={false} swap={STILL} menuOpen={false} toggleMenu={() => {}} menuButton={createRef()} />
+        <CornerActions pose="map" swap={STILL} menuOpen={false} toggleMenu={() => {}} menuButton={createRef()} />
       </InputModeProvider>
     </I18nProvider>
   );

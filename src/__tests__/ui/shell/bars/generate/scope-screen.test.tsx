@@ -5,14 +5,16 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { setActiveView } from '../../../../../view/active-view';
 
 import { useKeybinds } from '../../../../../state/keymap/store';
-import { setRegionBrushHandler } from '../../../../../tools/pointer/region';
+import { setRegionBrushHandler } from '../../../../../view/interaction/pointer/region-channel';
 import { I18nProvider } from '../../../../../i18n/context';
 import { translations } from '../../../../../i18n/translations';
 import { createDefaultRegistry } from '../../../../../rules';
 import { useEditorStore } from '../../../../../state/store';
+import { regionOf } from '../../../../../state/editing/region';
+import { watchRegionOverlay } from '../../../../../editor/editing/region-brush';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { ScopeScreen } from '../../../../../ui/shell/bars/generate/ScopeScreen';
-import { SCOPE_TOOLS_FOR } from '../../../../../ui/shell/bars/generate/scope-cells';
+import { SCOPE_TOOLS_FOR } from '../../../../../tools/generation/facts';
 import { DEFAULT_REGION_REQUEST } from '../../../../../state/editing/vocabulary';
 import { makeState } from '../../../../_support/map-state';
 import { createExecutor } from '../../../../../state/executor';
@@ -38,13 +40,13 @@ function installMap(size = 12) {
 }
 
 beforeEach(() => {
-  useEditorStore.setState({ locale: 'en', region: [], regionTool: 'free', regionBrushShape: 'free', regionBrushSize: 3, regionDimensions: true, selectingRegion: true, regionRequest: DEFAULT_REGION_REQUEST });
+  useEditorStore.setState({ locale: 'en', regions: {}, regionTool: 'free', regionBrushShape: 'free', regionBrushSize: 3, regionDimensions: true, selectingRegion: true, regionSelectionOwner: 'generator', regionRequest: DEFAULT_REGION_REQUEST });
   useKeybinds.getState().resetAll();
 });
 
 afterEach(() => {
   cleanup();
-  useEditorStore.setState({ gridState: null, commandExecutor: null, region: [], selectingRegion: false });
+  useEditorStore.setState({ gridState: null, commandExecutor: null, regions: {}, selectingRegion: false });
 });
 
 describe('region brush controls', () => {
@@ -79,18 +81,20 @@ describe('region brush controls', () => {
 
   it('switches dimension visibility without changing selected cells', () => {
     const cells = [{ x: 1, y: 1 }, { x: 2, y: 1 }];
-    useEditorStore.setState({ region: cells });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: cells, map: st.gridState } } }));
     mount();
     fireEvent.click(screen.getByLabelText(en('region.dimensions_hide')));
     expect(useEditorStore.getState().regionDimensions).toBe(false);
-    expect(useEditorStore.getState().region).toBe(cells);
+    expect(regionOf(useEditorStore.getState(), 'generator')).toBe(cells);
     fireEvent.click(screen.getByLabelText(en('region.dimensions_show')));
     expect(useEditorStore.getState().regionDimensions).toBe(true);
   });
 });
 
 describe('the painted highlight', () => {
-  it('survives Done, and goes only when the region itself does', () => {
+  /** The map shows the region of the surface in front (`watchRegionOverlay`): Generate's scope while
+   *  Generate mode is open, past its screen's Done. */
+  it("[GEN-05] survives Done in Generate mode, and goes when the region or Generate mode does", () => {
     const shown: number[] = [];
     let cleared = 0;
     setActiveView({
@@ -100,28 +104,39 @@ describe('the painted highlight', () => {
       },
     } as never);
     installMap();
-    useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
-    const view = mount();
-    expect(shown).toContain(2);
+    const stop = watchRegionOverlay();
+    try {
+      act(() => { useEditorStore.getState().setEditMode({ mode: 'generate' }); });
+      useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], map: st.gridState } } }));
+      expect(shown).toContain(2);
 
-    // Closing the screen keeps the region drawn: it shows where the next run will land.
-    const onDone = cleared;
-    view.unmount();
-    expect(cleared).toBe(onDone);
+      // Done keeps the region drawn: it shows where the next run will land.
+      const onDone = cleared;
+      act(() => { useEditorStore.getState().setSelectingRegion(false); });
+      expect(cleared).toBe(onDone);
 
-    // A region painted away to nothing clears the drape.
-    const before = cleared;
-    mount();
-    act(() => { useEditorStore.setState({ region: [] }); });
-    expect(cleared).toBeGreaterThan(before);
-    setActiveView(null);
+      // Another mode puts Generate's scope out of sight, and Generate mode brings it back.
+      act(() => { useEditorStore.getState().setEditMode({ mode: 'mountain' }); });
+      expect(cleared).toBe(onDone + 1);
+      shown.length = 0;
+      act(() => { useEditorStore.getState().setEditMode({ mode: 'generate' }); });
+      expect(shown).toContain(2);
+
+      // A region painted away to nothing clears the drape.
+      const before = cleared;
+      act(() => { useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: [], map: st.gridState } } })); });
+      expect(cleared).toBeGreaterThan(before);
+    } finally {
+      stop();
+      setActiveView(null);
+    }
   });
 });
 
 describe('what the screen offers', () => {
   /** The cell count already stays on the strip's scope chip. */
   it('offers a Done that says only what pressing it does', () => {
-    useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], map: st.gridState } } }));
     const done = vi.fn();
     mount(done);
     fireEvent.click(screen.getByText(en('generate.scope_done')));
@@ -137,7 +152,7 @@ describe('what the screen offers', () => {
   it('offers the picture kinds a rectangle and a circle, and nothing that leaves holes', () => {
     expect(SCOPE_TOOLS_FOR.image).toEqual(['rect', 'circle']);
     expect(SCOPE_TOOLS_FOR.text).toEqual(['rect', 'circle']);
-    useEditorStore.getState().claimRegionRequest({ tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
+    useEditorStore.getState().setSelectingRegion(true, 'generator', { tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
     render(
       <I18nProvider>
         <ScaleProvider value={0.5}>
@@ -151,8 +166,8 @@ describe('what the screen offers', () => {
   });
 
   it('says the minimum in words while the region is too short', () => {
-    useEditorStore.setState({ region: [{ x: 1, y: 1 }, { x: 2, y: 1 }] });
-    useEditorStore.getState().claimRegionRequest({ tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
+    useEditorStore.setState((st) => ({ regions: { ...st.regions, generator: { cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], map: st.gridState } } }));
+    useEditorStore.getState().setSelectingRegion(true, 'generator', { tools: SCOPE_TOOLS_FOR.image!, single: true, minSide: 20 });
     render(
       <I18nProvider>
         <ScaleProvider value={0.5}>

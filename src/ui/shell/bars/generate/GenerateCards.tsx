@@ -6,11 +6,12 @@ import { helpTargetAttr } from '../../../session/help-targets';
 import { CandidateCard, ImportCard } from './CandidateCard';
 import { CustomCard } from './CustomCard';
 import { CANDIDATES, GENERATE_KIND, hasCustomCard } from './generate-shelf';
-import { sampleName, type StencilSample } from './stencil-samples';
+import type { StencilSample } from '../../../../editor/editing/generate-batch';
+import { sampleName } from './stencil-samples';
 import type { GenerateRecipe } from './use-generate-recipe';
 
 /** The visitor's own card stands after the dealt ones. */
-export const CUSTOM = CANDIDATES;
+const CUSTOM = CANDIDATES;
 
 interface CardsView {
   shots: readonly (string | null | undefined)[];

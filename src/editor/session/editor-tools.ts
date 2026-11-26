@@ -19,7 +19,7 @@ import { poolAvailable, warmPool } from '../../tools/generation/run';
 
 /** The store readings whose change reaches the tools as a `tool-synced`. */
 const ARMING_READS: readonly ((s: EditorStore) => unknown)[] = [
-  activeToolOf, designModeOf, contentTypeOf, brushSizeOf, (s) => s.activeLayer,
+  activeToolOf, designModeOf, contentTypeOf, brushSizeOf, (s) => s.terrainThickness,
 ];
 
 type ArmingKey = readonly unknown[];

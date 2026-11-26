@@ -1,0 +1,43 @@
+{
+  "id": "building-orchard-cabin",
+  "category": "building",
+  "name": {
+    "en": "Tika's Orchard Sprout House",
+    "zh": "果园新芽小屋（缇卡）",
+    "ja": "果樹園の新芽の家（ティカ）",
+    "ru": "Домик садовых ростков (Тика)",
+    "th": "บ้านต้นอ่อนสวนผลไม้ (ทิก้า)",
+    "id": "Rumah Tunas Kebun Buah (Tika)",
+    "fr": "Maison des pousses du verger de Tika"
+  },
+  "aliases": [
+    "绿",
+    "green"
+  ],
+  "icon": "building-orchard-cabin",
+  "width": 5,
+  "height": 4,
+  "loadValue": 0,
+  "loadUnknown": true,
+  "maxCount": 1,
+  "rotatable": true,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "coatingSupport"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    },
+    {
+      "type": "groundZones",
+      "onGrass": true,
+      "onSand": true,
+      "acrossBoundary": false
+    }
+  ]
+}

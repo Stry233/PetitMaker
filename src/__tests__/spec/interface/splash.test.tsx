@@ -1,18 +1,22 @@
 // @vitest-environment jsdom
 /** The loading screen of a visit that has to download the editor's files: what its bar measures and
- *  what it waits for, driven through the preload the screen runs, with the network stubbed. */
+ *  what it waits for, driven through the asset run the screen joins, with the network stubbed. */
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { Splash } from '../../../ui/shell/splash/Splash';
 import { MOTIONS } from '../../../ui/design/motion/registry';
 import { spec } from '../../_support/spec';
-import { preloadAssets, registerFontsIfWarm, cacheWarmAtBoot, __resetPreload } from '../../../ui/shell/splash/preload';
-import { markSplashDone } from '../../../io/storage/splash-facts';
-import { splashAssetUrls } from '../../../ui/shell/splash/asset-list';
+import { warmBootAssets, registerFontsIfWarm, cacheWarmAtBoot, __resetBootAssets } from '../../../editor/session/boot-assets';
+import { startWarm } from '../../../ui/shell/warm/schedule';
+import { markSplashDone } from '../../../editor/session/visit-marks';
+import { splashAssetUrls } from '../../../editor/session/boot-asset-list';
 import { ASSET_SIZES_FILE } from '../../../platform/build/asset-sizes';
 import { FONT_FILES, __resetFontFaces } from '../../../assets/fonts/faces';
 import { INTERFACE_FACE } from '../../../assets/fonts/family';
+
+/** The run the screen joins, over the page's own warm schedule. */
+const preloadAssets = (onProgress: (done: number, total: number) => void): Promise<boolean> => warmBootAssets(startWarm, onProgress);
 
 /** An image that decodes as soon as it has a source. */
 class InstantImage {
@@ -61,7 +65,7 @@ function fontRegistry(log: string[]) {
 }
 
 beforeEach(() => {
-  __resetPreload();
+  __resetBootAssets();
   __resetFontFaces();
   localStorage.clear();
   vi.stubGlobal('Image', InstantImage);

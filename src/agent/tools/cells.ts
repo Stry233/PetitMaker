@@ -2,14 +2,82 @@
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { circleCells, lineCells } from '../../core/grid/shapes';
-import { rectsOverlap, cellKey } from '../../core/grid/rect';
+import { rectsOverlap, cellKey, regionBounds } from '../../core/grid/rect';
 import { isBuildableZone } from '../../core/game/zones';
+import { paintBleedsOffBuildable } from '../../rules/zone-restriction';
 import { clamp } from '../../core/base/math';
 import { terrainCellRect } from '../../core/grid/grid-convert';
-import { normalizeGeometry, type FlatDefault } from './geometry';
+import { footprintCells, footprintTerrain, terrainCellsUnder } from '../../core/grid/footprint';
+import { normalizeGeometry, pictureCells, type FlatDefault } from './geometry';
 import { argError } from './feedback';
 import type { ToolOutcome } from './spec';
 import { BUILDABLE_ZONES, UNBUILDABLE_ZONES, lockedNote, orList } from './game-terms';
+
+/* ── the one grid the assistant works in ─────────────────────────────── */
+
+/**
+ * The assistant names object cells only. A terrain tool given object cells edits the terrain those
+ * cells rest on: the union of the terrain cells under each, which is centred on the same line as the
+ * object cells and reaches half a cell past them on every side. Every terrain tool's geometry passes
+ * through here; cells off the map are dropped.
+ */
+export function terrainUnder(cells: readonly MacroCoord[], state: GridState): MacroCoord[] {
+  const { width, height } = state.template;
+  const seen = new Set<string>();
+  const out: MacroCoord[] = [];
+  for (const c of cells) {
+    for (const t of terrainCellsUnder({ x: c.x, y: c.y, w: 1, h: 1 })) {
+      if (t.x < 0 || t.y < 0 || t.x >= width || t.y >= height) continue;
+      const k = cellKey(t.x, t.y);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+export type Corners = { x1: number; y1: number; x2: number; y2: number };
+
+/** `terrainUnder` for a whole rectangle of object cells, as inclusive corners of terrain cells. */
+export function terrainRectUnder(r: Corners): Corners {
+  const x = Math.min(r.x1, r.x2), y = Math.min(r.y1, r.y2);
+  const t = footprintTerrain({ x, y, w: Math.abs(r.x2 - r.x1) + 1, h: Math.abs(r.y2 - r.y1) + 1 });
+  return { x1: t.x, y1: t.y, x2: t.x + t.w - 1, y2: t.y + t.h - 1 };
+}
+
+/** The object cells that rest, wholly or in part, on any of `terrain`, as inclusive corners; null for none. */
+export function objectCellsOver(terrain: readonly MacroCoord[]): Corners | null {
+  const box = regionBounds(terrain.flatMap((t) => { const r = terrainCellRect(t); return footprintCells(r.x, r.y, r.w, r.h); }));
+  return box && { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 };
+}
+
+/** How many of the object `cells` rest wholly on `terrain`, the part of each that is on the map; a
+ *  cell with no part on the map rests on nothing. */
+export function restingWholly(cells: readonly MacroCoord[], terrain: readonly MacroCoord[], state: GridState): number {
+  const kept = new Set(terrain.map((t) => cellKey(t.x, t.y)));
+  return cells.filter((c) => {
+    const under = terrainUnder([c], state);
+    return under.length > 0 && under.every((t) => kept.has(cellKey(t.x, t.y)));
+  }).length;
+}
+
+/** The corners of `cells` where they fill their bounding rectangle, else null. */
+function filledRect(cells: readonly MacroCoord[]): Corners | null {
+  const box = regionBounds(cells);
+  return box && box.count === (box.x2 - box.x1 + 1) * (box.y2 - box.y1 + 1) ? { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 } : null;
+}
+
+/**
+ * Where objects stand around terrain laid under a filled rectangle of object cells: the cells
+ * touching it rest partly on it, so the nearest clear ones are the border of the rectangle one cell
+ * beyond those, the same distance out on every side. Empty for an irregular shape.
+ */
+export function clearBorderNote(asked: readonly MacroCoord[], state: GridState): string {
+  const over = filledRect(asked) && objectCellsOver(terrainUnder(asked, state));
+  if (!over) return '';
+  return ` The nearest cells where objects stand clear of it are the border of the rectangle (${over.x1 - 1},${over.y1 - 1})-(${over.x2 + 1},${over.y2 + 1}).`;
+}
 
 /** The cells a write may actually reach: the buildable zones. Every other zone refuses every edit
  *  (V-ZONE-01), and the zone map is static — so a write's geometry is
@@ -23,6 +91,14 @@ export function clipBuildable(cells: MacroCoord[], state: GridState): { cells: M
   return { cells: kept, offZone: cells.length - kept.length };
 }
 
+/** The terrain cells a paint may actually raise or flood: buildable, and not beside the shore, where a
+ *  block bleeds half a cell up and left onto ground V-ZONE-01 refuses. An erase does not bleed, so
+ *  only a paint clips by this. */
+export function clipPaintable(cells: MacroCoord[], state: GridState): { cells: MacroCoord[]; offZone: number } {
+  const kept = clipBuildable(cells, state).cells.filter((c) => !paintBleedsOffBuildable(state, c));
+  return { cells: kept, offZone: cells.length - kept.length };
+}
+
 /** The one sentence a clipped write appends where anything was clipped. */
 export function offZoneNote(offZone: number): string {
   return offZone > 0 ? ` ${offZone} cell(s) outside the buildable ${BUILDABLE_ZONES} zone were skipped.` : '';
@@ -33,7 +109,7 @@ export function offZoneError(): ToolOutcome {
   return argError(`every cell lies outside the buildable ${BUILDABLE_ZONES} zone (${orList(UNBUILDABLE_ZONES)}), aim inside it.`);
 }
 
-/** The paint cells a NON-coating object footprint covers, filtered out: terrain under a standing
+/** The terrain cells a NON-coating object footprint covers, filtered out: terrain under a standing
  *  object is never paintable (V-PLACE-BLOCK), and the rule's own fix is clear_area first. Roads
  *  and other coatings ride surface changes and do not block. */
 export function clipOccupied(cells: MacroCoord[], state: GridState): { cells: MacroCoord[]; occupied: number } {
@@ -51,7 +127,7 @@ export function clipOccupied(cells: MacroCoord[], state: GridState): { cells: Ma
 
 /** The sentence an occupied-clipped paint appends where anything was clipped. */
 export function occupiedNote(occupied: number): string {
-  return occupied > 0 ? ` ${occupied} cell(s) under standing objects were skipped. Those objects remain unchanged; this did not replace or remove them. Inspect the objects before correcting a missing part. ${lockedNote()}` : '';
+  return occupied > 0 ? ` ${occupied} cell(s) under or touching standing objects were skipped or cut short. Those objects remain unchanged; this did not replace or remove them. Inspect the objects before correcting a missing part. ${lockedNote()}` : '';
 }
 
 /* ── input helpers ───────────────────────────────────────────────────── */
@@ -60,6 +136,11 @@ export function occupiedNote(occupied: number): string {
  *  scalars), optional outline — into a deduped, in-bounds cell list. `flatDefault` is what bare
  *  corners with no `shape` mean: a rect for the area tools, the line for build_road. */
 export function resolveCells(input: Record<string, unknown>, state: GridState, flatDefault: FlatDefault = 'rect'): MacroCoord[] {
+  // A shape drawn as rows of text is its marked cells; an empty drawing leaves the other geometry to speak.
+  if (Array.isArray(input.picture) && input.picture.length > 0) {
+    const { picture: _picture, shape: _shape, x1: _x1, y1: _y1, x2: _x2, y2: _y2, ...rest } = input;
+    input = { ...rest, shape: 'cells', cells: pictureCells(input) };
+  }
   input = normalizeGeometry(input, flatDefault);
   const outline = Boolean(input.outline);
   const { width, height } = state.template;

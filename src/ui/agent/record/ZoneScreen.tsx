@@ -1,11 +1,11 @@
 import type { Ref } from 'react';
-import type { JobView, LiveConnection, SetupEntry } from '../../../agent/panel';
+import type { JobView, LiveConnection, SessionPhase, SetupEntry, ZoneEvent } from '../../../agent/panel';
 import { useCharacterChannel } from '../character/intent';
 import { DreamOffice } from '../desk/DreamOffice';
 import { ManageScreen } from '../connection/ManageScreen';
-import type { ZoneEvent } from '../derive/zone';
 import { SetupScreen, type SetupHandle } from '../connection/SetupScreen';
 import type { SetupFace } from '../connection/setup-parts';
+import { PHASE } from '../derive/phase';
 import { OpenedRecord } from './TerminalCard';
 
 /** Which screen replaces the session record in the job zone, if one does. */
@@ -26,7 +26,7 @@ export function ZoneScreen({
   /** The records a clear would still remove. */
   jobCount: number;
   running: boolean;
-  phase: string;
+  phase: SessionPhase;
   liveConnection?: LiveConnection;
   recordStamp?(job: JobView): string;
   rolledBack: ReadonlySet<number>;
@@ -68,8 +68,8 @@ export function ZoneScreen({
       return (
         <ManageScreen
           jobCount={jobCount}
-          stoppable={running || phase === 'retrying' || phase === 'gated'}
-          parkable={phase === 'retrying'}
+          stoppable={running || PHASE[phase].waiting}
+          parkable={PHASE[phase].parkable}
           onDone={() => dispatch({ type: 'manage-done' })}
           onNeedKey={() => dispatch({ type: 'setup', entry: 'key' })}
           {...(onClearJobs ? { onClearJobs } : {})}

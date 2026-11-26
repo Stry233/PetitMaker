@@ -76,7 +76,7 @@ export enum CellZone {
 /** What a zone is to the editor. Shared code asks it through the predicates in `game/zones.ts`, never
  *  by a zone's id. */
 export interface ZoneSpec {
-  /** The English word the assistant reads it by. */
+  /** The English word prose names it by (`zones.ts:zoneName`). */
   readonly name: string;
   /** Buildings, objects and terrain may go on it. */
   readonly buildable: boolean;

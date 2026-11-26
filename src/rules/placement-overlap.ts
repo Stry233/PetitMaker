@@ -58,6 +58,7 @@ export function hasCoatingConflict(state: GridState): boolean {
 
 export const placementOverlapRule = definePreRule({
   id: 'V-PLACE-OVERLAP',
+  description: 'Solid footprints may not overlap. Coatings on different layers coexist. An item with coatingSupport keeps the roads under it, and a road may be laid beneath it; an item with growsOnPlantable keeps a plantable coating the same way. A road may pass beneath a bridge deck and under the lower end of a ramp.',
   appliesTo: [CommandType.PlaceObject],
 
   validate(cmd, state, fail, scope) {

@@ -6,10 +6,12 @@
 import { useEffect, useRef } from 'react';
 import { ShortcutManager } from '../../platform/input/shortcut-manager';
 import { keyBindings, type CommandContext } from '../../editor/commands/commands';
+import { watchBackKey } from '../../editor/back/back-out';
 import { useKeybinds } from '../../state/keymap/store';
 import { useToolbarContext } from '../session/use-toolbar-context';
 
-/** The keyboard surface for the shell's command context (`editor/commands/commands.ts:keyBindings`). */
+/** The keyboard surface for the shell's command context (`editor/commands/commands.ts:keyBindings`),
+ *  with the back key the back stack hears itself (`editor/back/back-out.ts:watchBackKey`). */
 export function useEditorShortcuts({ toggleMenu }: CommandContext): void {
   const toolbar = useToolbarContext();
   const overrides = useKeybinds((s) => s.overrides);
@@ -21,6 +23,7 @@ export function useEditorShortcuts({ toggleMenu }: CommandContext): void {
     for (const binding of keyBindings(overrides, toolbar, { toggleMenu })) sc.register(binding.combo, binding.run, binding.keepDefault);
     table.current = sc;
   }, [overrides, toggleMenu, toolbar]);
+  useEffect(() => watchBackKey(), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => table.current?.handleKeyDown(e);
     window.addEventListener('keydown', onKey);

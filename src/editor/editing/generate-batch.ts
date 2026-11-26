@@ -1,19 +1,29 @@
 /**
- * The generate shelf's batch against the live map, or the map a Help figure hands in: which recipe a
- * card stands for, its plan, candidate and picture built on detached copies (restored from the caches
- * where they answer, else after the settings settle), the landing of one card, and Clear. The shelf
- * holds the pictures and flags as its own state and hands their setters in; this module never renders.
+ * The generate shelf's batch against the live map, or the map a Help figure hands in: the samples a
+ * picture kind deals from and its hand, which recipe a card stands for, its plan, candidate and picture built on
+ * detached copies (restored from the caches where they answer, else after the settings settle), the
+ * landing of one card at a time, and Clear. `createGenerateBatch` is the session's external store:
+ * it reads the recipe, the painted region and the maze's ends itself, holds the pictures and flags
+ * the shelf shows and writes the landed card to the store after the run lands. The live shelf's
+ * batch is on show while it is open (`landCard`, `clearLastRun`); this module never renders.
  */
 import { SUPPORTS_WORKERS } from '../../platform/build/edition';
+import { BRAND_LOGO_URL } from '../../assets/brand-logo';
+import { neighborPortraitUrl } from '../../assets/neighbor-urls';
+import { NEIGHBORS } from '../../config/neighbors';
+import type { LocalizedName } from '../../core/model/locale';
 import { TERRAIN_GRID } from '../../core/game/profile';
 import { cellSet } from '../../core/grid/grids';
 import type { EditContext } from '../../core/commands/edit-context';
-import type { GridState, MacroCoord } from '../../core/model/types';
-import { CANDIDATES, KIND_ENGINE, kindConfig, regionFitsStencil, type GenerateKind, type KindSettings, type StencilKind } from '../../tools/generation/kinds';
-import type { ResolvedMazeGates, StencilPlan } from '../../tools/generation/recipe';
+import type { GridState, MacroCoord, Rotation } from '../../core/model/types';
 import {
-  buildStencilPlan, forgetStencilImage, peekStencilPlan, planInputsFor, regionAllow, stencilBoxFor, textFitsBox,
-  regionBox, type PlanInputs, type StencilBox, type StencilFillKind, type StencilSource,
+  CANDIDATES, KIND_ENGINE, batchSeeds, kindConfig, regionFitsStencil, type GenerateKind, type KindSettings, type StencilKind,
+} from '../../tools/generation/kinds';
+import type { ResolvedMazeGates, StencilPlan } from '../../tools/generation/recipe';
+import { scopeRequestFor } from '../../tools/generation/facts';
+import {
+  LETTER_SAMPLES, buildStencilPlan, ensureGlyphFonts, glyphFontsReady, peekStencilPlan, planInputsFor, regionAllow, stencilBoxFor,
+  stencilFrame, textFitsBox, regionBox, type PlanInputs, type StencilBox, type StencilFillKind, type StencilSource,
 } from '../../tools/generation/stencil';
 import {
   defaultMazeGates, latticeField, mazeFootprint, onRing, resolveEnd, type MazeEnd, type MazeFootprint,
@@ -22,8 +32,14 @@ import { focusFrame, renderThumbnail } from '../../view/map2d/capture/thumbnail'
 import { clearGenerated, generateCandidate, generateMap, peekCandidate, type Candidate, type Outcome } from '../operations';
 import { host } from '../host/host';
 import { currentEditor } from '../session/context';
+import { hasCustomCard } from './custom-card';
+import { recipeElevation, type GenerateRecipeController } from './generate-recipe';
 import { reportGenerate } from './generate-report';
 import { holdEditInFlight } from '../../state/edits-in-flight';
+import { regionOf } from '../../state/editing/region';
+import { useEditorStore } from '../../state/store';
+import { makeRng } from '../../core/base/rng';
+import { createSignal } from '../../core/base/signal';
 
 /** The visitor's own card, after the batch's dealt cards. */
 const CUSTOM = CANDIDATES;
@@ -31,37 +47,39 @@ const CUSTOM = CANDIDATES;
 const SETTLE_MS = 350;
 
 /** A card's picture: a data URL, null for a card with no picture, undefined while it is being made. */
-export type Shot = string | null | undefined;
-/** A slot the shelf keeps across renders (a React ref fits). */
+type Shot = string | null | undefined;
+/** A slot the batch keeps across passes. */
 interface Slot<T> { current: T }
 type ShotFrame = ReturnType<typeof focusFrame>;
 /** The batch's settings; each card adds its own seed. */
-export type BatchSettings = Omit<KindSettings, 'seed'>;
+type BatchSettings = Omit<KindSettings, 'seed'>;
 /** How a card is photographed: the long edge in device pixels and the picture slot's aspect. */
 interface ShotSize { px: number; aspect: number }
 
 /** What a picture kind builds from on the live map: the box it fills, whether the region fits it,
  *  the plan inputs, and whether a word fits the box (asked before any run). */
-export interface StencilInputs {
+interface StencilInputs {
   box: StencilBox | null;
   fits: boolean;
   planInputs: PlanInputs | null;
   wordFits: (sample: StencilSource | null) => boolean;
 }
 
-interface StencilRecipe { kind: GenerateKind; fill: StencilFillKind; item: string | null; contrast: number }
+interface StencilRecipe { kind: GenerateKind; fill: StencilFillKind; item: string | null; contrast: number; facing: Rotation }
 
 /** `contrast` is the shelf's percentage. */
-export function stencilInputs(grid: GridState | null, region: readonly MacroCoord[], recipe: StencilRecipe): StencilInputs {
+function stencilInputs(grid: GridState | null, region: readonly MacroCoord[], recipe: StencilRecipe): StencilInputs {
   const { input } = KIND_ENGINE[recipe.kind];
   const box = stencilBoxFor(grid, region);
   const planInputs = box
-    ? planInputsFor(input ?? 'text', box, { fill: recipe.fill, item: recipe.item ?? '', contrast: recipe.contrast / 100, allow: regionAllow(grid, region) })
+    ? planInputsFor(input ?? 'text', box, {
+      fill: recipe.fill, item: recipe.item ?? '', contrast: recipe.contrast / 100, allow: regionAllow(grid, region), facing: recipe.facing,
+    })
     : null;
   return {
     box, fits: regionFitsStencil(recipe.kind, box), planInputs,
     // A row of characters divides the region's width, so the floor scales with the word.
-    wordFits: (sample) => input !== 'text' || !sample?.text || textFitsBox(sample.text, box, recipe.fill),
+    wordFits: (sample) => input !== 'text' || !sample?.text || textFitsBox(sample.text, box && stencilFrame(box, recipe.facing), recipe.fill),
   };
 }
 
@@ -86,7 +104,7 @@ interface Pass {
 }
 
 /** The frame a card's picture shows: the painted region's box, or the map. */
-export function shotFrameFor(region: readonly MacroCoord[], grid: GridState | null, aspect: number): ShotFrame {
+function shotFrameFor(region: readonly MacroCoord[], grid: GridState | null, aspect: number): ShotFrame {
   return focusFrame(regionBox(region), grid?.template ?? null, aspect);
 }
 
@@ -153,30 +171,49 @@ async function buildCard(kit: EditContext, pass: Pass, i: number, signal: AbortS
   if (!pass.dropped()) pass.setShot(i, shot);
 }
 
-/** The map a batch or own card builds against: a given one (a Help figure's sandbox), else the live editor's. */
-interface BatchTarget {
-  /** Absent, the live editor's map. */
-  kit?: EditContext;
+/** Where one pass writes what it shows: the batch store's own fields. */
+interface Sink {
+  setShots: (next: Shot[] | ((prev: Shot[]) => Shot[])) => void;
+  setPreviewing: (on: boolean) => void;
+  setCustomShot: (shot: Shot) => void;
+  setCustomPending: (on: boolean) => void;
+  forgetApplied: () => void;
+  clearFailed: () => void;
+  /** The map the cards build against. */
+  editor: () => EditContext | null;
 }
 
-interface BatchPass extends BatchTarget {
-  stencil: boolean; fits: boolean; ready: boolean; fontsReady: boolean;
+/** What one pass over the batch's dealt cards is built from: a picture kind's `hand`, else the `seeds`. */
+interface BatchInputs {
+  stencil: boolean; fits: boolean;
+  /** Whether a picture may be taken now: a map stands and no region is being painted. */
+  ready: boolean;
+  fontsReady: boolean;
   hand: readonly StencilSource[]; seeds: readonly number[]; base: number;
   settings: BatchSettings; scope: MacroCoord[] | null; planInputs: PlanInputs | null;
-  wordFits: (sample: StencilSource | null) => boolean; shotFrame: ShotFrame; shotSize: ShotSize;
-  plans: Slot<(StencilPlan | null)[]>; candidates: Slot<(Candidate | null)[]>;
-  setShots: (next: Shot[] | ((prev: Shot[]) => Shot[])) => void; setPreviewing: (on: boolean) => void;
-  forgetApplied: () => void; clearFailed: () => void;
+  wordFits: (sample: StencilSource | null) => boolean; shotFrame: ShotFrame;
+}
+
+/** What one pass over the visitor's own card is built from. */
+interface OwnInputs {
+  stencil: boolean; fits: boolean; ready: boolean; ownFontsReady: boolean; ownSample: StencilSource | null;
+  customSeed: number | null; base: number; settings: BatchSettings; scope: MacroCoord[] | null;
+  planInputs: PlanInputs | null; wordFits: (sample: StencilSource | null) => boolean; shotFrame: ShotFrame;
+}
+
+/** The slots a batch keeps across its passes. */
+interface Slots {
+  plans: Slot<(StencilPlan | null)[]>;
+  candidates: Slot<(Candidate | null)[]>;
+  own: Slot<Candidate | null>;
 }
 
 /** One batch's previews: restored from the caches at once where they answer, else built after the
  *  settings settle. Returns the pass's disposer. */
-export function previewBatch(o: BatchPass): (() => void) | undefined {
-  const {
-    stencil, fits, fontsReady, hand, seeds, base, settings, scope, planInputs, wordFits, shotFrame, shotSize, setShots, setPreviewing,
-    forgetApplied, clearFailed,
-  } = o;
-  const plansRef = o.plans, candidatesRef = o.candidates;
+function runBatch(o: BatchInputs, slots: Slots, sink: Sink, shotSize: ShotSize): (() => void) | undefined {
+  const { stencil, fits, fontsReady, hand, seeds, base, settings, scope, planInputs, wordFits, shotFrame } = o;
+  const { setShots, setPreviewing, forgetApplied, clearFailed } = sink;
+  const plansRef = slots.plans, candidatesRef = slots.candidates;
   const blank = () => { candidatesRef.current = Array(CANDIDATES).fill(null); };
   // A picture kind with no room goes blank, plans included: a card that cannot show what it would build must not build.
   if (stencil && !fits) {
@@ -199,7 +236,7 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
   const { signal } = controller;
   const pass: Pass = {
     stencil, dealt: stencil ? hand : seeds, base, settings, scope, planInputs, wordFits, shotFrame, shotSize,
-    plans: plansRef, candidates: candidatesRef, dropped: () => dropped, editor: () => o.kit ?? currentEditor(),
+    plans: plansRef, candidates: candidatesRef, dropped: () => dropped, editor: sink.editor,
     setShot: (i, shot) => setShots((prev) => prev.map((s, j) => (j === i ? shot : s))),
   };
   const peekKit = pass.editor();
@@ -247,22 +284,12 @@ export function previewBatch(o: BatchPass): (() => void) | undefined {
   };
 }
 
-interface OwnPass extends BatchTarget {
-  stencil: boolean; fits: boolean; ready: boolean; ownFontsReady: boolean; ownSample: StencilSource | null;
-  customSeed: number | null; base: number; settings: BatchSettings; scope: MacroCoord[] | null;
-  planInputs: PlanInputs | null; wordFits: (sample: StencilSource | null) => boolean; shotFrame: ShotFrame; shotSize: ShotSize;
-  plans: Slot<(StencilPlan | null)[]>; own: Slot<Candidate | null>;
-  setCustomShot: (shot: Shot) => void; setCustomPending: (on: boolean) => void;
-}
-
 /** The visitor's own card: blank, waiting on its font, restored from the caches, or built after the
  *  settle. Returns the pass's disposer. */
-export function previewOwn(o: OwnPass): (() => void) | undefined {
-  const {
-    stencil, fits, ownFontsReady, ownSample, customSeed, base, settings, scope, planInputs, wordFits, shotFrame, shotSize, setCustomShot,
-    setCustomPending,
-  } = o;
-  const plansRef = o.plans, customRef = o.own;
+function runOwn(o: OwnInputs, slots: Slots, sink: Sink, shotSize: ShotSize): (() => void) | undefined {
+  const { stencil, fits, ownFontsReady, ownSample, customSeed, base, settings, scope, planInputs, wordFits, shotFrame } = o;
+  const { setCustomShot, setCustomPending } = sink;
+  const plansRef = slots.plans, customRef = slots.own;
   if (!o.ready || (stencil && !fits) || (stencil ? !ownSample : customSeed === null)) {
     customRef.current = null;
     setCustomShot(null);
@@ -286,8 +313,7 @@ export function previewOwn(o: OwnPass): (() => void) | undefined {
     customRef.current = candidate;
   };
   setCustomShot(undefined);
-  const editor = () => o.kit ?? currentEditor();
-  const peekKit = editor();
+  const peekKit = sink.editor();
   const peekedPlan = peekKit ? (wantsPlan ? peekStencilPlan(ownSample!, planInputs!) : null) : undefined;
   if (stencil && peekedPlan === null) {
     // The cached answer is the refusal: the card comes back blank as the slow path leaves it.
@@ -319,7 +345,7 @@ export function previewOwn(o: OwnPass): (() => void) | undefined {
     setCustomPending(false);
   };
   const run = async (): Promise<void> => {
-    const kit = editor();
+    const kit = sink.editor();
     if (!kit) return;
     setCustomPending(true);
     try {
@@ -365,7 +391,7 @@ interface CardAsk {
 
 /** The seed and plan a card lands with, or null when it cannot land now: still being made, an own
  *  card whose input was not approved, a picture kind without its plan or its room, or no seed. */
-export function cardRecipe(ask: CardAsk): { seed: number | null; plan: StencilPlan | null } | null {
+function cardRecipe(ask: CardAsk): { seed: number | null; plan: StencilPlan | null } | null {
   if (ask.index === CUSTOM && !ask.ownAllowed) return null;
   const plan = ask.stencil ? ask.plan : null;
   const seed = ask.stencil ? ask.base + ask.index : ask.index === CUSTOM ? ask.customSeed : ask.seeds[ask.index] ?? null;
@@ -374,7 +400,7 @@ export function cardRecipe(ask: CardAsk): { seed: number | null; plan: StencilPl
   return { seed, plan };
 }
 
-export interface LandingRequest {
+interface LandingRequest {
   settings: BatchSettings;
   /** The card's recipe number, or null where it has none to land. */
   seed: number | null;
@@ -389,10 +415,10 @@ export interface LandingRequest {
 
 /** A landing on its way: `done` settles with the landed outcome, or null when it was cancelled or
  *  its report refused it; it rejects when the run threw (the run rolled itself back). */
-export interface Landing { done: Promise<Outcome | null>; abort: () => void }
+interface Landing { done: Promise<Outcome | null>; abort: () => void }
 
 /** Lands a card's run on the live map as one undo step; null with no live map. */
-export function landCandidate(ask: LandingRequest): Landing | null {
+function landCandidate(ask: LandingRequest): Landing | null {
   const kit = currentEditor();
   if (!kit) return null;
   const controller = new AbortController();
@@ -417,20 +443,397 @@ export function landCandidate(ask: LandingRequest): Landing | null {
   return { done, abort };
 }
 
-/** Clears the last run, bounded by its region and sparing placements made by hand there. False
- *  with no live map. */
+/** One example a picture kind deals: a letter to build, or a picture to build from. */
+export interface StencilSample extends StencilSource {
+  id: string;
+  /** What a picture is, where it is not the app's own mark: a neighbour's name, since none of these
+   *  pictures is a catalog item. */
+  name?: LocalizedName;
+}
+
+/** What a picture kind's batch is dealt from: its input is the recipe, so a pool's order is part of
+ *  a hand's seed. Pictures are the app's own mark, then each neighbour whose portrait ships. */
+const POOLS: Readonly<Record<StencilKind, readonly StencilSample[]>> = {
+  text: LETTER_SAMPLES.map((text) => ({ id: text, text })),
+  image: [
+    { id: 'logo', src: BRAND_LOGO_URL },
+    ...NEIGHBORS.flatMap(({ id, name }) => {
+      const src = neighborPortraitUrl(id);
+      return src ? [{ id, src, name }] : [];
+    }),
+  ],
+};
+
+/** The samples a picture kind deals its batch from. */
+export function samplePool(input: StencilKind): readonly StencilSample[] {
+  return POOLS[input];
+}
+
+/**
+ * The hand a picture kind's batch is dealt: `CANDIDATES` samples drawn from `pool` without
+ * replacement by `seed`, the batch seed the terrain kinds use; a pool shorter than the hand deals all
+ * of it. New batch deals another seeded hand, and the visitor's own card is untouched.
+ */
+function dealHand<T>(pool: readonly T[], seed: number): T[] {
+  if (pool.length <= CANDIDATES) return [...pool];
+  const rng = makeRng(seed);
+  const bag = [...pool];
+  const out: T[] = [];
+  for (let i = 0; i < CANDIDATES; i++) {
+    out.push(...bag.splice(Math.floor(rng.float() * bag.length), 1));
+  }
+  return out;
+}
+
+interface BatchKeyParts {
+  kind: GenerateKind; richness: number; maxElevation: number; corridorWidth: number;
+  /** The maze's chosen ends, for a kind with gates. */
+  gates: ResolvedMazeGates | null;
+  /** A picture kind's material and knobs and the box it fills; null for the other kinds. */
+  stencil: { fill: StencilFillKind; item: string | null; contrast: number; facing: Rotation; box: StencilBox | null } | null;
+}
+
+/** The batch's identity: every setting its cards are a function of, the seeds aside. */
+function batchKey(p: BatchKeyParts): string {
+  return JSON.stringify([
+    p.kind, p.richness, p.maxElevation, p.corridorWidth, KIND_ENGINE[p.kind].gates ? p.gates : null,
+    p.stencil ? [p.stencil.fill, p.stencil.item, p.stencil.contrast, p.stencil.box, p.stencil.facing] : null,
+  ]);
+}
+
+/** What the shelf shows of its batch. */
+interface BatchView {
+  shots: readonly Shot[];
+  customShot: Shot;
+  customPending: boolean;
+  previewing: boolean;
+  /** The card whose run is on its way to the map; one lands at a time. */
+  landingIndex: number | null;
+  /** The card whose run threw and rolled itself back, said for `failedMs`. */
+  failedIndex: number | null;
+}
+
+/** What only the page can tell the batch: whether the faces its letters draw in have arrived, and
+ *  whether the own card's typed text passed its check. */
+interface PageInputs { fontsReady: boolean; ownFontsReady: boolean; ownAllowed: boolean }
+
+/** The maze's ends as the batch reads and tells them (`maze-ends.ts:createMazeEnds`). */
+interface EndsSession {
+  gates(inputs: { maze: boolean; gridState: GridState | null; scope: MacroCoord[] | null; corridorWidth: number }): ResolvedMazeGates | null;
+  /** What a landed run reported (the maze reads its ends from it). */
+  landed(outcome: Outcome): void;
+  forgetLanded(): void;
+  cancelDrag(): void;
+}
+
+/** What the batch is built from now: the recipe, the map and its painted region, read together. */
+interface BatchRead {
+  kind: GenerateKind;
+  /** What a picture kind reads ahead of the run; null for a kind built from its recipe alone. */
+  input: StencilKind | null;
+  /** The painted region, or null for the whole map: what a run takes. */
+  scope: MacroCoord[] | null;
+  /** Whether a picture may be taken now: a map stands and no region is being painted. */
+  ready: boolean;
+  settings: BatchSettings;
+  base: number;
+  seeds: readonly number[];
+  customSeed: number | null;
+  /** A picture kind's dealt samples. */
+  hand: readonly StencilSample[];
+  /** The own card's input, before its check. */
+  ownSample: StencilSource | null;
+  box: StencilBox | null;
+  fits: boolean;
+  planInputs: PlanInputs | null;
+  wordFits: (sample: StencilSource | null) => boolean;
+  shotFrame: ShotFrame;
+  /** The batch's identity: every setting its cards are a function of, the seeds aside. */
+  key: string;
+}
+
+/** What became of a card's press: `unavailable` for a card that cannot land now, `busy` while
+ *  another lands, `closed` with no shelf open; `cancelled` covers a run its report refused. */
+export type CardLanding = 'landed' | 'cancelled' | 'failed' | 'busy' | 'unavailable' | 'closed';
+
+interface BatchOptions {
+  /** How a card is photographed. */
+  shotSize: ShotSize;
+  /** How long a card says its run did not build, in ms. */
+  failedMs: number;
+  /** The recipe the cards are dealt from. */
+  recipe: Pick<GenerateRecipeController, 'get'>;
+  /** The maze's ends, where the surface lets the visitor choose them. */
+  ends?: EndsSession;
+  /** The map the cards build against where it is not the live editor's (a Help figure's sandbox);
+   *  such a batch reads no painted region, lands nothing and leaves the store alone. */
+  kit?: EditContext;
+}
+
+interface GenerateBatch {
+  get(): BatchView;
+  subscribe(listener: () => void): () => void;
+  /** What the batch is built from now. */
+  read(): BatchRead;
+  /** The page says what only it knows; the next pass and the next landing read it. */
+  publish(inputs: PageInputs): void;
+  /** Starts a pass over the dealt cards; returns its disposer. */
+  previewBatch(): (() => void) | undefined;
+  /** Starts a pass over the visitor's own card; returns its disposer. */
+  previewOwn(): (() => void) | undefined;
+  candidateAt(index: number): Candidate | null;
+  /** Lands card `index`'s run, unless one is on its way: its run stands as the landed card once it lands. */
+  landCard(index: number): Promise<CardLanding>;
+  /** A maze end was dropped: where a run stands, it lands again at its own seed as another maze
+   *  with `gates`, one drop making one generation and one undo step. */
+  relandStanding(gates: ResolvedMazeGates): void;
+  /** The own card's recipe changed: it is let go if it is the card standing on the map. */
+  ownChanged(): void;
+  /** Puts a live batch on show, so a card's command lands on it; returns the take-down. */
+  show(): () => void;
+  /** The shelf closed: the landing on its way is cancelled and the landed card let go. */
+  dispose(): void;
+}
+
+/** What a batch on show answers for. */
+interface ShownBatch {
+  landCard(index: number): Promise<CardLanding>;
+  /** The last run left the map (Clear): the landed card and the maze's landed ends go with it. */
+  runCleared(): void;
+  /** The kind the shelf's recipe holds. */
+  kind(): GenerateKind;
+}
+
+/** The live shelves' batches while they are open, the newest last: a Help page stands the shelf
+ *  itself over the frame's. */
+const onShow: ShownBatch[] = [];
+
+const NO_REGION: MacroCoord[] = [];
+
+/** Everything a picture kind's inputs are a function of. */
+type StencilKey = readonly [GridState | null, MacroCoord[], GenerateKind, StencilFillKind, string | null, number, Rotation];
+
+/** `make`'s answer for the key it was last asked with, its members compared by identity. */
+function latest<K extends readonly unknown[], V>(make: (key: K) => V): (key: K) => V {
+  let last: { key: K; value: V } | null = null;
+  return (key) => {
+    if (!last || last.key.some((v, i) => !Object.is(v, key[i]))) last = { key, value: make(key) };
+    return last.value;
+  };
+}
+
+export function createGenerateBatch(options: BatchOptions): GenerateBatch {
+  const { shotSize, failedMs, recipe, ends, kit } = options;
+  let view: BatchView = {
+    shots: Array(CANDIDATES).fill(undefined), customShot: null, customPending: false, previewing: false,
+    landingIndex: null, failedIndex: null,
+  };
+  const published = createSignal();
+  const set = (next: Partial<BatchView>): void => {
+    view = { ...view, ...next };
+    published.emit();
+  };
+  const slots: Slots = {
+    plans: { current: Array(CANDIDATES + 1).fill(null) },
+    candidates: { current: Array(CANDIDATES).fill(null) },
+    own: { current: null },
+  };
+  let page: PageInputs = { fontsReady: true, ownFontsReady: true, ownAllowed: true };
+  let failedTimer: ReturnType<typeof setTimeout> | null = null;
+  let landing: Landing | null = null;
+
+  const stencilOf = latest(([grid, region, kind, fill, item, contrast, facing]: StencilKey) =>
+    stencilInputs(grid, region, { kind, fill, item, contrast, facing }));
+  /** Dealt by the same base seed the terrain kinds draw from. */
+  const handOf = latest(([input, base]: readonly [StencilKind | null, number]): readonly StencilSample[] => (input ? dealHand(samplePool(input), base) : []));
+  const frameOf = latest(([region, grid]: readonly [MacroCoord[], GridState | null]) => shotFrameFor(region, grid, shotSize.aspect));
+
+  const read = (): BatchRead => {
+    const store = useEditorStore.getState();
+    const grid = kit ? kit.state : store.gridState;
+    const region = kit ? NO_REGION : regionOf(store, 'generator');
+    const state = recipe.get();
+    const { kind, richness, corridorWidth, fillItem, contrast, facing } = state;
+    const { base, customSeed, fillKind } = state.byKind[kind];
+    const { input, gates: gated } = KIND_ENGINE[kind];
+    const fill = input ? fillKind : 'mountain';
+    const scope = region.length > 0 ? region : null;
+    const maxElevation = recipeElevation(state);
+    const gates = ends?.gates({ maze: gated, gridState: grid, scope, corridorWidth }) ?? null;
+    const { box, fits, planInputs, wordFits } = stencilOf([grid, region, kind, fill, fillItem, contrast, facing]);
+    const ownSample = input === 'text'
+      ? (state.ownText ? { text: state.ownText } : null)
+      : input === 'image' ? (state.ownImage ? { src: state.ownImage.src } : null) : null;
+    return {
+      kind, input, scope, ready: !!grid && (!!kit || !store.selectingRegion),
+      settings: { kind, richness, maxElevation, corridorWidth, gates },
+      base, seeds: batchSeeds(base), customSeed, hand: handOf([input, base]), ownSample, box, fits, planInputs, wordFits,
+      shotFrame: frameOf([region, grid]),
+      key: batchKey({
+        kind, richness, maxElevation, corridorWidth, gates,
+        stencil: input ? { fill, item: fillItem, contrast, facing, box } : null,
+      }),
+    };
+  };
+  /** What both passes read alike. */
+  const passInputs = (now: BatchRead) => ({
+    stencil: now.input !== null, fits: now.fits, ready: now.ready, base: now.base, settings: now.settings,
+    scope: now.scope, planInputs: now.planInputs, wordFits: now.wordFits, shotFrame: now.shotFrame,
+  });
+
+  const clearFailed = (): void => {
+    if (failedTimer) clearTimeout(failedTimer);
+    failedTimer = null;
+    if (view.failedIndex !== null) set({ failedIndex: null });
+  };
+  const letGoStored = (): void => {
+    const store = useEditorStore.getState();
+    if (!kit && store.generateApplied) store.setGenerateApplied(null);
+  };
+  /** Lets go of the landed card and leaves its run standing: the click was the answer, and undo is
+   *  the way back. A maze end's drag goes with it. */
+  const forgetApplied = (): void => {
+    ends?.cancelDrag();
+    letGoStored();
+  };
+  const sink: Sink = {
+    setShots: (next) => set({ shots: typeof next === 'function' ? next([...view.shots]) : next }),
+    setPreviewing: (previewing) => set({ previewing }),
+    setCustomShot: (customShot) => set({ customShot }),
+    setCustomPending: (customPending) => set({ customPending }),
+    forgetApplied, clearFailed,
+    editor: () => kit ?? currentEditor(),
+  };
+  const candidateAt = (i: number): Candidate | null => (i === CUSTOM ? slots.own.current : slots.candidates.current[i] ?? null);
+
+  const settle = async (index: number, run: Landing): Promise<CardLanding> => {
+    try {
+      const outcome = await run.done;
+      if (!outcome) return 'cancelled';
+      useEditorStore.getState().setGenerateApplied(index);
+      ends?.landed(outcome);
+      return 'landed';
+    } catch {
+      set({ failedIndex: index });
+      failedTimer = setTimeout(() => { failedTimer = null; set({ failedIndex: null }); }, failedMs);
+      return 'failed';
+    } finally {
+      if (landing === run) landing = null;
+      set({ landingIndex: null });
+    }
+  };
+
+  /** `over` holds settings moved out from under a standing run. */
+  const landCard = (index: number, over?: Partial<KindSettings>): Promise<CardLanding> => {
+    const now = read();
+    const stencil = now.input !== null;
+    // The own card lands only where the build offers it, and a picture kind's only what the visitor
+    // gave it: its plan slot may still hold the other picture kind's.
+    const ownMissing = index === CUSTOM && (!hasCustomCard(now.kind) || (stencil && !now.ownSample));
+    if (kit || ownMissing) return Promise.resolve('unavailable');
+    const card = cardRecipe({
+      index, stencil, base: now.base, customSeed: now.customSeed, seeds: now.seeds,
+      plan: stencil ? slots.plans.current[index] ?? null : null, fits: now.fits,
+      pending: index === CUSTOM ? view.customPending : view.previewing && view.shots[index] === undefined,
+      ownAllowed: page.ownAllowed,
+    });
+    if (!card) return Promise.resolve('unavailable');
+    ends?.cancelDrag();
+    if (view.landingIndex !== null) return Promise.resolve('busy');
+    const run = landCandidate({
+      settings: now.settings, seed: card.seed, plan: card.plan, ...(over ? { over } : {}), candidate: candidateAt(index),
+      region: now.scope, stencil: now.input,
+    });
+    if (!run) return Promise.resolve('unavailable');
+    letGoStored();
+    clearFailed();
+    landing = run;
+    set({ landingIndex: index });
+    return settle(index, run);
+  };
+  const shown: ShownBatch = {
+    landCard: (index) => landCard(index),
+    runCleared() {
+      forgetApplied();
+      ends?.forgetLanded();
+    },
+    kind: () => recipe.get().kind,
+  };
+
+  return {
+    get: () => view,
+    subscribe: (listener) => published.subscribe(listener),
+    read,
+    publish(inputs) { page = inputs; },
+    previewBatch() {
+      const now = read();
+      return runBatch({ ...passInputs(now), fontsReady: page.fontsReady, hand: now.hand, seeds: now.seeds }, slots, sink, shotSize);
+    },
+    previewOwn() {
+      const now = read();
+      return runOwn({
+        ...passInputs(now), ownFontsReady: page.ownFontsReady, ownSample: page.ownAllowed ? now.ownSample : null, customSeed: now.customSeed,
+      }, slots, sink, shotSize);
+    },
+    candidateAt,
+    landCard: shown.landCard,
+    relandStanding(gates) {
+      const standing = kit ? null : useEditorStore.getState().generateApplied?.card ?? null;
+      if (standing !== null) void landCard(standing, { gates });
+    },
+    ownChanged() {
+      if (!kit && useEditorStore.getState().generateApplied?.card === CUSTOM) forgetApplied();
+    },
+    show() {
+      if (kit) return () => {};
+      onShow.push(shown);
+      return () => {
+        const at = onShow.indexOf(shown);
+        if (at >= 0) onShow.splice(at, 1);
+      };
+    },
+    dispose() {
+      clearFailed();
+      landing?.abort();
+      letGoStored();
+    },
+  };
+}
+
+/** Lands card `index` of the batch on show, the visitor's own card standing after the dealt ones. */
+export function landCard(index: number): Promise<CardLanding> {
+  const batch = onShow[onShow.length - 1];
+  return batch ? batch.landCard(index) : Promise.resolve('closed');
+}
+
+/** Clears the last run, bounded by its region and sparing placements made by hand there, and tells
+ *  the batches on show. False with no live map. */
 export function clearLastRun(): boolean {
   const kit = currentEditor();
   if (!kit) return false;
   clearGenerated(kit, { region: null });
   host.resync();
+  for (const batch of [...onShow]) batch.runCleared();
   return true;
 }
 
-/** Lets go of a picture the visitor replaced: its decode, the plans built from it and its object URL. */
-export function releaseStencilImage(src: string): void {
-  forgetStencilImage(src);
-  URL.revokeObjectURL(src);
+/** Starts painting Generate's region as the shelf's scope chip does, with the brush the kind on show
+ *  asks for (`scopeRequestFor`); false with no shelf open. */
+export function paintGenerateScope(): boolean {
+  const batch = onShow[onShow.length - 1];
+  if (!batch) return false;
+  useEditorStore.getState().setSelectingRegion(true, 'generator', scopeRequestFor(batch.kind()));
+  return true;
+}
+
+/** Whether the shipped faces a letter card draws `text` in have arrived, so its picture shows the glyph it lays. */
+export function stencilFontsReady(text: string): boolean {
+  return glyphFontsReady(text);
+}
+
+/** Fetches the faces a letter card draws `text` in; resolves once each arrived or failed. */
+export function loadStencilFonts(text: string): Promise<void> {
+  return ensureGlyphFonts(text);
 }
 
 /** The maze's two marks over the map, each a hole on the outer ring or a target inside. */
@@ -459,20 +862,4 @@ export function snapMazeEnd(scope: MacroCoord[] | null, corridorWidth: number, c
   if (!kit) return null;
   const fp = mazeFootprint(kit.state, scope, corridorWidth);
   return fp ? resolveEnd(latticeField(kit.state, fp), cell) : null;
-}
-
-interface BatchKeyParts {
-  kind: GenerateKind; richness: number; maxElevation: number; corridorWidth: number;
-  /** The maze's chosen ends, for a kind with gates. */
-  gates: ResolvedMazeGates | null;
-  /** A picture kind's material and knobs and the box it fills; null for the other kinds. */
-  stencil: { fill: StencilFillKind; item: string | null; contrast: number; box: StencilBox | null } | null;
-}
-
-/** The batch's identity: every setting its cards are a function of, the seeds aside. */
-export function batchKey(p: BatchKeyParts): string {
-  return JSON.stringify([
-    p.kind, p.richness, p.maxElevation, p.corridorWidth, KIND_ENGINE[p.kind].gates ? p.gates : null,
-    p.stencil ? [p.stencil.fill, p.stencil.item, p.stencil.contrast, p.stencil.box] : null,
-  ]);
 }

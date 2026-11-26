@@ -5,7 +5,7 @@
 import { flatIndex, type Rect } from '../../../../core/grid/rect';
 import type { MapTemplate } from '../../../../core/model/types';
 import type { CompositionPlan } from '../composition/composition';
-import { cellTiers, landBox, landMask, levelWindows, hubCentre, hubRect } from '../planet';
+import { landBox, hubCentre, hubRect, type PlanetReading } from '../planet';
 import type { StreetRun } from './model';
 
 export interface Board {
@@ -40,18 +40,18 @@ export interface Board {
 const RANK_CODE: Record<'trunk' | 'branch', number> = { trunk: 1, branch: 2 };
 export const RANK_OF = ['', 'trunk', 'branch'] as const;
 
-export function makeBoard(template: MapTemplate, composition: CompositionPlan): Board {
+export function makeBoard(template: MapTemplate, composition: CompositionPlan, planet: PlanetReading): Board {
   const W = template.width, H = template.height, N = W * H;
-  const land = landMask(template);
+  const { land } = planet;
   const tier = new Int8Array(N).fill(-1);
   // The realized field, not the plate's nominal tier: a plate's rim slopes down to the shore, and a
   // street planned on the nominal tier would be laid on ground that comes out lower than it read.
-  const realized = cellTiers(template, composition);
-  for (let i = 0; i < N; i++) if (land[i]) tier[i] = realized[i]!;
+  for (let i = 0; i < N; i++) if (land[i]) tier[i] = planet.tiers[i]!;
   const hubArea = hubRect(template);
   const box = landBox(land, W, H);
   const extent = box.w > 0 ? { w: box.w, h: box.h } : { w: W, h: H };
-  const pavable = levelWindows(template, realized);
+  // A copy: the plaza's cells come out of it here, and the reading is every stage's.
+  const pavable = planet.level.slice();
   for (let y = Math.max(0, hubArea.y); y < Math.min(H, hubArea.y + hubArea.h); y++) {
     for (let x = Math.max(0, hubArea.x); x < Math.min(W, hubArea.x + hubArea.w); x++) pavable[flatIndex(x, y, W)] = 0;
   }

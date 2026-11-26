@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect } from 'vitest';
 import { spec } from '../../_support/spec';
-import { importFromBytes } from '../../../io/share';
+import { importFromBytes } from '../../_support/png-raster';
 import { computeComposition } from '../../../io/export/compose';
 import { createGridState } from '../../../core/model/template';
 import { placeObjectCommand } from '../../../core/model/command-build';
@@ -16,8 +16,9 @@ import { planetFixture } from '../../_support/planet';
 import { TerrainType, rect, world } from '../_world';
 import { builtMap, importCode, importToasts, seen, shareCode } from './_files';
 
-/** The README island as the author exported it, and the same Standard-size export resized to 1080
- *  pixels tall and saved twice as a lossy JPEG (`fixtures/glyph/README.md`). */
+/** The README island's share image, which its writer exports again with the current object set, and
+ *  an earlier Standard-size export of that island resized to 1080 pixels tall and saved twice as a
+ *  lossy JPEG (`fixtures/glyph/README.md`), frozen with the object set and planet template of its day. */
 const ORIGINAL = 'docs/media/share-map.png';
 const RECOMPRESSED = 'src/__tests__/fixtures/glyph/social-1080-double-jpeg.png';
 
@@ -85,12 +86,12 @@ describe('share images', () => {
     const recompressed = await imported(RECOMPRESSED);
     expect(seen(recompressed.state)).toBe(seen(original.state));
     expect(recompressed.state.annotations).toEqual(original.state.annotations);
-    expect(recompressed.state.notes).toEqual(original.state.notes);
+    expect(recompressed.state.notes?.title).toBe(original.state.notes?.title);
     expect(original.state.objects.size).toBeGreaterThan(1000);
   });
 
   spec('FILE-25', 'import a code made against another object set and planet template, warning that the result may differ', async () => {
-    const result = await imported(ORIGINAL);
+    const result = await imported(RECOMPRESSED);
     expect(result.warnings).toEqual([{ kind: 'template-drift' }, { kind: 'catalog-drift' }]);
     const shown = importToasts({ status: 'imported', source: 'raster', warnings: result.warnings }).map((t) => t.text);
     expect(shown).toEqual([

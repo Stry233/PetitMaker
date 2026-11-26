@@ -15,6 +15,7 @@
  */
 import { useEffect } from 'react';
 import { anyOverlayOpen } from '../../platform/channels/overlay-state';
+import { isHeldCommandKey } from '../../state/keymap/held';
 
 /** The attribute `animations.css` reads, on the document element. */
 const FOCUS_SOURCE_ATTR = 'data-focus-source';
@@ -22,10 +23,10 @@ const FOCUS_SOURCE_ATTR = 'data-focus-source';
 /**
  * The ring belongs to the box that has the shape: an outline follows its own element's radius, so in
  * a wrapped field `FIELD_INPUT_CLASS` takes the ring off the bare input and `FIELD_WRAP_CLASS` puts it
- * on the rounded wrapper (`animations.css` holds both rules). One pair: a wrapper without its input
- * rings twice, an input without its wrapper not at all. A field carrying its own radius needs
- * neither (the export modal's boxes, the candidate card's ghost field), hence a marker rather than a
- * global rule.
+ * on the rounded wrapper (`animations.css` holds both rules; `primitives/TextField.tsx` wears them). One
+ * pair: a wrapper without its input rings twice, an input without its wrapper not at all. A field
+ * carrying its own radius needs neither (the candidate card's ghost field), hence a marker rather
+ * than a global rule.
  */
 export const FIELD_WRAP_CLASS = 'pw-field-wrap';
 export const FIELD_INPUT_CLASS = 'pw-field-input';
@@ -40,8 +41,8 @@ function trackFocusSource(root: HTMLElement = document.documentElement): () => v
     root.setAttribute(FOCUS_SOURCE_ATTR, 'pointer');
   };
   const onKey = (e: KeyboardEvent) => {
-    // Pointer-focused buttons retain focus; Space belongs to map panning, not another click.
-    if (e.code === 'Space' && !anyOverlayOpen() && root.getAttribute(FOCUS_SOURCE_ATTR) === 'pointer'
+    // Pointer-focused buttons retain focus; a held command's key (Space pans) is not another click.
+    if (isHeldCommandKey(e) && !anyOverlayOpen() && root.getAttribute(FOCUS_SOURCE_ATTR) === 'pointer'
       && e.target instanceof HTMLButtonElement) e.preventDefault();
     armed = 'keyboard';
   };

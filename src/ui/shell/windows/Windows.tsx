@@ -1,34 +1,29 @@
-import { Suspense, lazy } from 'react';
-import { announceArrival } from '../../session/arrival-bus';
+import { lazy } from 'react';
 import { useEditorStore } from '../../../state/store';
-import { RenderBoundary } from '../../primitives/RenderBoundary';
-import { ChunkNotice } from '../../chrome/guards/FailureNotice';
+import { useOpenCount } from '../../primitives/use-open-count';
 import { WhatsNewModal } from '../../chrome/modals/whats-new/WhatsNewModal';
 import { ImportModal } from '../../chrome/modals/import/ImportModal';
 import { DropImportOverlay } from '../../chrome/modals/import/DropImportOverlay';
 import { ShareWindow } from '../../chrome/modals/export/ShareWindow';
-import { EditorWindows, type PlanetChange } from './EditorWindows';
-import { transferArrival } from './planet-arrival';
+import { EditorWindows } from './EditorWindows';
+import { LazyWindow } from './LazyWindow';
 import { loadStylizeWindow } from '../edition-surfaces';
+import { StylizeEntry } from '../../chrome/modals/export/stylize/StylizeEntry';
 
 const StylizeWindow = lazy(() => loadStylizeWindow().then(m => ({ default: m.StylizeWindow })));
 
-function announcePlanetChange(outcome: PlanetChange): void {
-  announceArrival(outcome ? transferArrival(outcome) : { kind: 'boot' });
-}
-
 export function Windows() {
   const stylize = useEditorStore(s => s.modals.stylize);
+  // Each opening is a fresh window, even one landing while the last close is still leaving.
+  const stylizeSession = useOpenCount(stylize);
   return <>
-    <EditorWindows onPlanetChanged={announcePlanetChange} />
+    <EditorWindows />
     <ImportModal />
     <DropImportOverlay />
     <WhatsNewModal />
-    <ShareWindow />
-    {stylize && <RenderBoundary resetKey={stylize} fallback={<ChunkNotice />}>
-      <Suspense fallback={null}>
-        <StylizeWindow />
-      </Suspense>
-    </RenderBoundary>}
+    <ShareWindow artStyle={<StylizeEntry />} />
+    <LazyWindow open={stylize} keep>
+      <StylizeWindow key={stylizeSession} open={stylize} />
+    </LazyWindow>
   </>;
 }

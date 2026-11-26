@@ -4,8 +4,9 @@ import { describe, expect } from 'vitest';
 import { spec } from '../../_support/spec';
 import { world } from '../_world';
 import { useEditorStore } from '../../../state/store';
+import { regionOf } from '../../../state/editing/region';
 import { currentEditor } from '../../../editor/session/context';
-import { landCandidate } from '../../../editor/editing/generate-batch';
+import { kindConfig } from '../../../tools/generation/kinds';
 import { getMapTemplate } from '../../../config/maps';
 import { createDefaultRegistry } from '../../../rules';
 import { cloneGridState } from '../../../core/model/grid-model';
@@ -21,18 +22,16 @@ describe('a painted region', () => {
     useEditorStore.getState().initMap(getMapTemplate('hexia'), createDefaultRegistry());
     const kit = currentEditor()!;
     const region = westSquare(kit.state, 24);
-    useEditorStore.getState().setRegion(region);
+    useEditorStore.getState().setRegion(region, 'generator');
     const before = cloneGridState(kit.state);
-    const landing = landCandidate({
-      settings: { kind: 'island', richness: 0, maxElevation: 4, corridorWidth: 1, gates: null },
-      seed: 7, plan: null, candidate: null, region: useEditorStore.getState().region, stencil: null,
-    });
-    expect(await landing!.done).not.toBeNull();
+    const config = kindConfig({ kind: 'island', richness: 0, maxElevation: 4, corridorWidth: 1, gates: null, seed: 7 });
+    const outcome = await generate(kit, config, regionOf(useEditorStore.getState(), 'generator'));
+    expect(outcome.cancelled).toBeFalsy();
     const changed = changedCells(before, kit.state);
     expect(changed.size, 'the run built something in the region').toBeGreaterThan(0);
     const inside = new Set(region.map(key));
     expect([...changed].filter((c) => !inside.has(c)), 'cells changed outside the region').toEqual([]);
-    expect(useEditorStore.getState().region).toEqual(region);
+    expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(region);
   });
 });
 

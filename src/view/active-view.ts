@@ -18,19 +18,20 @@ import type { ActiveView, ToolManager } from '../tools/pointer/runtime';
 import { createSignal } from '../core/base/signal';
 import { anyOverlayOpen } from '../platform/channels/overlay-state';
 import { pinchZoom } from './interaction/camera-gestures';
+import { reachesMap } from './interaction/map-wheel';
 
 type ActiveViewListener = (view: ActiveView | null, previous: ActiveView | null) => void;
 
 const view = createSignal<ActiveView | null>(null);
 let toolManager: ToolManager | null = null;
 
-/** Ctrl+wheel (a trackpad pinch included) zooms the active view from anywhere on the page. The
- *  registry holds the one window listener while a view is active, so a second mounted view never
- *  zooms the same event again. */
+/** Ctrl+wheel (a trackpad pinch included) zooms the active view where its point reaches the map, and
+ *  the page never zooms. The registry holds the one window listener while a view is active, so a
+ *  second mounted view never zooms the same event again. */
 function onWindowPinch(e: WheelEvent): void {
   if (!e.ctrlKey) return;
   e.preventDefault(); // the browser's page zoom never fires over the editor
-  if (anyOverlayOpen()) return; // a dialog is up: the map behind it stays put
+  if (anyOverlayOpen() || !reachesMap(e)) return; // a dialog or a surface stands under the pointer
   const camera = view.get()?.camera;
   if (camera) pinchZoom(camera, e);
 }

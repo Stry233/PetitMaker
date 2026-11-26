@@ -14,10 +14,12 @@ import { mapFrame } from '../../../core/grid/map-chunks';
 import { clamp } from '../../../core/base/math';
 import type { CameraAngle } from '../../../state/view-camera';
 import { isMotionReduced } from '../../../platform/channels/motion-state';
-import type { ViewCamera } from '../../../tools/pointer/runtime';
+import type { ScreenBox, ViewCamera } from '../../../tools/pointer/runtime';
+import type { Rect } from '../../../core/grid/rect';
+import { viewportRect } from '../../../platform/device/viewport-space';
 import { animConfig, easeOutCubic } from '../../shared/motion/anim-config';
-import { ZOOM_STEP } from '../../shared/viewport/view-constants';
-import { introStartOffset, reportedCameraAngle } from '../capture/stills';
+import { ZOOM_STEP, TURN_RAD_PER_PX, TURN_STEP_PX } from '../../shared/viewport/view-constants';
+import { introStartOffset, reportedCameraAngle, type SeenView, type WorldPoint } from './camera-pose';
 import { mapCenterOffset } from '../geometry/coords';
 import { makeCamera, makeControls, frameBounds, type MapBounds } from './controls';
 import { CameraInertia } from './inertia';
@@ -80,11 +82,7 @@ export class SceneCamera {
    */
   private readonly zoomInertia = new CameraInertia({ minTravel: 0.0008, followTau: 90 });
 
-  /** Screen px of drag → radians of orbit. The one place the two units meet, so the live drag and
-   *  the glide that follows it cannot use different rates. */
-  private static readonly ORBIT_RAD_PER_PX = 0.005;
-
-  constructor(aspect: number, dom: HTMLElement, private readonly host: SceneCameraHost) {
+  constructor(aspect: number, private readonly dom: HTMLElement, private readonly host: SceneCameraHost) {
     this.camera = makeCamera(aspect);
     this.controls = makeControls(this.camera, dom);
     this.controls.addEventListener('change', host.requestRender);
@@ -141,12 +139,53 @@ export class SceneCamera {
     this.host.requestRender();
   }
 
+  /** Takes `other`'s pose exactly, as a scene over the same template drawn in its place: the same
+   *  position and orbit target in the world, with no fly-in or glide left running. */
+  adopt(other: SceneCamera): void {
+    this.introActive = false;
+    this.camTween = null;
+    this.cancelGlides();
+    this.camera.position.copy(other.introActive ? other.introTo : other.camera.position);
+    this.controls.target.copy(other.introActive ? other.introTarget : other.controls.target);
+    this.camera.lookAt(this.controls.target);
+    this.controls.update();
+    this.host.requestRender();
+  }
+
   /** The current camera framing as a CameraAngle — the inverse of applyCameraAngle. Reads the live
    *  OrbitControls target + camera position, so the export 3D-shots editor can capture whatever the
    *  user orbited to ("Use this view"), and io/storage/autosave persists what the user is looking at. While
    *  the intro fly-in is in flight it reports the resting frame instead (see reportedCameraAngle). */
   getCurrentAngle(): CameraAngle {
     return reportedCameraAngle(this.camera.position, this.controls.target, this.introTo, this.introTarget, this.introActive);
+  }
+
+  /** The camera's place and the point it looks at in world terms, the resting frame's while the
+   *  fly-in is in flight, as `getCurrentAngle` reads them. */
+  pose(): { eye: WorldPoint; target: WorldPoint } {
+    const eye = this.introActive ? this.introTo : this.camera.position;
+    const target = this.introActive ? this.introTarget : this.controls.target;
+    return { eye: { x: eye.x, y: eye.y, z: eye.z }, target: { x: target.x, y: target.y, z: target.z } };
+  }
+
+  /** Poses the camera where `seen` was seen from, with that view's part of its canvas filling this
+   *  one; the controls' clamps are left out, since another scene's range held the pose. Returns the
+   *  undo of the part, which leaves the pose. */
+  showSeen(seen: SeenView): () => void {
+    this.introActive = false;
+    const { eye, target, aspect, part } = seen;
+    this.camera.position.set(eye.x, eye.y, eye.z);
+    this.controls.target.set(target.x, target.y, target.z);
+    this.camera.lookAt(this.controls.target);
+    const own = this.camera.aspect;
+    this.camera.aspect = aspect;
+    this.camera.setViewOffset(aspect, 1, part.x * aspect, part.y, part.w * aspect, part.h);
+    this.camera.updateProjectionMatrix();
+    return () => {
+      this.camera.clearViewOffset();
+      this.camera.aspect = own;
+      this.camera.updateProjectionMatrix();
+    };
   }
 
   /**
@@ -209,12 +248,14 @@ export class SceneCamera {
         zoomBy: (factor) => this.dollyEased(1 / factor),
         zoomStepAnimated: (dir) => this.animateDolly(ZOOM_STEP.button ** -dir), // toolkit button: glide
         orbit: (dx, dy) => this.dragCamera('orbit', dx, dy),
+        turnStep: (dir) => this.dragCamera('orbit', dir * TURN_STEP_PX, 0), // toolkit turn: the orbit's own glide
         // Twist arrives in radians, not screen px, so it is applied raw: feeding it to the inertia
         // would mix units into one velocity. A positive yaw turns the ground counter-clockwise on
         // screen, the way a positive twist turned the fingers.
         orbitTwist: (dRad) => this.orbitBy(dRad, 0),
         tilt: (v) => this.animateTilt(v),      // toolkit tilt steppers: glide
         fitToMap: () => this.animateFit(),     // toolkit fit: glide
+        fitBox: (box, into) => this.animateFitBox(box, into),
         endGesture: () => {
           // Decorative continuation the user did not ask for: under reduced motion the camera
           // stops where the hand left it.
@@ -339,6 +380,60 @@ export class SceneCamera {
     this.startCamTween(this.introTo.clone(), this.introTarget.clone());
   }
 
+  /**
+   * Glide until the map rectangle `box` (in map cells, on the orbit target's plane) fills the client
+   * box `into` as far as it fits, centred in it, from the heading and tilt held now. A slide along the
+   * plane carries the camera's picture of the plane with it, so each pass dollies the box's projected
+   * bounds to the box's size and slides the bounds' centre onto the box's; three passes settle it.
+   */
+  animateFitBox(box: Rect, into: ScreenBox): void {
+    this.landIntro();
+    const view = viewportRect(this.dom);
+    if (view.width <= 0 || view.height <= 0 || into.width <= 0 || into.height <= 0) return;
+    const template = this.host.template();
+    const off = mapCenterOffset(template.width, template.height);
+    const ground = this.controls.target.y;
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -ground);
+    const corners = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]
+      .map(([x, z]) => new THREE.Vector3(x! - off.x, ground, z! - off.z));
+    const toward = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
+    const probe = this.camera.clone();
+    const target = new THREE.Vector3(box.x + box.w / 2 - off.x, ground, box.y + box.h / 2 - off.z);
+    let dist = this.camera.position.distanceTo(this.controls.target);
+    const pose = (): void => {
+      probe.position.copy(target).addScaledVector(toward, dist);
+      probe.lookAt(target);
+      probe.updateMatrixWorld();
+    };
+    const onScreen = (p: THREE.Vector3) => {
+      const v = p.clone().project(probe);
+      return { x: ((v.x + 1) / 2) * view.width, y: ((1 - v.y) / 2) * view.height };
+    };
+    /** The middle of the corners' bounds on the canvas, and their width and height there. */
+    const bounds = () => {
+      const pts = corners.map(onScreen), xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const left = Math.min(...xs), top = Math.min(...ys), w = Math.max(...xs) - left, h = Math.max(...ys) - top;
+      return { x: left + w / 2, y: top + h / 2, w, h };
+    };
+    const groundAt = (x: number, y: number): THREE.Vector3 | null => {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2((x / view.width) * 2 - 1, 1 - (y / view.height) * 2), probe);
+      return ray.ray.intersectPlane(plane, new THREE.Vector3());
+    };
+    const want = { x: into.left + into.width / 2 - view.left, y: into.top + into.height / 2 - view.top };
+    for (let pass = 0; pass < 3; pass++) {
+      pose();
+      const { w, h } = bounds();
+      if (w > 0 && h > 0) dist = clamp(dist * Math.max(w / into.width, h / into.height), this.controls.minDistance, this.controls.maxDistance);
+      pose();
+      const mid = bounds();
+      const from = groundAt(mid.x, mid.y), to = groundAt(want.x, want.y);
+      if (from && to) target.add(from.sub(to));
+    }
+    pose();
+    this.startCamTween(probe.position.clone(), target.clone());
+  }
+
   /** The dolly distance as a share of the fit distance — the zoom readout. */
   zoomPercent(): number {
     const fit = this.introTo.distanceTo(this.introTarget);
@@ -354,7 +449,7 @@ export class SceneCamera {
   /** Apply travel through one of the two drag verbs. */
   private applyDrag(mode: 'orbit' | 'pan', dx: number, dy: number): void {
     if (mode === 'orbit') {
-      this.orbitBy(dx * SceneCamera.ORBIT_RAD_PER_PX, dy * SceneCamera.ORBIT_RAD_PER_PX);
+      this.orbitBy(dx * TURN_RAD_PER_PX, dy * TURN_RAD_PER_PX);
     } else {
       this.panCamera(dx, dy);
     }

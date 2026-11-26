@@ -6,6 +6,7 @@ import { useEffect, type RefObject } from 'react';
 import type { GridState } from '../../core/model/types';
 import { viewportRect } from '../../platform/device/viewport-space';
 import { useEditorStore } from '../../state/store';
+import { shownMap } from '../../state/map-stand-in';
 import { annotationInkScale } from '../../core/model/annotation/text-metrics';
 import { editorAnnotationDraw } from '../shared/annotation/draw-options';
 import { useAnnotationRedraw } from '../shared/annotation/use-annotation-redraw';
@@ -17,7 +18,7 @@ export function useAnnotationSync(rendererRef: RefObject<MapRenderer | null>, gr
     rendererRef.current?.drawAnnotations(gs.annotations ?? null, { ...editorAnnotationDraw(), inkScale: annotationInkScale(gs.template) });
   };
   useAnnotationRedraw(gridState, draw, () => {
-    const gs = useEditorStore.getState().gridState;
+    const gs = shownMap(useEditorStore.getState());
     if (gs) draw(gs);
   });
 }

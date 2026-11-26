@@ -5,7 +5,8 @@
  * containing block and stacking context, keeping it from the viewport edges and the popover rung.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 import { FloatMenu, type FloatMenuItem } from '../../../ui/primitives/FloatMenu';
 import { UiPreviewProvider } from '../../../ui/design/preview';
 
@@ -128,6 +129,16 @@ describe('the two ways out', () => {
     fireEvent.click(outside);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(beneath).not.toHaveBeenCalled();
+  });
+
+  it('puts the card away in a fade that nothing can reach, then removes it', async () => {
+    const onPick = vi.fn();
+    const { rerender } = render(<MotionConfig reducedMotion="never"><Menu open onPick={onPick} /></MotionConfig>);
+    rerender(<MotionConfig reducedMotion="never"><Menu onPick={onPick} /></MotionConfig>);
+    const leaving = screen.getByRole('menu', { hidden: true });
+    expect(screen.queryByRole('menu'), 'gone for assistive technology at once').toBeNull();
+    expect(leaving.closest('[inert]'), 'and for presses').not.toBeNull();
+    await waitFor(() => expect(leaving.isConnected, 'removed once its fade has run').toBe(false));
   });
 
   it('takes the listener away with it, so a closed menu answers nothing', () => {

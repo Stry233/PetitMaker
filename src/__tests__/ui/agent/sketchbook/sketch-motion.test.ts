@@ -1,24 +1,19 @@
 /** Timing and keyframe contracts for the sketchbook and sleeping-screen animations. */
 import { describe, it, expect } from 'vitest';
 import { DREAM, SKETCH } from '../../../../ui/agent/sketchbook/sketch-motion';
-import { easing } from '../../../../ui/design/styles';
-import { CURVES } from '../../../../ui/agent/character/poses';
 
 describe('the caption swap', () => {
-  it('fades out linearly, quicker than it fades back in', () => {
-    expect(SKETCH.capOut.easing).toBe('linear');
+  it('fades out quicker than it fades back in', () => {
     expect(SKETCH.capOut.dur).toBeLessThan(SKETCH.capIn.dur);
   });
 
-  it('fades back in on the spring, risen from below', () => {
-    expect(SKETCH.capIn.easing).toBe(easing.springStiff);
+  it('fades back in risen from below', () => {
     expect(SKETCH.capRise).toBeGreaterThan(0);
   });
 });
 
 describe('the dream board row leaving', () => {
-  it('fades on the punchy curve, gone before the survivors finish gliding up', () => {
-    expect(DREAM.rowOut.easing).toBe(easing.punchy);
+  it('is gone before the survivors finish gliding up', () => {
     expect(DREAM.rowOut.dur).toBeLessThan(DREAM.rowGlide.dur);
   });
 });
@@ -26,7 +21,6 @@ describe('the dream board row leaving', () => {
 describe('the sleeper\'s twitch', () => {
   it('is a composited counter-swing that starts and ends at rest', () => {
     const { keyframes, composite } = DREAM.twitchFrames;
-    expect(DREAM.twitchFrames.easing).toBe(CURVES.out);
     expect(composite).toBe('add');
     expect(keyframes[0]).toEqual({ transform: 'rotate(0deg)' });
     expect(keyframes[keyframes.length - 1]).toEqual({ transform: 'rotate(0deg)' });
@@ -49,7 +43,6 @@ describe('the dream board turning over', () => {
 
   it('lands the new row after the board has moved, not with it', () => {
     expect(DREAM.rowIn.delay).toBeGreaterThan(0);
-    expect(DREAM.rowIn.easing).toBe(easing.springStiff);
     // The arrival is slower than the departure it follows, which is what makes the two read as one
     // move rather than as a swap.
     expect(DREAM.rowIn.dur).toBeGreaterThan(DREAM.rowOut.dur);

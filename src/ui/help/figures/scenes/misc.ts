@@ -7,8 +7,10 @@ const faq: HelpScene = {
   stage: INTERIOR,
   strip: { kind: 'tools', active: 'rect', surface: 'water' },
   run: ({ world }) => {
+    // Water lies at the height its stroke starts on, so the row it fills stands at the walls' layer;
+    // the last raised cell has open ground beside it.
     world.beginStroke();
-    world.paint([{ x: 67, y: 101 }, { x: 71, y: 101 }], TerrainType.Mountain, 1);
+    world.paint(row(101, 67, 72), TerrainType.Mountain, 1);
     world.commit();
     const capped = row(101, 68, 70);
     const uncapped = [{ x: 72, y: 101 }, { x: 73, y: 101 }];
@@ -17,11 +19,11 @@ const faq: HelpScene = {
       { press: true, tool: 'draw', dur: 500 },
       { press: false, capKey: 'help.fig.faq_1', move: [68, 101], pointer: 'water', dur: 500 },
       { press: true, dur: 160, on: ({ world: w }) => w.beginStroke() },
-      { move: [70, 101], dur: 600, during: stroke(capped, TerrainType.Water, 1) },
+      { move: [70, 101], dur: 600, during: stroke(capped, TerrainType.Water) },
       { press: false, dur: 500, on: ({ world: w }) => { w.commit(); } },
       { capKey: 'help.fig.faq_2', move: [72, 101], dur: 500 },
       { press: true, dur: 160, on: ({ world: w }) => w.beginStroke() },
-      { move: [73, 101], dur: 450, during: stroke(uncapped, TerrainType.Water, 1) },
+      { move: [73, 101], dur: 450, during: stroke(uncapped, TerrainType.Water) },
       {
         press: false, realToast: true, capKey: 'help.fig.faq_3', dur: 1600,
         on: ({ world: w }) => { w.commit(); },

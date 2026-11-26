@@ -1,11 +1,10 @@
-import { CUSTOM_TAG_MAX, HALVES, ZONE_CELL_MAX, chipTextSize, generateAnnotationId, generateCustomTagId, isCustomTagId, nextZoneNumber, zoneHalfCells, type CustomTag, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, CUSTOM_TAG_TEXT_MAX, HALVES, admitTagText, ZONE_CELL_MAX, chipTextSize, generateAnnotationId, generateCustomTagId, isCustomTagId, nextZoneNumber, zoneHalfCells, type CustomTag, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { SELECTABLE_ANNOTATION_TAGS, isTagId } from '../../config/annotation-tags';
 import { anchorHandles } from '../../core/base/spline';
 import type { GridState, MacroCoord } from '../../core/model/types';
 import { ellipseCells, lineCells, polygonCells, rectCells } from '../../core/grid/shapes';
 import { floodFrom } from '../../core/grid/cell-sets';
-import { PLANET_NAME_MAX } from '../../io/save/facts';
 import type { AgentToolDeps } from './deps';
 import { bool, int, list, num, obj, oneOf, req, str } from './schema';
 import { defineTool, type ToolOutcome } from './spec';
@@ -35,7 +34,7 @@ export const getAnnotationsTool = defineTool({
 });
 
 export const setAnnotationTool = defineTool({
-  description: `Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. A zone takes shapes (preferred) or explicit cells. Shapes are unioned in order and a shape with cut subtracts: rect and ellipse fill the inclusive box x1,y1,x2,y2; ring is that ellipse's outline of the given width; polygon fills its points (diagonal edges allowed); band is a path of the given width through its points; fill floods from x,y across the open ground no other zone claims, stopped by other zones and by the box x1..y2 when given. clip decides what shapes keep: "unclaimed" (default) keeps open ${BUILDABLE_ZONES} ground that no other zone holds, so zones tile without overlapping, "ground" keeps open ${BUILDABLE_ZONES} ground even where other zones lie, "none" keeps every in-map cell. Open ground excludes fixed landmarks. mode "add" or "cut" changes an existing zone's cells instead of replacing them. Explicit cells use integer map coordinates and are kept as given. tag takes a preset; customTag names a facility in the user's language (at most ${PLANET_NAME_MAX} characters) and creates or reuses the map's custom tag. Chips mark a point and require a tag or customTag. Routes are arrows through points, dashed by default. Measurements take two endpoints on one row or column, multiples of 0.5. New zones are numbered in creation order. The result summarizes the annotation instead of echoing its cells. This edits annotation history independently of terrain history.`,
+  description: `Create a planning annotation, or update the supplied id. Updates preserve omitted fields and cannot change kind. A zone takes shapes (preferred) or explicit cells. Shapes are unioned in order and a shape with cut subtracts: rect and ellipse fill the inclusive box x1,y1,x2,y2; ring is that ellipse's outline of the given width; polygon fills its points (diagonal edges allowed); band is a path of the given width through its points; fill floods from x,y across the open ground no other zone claims, stopped by other zones and by the box x1..y2 when given. clip decides what shapes keep: "unclaimed" (default) keeps open ${BUILDABLE_ZONES} ground that no other zone holds, so zones tile without overlapping, "ground" keeps open ${BUILDABLE_ZONES} ground even where other zones lie, "none" keeps every in-map cell. Open ground excludes fixed landmarks. mode "add" or "cut" changes an existing zone's cells instead of replacing them. Explicit cells use integer map coordinates and are kept as given. tag takes a preset; customTag names a facility in the user's language (at most ${CUSTOM_TAG_TEXT_MAX} characters) and creates or reuses the map's custom tag. Chips mark a point and require a tag or customTag. Routes are arrows through points, dashed by default. Measurements take two endpoints on one row or column, multiples of 0.5. New zones are numbered in creation order. The result summarizes the annotation instead of echoing its cells. This edits annotation history independently of terrain history.`,
   input: obj({
     id: str(),
     kind: oneOf(['zone', 'chip', 'route', 'measure']),
@@ -272,8 +271,8 @@ function editAnnotation(deps: AgentToolDeps, input: Record<string, unknown>, rem
   let customTags = data?.customTags ?? [];
   let tag = (value.tag ?? null) as NoteTag | null;
   if (typeof input.customTag === 'string') {
-    const text = input.customTag.trim();
-    if (!text || [...text].length > PLANET_NAME_MAX) return failure(`customTag needs 1 to ${PLANET_NAME_MAX} characters.`);
+    const text = admitTagText(input.customTag);
+    if (!text || text !== input.customTag.trim()) return failure(`customTag needs 1 to ${CUSTOM_TAG_TEXT_MAX} characters; an emoji counts as two.`);
     const made = customTagFor(customTags, text);
     if (!made) return failure(`The map already holds ${CUSTOM_TAG_MAX} custom tags; reuse one or a preset tag.`);
     customTags = made.tags;

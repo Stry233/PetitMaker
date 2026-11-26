@@ -14,9 +14,9 @@ import { TILE_SIZE, ZOOM_MIN } from '../../../view/map2d/geometry/world';
 import { useLocale } from '../../../i18n/context';
 import { useReadingT } from '../../design/reading';
 import { useLayoutShape, useTouchMode } from '../../design/input-mode';
-import { resolveTokenSpecs } from '../hints/catalogue';
+import { resolveTokenSpecs } from '../../../editor/help/key-tokens';
 import { HintTokens } from '../hints/hint-marks';
-import { helpFacts } from '../facts';
+import { readerFacts } from '../facts';
 import { EDGE_VIGNETTE, INK, OVERLAY_DIM, PLATE, PLATE_INK, VIGNETTE_DEPTH } from '../../design/tokens';
 import { font, radii } from '../../design/styles';
 import { LoadingDots } from '../../primitives/LoadingDots';
@@ -35,11 +35,12 @@ import type { HelpScene, SceneForm, Stage } from './scenes';
 import { refusalKey, ruleToast } from '../../../i18n/terms/rule-copy';
 import { FURNITURE_REST, standUpDemo, type DemoMap, type Furniture } from './demo-player';
 import { useFigureRoom, useLiveFrameZoom } from './figure-scale';
+import { waapiTiming } from '../../design/motion';
 
 const noop = () => {};
 
 /** The load meter's art, the corner's own disc (`frame.ts:cornerArt`). */
-const LOAD_ART = cornerArt(false).find((art) => art.src === undefined);
+const LOAD_ART = cornerArt('map').find((art) => art.src === undefined);
 
 /** The smallest cell a demo's map draws, the editor's own furthest zoom out. */
 const MIN_TILE = ZOOM_MIN * TILE_SIZE;
@@ -137,12 +138,12 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
   }, [fitted, scene.strip, W, H, barH, inView, touch, upright]);
 
   const curveSource = useMemo<CurveHandleSource | null>(
-    () => (map ? { sessions: map.curves, view: map.view, watch: map.watch, revision: 0, zoom: 1 } : null),
+    () => (map ? { sessions: map.curves, view: map.view, watch: map.watch, zoom: 1 } : null),
     [map],
   );
   const pictured = useMemo(() => (map ? { projection: () => map.view().projection, watch: map.watch } : undefined), [map]);
 
-  const facts = helpFacts(locale);
+  const facts = readerFacts(locale);
   const toastText = furniture.toast
     ? furniture.toast.kind === 'key'
       ? t(furniture.toast.key, { ...facts, ...furniture.toast.params })
@@ -170,7 +171,7 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
               key={key}
               style={{
                 gridArea: '1 / 1', justifySelf: 'center', alignSelf: 'end', textAlign: 'center',
-                visibility: key === furniture.capKey ? 'visible' : 'hidden',
+                visibility: key === furniture.capKey ? undefined : 'hidden',
                 ...figureCaption({ role: 'small', padding: '4px 12px', ink: INK, alpha: 0.92, maxWidth: '100%' }),
               }}
             >
@@ -225,7 +226,7 @@ export function HelpDemo({ scene }: { scene: HelpScene }) {
             <div
               ref={(el) => {
                 if (!el || typeof el.animate !== 'function' || reduced) return;
-                el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+                el.animate([{ opacity: 0 }, { opacity: 1 }], waapiTiming('modal.dim'));
               }}
               style={{ position: 'absolute', inset: 0, background: OVERLAY_DIM }}
             />

@@ -50,8 +50,24 @@ export function protectedImageNotes(state: GridState): MapNotes | undefined {
     ? state.imageAttribution.notes : undefined;
 }
 
+/** `notes` with each nonempty protected field of `original` standing over its own. */
+function under(original: MapNotes | undefined, notes: MapNotes | null | undefined): MapNotes | undefined {
+  return original ? { ...notes, ...original } : notes ?? undefined;
+}
+
 /** Preserve each nonempty original field while allowing empty fields to be filled. */
 export function attributedNotes(state: GridState, notes: MapNotes | null | undefined = state.notes): MapNotes | undefined {
+  return under(protectedImageNotes(state), notes);
+}
+
+/** The map's notes as they leave it (`attributedNotes`) and which of them an image import still
+ *  holds, read in one pass over the map. */
+export function noteAttribution(state: GridState): { notes: MapNotes; titleLocked: boolean; descriptionLocked: boolean; locked: boolean } {
   const original = protectedImageNotes(state);
-  return original ? { ...notes, ...original } : notes ?? undefined;
+  return {
+    notes: under(original, state.notes) ?? {},
+    titleLocked: !!original?.title,
+    descriptionLocked: !!original?.description,
+    locked: !!original,
+  };
 }

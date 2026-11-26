@@ -220,7 +220,7 @@ describe('the whole hold as one undo entry', () => {
   // Reset per test: the burst's radius (`ctx.arming.brushSize + 3`) reads it live.
   let brushSize = 1;
 
-  const ctxFor = (): HostedToolContext => makeToolCtx(state, exec, brushSize, 1, { armedMacro: 'patch-flora' });
+  const ctxFor = (): HostedToolContext => makeToolCtx(state, exec, brushSize, { armedMacro: 'patch-flora' });
 
   beforeEach(() => {
     state = makeState(40, 40);

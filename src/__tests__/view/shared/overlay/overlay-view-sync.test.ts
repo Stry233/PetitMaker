@@ -15,13 +15,13 @@ import { cellSet } from '../../../../core/grid/grids';
 import { TERRAIN_GRID } from '../../../../core/game/profile';
 
 /** What one view's overlay shows: the fake keeps the region and the path drape as a view would draw them. */
-interface Shown { region: { cells: unknown; dims: number | undefined } | null; path: unknown }
+interface Shown { region: { cells: unknown; dims: unknown } | null; path: unknown }
 interface Fake { view: ActiveView; shown: Shown }
 
 function makeFakeView(): Fake {
   const shown: Shown = { region: null, path: null };
   const overlay = {
-    showBuildableRegion: (scope: { cells: unknown }, dims?: number) => { shown.region = { cells: scope.cells, dims }; },
+    showBuildableRegion: (scope: { cells: unknown }, dims?: unknown) => { shown.region = { cells: scope.cells, dims }; },
     clearBuildableRegion: () => { shown.region = null; },
     showPath: (way: unknown) => { shown.path = way; },
     clearPath: () => { shown.path = null; },
@@ -56,9 +56,10 @@ describe('overlay-view-sync', () => {
     const two = makeFakeView(), three = makeFakeView();
     uninstall = installOverlayViewSync();
     setActiveView(two.view);
-    showBuildableRegion(CELLS, 0.8);
+    const guides = { edges: { left: 2.5, top: 3.5, right: 4.5, bottom: 4.5 }, scale: 0.8 };
+    showBuildableRegion(CELLS, guides);
     setActiveView(three.view);
-    expect(three.shown.region).toEqual({ cells: CELLS, dims: 0.8 });
+    expect(three.shown.region).toEqual({ cells: CELLS, dims: guides });
     showBuildableRegion(CELLS);
     expect(three.shown.region).toEqual({ cells: CELLS, dims: undefined });
   });

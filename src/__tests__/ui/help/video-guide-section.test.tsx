@@ -7,7 +7,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider, translateFor } from '../../../i18n/context';
 import { HelpModal } from '../../../ui/help/HelpModal';
-import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../ui/chrome/modals/planet/video-guide';
+import { VIDEO_FIXES, VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../editor/help/video-guide';
 import { makeState } from '../../_support/map-state';
 import { setStoreState } from '../../_support/store';
 import { useEditorStore } from '../../../state/store';

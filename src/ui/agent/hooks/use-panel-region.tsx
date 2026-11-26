@@ -1,15 +1,16 @@
 /*
- * The column's half of the shared region: the brush toggle, the outline while the panel is open,
- * and one boundary pulse per blocked write. The generate shelf may own the same brush.
+ * The column's half of the region: the assistant's own brush toggle and one boundary pulse per
+ * blocked write. The map shows its region while the panel is in front (`region-brush.ts:watchRegionOverlay`)
+ * and the session puts the brush down as the panel closes; Generate's scope and a blueprint's frame
+ * are their surfaces' own, which the panel neither reads nor ends.
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { PanelView } from '../../../agent/panel';
 import { host } from '../../../editor/host/host';
-import {
-  clearRegion, releaseAgentRegion, releaseRegionOutline, showRegion, toggleAgentRegion,
-} from '../../../editor/editing/region-brush';
+import { pressCommand } from '../../../editor/commands/run';
 import { regionBounds, type RegionBounds } from '../../../core/grid/rect';
 import { useEditorStore } from '../../../state/store';
+import { paintsRegion, regionOf } from '../../../state/editing/region';
 import { amplitude, seconds } from '../../design/motion';
 import { RegionVignette } from '../composer/region-chip';
 import type { PanelRegionProps } from '../panel-shell-props';
@@ -19,26 +20,16 @@ function regionShot(bounds: RegionBounds, width: number, height: number) {
   return <RegionVignette bounds={bounds} width={width} height={height} />;
 }
 
-export function usePanelRegion(open: boolean, view: PanelView) {
-  // This shared region is both the visible selection and the agent write boundary.
-  const region = useEditorStore((s) => s.region);
-  const selectingRegion = useEditorStore((s) => s.selectingRegion);
+const markRegion = (): void => pressCommand('assistant.region_marking');
+const clearRegion = (): void => pressCommand('assistant.region_clear');
+
+export function usePanelRegion(view: PanelView) {
+  // The assistant's region is both what the panel outlines and the agent's write boundary.
+  const region = useEditorStore((s) => regionOf(s, 'agent'));
   const liveRegion = useMemo(() => regionBounds(region), [region]);
 
-  /** Whether this panel, rather than the generate shelf, armed the shared region brush. */
-  const armedHere = useEditorStore((s) => s.selectingRegion && s.regionSelectionOwner === 'agent');
-  // Closing the panel disarms a brush it owns and removes the overlay.
-  useEffect(() => {
-    if (open || !armedHere) return;
-    releaseAgentRegion();
-  }, [open, armedHere]);
-
-  // Keep the region outlined while open; preserve an overlay owned by active map scope controls.
-  useEffect(() => {
-    if (!open) return undefined;
-    showRegion(region, false);
-    return releaseRegionOutline;
-  }, [open, region]);
+  /** Whether the panel's own brush is painting, rather than another surface's. */
+  const armedHere = useEditorStore((s) => paintsRegion(s, 'agent'));
 
   // Pulse once per blocked write call to identify the active region boundary.
   const blockedCallId = view.current?.ops.filter((op) => op.status === 'blocked').slice(-1)[0]?.callId;
@@ -49,6 +40,6 @@ export function usePanelRegion(open: boolean, view: PanelView) {
     host.buildableRegion.pulse(seconds('panel.region.pulse') * 1000, amplitude('panel.region.pulse') ?? 0);
   }, [blockedCallId]);
 
-  const group: PanelRegionProps = { bounds: liveRegion, marking: selectingRegion, onMarkRegion: toggleAgentRegion, onClearRegion: clearRegion };
+  const group: PanelRegionProps = { bounds: liveRegion, marking: armedHere, onMarkRegion: markRegion, onClearRegion: clearRegion };
   return { region: group, regionShot };
 }

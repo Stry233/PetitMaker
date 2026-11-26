@@ -1,7 +1,7 @@
 /*
  * The boot splash: a small map builds tile by tile while the art downloads, then slides away as the app
- * slides in beneath it. Only on a first fetch (`shouldShowSplash`); progress is real, with a floor on
- * the total time. The hand-off's transform on the app root lives only for the boot and ends at
+ * slides in beneath it. Only on a first fetch (`editor/session/boot-assets.ts:splashOwedNow`); progress
+ * is the asset run's, with a floor on the total time. The hand-off's transform on the app root lives only for the boot and ends at
  * `transform: none`. The brand is the deployment's readme masthead.
  */
 import { useEffect, useState } from 'react';
@@ -14,8 +14,8 @@ import { roleWeight, roleFont } from '../../design/text-weight';
 import { useTransition, useMotionAllowed } from '../../design/motion/use-motion';
 import { amplitude, cssMotion } from '../../design/motion';
 import { activeTarget } from '../../../platform/build/deploy-targets';
-import { preloadAssets } from './preload';
-import { markSplashDone } from '../../../io/storage/splash-facts';
+import { warmBootAssets } from '../../../editor/session/boot-assets';
+import { startWarm } from '../warm/schedule';
 import { useViewportSize } from '../../design/scale';
 import { ZONE_COLORS, ELEVATION_COLORS, WATER_COLOR } from '../../../core/model/palette';
 import { CellZone } from '../../../core/game/zones';
@@ -102,17 +102,16 @@ export function Splash({ onHandoff, onDone }: SplashProps) {
     transition: cssMotion('splash.content.fade', ['opacity']),
   } as const;
 
-  // The preload runs once for the component's life; the handoff and the motion setting are read as it lands.
+  // The asset run is joined once for the component's life; the handoff and the motion setting are read as it lands.
   const handOff = useEffectEvent(() => onHandoff());
   useEffect(() => {
-    // No once-only ref: StrictMode's remount runs its own chain, and the preload itself is multiplexed.
+    // No once-only ref: StrictMode's remount runs its own chain, and the run itself is multiplexed.
     const begun = performance.now();
     let cancelled = false;
     const subscription = new AbortController();
-    void preloadAssets((done, total) => {
+    void warmBootAssets(startWarm, (done, total) => {
       if (!cancelled) setProgress(total === 0 ? 1 : done / total);
-    }, subscription.signal).then(async (complete) => {
-      if (complete) markSplashDone();
+    }, subscription.signal).then(async () => {
       if (cancelled) return;
       const wait = (ms: number) => new Promise((r) => { setTimeout(r, ms); });
       await wait(Math.max(0, MIN_SHOW_MS - (performance.now() - begun)));

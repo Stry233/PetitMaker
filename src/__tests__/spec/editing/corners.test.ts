@@ -99,7 +99,7 @@ describe('corner cuts', () => {
         for (const c of [shift(at, -1, -1), shift(at, 2, -1), shift(at, -1, 2), shift(at, 2, 2)]) tool.clickSE(c);
         expect(look(cornerOf(w, at, NW))).toBe('round');
       }
-      brush(w, { floor: 4 }).click(shift(at, 1, 1));
+      for (let i = 0; i < 4; i++) brush(w).click(shift(at, 1, 1));
       return w.terrainAt(shift(at, 1, 1))?.elevation;
     };
     const cut = peak(true);
@@ -119,7 +119,7 @@ describe('corner cuts', () => {
         expect(terrainCell(w, shift(at, 2, 2))?.patchOnly).toBe(true);
       }
       if (notch === 'block') plateau(w, shift(at, 2, 2), 1, 1, 1);
-      brush(w, { floor: 4 }).click(centre);
+      for (let i = 0; i < 4; i++) brush(w).click(centre);
       return w.terrainAt(centre)?.elevation;
     };
     expect(peak('block')).toBe(4);

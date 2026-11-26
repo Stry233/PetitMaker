@@ -53,11 +53,14 @@ export function useGenerateRecipe(initialKind: GenerateKind | undefined, onOwnCh
   useEffect(() => () => recipe.dispose(), [recipe]);
 
   return {
+    /** The recipe itself, which the shelf's batch reads. */
+    store: recipe,
     kind, setKind: recipe.setKind, stencil, base: memory.base, seeds: batchSeeds(memory.base), reroll: recipe.reroll,
     richness: state.richness, setRichness: recipe.setRichness, corridorWidth: state.corridorWidth, setCorridorWidth: recipe.setCorridorWidth,
     ceiling: maxElevationFor(kind), floor: MIN_ELEVATION, elevation: recipeElevation(state), setMaxElevation: recipe.setMaxElevation,
     fillKind: stencil ? memory.fillKind : 'mountain' as StencilFillKind, setFillKind: stencil ? recipe.setFillKind : () => {},
     fillItem: state.fillItem, setFillItem: recipe.setFillItem, pickingItem, setPickingItem, contrast: state.contrast, setContrast: recipe.setContrast,
+    facing: state.facing, setFacing: recipe.setFacing,
     ownText: state.ownText, ownImage: state.ownImage, pickImage, customSeed: memory.customSeed, customDraft, setCustomDraft, commitCustom,
   };
 }

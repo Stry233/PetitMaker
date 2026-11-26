@@ -17,7 +17,7 @@ export function hexToRgb01(hex: string): Rgb {
   return numberToRgb01(hexStringToNumber(hex));
 }
 
-/** Land-mass tint for a given surface elevation (0..8). */
+/** Land-mass tint for a given surface elevation (0 to `ELEVATION_MAX`). */
 export function terrainColor(elevation: number): Rgb {
   const hex = ELEVATION_COLORS[elevation] ?? ELEVATION_COLORS[0]!;
   return hexToRgb01(hex);

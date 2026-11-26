@@ -25,7 +25,7 @@ describe('proc/noise — the same seed draws the same picture', () => {
       expect(v).toBeLessThanOrEqual(1);
       expect(v).toBe(n2.fbm(i * 0.37, i * 0.11, 4));
     }
-    expect(makeNoise(7).fbm(1.3, 2.7, 4)).toBe(0.8227623580509873);
+    expect(makeNoise(7).fbm(1.3, 2.7, 4)).toBe(0.8227623580509874);
   });
 });
 

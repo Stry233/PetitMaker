@@ -14,7 +14,7 @@ import { serialize } from '../../io/save/json-codec';
 import { deserialize } from '../_support/save-file';
 import { buildShareCode } from '../../io/share/export';
 import { encodeMapPayload, decodeMapPayload } from '../../io/share/codec/payload';
-import { toSaveJSON } from '../../io/save/canonical';
+import { toSaveFile } from '../../io/save/canonical';
 import { carrying, serializeWithSections, type ExportJsonOptions } from '../../io/save/sections';
 import { autosave } from '../../editor/session/autosave';
 import { versionStore } from '../../state/stylize-versions';
@@ -269,7 +269,7 @@ describe('history/undo state never enters share payloads', () => {
     const decoded = await decodeMapPayload(payload);
 
     // decoded.canonical.cells is RLE-encoded like a save file's, so the save codec expands it.
-    const rebuilt = deserialize(toSaveJSON(decoded.canonical), state.template);
+    const rebuilt = deserialize(JSON.stringify(toSaveFile(decoded.canonical)), state.template);
 
     expect(rebuilt.cells[3]![3]!.terrain?.type).toBe(TerrainType.Mountain);
     expect(rebuilt.cells[3]![3]!.terrain?.elevation).toBe(FINAL_ELEV);

@@ -96,32 +96,25 @@ html[data-input-mode='touch'] *::-webkit-scrollbar-thumb {
    geometry (background image / size / travel distance) via --pw-* custom
    properties, so the keyframes stay scale-agnostic. */
 
-/* Indeterminate work stripes (StripeBar): the 45° stripe field slides one
-   tile per second. */
-.pw-stripes { animation: pw-stripemove 1s linear infinite; }
-@keyframes pw-stripemove {
-  to { background-position: var(--pw-stripe-travel) 0; }
-}
-
 /* The construction tape's crawl (TapeBar): the striped layer TRAVELS one stripe
    period behind the fill's clip, and it is a transform because
    `background-position` is not a composited property. Blink repaints and
-   pixel-snaps a background every frame, and one 11.31px period per 1.6s is a
+   pixel-snaps a background every frame, and one 11.31px period per cycle is a
    0.06px step — which snaps to nothing for a dozen frames and then jumps a
    whole device pixel, so the stripes read as shaking rather than crawling.
    A transform interpolates in the compositor at sub-pixel precision. The layer
    is one period wider than the fill so the band it vacates is always covered,
    and travelling exactly one period lands the pattern on itself. */
-.pw-stripe-drift { animation: pw-stripedrift 1.6s linear infinite; }
+.pw-stripe-drift { animation: pw-stripedrift var(--motion-panel-tape-crawl) infinite; }
 @keyframes pw-stripedrift {
   from { transform: translateX(0); }
   to { transform: translateX(var(--pw-stripe-travel)); }
 }
 
 /* The sleeper's plume: the three z marks light in sequence and go out together. */
-.pw-zzz-mark { opacity: 0; animation: pw-zzzfade 2.1s linear infinite; }
-.pw-zzz-mark-2 { animation-delay: 0.35s; }
-.pw-zzz-mark-3 { animation-delay: 0.7s; }
+.pw-zzz-mark { opacity: 0; animation: pw-zzzfade var(--motion-character-zzz-plume) infinite; }
+.pw-zzz-mark-2 { animation-delay: var(--motion-character-zzz-plume-stagger); }
+.pw-zzz-mark-3 { animation-delay: calc(2 * var(--motion-character-zzz-plume-stagger)); }
 @keyframes pw-zzzfade {
   0%, 8% { opacity: 0; }
   22%, 82% { opacity: 1; }
@@ -130,9 +123,9 @@ html[data-input-mode='touch'] *::-webkit-scrollbar-thumb {
 
 /* A ghost field's painted caret (`PaintedText`; the hidden input's native caret is invisible along
    with the rest of it): a plain square blink, on/off with no fade, the way a text caret reads. */
-.pw-caret-blink { animation: pw-caret-blink 1s steps(1) infinite; }
+.pw-caret-blink { animation: pw-caret-blink var(--motion-panel-says-caret) infinite; }
 @keyframes pw-caret-blink {
-  0%, 49% { opacity: 1; }
+  0%, 49.99% { opacity: 1; }
   50%, 100% { opacity: 0; }
 }
 
@@ -176,7 +169,6 @@ html[data-input-mode='touch'] *::-webkit-scrollbar-thumb {
    the rules below key off; the media query serves as the pre-hydration default
    and is scoped so an explicit "Full" opts out of it. */
 @media (prefers-reduced-motion: reduce) {
-  :root:not([data-reduced-motion='0']) .pw-stripes,
   :root:not([data-reduced-motion='0']) .pw-stripe-drift,
   :root:not([data-reduced-motion='0']) .pw-caret-blink { animation: none; }
   /* The three marks stand LIT rather than at the first keyframe's nothing: the plume is what says
@@ -184,7 +176,6 @@ html[data-input-mode='touch'] *::-webkit-scrollbar-thumb {
   :root:not([data-reduced-motion='0']) .pw-zzz-mark { animation: none; opacity: 1; }
 }
 
-[data-reduced-motion='1'] .pw-stripes,
 [data-reduced-motion='1'] .pw-stripe-drift,
 [data-reduced-motion='1'] .pw-caret-blink { animation: none; }
 [data-reduced-motion='1'] .pw-zzz-mark { animation: none !important; opacity: 1; }

@@ -8,68 +8,33 @@
  * input modes, each row naming the modes it shows in: a finger's menu carries the selection card's
  * actions and the ways to move and multi-select that a mouse has in a drag and a modifier key.
  */
-import { helpTargetAttr } from '../../session/help-targets';
-import { Fragment, useEffect, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { TOUCH_TARGET } from '../../design/scale';
 import { ChromeLifted } from '../../primitives/ChromeLifted';
-import { motion, AnimatePresence, useIsPresent } from 'framer-motion';
+import { AnimatePresence, usePresence } from 'framer-motion';
 import { useEditorStore } from '../../../state/store';
 import { getCatalogItem } from '../../../state/catalog';
-import { getCell } from '../../../core/model/grid-model';
-import { deleteObjectConfirmed, peelTerrainAt, rotateObjectTo, selectionTarget } from '../../../editor/editing/group-edit';
-import { latchMove, latchMultiSelect, pickObject, turnObjectQuarter } from '../../../editor/editing/object-menu';
-import { turnsInSession } from '../../../editor/operations/planet-session';
-import { isDraggableObject } from '../../../view/interaction/selection-hover';
+import { pressCommand } from '../../../editor/commands/run';
+import { deleteMenuObject, latchMove, latchMultiSelect, menuTarget, turnObjectQuarter } from '../../../editor/editing/object-menu';
+import { MAP_MENU_ENTRY } from '../../../editor/back/back-out';
 import { localizedName, useLocale, useT } from '../../../i18n/context';
 import { iconUrl } from '../../../assets/icon-urls';
 import type { InputMode } from '../../../platform/device/input-mode';
-import { useFloatingPosition } from '../../primitives/use-floating-position';
-import { useSurfaceScope } from '../../primitives/surface-scope';
-import { radii, font, z } from '../../design/styles';
-import { LINE, PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
+import { z } from '../../design/styles';
+import { LINE, PLATE_INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { MoveIcon, MultiSelectIcon, PasteIcon, PickIcon, RotateIcon, TrashIcon } from '../../primitives/line-glyphs';
-import { cellAtScreen, pasteAtCell } from '../../../editor/editing/clipboard';
+import { cellAtScreen } from '../../../editor/editing/clipboard';
 import { pasteOffered } from '../../../state/clipboard';
 import { Thumb } from './SelectionCard';
-import { floatMenuHoverFill, floatMenuItemFill, floatMenuItemStyle } from '../../primitives/FloatMenu';
-import { hoverFillMotion } from '../../primitives/hover-fill';
+import { FloatMenu } from '../../primitives/FloatMenu';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import { ROTATIONS, type Rotation } from '../../../core/model/types';
-import { framerMotion } from '../../design/motion';
 import type { Translate } from '../../../i18n/keys';
 
-// The map's menu wears the floating-menu card: the cream plate with the hairline every panel over
-// the map wears, rows that tint one step down the cream ramp on hover, and the chosen row in the
-// active fill.
-const menuStyle: CSSProperties = {
-  position: 'fixed',
-  zIndex: z.contextMenu,
-  background: PLATE,
-  border: PANEL_EDGE,
-  borderRadius: radii.lg,
-  boxShadow: 'none',
-  padding: 6,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
-  minWidth: 160, width: 'max-content',
-  fontFamily: font.family,
-  color: PLATE_INK,
-  transformOrigin: 'top left', // scale grows from the click point (Framer enter/exit)
-};
-
-const dividerStyle: CSSProperties = {
-  height: 1,
-  background: LINE,
-  margin: '4px 8px',
-};
-
-const anim = {
-  initial: { scale: 0.94, opacity: 0 },
-  animate: { scale: 1, opacity: 1 },
-  exit: { scale: 0.94, opacity: 0, transition: framerMotion('surface.leave') },
-  transition: framerMotion('surface.arrive'),
-};
+/** The map's menu is the floating menu standing on the map: its edge and no shadow, at least this wide. */
+const MENU_LEAST_WIDTH = 160;
+const MENU_HELP = { page: 'select' satisfies HelpPageId, anchor: 'select-menu' };
 
 type Resolver = Translate;
 
@@ -138,58 +103,49 @@ export function terrainMenuRows(t: Resolver, isGround: boolean, paste = false, t
  *  mode, so a long name wraps in full rather than ending in an ellipsis. */
 export function MenuHeader({ item, name }: { item: ReturnType<typeof getCatalogItem>; name: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 10px', marginBottom: 4, borderBottom: `1px solid ${LINE}` }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 0 8px', marginBottom: 4, borderBottom: `1px solid ${LINE}` }}>
       <Thumb {...(item?.icon ? { src: iconUrl(item.icon) } : {})} {...(item?.color ? { color: item.color } : {})} />
       <span data-testid="context-menu-name" style={{ ...roleFont('head'), color: PLATE_INK, maxWidth: 220, lineHeight: 1.15, overflowWrap: 'break-word' }}>{name}</span>
     </div>
   );
 }
 
-/** The menu itself: the card, its rows and their hover. `style` carries the position and the scale
- *  the card draws at; `header` stands over the rows, and `touch` raises each row to a fingertip.
- *  A row acts on a press that began on the menu, or on a key: the release ending the long press
- *  that opened the menu under the finger chooses nothing. */
-export function ContextMenuFace({ rows, onPick, style, anchor, zoom = 1, onDismiss, header, touch = false }: {
+/** The menu itself: the floating menu at `anchor`, a point in visual px, drawn at `zoom`, with the
+ *  rows the target offers; `header` stands over them and `touch` raises each to a fingertip. Inside
+ *  `AnimatePresence` it plays the card's exit before it goes. A Help figure hands no anchor and
+ *  pictures it in its flow. */
+export function ContextMenuFace({ rows, onPick, anchor, zoom = 1, onDismiss, header, touch = false, backId }: {
   anchor?: { x: number; y: number };
+  /** The back-stack entry of the state the menu shows, whose place it takes (`useSurfaceScope`). */
+  backId?: string;
   zoom?: number;
   onDismiss?: () => void;
   rows: readonly ContextMenuRow[];
   onPick: (id: string) => void;
-  style?: CSSProperties;
   header?: ReactNode;
   touch?: boolean;
 }) {
-  const present = useIsPresent();
-  const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom, overlap: touch });
-  useSurfaceScope({ open: !!onDismiss && present && !!floating.placement, root: floating.ref, onClose: onDismiss ?? (() => {}), focus: 'menu', outside: true });
-  const pressedHere = useRef(false);
-  useEffect(() => { pressedHere.current = false; }, [anchor?.x, anchor?.y]);
+  const [present, safeToRemove] = usePresence();
+  const current = rows.find((row) => row.current)?.id;
   return (
-    <motion.div ref={floating.ref} {...floating.piece} role="menu" tabIndex={-1} {...helpTargetAttr('select', 'select-menu')} data-context-menu {...anim}
-      onPointerDownCapture={() => { pressedHere.current = true; }}
-      style={{ ...menuStyle, ...style, ...(anchor ? floating.style : {}) }}>
-      {header}
-      {rows.map((row) => (
-        <Fragment key={row.id}>
-          {row.separated ? <div style={dividerStyle} /> : null}
-          <motion.button type="button" role="menuitem" disabled={row.inactive}
-            aria-current={row.current || undefined}
-            {...hoverFillMotion({ fill: floatMenuItemFill(!!row.current), hoverFill: row.inactive || row.current ? undefined : floatMenuHoverFill(false) })}
-            transition={framerMotion('surface.arrive')}
-            style={{
-              ...floatMenuItemStyle(!!row.current, row.inactive),
-              ...(row.danger ? { color: DANGER_INK } : {}),
-              ...(row.inactive ? { pointerEvents: 'none' } : {}),
-              ...(touch ? { minHeight: TOUCH_TARGET, gap: 12 } : {}),
-            }}
-            onClick={(e) => { if (e.detail === 0 || pressedHere.current) onPick(row.id); }}
-          >
-            {row.icon}
-            {row.label}
-          </motion.button>
-        </Fragment>
-      ))}
-    </motion.div>
+    <FloatMenu
+      row={null}
+      open={present}
+      onOpen={() => {}}
+      onClose={onDismiss ?? (() => {})}
+      onPick={onPick}
+      items={rows.map((row) => ({
+        id: row.id, label: row.label, icon: row.icon, danger: row.danger, disabled: row.inactive, separated: row.separated,
+      }))}
+      {...(current ? { activeId: current } : {})}
+      header={header}
+      touch={touch}
+      point={{ ...(anchor ?? { x: 0, y: 0 }), zoom, overlap: touch, minWidth: MENU_LEAST_WIDTH, onMap: true }}
+      helpTarget={MENU_HELP}
+      layer={z.contextMenu}
+      {...(backId ? { backId } : {})}
+      {...(safeToRemove ? { onExitComplete: safeToRemove } : {})}
+    />
   );
 }
 
@@ -201,90 +157,74 @@ export function ContextMenu() {
   const touch = menu?.mode === 'touch';
   const gridState = useEditorStore((s) => s.gridState);
   const executor = useEditorStore((s) => s.commandExecutor);
-  const inSession = useEditorStore((s) => s.planetSession !== null);
+  const planetSession = useEditorStore((s) => s.planetSession);
   const canPaste = useEditorStore(pasteOffered);
   const locale = useLocale();
-
-  // Any pan/zoom moves the map out from under the menu's fixed screen position;
-  // a transient menu dismisses on viewport movement.
-  const eventBus = useEditorStore((s) => s.eventBus);
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => useEditorStore.getState().setContextMenu(null);
-    eventBus.on('viewport-changed', close);
-    return () => eventBus.off('viewport-changed', close);
-  }, [menu, eventBus]);
 
   const close = () => useEditorStore.getState().setContextMenu(null);
   /** One copy with its top-left on the cell the menu was opened at (EDIT-56). */
   const pasteHere = () => {
     const cell = menu ? cellAtScreen(menu.x, menu.y) : null;
-    if (cell) pasteAtCell(cell);
+    if (cell) pressCommand('selection.paste', { x: cell.x, y: cell.y });
     close();
   };
 
   // Build the menu content (or null) so AnimatePresence can play a close-exit.
   let content: ReactElement | null = null;
-  if (menu && gridState && executor) {
+  const target = menu && executor ? menuTarget(menu.target, { gridState, planetSession }) : null;
+  if (menu && target) {
     // menu.x/y are visual px (pointer event); the css coords live under the zoom, so divide it out.
     const anchor = { x: menu.x, y: menu.y };
     if (menu.target.kind === 'terrain') {
       const { x, y } = menu.target;
-      const cell = getCell(gridState.cells, x, y);
-      const isGround = !cell?.terrain;
       const handleTerrainPick = (id: string) => {
         if (id === 'paste') { pasteHere(); return; }
-        if (isGround) return;
-        peelTerrainAt(x, y);
+        pressCommand('terrain.peel', { x, y });
         close();
       };
       content = (
         <ChromeLifted key="menu" control={TOUCH_TARGET} touch={touch}>
-          {({ zoom: chrome, weights }) => (
+          {({ zoom: chrome }) => (
             <ContextMenuFace
-              rows={terrainMenuRows(t, isGround, canPaste, touch)}
+              rows={terrainMenuRows(t, !target.peelable, canPaste, touch)}
               onPick={handleTerrainPick}
               touch={touch}
-              anchor={anchor} zoom={chrome} onDismiss={close}
-              style={{ zoom: chrome, ...weights }}
+              anchor={anchor} zoom={chrome} onDismiss={close} backId={MAP_MENU_ENTRY}
             />
           )}
         </ChromeLifted>
       );
-    } else {
-      const obj = gridState.objects.get(menu.target.id);
-      if (obj) {
-        const item = getCatalogItem(obj.catalogId);
-        const sessionLandmark = turnsInSession(obj, inSession);
+    } else if (target.object) {
+      const obj = target.object;
+      const item = getCatalogItem(obj.catalogId);
+      const handleRotate = (angle: Rotation) => {
+        pressCommand('selection.face', { angle: String(angle), object: obj.id });
         // A refused angle leaves the menu open on the object as it was.
-        const handleRotate = (angle: Rotation) => { if (rotateObjectTo(obj, angle)) close(); };
-        const handleDelete = () => { deleteObjectConfirmed(t, obj.id); close(); };
-        // A finger's menu offers what the selection card would for this object alone.
-        const card = touch ? selectionTarget([menu.target], gridState, inSession) : null;
-        const offers = touch ? { pickable: !!card?.pickable, movable: isDraggableObject(obj) } : undefined;
-        const name = item ? localizedName(item.name, locale) : obj.catalogId;
-        content = (
-          <ChromeLifted key="menu" control={TOUCH_TARGET} touch={touch}>{({ zoom: chrome, weights }) => (
-          <ContextMenuFace
-            rows={objectMenuRows(t, obj.rotation, touch ? !!card?.rotatable : sessionLandmark || !!item?.rotatable, offers, canPaste)}
-            onPick={(id) => {
-              if (id === 'delete') { handleDelete(); return; }
-              if (id === 'paste') { pasteHere(); return; }
-              // The finger's turn is the selection card's quarter turn, and the menu stays for the next one.
-              if (id === 'rotate') { turnObjectQuarter(obj.id); return; }
-              if (id === 'pick') { pickObject(obj.id); close(); return; }
-              if (id === 'move') { latchMove(obj.id); close(); return; }
-              if (id === 'multi_select') { latchMultiSelect(obj.id); close(); return; }
-              handleRotate(Number(id.slice('rotate_'.length)) as Rotation);
-            }}
-            anchor={anchor} zoom={chrome} onDismiss={close}
-            touch={touch}
-            {...(touch ? { header: <MenuHeader item={item} name={name} /> } : {})}
-            style={{ zoom: chrome, ...weights }}
-          />
-          )}</ChromeLifted>
-        );
-      }
+        if (useEditorStore.getState().gridState?.objects.get(obj.id)?.rotation === angle) close();
+      };
+      const name = item ? localizedName(item.name, locale) : obj.catalogId;
+      content = (
+        <ChromeLifted key="menu" control={TOUCH_TARGET} touch={touch}>{({ zoom: chrome }) => (
+        <ContextMenuFace
+          rows={objectMenuRows(t, obj.rotation, target.rotatable, touch ? target : undefined, canPaste)}
+          onPick={(id) => {
+            // Delete and the finger's turn run the menu's own verbs: each one's key command has
+            // another body (whatever stands in front for Delete, the selection's or the armed ghost's turn).
+            if (id === 'delete') { deleteMenuObject(obj.id); close(); return; }
+            if (id === 'paste') { pasteHere(); return; }
+            // The finger's turn is the selection card's quarter turn, and the menu stays for the next one.
+            if (id === 'rotate') { turnObjectQuarter(obj.id); return; }
+            if (id === 'pick') { pressCommand('selection.pick', { object: obj.id }); close(); return; }
+            if (id === 'move') { latchMove(obj.id); close(); return; }
+            if (id === 'multi_select') { latchMultiSelect(obj.id); close(); return; }
+            handleRotate(Number(id.slice('rotate_'.length)) as Rotation);
+          }}
+          anchor={anchor} zoom={chrome} onDismiss={close} backId={MAP_MENU_ENTRY}
+          touch={touch}
+          {...(touch ? { header: <MenuHeader item={item} name={name} /> } : {})}
+        />
+        )}</ChromeLifted>
+      );
     }
   }
 

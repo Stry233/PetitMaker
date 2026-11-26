@@ -46,6 +46,6 @@ describe('reading citations', () => {
   });
 
   it('knows an id grammar for every area', () => {
-    expect(Object.keys(AREAS).sort()).toEqual(['assistant', 'editing', 'files', 'generation', 'interface', 'planets', 'rules']);
+    expect(Object.keys(AREAS).sort()).toEqual(['assistant', 'blueprints', 'editing', 'files', 'generation', 'interface', 'planets', 'rules']);
   });
 });

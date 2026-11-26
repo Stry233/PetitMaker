@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapNativePx, clampedCaptureRequestPx, canvasFitScale, CANVAS_LIMITS } from '../../../io/export/sizing';
+import { mapNativePx, mapPictureAspect, clampedCaptureRequestPx, canvasFitScale, CANVAS_LIMITS } from '../../../io/export/sizing';
 import { getMapTemplate } from '../../../config/maps';
 
 /** A WebKit-shaped ceiling: a long side it allows, an area a sixteenth of the desktop one. */
@@ -12,6 +12,11 @@ describe('export sizing', () => {
   it('mapNativePx = 64 px/cell + half-tile border (matches capture region)', () => {
     expect(mapNativePx({ width: 10, height: 8 })).toEqual({ w: 10 * 64 + 32, h: 8 * 64 + 32 });
     expect(mapNativePx({ width: 169, height: 140 })).toEqual({ w: 169 * 64 + 32, h: 140 * 64 + 32 });
+  });
+  it('gives a planet of another shape its own picture ratio', () => {
+    expect(mapPictureAspect({ width: 169, height: 140 })).toBeCloseTo(10848 / 8992, 6);
+    expect(mapPictureAspect({ width: 60, height: 120 })).toBeCloseTo((60 * 64 + 32) / (120 * 64 + 32), 6);
+    expect(mapPictureAspect({ width: 60, height: 120 })).toBeLessThan(1);
   });
   it('clampedCaptureRequestPx = the native long side on a desktop ceiling', () => {
     expect(clampedCaptureRequestPx({ width: 169, height: 140 }, CANVAS_LIMITS)).toBe(169 * 64 + 32);

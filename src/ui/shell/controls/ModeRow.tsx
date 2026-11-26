@@ -1,14 +1,14 @@
 /** The mode row (top left, or across the upright bar), its travelling splat, and the assistant block that is the character's seat. */
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { AnimatePresence, motion, useReducedMotionConfig, type Transition } from 'framer-motion';
 import type { BuildMode } from '../../../state/editing/edit-mode';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { helpTargetAttr } from '../../session/help-targets';
-import type { HelpPageId } from '../../help/page-schema';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
-import { cssMotion, presence } from '../../design/motion';
-import { useBeat, useTransition } from '../../design/motion/use-motion';
+import { arrangementFades, cssMotion, presence } from '../../design/motion';
+import { useBeat } from '../../design/motion/use-motion';
 import { useUiPreview } from '../../design/preview';
 import { btnReset, cursors, UNAVAILABLE, z } from '../../design/styles';
 import { FOCUS_SHAPE_RADIUS, MAP_LABEL } from '../../design/tokens';
@@ -17,14 +17,18 @@ import { useSurfaceScope } from '../../primitives/surface-scope';
 import { mapEdgeAttr } from '../../primitives/map-edge';
 import { MapCaption } from '../bars/MapCaption';
 import { ASSISTANT_BLOCK, ASSISTANT_ROW_TOP, MODE_PLATE, MODE_PLATE_ID, MODE_ROW_LEFT, blockCentre, type BlockArt, type ModeArt } from '../frame';
-import { BAR_PANEL_DRAG_VAR, ShelfBand } from '../bars/ShelfBand';
+import { ShelfBand } from '../bars/ShelfBand';
 import { panelInk } from '../bars/bar-panel';
-import { useFrameLayout, type BarPanel } from '../frame-layout';
+import { useFrameLayout, useScaleGlideLine, type BarPanel } from '../frame-layout';
 import { LANDSCAPE_MODE_ROW } from '../frame-plan';
 import { CHARACTER_SEAT } from '../panel-frame';
-import { useFrameReadableWeight } from '../use-frame-zoom';
-import { EDGE, MODE, MODE_SCALE } from '../units';
+import { useFrameReadableWeight, useFrameZoom } from '../use-frame-zoom';
+import { EDGE, MODE, MODE_SCALE, UPRIGHT_SPACE } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { useMorph, useMorphGroup } from '../../primitives/morph';
+import { useScrollFade } from '../../primitives/scroll-fade';
+import { useWheelToHorizontal } from '../../primitives/wheel-horizontal';
+import { centreIn } from '../bars/row-scroll';
 
 /** A frame cluster comes and goes with a planet session on the bottom bar's handover clock; opacity only, so fixed clusters keep their corners. */
 export function useChromeSwap() {
@@ -53,17 +57,19 @@ function useFoldedLast(fold: boolean, other: unknown): boolean {
 
 /**
  * The splat under the chosen block, on the row's layer so it passes behind every block whichever way
- * it travels; placed by a length because Framer owns the transform of what it moves.
+ * it travels; placed by a length because Framer owns the transform of what it moves. As a piece of the
+ * chrome's morph it is the chosen mode's own, so the plate a pick brings arrives as a new piece rather
+ * than as the one leaving.
  */
-function BlockPlate({ centre, rowLeft, folding }: {
-  centre: number; rowLeft: number;
+function BlockPlate({ mode, centre, rowLeft, folding }: {
+  mode: string; centre: number; rowLeft: number;
   /** It comes as the row unfolds, so it fades in with the row's words. */
   folding: boolean;
 }) {
   const arrive = useBeat('mode.switch', 'plate.arriving');
   const leave = useBeat('mode.switch', 'plate.leaving');
-  const fade = useTransition('shell.row.fade');
-  const piece = useMorph('mode-plate');
+  const fade = arrangementFades('shell.row.fade', useReducedMotionConfig());
+  const piece = useMorph(`mode-plate-${mode}`);
   return (
     <motion.img
       {...piece}
@@ -72,10 +78,10 @@ function BlockPlate({ centre, rowLeft, folding }: {
       alt=""
       draggable={false}
       initial={{ opacity: 0, scale: PLATE_FROM }}
-      animate={{ opacity: 1, scale: 1, transition: folding ? fade : arrive }}
+      animate={{ opacity: 1, scale: 1, transition: folding ? fade.in : arrive }}
       // As the row folds it fades with the row's words; a mode switch keeps its own beat.
       exit="leave"
-      variants={{ leave: (fold: boolean) => ({ opacity: 0, scale: PLATE_FROM, transition: fold ? fade : leave }) }}
+      variants={{ leave: (fold: boolean) => ({ opacity: 0, scale: PLATE_FROM, transition: fold ? fade.out : leave }) }}
       style={{
         position: 'absolute', left: centre - rowLeft - PLATE_W / 2,
         bottom: -MODE_PLATE.drop * MODE_SCALE,
@@ -90,7 +96,8 @@ function BlockPlate({ centre, rowLeft, folding }: {
  * active mode shows its caption on the map. `expanded` gives a panel trigger disclosure semantics.
  */
 function RowBlock({
-  art, piece, on, named = true, captionFade, centre, captionSpan, onBar, expanded, tourTarget, helpTarget, slot, dimmed = false, shown = 1, label, onPress,
+  art, piece, on, named = true, captionFade, centre, captionSpan, onBar, expanded, tourTarget, helpTarget, dataTile, slot,
+  dimmed = false, shown = 1, label, onPress,
 }: {
   art: BlockArt;
   /** The id a mode tile wears as a piece of the chrome's morph, which carries it on its own from its
@@ -101,11 +108,11 @@ function RowBlock({
   on: boolean;
   /** The transition the caption fades in and out on as the row folds and unfolds; a mode switch keeps
    *  the mode switch's beat. */
-  captionFade?: Record<string, unknown>;
+  captionFade?: { in: Transition; out: Transition };
   /** Whether an open block shows its caption; a folded stack keeps its drawings and shows no words. */
   named?: boolean;
-  /** The block's centre from the window's left edge. */
-  centre: number;
+  /** The block's centre from the window's left edge; absent in a scrolling row, where the name centres on the tile. */
+  centre?: number;
   /** The window span the caption keeps inside; absent, the landscape left margin. */
   captionSpan?: { left: number; right: number };
   /** The plate of the upright bar the block stands on, whose ink its name takes. */
@@ -114,6 +121,8 @@ function RowBlock({
   expanded?: boolean | null;
   tourTarget?: TourTargetId;
   helpTarget?: HelpPageId | { page: HelpPageId; anchor: string };
+  /** The mode a tile of a scrolling row stands for, which the row brings into view. */
+  dataTile?: string;
   /** A box drawn in place of the art: the assistant's, where the live character stands. */
   slot?: ReactNode;
   /** Another task holds the map; a press still switches to this mode, which ends that task. */
@@ -127,6 +136,7 @@ function RowBlock({
   const caption = useBeat('mode.switch', 'caption');
   const reduced = useReducedMotionConfig();
   const drawing = on ? art.selected : art;
+  const pose = useBeat('mode.switch', on ? 'tile.arriving' : 'tile.leaving');
   const morph = useMorph(piece ?? '');
   // Whether the row's fold, rather than a switch of mode, last showed or hid the caption: it fades on the fold.
   const folding = useFoldedLast(named, on);
@@ -138,11 +148,11 @@ function RowBlock({
       span={captionSpan}
       motionProps={captionFade
         ? {
-          initial: reduced ? false : { opacity: 0 }, animate: { opacity: 1, transition: folding ? captionFade : caption },
-          exit: 'leave', variants: { leave: (fold: boolean) => ({ opacity: 0, transition: fold ? captionFade : { duration: 0 } }) },
+          initial: reduced ? false : { opacity: 0 }, animate: { opacity: 1, transition: folding ? captionFade.in : caption },
+          exit: 'leave', variants: { leave: (fold: boolean) => ({ opacity: 0, transition: fold ? captionFade.out : { duration: 0 } }) },
         }
         : { initial: reduced ? false : { opacity: 0 }, animate: { opacity: 1 }, transition: caption }}
-      style={{ ...(onBar ? { color: panelInk(onBar) } : MAP_LABEL), fontSize: MODE.label.size, fontWeight: weightAt(MODE.label.weight, MODE.label.size) }}
+      style={{ ...(onBar ? { color: panelInk(onBar) } : MAP_LABEL), fontSize: roleSize('lead'), fontWeight: weightAt(MODE.label.weight, roleSize('lead')) }}
     >
       {t(art.labelKey)}
     </MapCaption>
@@ -154,6 +164,7 @@ function RowBlock({
       {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       {...(helpTarget ? (typeof helpTarget === 'string' ? helpTargetAttr(helpTarget) : helpTargetAttr(helpTarget.page, helpTarget.anchor)) : {})}
       aria-label={label ?? t(art.labelKey)}
+      {...(dataTile ? { 'data-mode-tile': dataTile } : {})}
       {...(expanded === undefined ? { 'aria-pressed': on } : expanded === null ? {} : { 'aria-expanded': expanded })}
       onClick={onPress}
       style={{
@@ -169,11 +180,11 @@ function RowBlock({
           src={drawing.src}
           alt=""
           draggable={false}
+          initial={false}
+          animate={{ width: drawing.w * MODE_SCALE, height: drawing.h * MODE_SCALE }}
+          transition={pose}
           // Centred by Framer's own `x`, and pivoting where it meets the baseline, as a standing figure does.
-          style={{
-            position: 'absolute', left: '50%', bottom: 0, x: '-50%', originX: 0.5, originY: 1,
-            width: drawing.w * MODE_SCALE, height: drawing.h * MODE_SCALE,
-          }}
+          style={{ position: 'absolute', left: '50%', bottom: 0, x: '-50%', originX: 0.5, originY: 1 }}
         />
       )}
       {captionFade ? <AnimatePresence initial={false} custom={folding}>{captionNode}</AnimatePresence> : captionNode}
@@ -210,7 +221,7 @@ function ModeTiles({ modes, mode, row, dimmed, onPick }: {
   const setOpen = useEditorStore((s) => s.setModeRowOpen);
   const root = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotionConfig();
-  const fade = useTransition('shell.row.fade');
+  const fade = arrangementFades('shell.row.fade', reduced);
   // Each tile's place is a group of the chrome's morph: a fold the window or a press makes travels on
   // its transition, and one an input switch or a turn makes is the morph's alone to carry.
   const group = useMorphGroup();
@@ -231,7 +242,9 @@ function ModeTiles({ modes, mode, row, dimmed, onPick }: {
             // A flex box, so no line box's strut lifts the tile off the row's foot.
             style={{
               position: 'absolute', left: 0, bottom: 0, display: 'flex', zIndex: modes.length - i, pointerEvents: live ? 'auto' : 'none',
-              transform: `translate(${at.x}px, ${at.y}px) scale(${at.scale})`, transformOrigin: '50% 100%', transition: travel,
+              // In shares of the tile's own box, which a zoom of the frame leaves as they are: a length in px
+              // is re-resolved at each frame of a scale glide, which restarts the fold's transition there.
+              transform: `translate(${(at.x / MODE.size) * 100}%, ${(at.y / MODE.height) * 100}%) scale(${at.scale})`, transformOrigin: '50% 100%', transition: travel,
             }}>
             <RowBlock art={art} piece={`mode-${art.id}`} on={mode === art.id} named={flat} captionFade={fade} centre={blockCentre(i, row)} dimmed={dimmed} shown={at.shown}
               {...(folded ? {} : { tourTarget: `mode:${art.id}` as const })}
@@ -267,8 +280,10 @@ export function AssistantBlock({ entranceRef, onToggle }: { entranceRef: RefObje
   const top = ASSISTANT_ROW_TOP + (seat.top - CHARACTER_SEAT.top);
   const left = MODE_ROW_LEFT + (seat.left - CHARACTER_SEAT.left);
   const morph = useMorph('assistant-block');
+  const box = useRef<HTMLDivElement>(null);
+  useScaleGlideLine(box, { top, left });
   return (
-    <motion.div {...swap} {...morph} style={{ position: 'fixed', top, left, zIndex: z.panel, pointerEvents: open ? 'none' : 'auto' }}>
+    <motion.div ref={box} {...swap} {...morph} style={{ position: 'fixed', top, left, zIndex: z.panel, pointerEvents: open ? 'none' : 'auto' }}>
       <RowBlock
         art={ASSISTANT_BLOCK}
         on={false}
@@ -306,11 +321,25 @@ export function ModeRow({ modes, mode, swap, dimmed = false, onPick }: {
   const panel = bottom ? layout?.barPanel ?? null : null;
   const tone = panel?.tone ?? 'cream';
   const captionSpan = bottom && layout ? { left: EDGE, right: layout.width - EDGE } : undefined;
-  // A hold's band offset goes in the commit that claims the panel's settled height.
-  const following = panel?.following ?? false;
-  useLayoutEffect(() => { if (!following) document.documentElement.style.removeProperty(BAR_PANEL_DRAG_VAR); }, [following]);
   // The row draws nothing of its own: each tile and the splat are pieces of the chrome's morph.
   const rowGroup = useMorphGroup();
+  // At the foot, held by its distance from the frame's foot, so a frame a dragged dock resizes past
+  // React carries it.
+  const scroll = bottom ? row.scroll : undefined;
+  const place = scroll ? { bottom: 0, left: row.left, gap: 0 } : bottom && layout
+    ? { bottom: layout.height - row.top - MODE.height, left: row.left, gap: row.gap }
+    : { top: row.top, left: row.left, gap: row.gap };
+  const rowRef = useRef<HTMLDivElement>(null);
+  useScaleGlideLine(rowRef, place);
+  const zoom = useFrameZoom();
+  const fade = useScrollFade(rowRef, 'x', { on: !!scroll });
+  useWheelToHorizontal(rowRef, { zoom, smooth: true });
+  // The open mode's tile is brought to the middle of the scrolling row, clear of the fades.
+  useEffect(() => {
+    const box = rowRef.current;
+    const tile = selectedMode >= 0 ? box?.querySelector<HTMLElement>(`[data-mode-tile="${modes[selectedMode]!.id}"]`) : null;
+    if (scroll && box && tile) centreIn(box, tile, 'x');
+  }, [scroll, selectedMode, modes]);
   const t = useT();
   // Whether folding the row into its stack or unfolding it, rather than a switch of mode, last moved the
   // splat, which then fades with the words.
@@ -324,6 +353,7 @@ export function ModeRow({ modes, mode, swap, dimmed = false, onPick }: {
         </motion.span>
       ) : null}
       <motion.div
+        ref={rowRef}
         {...swap}
         {...rowGroup}
         role="group"
@@ -332,19 +362,37 @@ export function ModeRow({ modes, mode, swap, dimmed = false, onPick }: {
         {...mapEdgeAttr(row.placement)}
         data-placement={row.placement}
         style={{
-          // At the foot, held by its distance from the frame's foot, so a frame a dragged dock resizes past
-          // React carries it.
-          position: 'fixed', ...(bottom && layout ? { bottom: layout.height - row.top - MODE.height } : { top: row.top }),
-          left: row.left, zIndex: bottom ? z.column : z.panel,
-          display: 'flex', alignItems: 'flex-end', gap: row.gap, pointerEvents: 'auto',
+          position: 'fixed', ...place, zIndex: bottom ? z.column : z.panel,
+          display: 'flex', alignItems: 'flex-end', pointerEvents: 'auto',
+          // The box takes the whole bar's depth so each tile's name and the splat stay inside it.
+          ...(scroll ? {
+            width: scroll.width, height: row.band + MODE.height / 4, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none',
+            overscrollBehaviorX: 'contain', ...fade,
+          } : {}),
         }}
       >
-        <AnimatePresence initial={false} custom={folding}>
+        {scroll ? (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', flex: 'none', paddingBottom: row.band - UPRIGHT_SPACE.band - MODE.height }}>
+            <AnimatePresence initial={false} custom={folding}>
+              {selectedMode >= 0
+                ? (
+                  <BlockPlate key={selectedMode} mode={modes[selectedMode]!.id} centre={row.left + (selectedMode + 0.5) * MODE.size}
+                    rowLeft={row.left} folding={folding} />
+                )
+                : null}
+            </AnimatePresence>
+            {modes.map((art) => (
+              <RowBlock key={art.id} art={art} piece={`mode-${art.id}`} on={mode === art.id} tourTarget={`mode:${art.id}`} dataTile={art.id}
+                {...(panel ? { onBar: panel.tone } : {})} helpTarget={art.helpTarget} dimmed={dimmed} onPress={() => onPick(art.id)} />
+            ))}
+          </div>
+        ) : null}
+        {scroll ? null : <AnimatePresence initial={false} custom={folding}>
           {selectedMode >= 0 && !stacked
-            ? <BlockPlate key={selectedMode} centre={blockCentre(selectedMode, row)} rowLeft={row.left} folding={folding} />
+            ? <BlockPlate key={selectedMode} mode={modes[selectedMode]!.id} centre={blockCentre(selectedMode, row)} rowLeft={row.left} folding={folding} />
             : null}
-        </AnimatePresence>
-        {!bottom ? <ModeTiles modes={modes} mode={mode} row={row} dimmed={dimmed} onPick={onPick} /> : modes.map((art, i) => (
+        </AnimatePresence>}
+        {scroll ? null : !bottom ? <ModeTiles modes={modes} mode={mode} row={row} dimmed={dimmed} onPick={onPick} /> : modes.map((art, i) => (
           <RowBlock key={art.id} art={art} piece={`mode-${art.id}`} on={mode === art.id} centre={blockCentre(i, row)} captionSpan={captionSpan} tourTarget={`mode:${art.id}`}
             {...(panel ? { onBar: panel.tone } : {})} helpTarget={art.helpTarget} dimmed={dimmed} onPress={() => onPick(art.id)} />
         ))}

@@ -10,6 +10,8 @@ import { createDefaultRegistry } from '../../rules/index';
 import { makeTemplate } from '../_support/map-state';
 import type { CustomTagId, ZoneNote } from '../../core/model/annotations';
 import type { EditorStore } from '../../state/store';
+import { serialize } from '../../io/save/json-codec';
+import { deserialize } from '../_support/save-file';
 
 const zone = (id: string, num = 1): ZoneNote => ({
   kind: 'zone', id, cells: [{ x: 1, y: 1 }, { x: 2, y: 1 }], color: '#FF8A7A', tag: 'homes', num,
@@ -18,6 +20,30 @@ const zone = (id: string, num = 1): ZoneNote => ({
 describe('annotation slice', () => {
   beforeEach(() => {
     useEditorStore.getState().initMap(makeTemplate(10, 10), createDefaultRegistry());
+  });
+
+  it('picking the armed tag again clears a zone\'s text tag, while a chip keeps its tag', () => {
+    const s = () => useEditorStore.getState();
+    s().setAnnotationTool('zone');
+    s().pickAnnotationTag('forest');
+    expect(s().annotationTag).toBe('forest');
+    s().pickAnnotationTag('forest');
+    expect(s().annotationTag).toBeNull();
+    s().setAnnotationTool('chip');
+    s().pickAnnotationTag('homes');
+    s().pickAnnotationTag('homes');
+    expect(s().annotationTag).toBe('homes');
+  });
+
+  it('[FILE-01] keeps a custom tag as a save opens it again, however long the typed text', () => {
+    const s = () => useEditorStore.getState();
+    s().addAnnotation(zone('a'));
+    s().setAnnotationSelection(['a']);
+    s().addCustomTag(`Orchard ${'🍎'.repeat(30)}`);
+    const live = s().gridState!;
+    const back = deserialize(serialize(live), live.template).annotations!;
+    expect(back.customTags).toEqual(live.annotations!.customTags);
+    expect(back.items.map((n) => (n as ZoneNote).tag)).toEqual(live.annotations!.items.map((n) => (n as ZoneNote).tag));
   });
 
   it('flips selected measurements together as one reversible edit and respects the layer lock', () => {

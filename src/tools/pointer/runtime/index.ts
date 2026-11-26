@@ -14,6 +14,6 @@ export { resolvePointer } from './pointer';
 export { toolDeclares } from './tool-set';
 export type { Tool, ToolContext, ToolHost } from './types';
 export type {
-  ActiveView, EditorView, GhostCell, GhostPaint, GhostRequest, PlacementGhost, PlacementWash, PreviewCell, PreviewIcon,
-  SelectionOpts, ToolOverlay, ViewCamera, ViewProjection,
+  ActiveView, EditorView, GhostBlock, GhostCell, GhostPrior, GhostGround, GhostPaint, GhostRequest, PlacementGhost, PlacementPaint, PreviewCell, PreviewIcon,
+  RegionGuides, ScreenBox, SelectionOpts, ToolOverlay, ViewCamera, ViewProjection,
 } from './view-seam';

@@ -5,13 +5,13 @@
 import type { Adapter, AdapterRequest } from './adapter';
 import { compact, needsCompaction, COMPACTION_RESERVE } from './compaction';
 import type { Oversight } from './gates';
-import { consecutiveLengthStops, hasLandedWrite, hasRecentVerification, landedWriteCount, planProgress, sketchedWithoutPlan, MAX_TURNS_DEFAULT, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from './governor';
+import { consecutiveLengthStops, hasDeliveredOffMap, hasLandedWrite, hasRecentVerification, landedWriteCount, planProgress, sketchedWithoutPlan, MAX_TURNS_DEFAULT, REVIEW_MIN_TURNS_LEFT, REVIEW_MIN_WRITES } from './governor';
 import {
   budgetWarning, capMessage, contextOverflow, deliveryNudge, emptyTurnNudge, lengthStopNudge, lengthStreakOverflow,
   reasoningOnlyNudge, reviewNudge, unfinishedPlanNudge, unfiledSketchNudge, NUDGE_RETRIES,
 } from './nudges';
 import { append, eventsOf, type SessionLog } from './log';
-import { deriveMessages } from './project-messages';
+import { projectRequest } from './project-messages';
 import { PROTOCOL } from './protocol';
 import { deliverScreenedSteers, deliverSteers } from './steering';
 import { estimateTokens, type JobOutcome, type Part, type SessionEvent, type ToolResultDetail } from './types';
@@ -36,7 +36,6 @@ export interface LoopDeps {
   executor: ToolExecutor;
   oversight: Oversight;
   sameModel: boolean;
-  estimate?: (s: string) => number;
   maxTurns?: number;
   signal: AbortSignal;
   undoStackSize: () => number;
@@ -62,11 +61,13 @@ async function screenNotes(log: SessionLog, deps: LoopDeps, checked: Set<string>
   const screen = deps.screen;
   if (!screen) { deliverSteers(log); return; }
   await deliverScreenedSteers(log, screen, deps.signal);
-  for (const e of jobEvents(log)) {
+  const job = jobEvents(log);
+  const refused = new Set(job.flatMap((r) => (r.kind === 'noteRefused' && r.gateId !== undefined ? [r.gateId] : [])));
+  for (const e of job) {
     if (deps.signal.aborted) return;
     if (e.kind !== 'gateAnswered' || e.answer !== 'words' || e.words === undefined || checked.has(e.gateId)) continue;
     checked.add(e.gateId);
-    if (jobEvents(log).some((r) => r.kind === 'noteRefused' && r.gateId === e.gateId)) continue;
+    if (refused.has(e.gateId)) continue;
     const reply = await screen(e.words);
     if (reply !== null && !deps.signal.aborted) append(log, { kind: 'noteRefused', gateId: e.gateId, reply });
   }
@@ -78,7 +79,7 @@ const DEFAULT_CONTEXT_TOKENS = 128_000;
 export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcome | 'paused'> {
   const maxTurns = deps.maxTurns ?? MAX_TURNS_DEFAULT;
   const contextWindow = deps.contextWindow ?? DEFAULT_CONTEXT_TOKENS;
-  const estimate = deps.estimate ?? estimateTokens;
+  const estimate = estimateTokens;
   const budgetTokens = contextWindow - COMPACTION_RESERVE;
   const sleep = deps.sleep ?? realSleep;
   const toolNames = new Set(deps.tools.map((t) => t.name));
@@ -108,10 +109,15 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
     if (deps.signal.aborted) return abort();
     syncStageCheckpoints(log, deps);
 
-    if (needsCompaction(log, { contextWindow, estimate })) {
+    // One projection serves the compaction check and the request, until the log changes under it.
+    let window = projectRequest(log, { budgetTokens, estimate });
+    let projectedAt = eventsOf(log).length;
+    if (needsCompaction(window.total, contextWindow)) {
       const ok = await compact(log, { adapter: deps.adapter, model: deps.model, budgetTokens, signal: deps.signal, estimate });
       if (deps.signal.aborted) return abort();
-      if (!ok && needsCompaction(log, { contextWindow, estimate })) {
+      window = projectRequest(log, { budgetTokens, estimate });
+      projectedAt = eventsOf(log).length;
+      if (!ok && needsCompaction(window.total, contextWindow)) {
         append(log, { kind: 'incident', error: { cls: 'overflow', detail: contextOverflow() } });
         endJob(log, deps, { outcome: 'incident' });
         return 'incident';
@@ -138,12 +144,19 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
       : lengthStopNudge(lengthStreak) ?? budgetWarning(turnsUsed, maxTurns)
         ?? (silent.reasoningOnly ? reasoningOnlyNudge(silent.n) : emptyTurnNudge(silent.n));
 
-    const buildRequest = (): AdapterRequest => ({
-      system: deps.system,
-      messages: deriveMessages(log, { budgetTokens, estimate, appendSystemNote }),
-      tools: deps.tools, model: deps.model, sameModel: deps.sameModel,
-      capabilities: deps.capabilities, thinking: deps.thinking,
-    });
+    const buildRequest = (): AdapterRequest => {
+      if (eventsOf(log).length !== projectedAt) {
+        window = projectRequest(log, { budgetTokens, estimate });
+        projectedAt = eventsOf(log).length;
+      }
+      return {
+        system: deps.system,
+        // The loop's note goes after the budget's trim, so it always reaches the request.
+        messages: appendSystemNote === undefined ? window.messages : [...window.messages, { role: 'user', text: appendSystemNote }],
+        tools: deps.tools, model: deps.model, sameModel: deps.sameModel,
+        capabilities: deps.capabilities, thinking: deps.thinking,
+      };
+    };
 
     // Apply the provider pacing floor learned from rate-limit responses; the job signal can skip it.
     const wait = pacingWaitMs(log);
@@ -175,7 +188,7 @@ export async function runJob(log: SessionLog, deps: LoopDeps): Promise<JobOutcom
     // substantial build landed with enough turns remaining. Each nudge fires once and is recorded
     // as a systemNote for replay. Delivery and review may occur on separate closes of the same job.
     const nudgeDelivery = (): boolean => {
-      if (hasLandedWrite(log)) return false;
+      if (hasLandedWrite(log) || hasDeliveredOffMap(log, deps.executor.facts)) return false;
       if (jobEvents(log).some((e) => e.kind === 'systemNote' && e.note === 'delivery')) return false;
       append(log, { kind: 'systemNote', note: 'delivery', text: deliveryNudge() });
       return true;

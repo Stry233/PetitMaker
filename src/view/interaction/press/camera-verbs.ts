@@ -8,7 +8,7 @@
 
 /** What a camera can do. The wheel zooms on every camera; panning stays on drags and the pan keys. */
 export interface CameraCaps {
-  /** The camera can orbit: a spatial view. */
+  /** The camera can turn: either map view, and not the export shot editor. */
   canOrbit: boolean;
 }
 

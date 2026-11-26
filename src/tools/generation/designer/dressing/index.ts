@@ -13,7 +13,7 @@
  * `terrain-sculpt.ts`, since terrain must be down first.
  */
 import { makeRng } from '../../../../core/base/rng';
-import { flatIndex } from '../../../../core/grid/rect';
+import { flatIndex, indexBounds } from '../../../../core/grid/rect';
 import { getCatalogItem, itemRole } from '../../../../state/catalog';
 import { tryDecorate } from '../../../placement/object';
 import { spacingClash } from '../../../../rules/placement';
@@ -22,14 +22,13 @@ import { planPalettes } from './palette';
 import { composesFormally, mirrorOf, type Axis } from './symmetry';
 import { LoadBudget } from '../../../../state/load-budget';
 import type { DesignInput, DesignPlan, RegionPlan } from '../types';
-import { boxOf, coverCap } from './elements';
+import { coverCap } from './elements';
 import type { DressInput, KitCanvas, KitGround, KitStyle, PlantMark } from './types';
 import { styleOf } from './kits';
 import { clamp, lerpClamped } from '../../../../core/base/math';
 import { fnv1a32 } from '../../../../core/base/hash';
-import { landAt } from '../../../reading/masks';
+import { readMap } from '../../../reading/masks';
 import { plantableSurface } from '../../../reading/surface';
-import { waterMask } from './banks';
 import { type FormalRun, composeRun, endMarks, markGroups, markObject } from './ends';
 import { layForecourts } from './forecourts';
 import { assignRuns, groupPalettes, levelGroups, openGround, segmentRuns } from './ground';
@@ -131,10 +130,9 @@ export function dressRegions(input: DressInput): DressOutcome {
 
   // The budget, shared by appetite: `k` is the cover a run of appetite 1 gets, so the whole map lands
   // in the density band whatever the kits happened to be drawn.
-  let land = 0;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (landAt(state, x, y)) land++;
-  }
+  // Planting changes no terrain or zone, so one reading of the map serves the whole pass.
+  const masks = readMap(state);
+  const land = masks.landCells;
   const styles = new Map<string, KitStyle>();
   const styleFor = (region: RegionPlan): KitStyle => {
     const hit = styles.get(region.id);
@@ -162,7 +160,7 @@ export function dressRegions(input: DressInput): DressOutcome {
     const canvas: KitCanvas = {
       regionId: region.id,
       cells: new Set(cells),
-      box: boxOf(new Set(cells), W),
+      box: indexBounds(cells, W),
       elevation: surface[cells[0]!]!,
       W,
       cover: clamp(k * style.appetite, COVER_MIN, coverCap(treeWeight(style))),
@@ -195,7 +193,7 @@ export function dressRegions(input: DressInput): DressOutcome {
   // both readings on every seed rather than on most of them.
   const wanted = land * lerpClamped(DENSITY.min, DENSITY.max, input.richness) / YIELD;
   const wantTrees = 1 / (1 + lerpClamped(TREE_RATIO.min, TREE_RATIO.max, input.richness));
-  const water = waterMask(state);
+  const water = masks.water;
   let composed = jobs.map((job) => composeRun(job, anchors, W, water));
   // A path ends at something. The street planner cuts back every end it can, but an end that is a
   // block's only frontage has to stay, and such an end is composed at. So the last thing planted on a map is a small group at each street end that has nothing in

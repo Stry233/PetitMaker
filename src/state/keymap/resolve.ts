@@ -7,10 +7,11 @@
  * (which becomes unbound) so a combo maps to exactly one command. The one combo a rebind is refused
  * is a shifted twin of a live UI-zoom binding (`uiZoomVariantCombos`). All resolution is pure.
  */
-import { eventKeyToken } from '../../platform/input/key-token';
+import { eventKeyToken, shiftKeepsToken } from '../../platform/input/key-token';
 import { joinCombo, normalizeCombo, splitCombo } from '../../platform/input/combo';
-import { ALIASES, COMMAND_META, META_BY_ID, PRESETS, UI_ZOOM_IDS, type KeymapPreset } from './registry';
+import { ALIASES, COMMAND_META, META_BY_ID, PRESETS, UI_ZOOM_IDS } from './registry';
 import { CONTEXT_FREE_TOOLBAR, TOOLBAR_CONTEXTS, toolbarDefault, type ToolbarContext } from './toolbar';
+import { foldedIncludes } from '../fuzzy';
 
 export type Overrides = Record<string, string | null>;
 
@@ -47,6 +48,23 @@ export function bindingIndex(overrides: Overrides, context?: ToolbarContext): Ma
   return m;
 }
 
+/** Each reversible command's way back in `context`, by id: Shift with its key, where that key is a
+ *  letter or digit (`key-token.ts:shiftKeepsToken`), carries no Shift already and no command, alias or
+ *  UI-zoom twin holds that combo, which keeps it. `held` is the context's `bindingIndex`, where a caller has it. */
+export function reverseCombos(overrides: Overrides, context?: ToolbarContext, held = bindingIndex(overrides, context)): Map<string, string> {
+  const aliases = aliasIndex();
+  const twins = uiZoomVariantCombos(overrides);
+  const ways = new Map<string, string>();
+  for (const cmd of COMMAND_META) {
+    const combo = cmd.reversible ? effectiveCombo(overrides, cmd.id, context) : null;
+    const parts = combo ? splitCombo(combo) : null;
+    if (!parts?.key || parts.shift || !shiftKeepsToken(parts.key)) continue;
+    const back = joinCombo({ ...parts, shift: true });
+    if (!held.has(back) && !aliases.has(back) && !twins.has(back)) ways.set(cmd.id, back);
+  }
+  return ways;
+}
+
 /** normalized combo → command id for the fixed aliases (arrows→pan, ctrl+y→redo, backspace→delete).
  *  The keyboard page falls back to this so alias keys still show their command (they aren't in the
  *  editable bindingIndex). Static — aliases don't change with user overrides. */
@@ -54,6 +72,24 @@ export function aliasIndex(): Map<string, string> {
   const m = new Map<string, string>();
   for (const a of ALIASES) m.set(normalizeCombo(a.combo), a.commandId);
   return m;
+}
+
+/** The command a combo runs: the one bound to it (`index`, a `bindingIndex`), else the one a fixed
+ *  alias gives it. */
+export function commandOnCombo(combo: string, index: Map<string, string>, aliases: Map<string, string> = aliasIndex()): string | undefined {
+  return index.get(combo) ?? aliases.get(combo);
+}
+
+/** Whether command `id` in `context` sits anywhere but on its shipped key, unbound included. */
+export function comboChanged(overrides: Overrides, id: string, context?: ToolbarContext): boolean {
+  const key = (combo: string | null): string | null => (combo ? normalizeCombo(combo) : null);
+  return key(effectiveCombo(overrides, id, context)) !== key(effectiveCombo({}, id, context));
+}
+
+/** Whether a command's shown name answers a search: the query anywhere in it, both folded for case,
+ *  width and accents. A blank query matches nothing. */
+export function commandNameMatches(name: string, query: string): boolean {
+  return foldedIncludes(name, query);
 }
 
 /* ── UI-zoom twins ───────────────────────────────────────────────────────────
@@ -139,16 +175,6 @@ export function currentBinds(overrides: Overrides, context?: ToolbarContext): Ma
 /* A preset is a set of combos that differ from the shipped defaults; applying one replaces the
  * user overrides so the effective keymap matches it. `detectPreset` names the current keymap (or
  * 'custom' once hand-edited). */
-
-/** Full effective keymap of a preset: every command → normalized combo|null. */
-export function presetBinds(preset: KeymapPreset): Map<string, string | null> {
-  const m = new Map<string, string | null>();
-  for (const cmd of COMMAND_META) {
-    const raw = cmd.id in preset.binds ? preset.binds[cmd.id] : defaultCombo(cmd.id);
-    m.set(cmd.id, raw == null ? null : normalizeCombo(raw));
-  }
-  return m;
-}
 
 function mapsEqual(a: Map<string, string | null>, b: Map<string, string | null>): boolean {
   if (a.size !== b.size) return false;

@@ -5,7 +5,7 @@
  * on the live shell. How the window looks and moves is checked in the browser journey.
  */
 import { describe, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { translateFor } from '../../../i18n/context';
@@ -18,11 +18,13 @@ import { readPref, writePref } from '../../../platform/storage/prefs';
 import { Shell } from '../../../ui/shell/Shell';
 import { Tour } from '../../../ui/chrome/tour/Tour';
 import { TOUR_KINDS, tourCards } from '../../../ui/chrome/tour/deck';
-import { TOUR_VERSION } from '../../../ui/chrome/tour/version';
-import { __setReelFiles, playedReel, reelFiles, REEL_TYPES } from '../../../ui/chrome/tour/reels';
+import { TOUR_VERSION } from '../../../state/tour-version';
+import { __setReelFiles, playedReel, reelFiles } from '../../../ui/chrome/tour/reels';
+import { REEL_TYPES } from '../../../assets/tour/reel-set';
 import { REEL_FILES } from '../../../ui/chrome/tour/reel-files';
 import { LOCALES } from '../../../core/model/locale';
-import { startTour, tourWarmFiles, useFirstLaunchTour } from '../../../ui/chrome/tour/use-tour';
+import { offerTourAtStart, startTour } from '../../../editor/session/tour';
+import { tourWarmFiles } from '../../../ui/chrome/tour/use-tour';
 import { WhatsNewGate } from '../../../ui/chrome/modals/whats-new/WhatsNewGate';
 import { TourPreview } from '../../../ui/help/figures/previews/tour';
 import type { MapAnnotation } from '../../../core/model/annotations';
@@ -43,7 +45,10 @@ import { holdEditInFlight } from '../../../state/edits-in-flight';
 import { getRoadMaterials } from '../../../state/catalog';
 import { autosave } from '../../../editor/session/autosave';
 import { installEditorSession } from '../../../editor/session/install';
-import { readAutosave } from '../../../io/storage/autosave';
+import { readRestorableAutosave } from '../../../io/storage/autosave';
+import { newMap } from '../../../editor/operations/map';
+import { editorPort } from '../../../editor/session/context';
+import { startPlanetEditing, stopPlanetEditing } from '../../../editor/session/planet-editing';
 
 const en = (key: Parameters<typeof translateFor>[1], params?: Record<string, string | number>) => translateFor('en', key, params as never);
 
@@ -94,7 +99,7 @@ afterEach(() => {
 
 describe('when the welcome tips open', () => {
   spec('UI-50', 'a first visit opens them on the welcome card and records this version as offered', async () => {
-    renderHook(() => useFirstLaunchTour(false));
+    act(() => offerTourAtStart(false));
     mountTips();
     expect(useEditorStore.getState().tourRunning).toBe(true);
     await onCard('tour.welcome_title');
@@ -103,22 +108,22 @@ describe('when the welcome tips open', () => {
 
   spec('UI-50', 'a browser offered the older tour sees them once even holding a saved map; one with a map from before any tips is only recorded', async () => {
     localStorage.setItem(TOUR_SEEN_KEY, '1');
-    renderHook(() => useFirstLaunchTour(true));
+    act(() => offerTourAtStart(true));
     expect(useEditorStore.getState().tourRunning).toBe(true);
     act(() => { useEditorStore.getState().finishTour(); });
     cleanup();
-    renderHook(() => useFirstLaunchTour(true));
+    act(() => offerTourAtStart(true));
     expect(useEditorStore.getState().tourRunning).toBe(false);
     cleanup();
     localStorage.clear();
-    renderHook(() => useFirstLaunchTour(true));
+    act(() => offerTourAtStart(true));
     expect(useEditorStore.getState().tourRunning).toBe(false);
     expect(localStorage.getItem(TOUR_SEEN_KEY)).toBe(String(TOUR_VERSION));
   });
 
   spec('UI-50', 'a browser whose storage cannot be read is never shown them', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
-    renderHook(() => useFirstLaunchTour(false));
+    act(() => offerTourAtStart(false));
     expect(useEditorStore.getState().tourRunning).toBe(false);
   });
 
@@ -144,7 +149,7 @@ describe('when the welcome tips open', () => {
       writePref('lastSeenVersion', '0.0.1');
       setStoreModal('whatsNew', false);
       if (whatsNewFirst) render(<WhatsNewGate splashActive={false} />);
-      renderHook(() => useFirstLaunchTour(true));
+      act(() => offerTourAtStart(true));
       if (!whatsNewFirst) render(<WhatsNewGate splashActive={false} />);
       act(() => { useEditorStore.getState().finishTour(); });
       await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -152,6 +157,22 @@ describe('when the welcome tips open', () => {
       expect(readPref('lastSeenVersion')).toBe('0.0.1');
       cleanup();
     }
+  });
+
+  spec('UI-45', 'no door opens them while a planet is being edited, and none records them as offered', () => {
+    newMap(editorPort, 'hexia');
+    expect(startPlanetEditing(null, false)).toBe(true);
+    try {
+      startTour();
+      useEditorStore.getState().setTourRunning(true);
+      expect(useEditorStore.getState().tourRunning).toBe(false);
+      expect(localStorage.getItem(TOUR_SEEN_KEY)).toBeNull();
+    } finally {
+      stopPlanetEditing({ discard: true });
+      setStoreModal('newProject', false);
+    }
+    startTour();
+    expect(useEditorStore.getState().tourRunning).toBe(true);
   });
 
   spec('UI-38', 'a pictured shell, as Help draws it, never opens the tips, even for a browser offered the older tour', () => {
@@ -187,7 +208,7 @@ describe('the cards', () => {
 
   spec('UI-45', 'Escape and a press outside close the tips, and under them the map takes no shortcut', async () => {
     localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
-    render(<I18nProvider><InputModeProvider inputMode="pc"><Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell></InputModeProvider></I18nProvider>);
+    render(<I18nProvider><InputModeProvider inputMode="pc"><Shell><div data-testid="map-views" /></Shell></InputModeProvider></I18nProvider>);
     act(() => startTour());
     await settled();
     act(() => { fireEvent.keyDown(document.body, { key: '`', code: 'Backquote' }); });
@@ -243,6 +264,18 @@ describe('the cards', () => {
     fireEvent.click(screen.getByRole('button', { name: en('tour.recap_tile', { tip: en('tour.shape_tile') }) }));
     await onCard('tour.shape_title');
     expect(document.activeElement?.textContent).toBe(en('tour.next'));
+  });
+
+  spec('UI-53', 'the summary\'s confetti falls over the whole card, behind its words and tiles', async () => {
+    startTour();
+    mountTips('pc', false);
+    await press(dot(tourCards(true).length));
+    await press(en('tour.next'));
+    const confetti = await screen.findByTestId('tour-confetti');
+    const recap = screen.getByTestId('tour-recap');
+    expect(deck().contains(confetti)).toBe(true);
+    expect(recap.contains(confetti)).toBe(false);
+    expect(recap.compareDocumentPosition(confetti) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   spec('UI-53', 'under reduced motion the summary drops no confetti', async () => {
@@ -456,14 +489,14 @@ describe('the reels', () => {
     localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
     expect(tourWarmFiles()).toEqual([]);
     localStorage.removeItem(TOUR_SEEN_KEY);
-    renderHook(() => useFirstLaunchTour(false));
+    act(() => offerTourAtStart(false));
     expect(localStorage.getItem(TOUR_SEEN_KEY)).toBe(String(TOUR_VERSION));
     expect(tourWarmFiles()).toEqual(expect.arrayContaining([files.poster]));
   });
 
   spec('UI-52', 'opened under the loading screen, the first reel waits on its start and plays from its beginning as the screen lifts', () => {
     localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
-    const view = (stage: HandoffStage) => <EditorRoot dockRef={NO_DOCK} onRestoreSession={() => {}} plane={{ handoff: stage }}><div /></EditorRoot>;
+    const view = (stage: HandoffStage) => <EditorRoot dockRef={NO_DOCK} plane={{ handoff: stage }}><div /></EditorRoot>;
     const { rerender } = render(view('covered'));
     act(() => startTour());
     const video = screen.getByTestId('tour-reel-clip-video') as HTMLVideoElement;
@@ -482,8 +515,9 @@ describe('the reels', () => {
 
 describe('how a Show me step knows it is done', () => {
   const stepOf = (kind: string, id: string) => tourCards(true).find((c) => c.kind === kind)!.show!.find((s) => s.id === id)!;
-  const flat = (camera: { x: number; y: number; zoom: number }, fit = { x: 0, y: 0, zoom: 1 }): TourWatch => ({
-    view: '2d', mode: null, arming: 'none', layer: 0, share: false, edits: 0, building: false, camera2d: camera, fit2d: fit, camera3d: null,
+  const flat = (camera: { x: number; y: number; zoom: number; rotation?: number }, fit = { x: 0, y: 0, zoom: 1 }): TourWatch => ({
+    view: '2d', mode: null, arming: 'none', layer: 0, share: false, blueprint: null, blueprintStep: 'strip', explorer: false, group: null,
+    edits: 0, building: false, camera2d: camera, fit2d: fit, camera3d: null,
   });
   const untried = { fit: false };
 
@@ -518,6 +552,15 @@ describe('how a Show me step knows it is done', () => {
     expect(fit(away, home, untried)).toBe(true);
     expect(fit(home, home, untried)).toBe(false);
     expect(fit(home, home, { fit: true })).toBe(true);
+  });
+
+  spec('UI-67', 'a view turned off the home heading stands unfitted, wherever its offset and zoom are', () => {
+    const fit = stepOf('move', 'fit').done!;
+    const fitted = { x: 10, y: 20, zoom: 0.8 };
+    const turned = flat({ ...fitted, rotation: 0.6 }, fitted);
+    const away = flat({ x: 200, y: 20, zoom: 0.8 }, fitted);
+    expect(fit(away, turned, untried)).toBe(false);
+    expect(fit(turned, flat(fitted, fitted), untried)).toBe(true);
   });
 });
 
@@ -574,7 +617,7 @@ describe('Show me on the live shell', () => {
 
   const live = () => useEditorStore.getState();
   const shell = (inputMode: InputMode = 'pc') => render(
-    <I18nProvider><InputModeProvider inputMode={inputMode}><Shell onRestoreSession={() => {}}><div /></Shell></InputModeProvider></I18nProvider>,
+    <I18nProvider><InputModeProvider inputMode={inputMode}><Shell><div /></Shell></InputModeProvider></I18nProvider>,
   );
   const showMe = async (kind: string) => {
     act(() => startTour());
@@ -676,6 +719,9 @@ describe('Show me on the live shell', () => {
     pressTarget('mode:mountain');
     await standsAt('tour.show.mountain_paint');
     act(() => raise());
+    await standsAt('tour.show.mountain_higher');
+    // A stroke started on the raised ground shows the layer above it.
+    act(() => { live().setDisplayLayer(2); raise(); });
     await standsAt('tour.show.mountain_erase');
     // Undone past where Show me began, then built on: the history parted from the one it found.
     act(() => { live().commandExecutor!.undo(); live().commandExecutor!.undo(); raise(); });
@@ -692,7 +738,7 @@ describe('Show me on the live shell', () => {
 
   spec('UI-47', 'the map and the view are saved only as a Show me found them, so a reload or a closed tab never keeps a try', async () => {
     const stop = installEditorSession({ frameFlashMs: 0 });
-    const saved = () => { const restored = readAutosave(); return restored && mapFingerprint(restored.state); };
+    const saved = () => { const restored = readRestorableAutosave(); return restored && mapFingerprint(restored.state); };
     try {
       shell();
       // An edit just made, its save still owed as the Show me begins.
@@ -720,13 +766,13 @@ describe('Show me on the live shell', () => {
   });
 
   spec('UI-47', 'a map opened during a Show me keeps its own layer when the Show me ends', async () => {
-    live().selectLayer(2);
+    live().setDisplayLayer(2);
     shell();
     await showMe('shape');
     await standsAt('tour.show.mountain_open');
     act(() => live().initMap(getMapTemplate(MAP_LIST.find((m) => m.id !== 'hexia')!.id), createDefaultRegistry()));
     await backToTips();
-    expect([live().activeLayer, live().layerPinned]).toEqual([0, false]);
+    expect(live().displayLayer).toBeNull();
   });
 
   spec('UI-47', 'the layer panel\'s Notes row cannot be opened while a Show me stands, and opens again once it ends', async () => {

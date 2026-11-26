@@ -206,12 +206,19 @@ export function pendingLandmarks(session: PlanetSession | null, state: GridState
   return (session?.review?.unplaced ?? []).filter((id) => !state?.objects.has(id));
 }
 
+/** How many things a scanned planet still asks the person to check: its cells, its inferred landmark
+ *  and each landmark still to place, counted as one each; 0 for a planet no scan read. */
+export function reviewOpenCount(session: PlanetSession | null, state: GridState | null): number {
+  const review = session?.review;
+  return review ? review.cells.length + (review.landmark ? 1 : 0) + pendingLandmarks(session, state).length : 0;
+}
+
 /**
  * The planet drawn on the canvas (`cropPlanet`): ground and landmarks cropped to their chunk frame, shore
  * derived from the ground under it, mountain elevations, water and the landmarks translated into the crop,
  * with the sand under the rim. Null when the canvas has no ground.
  */
-export function sessionPlanet(state: GridState): SessionPlanet | null {
+function sessionPlanet(state: GridState): SessionPlanet | null {
   const ground = state.cells.map((row) => row.map(groundZone));
   const cut = cropPlanet(ground, landmarkObjects(state), (x, y) => state.cells[y]?.[x]?.terrain, state.template.name.en ?? '');
   return cut && { template: cut.template, rimSand: cut.rimSand };

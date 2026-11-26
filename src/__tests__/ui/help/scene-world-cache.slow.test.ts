@@ -3,10 +3,11 @@
  *  clone with nothing lost, so a figure built from it starts exactly where a fresh one does. */
 import { describe, expect } from 'vitest';
 import { SandboxWorld } from '../../../editor/sandbox/demo-world';
+import { sceneNeighbourhood, scenePlot } from '../../../editor/sandbox/neighbourhood';
+import { __setSceneCacheIdentity } from '../../../editor/sandbox/scene-worlds';
+import { restoredWorld, storedWorld } from '../../../editor/sandbox/stored-world';
 import { HELP_SCENES, sceneWorld, type HelpScene } from '../../../ui/help/figures/scenes';
-import { __setSceneCacheIdentity } from '../../../ui/help/figures/scenes/context';
-import { restoredWorld, storedWorld } from '../../../ui/help/figures/scenes/stored-world';
-import { buildNeighbourhood, clearPlot } from '../../../ui/help/figures/scenes/world-build';
+import { CABIN, CABIN2 } from '../../../ui/help/figures/scenes/common';
 import { spec } from '../../_support/spec';
 
 const scenes = Object.values(HELP_SCENES);
@@ -44,9 +45,11 @@ describe('scene world cache', () => {
 
   spec('UI-65', "the worker's build, posted and restored, stands the same world as one built here", () => {
     const fresh = freshWorld(plotted).state;
-    // What `scene-world.worker.ts` posts, through the structured clone a post makes.
-    const base = buildNeighbourhood(plotted.template);
-    const posted = structuredClone({ base: storedWorld(base), plot: storedWorld(clearPlot(base, plotted.plot!)) });
+    // What `scene-world.worker.ts` posts for the scene's plot, through the structured clone a post makes.
+    const { x1, y1, x2, y2 } = plotted.plot!;
+    const base = sceneNeighbourhood(plotted.template);
+    const cleared = scenePlot(base, { cells: { x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 }, free: [CABIN, CABIN2] });
+    const posted = structuredClone({ base: storedWorld(base), plot: storedWorld(cleared) });
     const read = new SandboxWorld(plotted.template, { base: restoredWorld(plotted.template, posted.plot) }).state;
     expect(read.cells).toStrictEqual(fresh.cells);
     expect(shown(read)).toStrictEqual(shown(fresh));

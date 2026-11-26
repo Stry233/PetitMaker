@@ -9,9 +9,10 @@ import type { GridState } from '../../../../core/model/types';
 import { tourTargetAttr } from '../../tour/steps';
 import { useWindow } from '../use-window';
 import { useCallback, useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore, type ShareSection } from '../../../../state/store';
+import { SHARE_SECTIONS } from '../../../../state/slices/shell';
 import { BuildChecklist } from './BuildChecklist';
 import { ExportJsonPanel } from './ExportJsonModal';
 import { ExportPanel } from './ExportModal';
@@ -24,12 +25,10 @@ import type { I18nKey } from '../../../../i18n/keys';
 export type { ShareSection };
 type Section = ShareSection;
 
-const SECTIONS: readonly Section[] = ['keep', 'friend', 'game'];
-
 const LABEL: Record<Section, I18nKey> = {
   keep: 'share.tab_keep',
   friend: 'share.tab_friend',
-  game: 'share.tab_game',
+  stats: 'share.tab_stats',
 };
 
 /** The window's own head, title over the three purpose tabs: the live window turns its pages with
@@ -48,7 +47,7 @@ function ShareWindowHead({ section, onPick, onClose }: { section: ShareSection; 
           // A finger's window draws above the chrome zoom, which leaves a phone's tabs too narrow for a whole label.
           wrapLabels={touch}
           value={section}
-          options={SECTIONS}
+          options={SHARE_SECTIONS}
           render={(s) => t(LABEL[s])}
           onChange={onPick}
         />
@@ -62,7 +61,7 @@ function ShareWindowHead({ section, onPick, onClose }: { section: ShareSection; 
 const SIZE: Record<Section, { width: number; height: number }> = {
   keep: { width: 560, height: 700 },
   friend: { width: 980, height: 848 },
-  game: { width: 620, height: 760 },
+  stats: { width: 620, height: 760 },
 };
 
 /** A section's slot. Hidden rather than unmounted, since unmounting is what would cost its state. */
@@ -74,7 +73,10 @@ function slot(showing: boolean): CSSProperties {
 
 /** `open` and `section` picture the window for a Help figure in place of the store's flag and target. */
 /** `subject` is the map a Help figure shows the checklist of, where the visitor's own map holds nothing to list. */
-export function ShareWindow({ open: posedOpen, section: posedSection, subject }: { open?: boolean; section?: ShareSection; subject?: GridState } = {}) {
+/** `artStyle` is the picture controls' Art style group, which the edition's own surface hands down. */
+export function ShareWindow({ open: posedOpen, section: posedSection, subject, artStyle }: {
+  open?: boolean; section?: ShareSection; subject?: GridState; artStyle?: ReactNode;
+} = {}) {
   const t = useT();
   const { open, close } = useWindow('share', { open: posedOpen });
   const target = useEditorStore((s) => s.shareTarget);
@@ -102,7 +104,7 @@ export function ShareWindow({ open: posedOpen, section: posedSection, subject }:
   const { onEntered, hasSettled } = useModalEntered(open, section);
 
   return (
-    <ModalShell helpTarget={{ page: section === 'keep' ? 'json' : section === 'game' ? 'checklist' : 'share' }}
+    <ModalShell helpTarget={{ page: section === 'keep' ? 'json' : section === 'stats' ? 'checklist' : 'share' }}
       open={open}
       onClose={close}
       onEntered={onEntered}
@@ -120,11 +122,11 @@ export function ShareWindow({ open: posedOpen, section: posedSection, subject }:
       )}
       {visited.includes('friend') && (
         <div style={slot(section === 'friend')}>
-          <ExportPanel open={open} entered={hasSettled('friend')} onDone={close} />
+          <ExportPanel open={open} entered={hasSettled('friend')} onDone={close} artStyle={artStyle} />
         </div>
       )}
-      {visited.includes('game') && (
-        <div style={slot(section === 'game')}>
+      {visited.includes('stats') && (
+        <div style={slot(section === 'stats')}>
           <WindowBody><BuildChecklist {...(subject ? { subject } : {})} /></WindowBody>
         </div>
       )}

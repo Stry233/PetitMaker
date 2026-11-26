@@ -21,3 +21,29 @@ export type Rotation = typeof ROTATIONS[number];
 export function turnRotation(r: Rotation, quarterTurns: number): Rotation {
   return ((((r + quarterTurns * 90) % 360) + 360) % 360) as Rotation;
 }
+
+/** A layout's orientation on the grid about its own centre: mirrored left to right first when
+ *  `mirror`, then turned `quarters` clockwise quarter turns. */
+export interface Orientation { readonly quarters: number; readonly mirror?: boolean }
+
+/** `o` followed by `then`, both about the same centre. A mirror after a turn is the mirror before the
+ *  turn taken back, so a left-to-right mirror negates the quarters already turned. */
+export function thenOrient(o: Orientation, then: Orientation): Orientation {
+  const quarters = then.mirror ? then.quarters - o.quarters : o.quarters + then.quarters;
+  return { quarters: ((quarters % 4) + 4) % 4, mirror: !!o.mirror !== !!then.mirror };
+}
+
+/** A place in Flip's cycle as the screen shows it: 0 as it began, 1 mirrored left to right, 2 top
+ *  to bottom, 3 both, which is a half turn. */
+export type FlipStep = 0 | 1 | 2 | 3;
+
+/** What one press of Flip does to what stands: a left-to-right mirror or a half turn. */
+export interface FlipTurn extends Orientation { readonly quarters: 0 | 2; readonly mirror: boolean }
+
+/** One press of Flip from `step`: the step it reaches and what it does to what stands there. Each step
+ *  is the one before it mirrored left to right or turned a half, alternately, so a press always lays
+ *  one of those two and four presses come back to the start. */
+export function flipPress(step: FlipStep): { readonly next: FlipStep; readonly turn: FlipTurn } {
+  const next = ((step + 1) % 4) as FlipStep;
+  return { next, turn: next % 2 === 1 ? { quarters: 0, mirror: true } : { quarters: 2, mirror: false } };
+}

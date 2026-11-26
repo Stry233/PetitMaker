@@ -34,6 +34,9 @@ export interface DeployTarget {
   /** Whether visitors can reach the live model catalog reliably; one that cannot reads the extract
    *  refreshed at release. */
   liveModelCatalog: boolean;
+  /** The assistant provider this deployment's visitors can sign in with instead of pasting a key:
+   *  one whose sign-in and models they reach reliably. */
+  signInProvider: 'openrouter' | 'modelscope';
 }
 
 export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
@@ -54,6 +57,7 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     psbUrl: null,
     verificationMetas: [],
     liveModelCatalog: true,
+    signInProvider: 'openrouter',
   },
   cn: {
     id: 'cn',
@@ -77,6 +81,7 @@ export const DEPLOY_TARGETS: Record<DeployTargetId, DeployTarget> = {
     psbUrl: null,
     verificationMetas: [{ name: 'baidu-site-verification', content: 'codeva-jY3ZDA0Q7F' }],
     liveModelCatalog: false,
+    signInProvider: 'modelscope',
   },
 };
 

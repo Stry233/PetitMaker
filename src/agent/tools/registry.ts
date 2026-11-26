@@ -4,13 +4,18 @@
  * cannot be offered without a handler, run without a schema, or edit the map without passing the gate.
  */
 import { getAnnotationsTool, removeAnnotationTool, setAnnotationTool } from './annotations';
-import { buildRoadNetworkTool, decorateZoneTool, frameCrossingTool, plantForestTool } from './director';
+import { listAppActionsTool, runAppActionTool } from './app-actions';
 import { argError } from './feedback';
-import { drawFigureTool } from './figure';
+import { copyAreaTool, mirrorAreaTool, replaceObjectsTool } from './pattern';
+import { checkBuildTool } from './check';
+import { raisePlatformTool } from './platform';
+import { layRouteTool } from './route';
+import { drawAreaTool } from './draw';
 import {
-  delegateTaskTool, exportMapTool, listSkillsTool, loadSkillTool, redoTool, suggestReplyTool, undoTool, updatePlanTool,
+  delegateTaskTool, listSkillsTool, loadSkillTool, redoTool, suggestReplyTool, undoTool, updatePlanTool,
 } from './harness';
 import { toolCrashed, unknownTool } from '../core/nudges';
+import { loopNoteResult } from '../core/tool-result';
 import type { GuideTools, ToolFacts } from '../core/tool-facts';
 import type { AgentToolDeps } from './deps';
 import { callFootprint } from './geometry';
@@ -36,7 +41,8 @@ export const TOOLS = {
   view_map: viewMapTool,
   evaluate_map: evaluateMapTool,
   update_plan: updatePlanTool,
-  export_map: exportMapTool,
+  list_app_actions: listAppActionsTool,
+  run_app_action: runAppActionTool,
   suggest_reply: suggestReplyTool,
   paint_terrain: paintTerrainTool,
   erase_terrain: eraseTerrainTool,
@@ -49,21 +55,23 @@ export const TOOLS = {
   sculpt_terrace: sculptTerraceTool,
   sculpt_wall: sculptWallTool,
   sink_pool: sinkPoolTool,
-  draw_figure: drawFigureTool,
+  raise_platform: raisePlatformTool,
+  copy_area: copyAreaTool,
+  replace_objects: replaceObjectsTool,
+  mirror_area: mirrorAreaTool,
+  check_build: checkBuildTool,
   carve_river: carveRiverTool,
   clear_area: clearAreaTool,
   find_speckle: findSpeckleTool,
   find_bridge_sites: findBridgeSitesTool,
   find_ramp_sites: findRampSitesTool,
   build_road: buildRoadTool,
+  lay_route: layRouteTool,
+  draw_area: drawAreaTool,
   list_skills: listSkillsTool,
   load_skill: loadSkillTool,
   delegate_task: delegateTaskTool,
   undo: undoTool,
-  decorate_zone: decorateZoneTool,
-  plant_forest: plantForestTool,
-  build_road_network: buildRoadNetworkTool,
-  frame_crossing: frameCrossingTool,
   redo: redoTool,
 } satisfies Record<ToolName, ToolSpec<Shape>>;
 
@@ -86,15 +94,33 @@ const schemaOf = (name: ToolName): ToolSchema => {
 /** Every tool as the parent job's provider is shown it, in wire order. */
 const TOOL_SCHEMAS: ToolSchema[] = TOOL_NAMES.map(schemaOf);
 
-/** The parent's tools minus the parent-only ones: what a delegated helper is offered. */
-const SUBAGENT_TOOL_SCHEMAS: ToolSchema[] = TOOL_SCHEMAS.filter((t) => toolSpec(t.name)?.parentOnly !== true);
+/**
+ * What a delegated helper is offered: a helper builds one place, so it reads its ground, draws the
+ * place, stands and removes single things, joins paths and checks its work. The area-wide brushes,
+ * the macros, planning ink and the history stay with the lead.
+ */
+const HELPER_TOOLS: readonly ToolName[] = [
+  'inspect_region', 'get_objects', 'get_catalog_item', 'view_map', 'check_build',
+  'find_flat_areas', 'find_bridge_sites', 'find_ramp_sites',
+  'draw_area', 'carve_river', 'place_object', 'remove_object', 'rotate_object', 'clear_area', 'lay_route',
+  'list_skills', 'load_skill',
+];
+
+const SUBAGENT_TOOL_SCHEMAS: ToolSchema[] = TOOL_SCHEMAS.filter((t) => HELPER_TOOLS.includes(t.name as ToolName));
+
+/** What a district lead is offered: a helper's tools, and what it takes to plan an area, hand its places on and lay one side as the mirror of the other. */
+const DISTRICT_TOOLS: readonly ToolName[] = [
+  ...HELPER_TOOLS, 'set_annotation', 'get_annotations', 'remove_annotation', 'update_plan', 'delegate_task', 'mirror_area', 'copy_area',
+];
+
+const DISTRICT_TOOL_SCHEMAS: ToolSchema[] = TOOL_SCHEMAS.filter((t) => DISTRICT_TOOLS.includes(t.name as ToolName));
 
 /** A search family's wildcard, typed so the family must still have a member. */
 type FamilyWildcard<P extends string> = Extract<ToolName, `${P}_${string}`> extends never ? never : `${P}_*`;
 
 /** The tools the loop's advice names, by what each offers. */
 const GUIDES = {
-  inspect: 'inspect_region', view: 'view_map', score: 'evaluate_map', skill: 'load_skill', search: 'find_*', sketch: 'get_annotations',
+  inspect: 'inspect_region', view: 'view_map', score: 'evaluate_map', skill: 'load_skill', search: 'find_*', helper: 'delegate_task', sketch: 'get_annotations',
 } as const satisfies { [K in keyof GuideTools]: K extends 'search' ? FamilyWildcard<'find'> : ToolName };
 
 /** The registry as the harness reads it, without naming a tool. */
@@ -102,13 +128,19 @@ export const TOOL_FACTS: ToolFacts = {
   access: (name) => toolSpec(name)?.access,
   verifies: (name) => toolSpec(name)?.verifies === true,
   sketches: (name) => toolSpec(name)?.sketches === true,
+  delivers: (name) => toolSpec(name)?.delivers === true,
   footprint: callFootprint,
   guides: GUIDES,
 };
 
+/** The facts over one job's dependencies: a tool whose approval follows its arguments answers from them. */
+export function toolFacts(deps: AgentToolDeps): ToolFacts {
+  return { ...TOOL_FACTS, gateLevel: (name, input) => toolSpec(name)?.gate?.(deps, input) };
+}
+
 /** The schemas a provider is sent at the requested execution depth. */
-export function wireSchemas(opts?: { subagent?: boolean }): { name: string; description: string; parameters: Record<string, unknown> }[] {
-  const schemas = opts?.subagent ? SUBAGENT_TOOL_SCHEMAS : TOOL_SCHEMAS;
+export function wireSchemas(opts?: { subagent?: boolean; district?: boolean }): { name: string; description: string; parameters: Record<string, unknown> }[] {
+  const schemas = opts?.subagent ? SUBAGENT_TOOL_SCHEMAS : opts?.district ? DISTRICT_TOOL_SCHEMAS : TOOL_SCHEMAS;
   return schemas.map((s) => ({ name: s.name, description: s.description, parameters: s.inputSchema }));
 }
 
@@ -137,7 +169,7 @@ export async function executeToolCall(call: ToolCall, deps: AgentToolDeps): Prom
       ? { isError: true, content: unknownTool(call.name) }
       : 'refusal' in args ? args.refusal : await spec.run(scoped, args.input);
   } catch (err) {
-    body = { isError: true, content: toolCrashed(err) };
+    body = loopNoteResult(toolCrashed(err));
   }
   return { toolCallId: call.id, ...body };
 }

@@ -48,11 +48,11 @@ describe('exec/executor', () => {
     }
   });
 
-  it('[ASST-16] wide access is exactly the five wide names, delegation and history among them', () => {
+  it('[ASST-16] wide access is exactly the four wide names, delegation and history among them', () => {
     const { deps } = setup();
     const executor = createExecutor(deps);
     const wide = wireSchemas().filter((s) => executor.facts.access(s.name) === 'wide').map((s) => s.name).sort();
-    expect(wide).toEqual(['build_road_network', 'clear_area', 'delegate_task', 'redo', 'undo']);
+    expect(wide).toEqual(['clear_area', 'delegate_task', 'redo', 'undo']);
   });
 
   it('checkpoint oversight gates delegate_task: the helper burst gets the one approval there is', () => {
@@ -83,13 +83,16 @@ describe('exec/executor', () => {
     expect(r.content).toContain('totally_bogus_tool');
   });
 
-  it('wireSchemas({ subagent: true }) excludes the legacy SUBAGENT exclusion list', () => {
+  it('a helper is offered the tools of a place builder, and none of the lead\'s protocol or history', () => {
     const names = wireSchemas({ subagent: true }).map((s) => s.name);
     expect(names).not.toContain('delegate_task');
     expect(names).not.toContain('update_plan');
     expect(names).not.toContain('suggest_reply');
-    expect(names).not.toContain('export_map');
-    expect(names).toContain('paint_terrain'); // ordinary tools remain
+    expect(names).not.toContain('list_app_actions');
+    expect(names).not.toContain('run_app_action');
+    expect(names).not.toContain('undo');
+    expect(names).not.toContain('set_annotation');
+    for (const name of ['inspect_region', 'draw_area', 'place_object', 'lay_route', 'check_build', 'load_skill']) expect(names).toContain(name);
   });
 
   it('wireSchemas() (no opts) carries every legacy schema unfiltered', () => {

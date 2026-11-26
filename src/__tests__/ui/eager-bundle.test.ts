@@ -51,8 +51,9 @@ describe('the first load', () => {
     const graph = eagerGraph();
     const doors = [
       ...sourceFiles(resolve(SRC, 'pipelines')).map(srcRelative).filter((path) => /^pipelines\/[a-z-]+\/(?:(?:[a-z]+-)?facts|loaders)\.ts$/.test(path)),
-      // The content checks' entry starts each check's worker on first use, so it loads no matcher or model.
-      'pipelines/moderation/index.ts',
+      // The content checks' entries start each check's worker on first use, so they load no matcher or model;
+      // `text-check.ts` is the text check's alone.
+      'pipelines/moderation/index.ts', 'pipelines/moderation/text-check.ts',
     ];
     const light = new Set(doors.flatMap((door) => [...eagerGraph(door).keys()]));
     const found = [...graph.keys()]

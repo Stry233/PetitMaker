@@ -179,6 +179,15 @@ describe('json-codec', () => {
       expect(readParsedSaveCamera(JSON.parse(json))).toEqual(camera);
     });
 
+    it('[UI-67] carries the flat view\'s heading, and drops a heading that is not a number without the pose', () => {
+      const state = makeState(4, 4);
+      const turned: PersistedCamera = { view2d: { x: 10, y: 20, zoom: 1.5, rotation: 1.2 } };
+      expect(readParsedSaveCamera(JSON.parse(serialize(state, turned)))).toEqual(turned);
+      const bad = JSON.parse(serialize(state, turned)) as { camera: { view2d: Record<string, unknown> } };
+      bad.camera.view2d.rotation = 'x';
+      expect(readParsedSaveCamera(bad)).toEqual({ view2d: { x: 10, y: 20, zoom: 1.5 } });
+    });
+
     it('omits the camera key entirely when neither view is given', () => {
       const state = makeState(4, 4);
       const parsed = JSON.parse(serialize(state)) as { camera?: unknown };

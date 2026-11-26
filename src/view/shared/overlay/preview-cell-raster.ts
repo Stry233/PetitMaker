@@ -12,6 +12,8 @@
  */
 import { PREVIEW_ICON_ART, type PreviewPalette, PREVIEW_CELL_ART } from './preview-cell';
 import type { PreviewIcon } from '../../../tools/pointer/runtime';
+import { numberToHexString } from '../../../core/base/color';
+import { makeCanvas, type Raster2d } from '../viewport/dom-canvas';
 
 /** Icon raster resolution per cell. The glyph covers about half a cell, so this draws it at ~140px
  *  against the ~64px it occupies on screen at rest — crisp when the camera is zoomed in. */
@@ -28,17 +30,9 @@ const HATCH_PX = 256;
 
 export { HATCH_CELLS };
 
-function makeCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
-  if (typeof document === 'undefined' || typeof Path2D === 'undefined') return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(w));
-  canvas.height = Math.max(1, Math.round(h));
-  const ctx = canvas.getContext('2d');
-  return ctx ? { canvas, ctx } : null;
-}
-
-function cssHex(color: number): string {
-  return `#${color.toString(16).padStart(6, '0')}`;
+/** A raster the vector art can be drawn into; null where there is none or no Path2D. */
+function artCanvas(w: number, h: number): Raster2d | null {
+  return typeof Path2D === 'undefined' ? null : makeCanvas(w, h);
 }
 
 const iconCache = new Map<PreviewIcon, HTMLCanvasElement | null>();
@@ -54,7 +48,7 @@ export function previewIconCanvas(icon: PreviewIcon): HTMLCanvasElement | null {
   const hit = iconCache.get(icon);
   if (hit !== undefined) return hit;
   const art = PREVIEW_ICON_ART[icon];
-  const made = makeCanvas(art.w * ICON_PX, art.h * ICON_PX);
+  const made = artCanvas(art.w * ICON_PX, art.h * ICON_PX);
   if (!made) { iconCache.set(icon, null); return null; }
   const { canvas, ctx } = made;
   // The paths are centred on (0, 0) in cell fractions; move that centre to the middle of the raster.
@@ -82,12 +76,12 @@ export function previewHatchCanvas(palette: PreviewPalette): HTMLCanvasElement |
   const key = palette.bg * 0x1000000 + palette.hatch;
   const hit = hatchCache.get(key);
   if (hit !== undefined) return hit;
-  const made = makeCanvas(HATCH_PX, HATCH_PX);
+  const made = artCanvas(HATCH_PX, HATCH_PX);
   if (!made) { hatchCache.set(key, null); return null; }
   const { canvas, ctx } = made;
-  ctx.fillStyle = cssHex(palette.bg);
+  ctx.fillStyle = numberToHexString(palette.bg);
   ctx.fillRect(0, 0, HATCH_PX, HATCH_PX);
-  ctx.fillStyle = cssHex(palette.hatch);
+  ctx.fillStyle = numberToHexString(palette.hatch);
   // Bars run along x + y = c. The pitch is measured perpendicular to them, so a step of one period
   // along c is that distance times sqrt(2).
   const pitch = (HATCH_PX * 2) / (HATCH_REPEATS * 2);

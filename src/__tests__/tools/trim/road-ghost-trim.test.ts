@@ -27,7 +27,7 @@ function world(autoEdgeCut: AutoEdgeCut, mode: 'line' | 'rect' | 'free' = 'line'
   const executor = makeExecutor(state);
   const ghosts: Ghost[] = [];
   const ctx = {
-    ...makeToolCtx(state, executor, 1, 1, { autoEdgeCut, contentType: 'road', tileMaterial: 'path-overgrown-dirt' }),
+    ...makeToolCtx(state, executor, 1, { autoEdgeCut, contentType: 'road', tileMaterial: 'path-overgrown-dirt' }),
     overlay: {
       showGhost({ cells }: { cells: MacroCoord[] }, _c: number, trim?: readonly TrimmedCell[]) {
         ghosts.push({ cells, trim: trim ?? [] });

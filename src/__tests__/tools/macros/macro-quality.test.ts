@@ -234,7 +234,7 @@ describe('a macro is not a gimmick', () => {
     try {
       const tool = new MacroTool();
       tool.onActivate();
-      const ctx = makeToolCtx(kit.state, kit.executor, RADIUS - 3, 1, { armedMacro: id });
+      const ctx = makeToolCtx(kit.state, kit.executor, RADIUS - 3, { armedMacro: id });
       tool.onPointerDown(cell(at as MacroCoord), point({ x: at.x, y: at.y }), ctx);
       // Enough bursts to climb the succession ladder.
       vi.advanceTimersByTime(350 * 5);

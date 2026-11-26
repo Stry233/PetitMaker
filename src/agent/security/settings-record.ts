@@ -21,6 +21,8 @@ export interface AgentSettings {
   customAuth?: 'none';
   /** Registry URL that accepted each region-specific provider key. Stored as a non-secret field. */
   regionBaseUrl?: Partial<Record<ProviderId, string>>;
+  /** When the held key of a provider came from a sign-in, in ms since the epoch; a pasted key has no entry. */
+  signedIn?: Partial<Record<ProviderId, number>>;
 }
 
 /** Non-secret fields plus either obfuscated or vault-sealed keys. */
@@ -35,6 +37,7 @@ interface StoredRecord extends StoredKeys {
   customBaseUrl?: string;
   customAuth?: 'none';
   regionBaseUrl?: Record<string, string>;
+  signedIn?: Record<string, number>;
 }
 
 /** Accept stored regional hosts only when the provider registry declares them. */
@@ -44,6 +47,16 @@ function readRegionBaseUrl(rec: StoredRecord['regionBaseUrl']): AgentSettings['r
   for (const [id, url] of Object.entries(rec)) {
     if (!PROVIDER_IDS.includes(id as ProviderId)) continue;
     if (providerBaseUrls(id as ProviderId).includes(url)) out[id as ProviderId] = url;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Accept sign-in times only for known providers and as finite numbers. */
+function readSignedIn(rec: StoredRecord['signedIn']): AgentSettings['signedIn'] {
+  if (!rec || typeof rec !== 'object') return undefined;
+  const out: Partial<Record<ProviderId, number>> = {};
+  for (const [id, at] of Object.entries(rec)) {
+    if (PROVIDER_IDS.includes(id as ProviderId) && typeof at === 'number' && Number.isFinite(at)) out[id as ProviderId] = at;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -90,6 +103,7 @@ export function loadAgentSettings(): AgentSettings {
       customBaseUrl: typeof parsed.customBaseUrl === 'string' ? sanitizeEndpointUrl(parsed.customBaseUrl) || undefined : undefined,
       ...(parsed.customAuth === 'none' ? { customAuth: 'none' as const } : {}),
       regionBaseUrl: readRegionBaseUrl(parsed.regionBaseUrl),
+      signedIn: readSignedIn(parsed.signedIn),
     };
   } catch {
     return defaultAgentSettings();
@@ -109,6 +123,7 @@ export function saveAgentSettings(s: AgentSettings, seal: SealState): boolean {
       customBaseUrl: s.customBaseUrl,
       customAuth: s.customAuth,
       regionBaseUrl: s.regionBaseUrl,
+      signedIn: s.signedIn,
     }),
   );
   void upgradeToSealed(seal).catch(() => {});

@@ -8,8 +8,8 @@ import { bytesToSymbols } from '../../../../io/share/glyph/bitpack';
 import { whiten } from '../../../../io/share/glyph/encode';
 import { crc32 } from '../../../../core/base/crc32';
 import { bytesToHex, sha256 } from '../../../../core/base/sha256';
-import { decodePng } from '../../../../io/share/raster/png-raster';
-import { decodeGlyph } from '../../../../io/share/glyph/decode';
+import { decodePng } from '../../../_support/png-raster';
+import { readGlyph } from '../../../../io/share/glyph/decode';
 
 function recoveryFixture() {
   const payload = Uint8Array.from({ length: 400 }, (_, i) => (i * 31 + 9) & 255);
@@ -72,14 +72,14 @@ describe('image recovery', () => {
     ['dense-1080-jpeg75', 6879, 'b1927b60412e369fa59b32488879f6280efb9f2af12072e7143d88bd22c9acf0'],
   ])('recovers the frozen %s raster exactly', async (name, length, hash) => {
     const image = await decodePng(new Uint8Array(readFileSync(`src/__tests__/fixtures/glyph/${name}.png`)));
-    const payload = decodeGlyph(image.data, image.width, image.height);
+    const payload = readGlyph(image.data, image.width, image.height).payload;
     expect(payload?.length).toBe(length);
     expect(bytesToHex(await sha256(payload!))).toBe(hash);
   }, 30_000);
 
   it('rejects invalid raster dimensions before scanning', () => {
     for (const [width, height] of [[-1, 1], [1.5, 2], [Infinity, 2], [0, 0], [20, 20]]) {
-      expect(decodeGlyph(new Uint8Array(16), width!, height!)).toBeNull();
+      expect(readGlyph(new Uint8Array(16), width!, height!).payload).toBeNull();
     }
   });
 });

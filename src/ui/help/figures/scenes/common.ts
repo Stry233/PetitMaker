@@ -7,11 +7,12 @@ import type { ToolArming } from '../../../../state/editing/arming';
 import { CONTENT_GRID } from '../../../../state/editing/edit-mode';
 import type { CursorId } from '../../../../assets/cursors/cursor-spec';
 import type { GroupRotation } from '../../../../tools/objects';
-import type { TokenSpec } from '../../hints/catalogue';
+import type { TokenSpec } from '../../../../editor/help/key-tokens';
 import { SandboxWorld, type SandboxNotice } from '../../../../editor/sandbox/demo-world';
 import type { MazeEnds } from '../../../shell/bars/generate/MazeEndpoints';
 import { GRIDS } from '../../../../core/game/profile';
 import type { Translate, TextKey } from '../../../../i18n/keys';
+import { progressAt } from '../../../design/motion';
 
 /** The template rect a scene's view frames, and how many CSS px a cell takes. */
 export interface Stage { x1: number; y1: number; x2: number; y2: number; tile: number }
@@ -28,9 +29,6 @@ export interface DemoView {
   clearGhost(): void;
   /** The real group-drag preview (a lifted set following the pointer). */
   groupGhost(members: Array<{ catalogId: string; x: number; y: number; rotation: number; elevation: number }>): void;
-  /** The live brush ghost over stroke cells, exactly as a shape tool previews before release:
-   *  the overlay's own cell wash with the surface's own card. `null` clears. */
-  paintGhost(cells: MacroCoord[] | null, icon?: 'mountain' | 'water' | 'ground'): void;
   /** The real generation-region tint (white at 12%), or null to clear. */
   region(cells: MacroCoord[] | null): void;
   /** The real maze-walk gold, or null to clear. */
@@ -135,7 +133,7 @@ export const DELETE_KEYS: readonly TokenSpec[] = [{ kind: 'cmd', id: 'selection.
 
 /** The player's glide: how far along its move the pointer stands at step progress `k`. */
 export function ease(k: number): number {
-  return k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2;
+  return progressAt('help.figure.step', k);
 }
 
 /** Pick a tool for the scene, as a press on its bar cell does: the world's live tool set armed with
@@ -312,10 +310,9 @@ function brushThrough(cells: readonly MacroCoord[], arming: Partial<ToolArming>)
   };
 }
 
-/** The free brush laying `type` through `cells` with layer `floor` picked in the layer panel
- *  (`brushThrough`), which pins it: water lays at that layer where it can stand. */
-export function stroke(cells: MacroCoord[], type: TerrainType, floor = 1) {
-  return brushThrough(cells, { contentType: type === TerrainType.Water ? 'water' : 'mountain', floor, layerPinned: true });
+/** The free brush laying `type` through `cells` (`brushThrough`), on the layer its first cell gives it. */
+export function stroke(cells: MacroCoord[], type: TerrainType) {
+  return brushThrough(cells, { contentType: type === TerrainType.Water ? 'water' : 'mountain' });
 }
 
 /** The road brush laying `catalogId` through `cells` (`brushThrough`): each cell takes its paver as

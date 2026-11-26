@@ -6,13 +6,15 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import type { GridState } from '../../../core/model/types';
 import { onTextVerdicts, textVerdictsVersion } from '../../../state/text-verdicts';
 import { useEditorStore } from '../../../state/store';
+import { shownMap } from '../../../state/map-stand-in';
 import { onFontsSettled } from '../../../assets/fonts/settled';
 
 /**
- * Calls `redraw` with the live map whenever a fact the notes are drawn from changes (the notes'
- * epoch, since their data mutates in place; the draft, selection and dimension switch; the map; the
- * locale; a custom tag's text verdict), and `rebakeText` whenever the app's fonts finish loading, since a label
- * rasterised before its face loaded keeps the fallback otherwise.
+ * Calls `redraw` with the map the views draw (`state/map-stand-in.ts:shownMap`) whenever a fact the
+ * notes are drawn from changes (the notes' epoch, since their data mutates in place; the draft,
+ * selection and dimension switch; the map; the locale; a custom tag's text verdict), and
+ * `rebakeText` whenever the app's fonts finish loading, since a label rasterised before its face
+ * loaded keeps the fallback otherwise.
  */
 export function useAnnotationRedraw(
   gridState: GridState | null,
@@ -31,7 +33,7 @@ export function useAnnotationRedraw(
   useLayoutEffect(() => { latest.current = { redraw, rebakeText }; });
 
   useEffect(() => {
-    const gs = useEditorStore.getState().gridState;
+    const gs = shownMap(useEditorStore.getState());
     if (gs) latest.current.redraw(gs);
   }, [annotationsEpoch, annotationDraft, annotationSelection, annotationDimensions, gridState, locale, tagVerdicts]);
 

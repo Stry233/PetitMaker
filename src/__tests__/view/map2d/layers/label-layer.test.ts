@@ -40,4 +40,19 @@ describe('the 2D chunk legend', () => {
     while (pending.length) pending.shift()!(0);
     expect(texts(layer)).toHaveLength(2);
   });
+
+  it('leaves no text texture behind when the map reloads or the layer goes', () => {
+    const cached = (): number => Object.keys(PIXI.utils.TextureCache).length;
+    const template = makeState(100, 100).template;
+    const layer = new LabelLayer(() => {});
+    const before = cached();
+    for (let load = 0; load < 3; load++) {
+      layer.build(template, () => true);
+      while (pending.length) pending.shift()!(0);
+    }
+    const oneLoad = texts(layer).length;
+    expect(cached() - before).toBeLessThanOrEqual(oneLoad);
+    layer.dispose();
+    expect(cached()).toBe(before);
+  });
 });

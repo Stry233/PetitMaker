@@ -14,7 +14,7 @@ import { showToast } from '../../../platform/channels/toast-bus';
 import { SurfaceNotice } from '../../../ui/chrome/guards/FailureNotice';
 import { Tour } from '../../../ui/chrome/tour/Tour';
 import { TOUR_SEEN_KEY } from '../../_support/tour';
-import { startTour } from '../../../ui/chrome/tour/use-tour';
+import { startTour } from '../../../editor/session/tour';
 import { useEditorStore } from '../../../state/store';
 import { setStoreState } from '../../_support/store';
 import type { InputMode } from '../../../platform/device/input-mode';

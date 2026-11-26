@@ -3,7 +3,7 @@ import { warmFiles } from '../../../../ui/shell/warm/files';
 import { MAP_CHECK_DATA, mapCheckRuntimeUrls } from '../../../../pipelines/moderation/map/assets';
 import { ORT_FILES } from '../../../../pipelines/stylize/neural/runtime-files';
 import { MODEL_URLS } from '../../../../pipelines/stylize/neural/models';
-import { allStyleSampleUrls } from '../../../../ui/chrome/modals/export/stylize/sample-assets';
+import { allStyleSampleUrls } from '../../../../assets/style-sample-urls';
 import { SCAN_EXAMPLE } from '../../../../ui/chrome/modals/planet/scan-example';
 import { DREAM_THUMBS } from '../../../../ui/agent/desk/dream-thumbs';
 
@@ -56,12 +56,14 @@ describe('the warm schedule\'s files', () => {
 
   it('adds one illustration runtime and the default style\'s weights in the background on the full tier', async () => {
     const { background } = await warmFiles('full');
-    const backend = 'gpu' in navigator ? 'webgpu' : 'wasm';
-    expect(background.slice(-4)).toEqual(['/assets/neural.worker-1.js', ORT_FILES[backend].mjs, ORT_FILES[backend].wasm, MODEL_URLS.watercolor]);
+    expect(background.slice(-4)).toEqual(['/assets/neural.worker-1.js', ORT_FILES.wasm.mjs, ORT_FILES.wasm.wasm, MODEL_URLS.watercolor]);
   });
 
   it('leaves the illustration runtime out where the engine cannot run it', async () => {
     simd.value = false;
-    expect((await warmFiles('full')).background).not.toContain('/assets/neural.worker-1.js');
+    // The pipeline probes the engine once per page, so this engine is a page of its own.
+    vi.resetModules();
+    const { warmFiles: onEngine } = await import('../../../../ui/shell/warm/files');
+    expect((await onEngine('full')).background).not.toContain('/assets/neural.worker-1.js');
   });
 });

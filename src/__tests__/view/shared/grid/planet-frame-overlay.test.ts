@@ -4,13 +4,14 @@
  * the 2D overlay, and one flash that says the planet has reached its size limit.
  */
 import '../../../_support/pixi-env';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import * as PIXI from 'pixi.js-legacy';
 import { chunkGridRects, planetFrameRects } from '../../../../view/shared/grid/reference-grid';
 import { OverlayLayer } from '../../../../view/map2d/layers/overlay-layer';
 import { __resetMotionState, setReducedMotion } from '../../../../platform/channels/motion-state';
 import { CHUNK_SIZE } from '../../../../core/game/profile';
 import { overlayPart } from '../../../_support/overlay-parts';
+import { beatClock } from '../../../_support/beat-clock';
 
 const frame = { x0: 16, y0: 32, cols: 2, rows: 1 };
 
@@ -27,7 +28,7 @@ describe('planetFrameRects', () => {
 });
 
 describe('OverlayLayer planet frame', () => {
-  afterEach(() => { __resetMotionState(); vi.restoreAllMocks(); });
+  afterEach(() => { __resetMotionState(); });
 
   const frameGraphics = (layer: OverlayLayer) =>
     overlayPart<PIXI.Graphics>(layer, 'planetFrameGraphics');
@@ -42,37 +43,52 @@ describe('OverlayLayer planet frame', () => {
   });
 
   it('a flash requested while one runs does not restart it', () => {
-    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
-    const layer = new OverlayLayer(() => {});
+    const loop = beatClock();
+    const layer = new OverlayLayer(() => {}, () => null, loop.play);
     layer.showFrame(frame);
     layer.flashFrame(900);
     layer.flashFrame(900);
-    expect(raf).toHaveBeenCalledTimes(1);
+    expect(loop.played).toBe(1);
+  });
+
+  it('rises and falls once over its duration, then rests', () => {
+    const loop = beatClock();
+    const layer = new OverlayLayer(() => {}, () => null, loop.play);
+    const tint = () => overlayPart<PIXI.Graphics>(layer, 'planetFrameFlash').alpha;
+    layer.showFrame(frame);
+    layer.flashFrame(900);
+    loop.frame(100);
+    expect(tint()).toBe(0);
+    loop.frame(100 + 450);
+    expect(tint()).toBeCloseTo(1, 9);
+    expect(loop.frame(100 + 900)).toBe(false);
+    expect(tint()).toBe(0);
   });
 
   it('cancels a running flash when it is ended, as the renderer does on teardown', () => {
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 7);
-    const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-    const layer = new OverlayLayer(() => {});
+    const loop = beatClock();
+    const layer = new OverlayLayer(() => {}, () => null, loop.play);
     layer.showFrame(frame);
     layer.flashFrame(900);
+    loop.frame(0);
+    loop.frame(300);
     layer.endFrameFlash();
-    expect(cancel).toHaveBeenCalledWith(7);
+    expect(loop.frame(400)).toBe(false);
     expect(overlayPart<PIXI.Graphics>(layer, 'planetFrameFlash').alpha).toBe(0);
   });
 
   it('does not animate under reduced motion', () => {
     setReducedMotion(true);
-    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
-    const layer = new OverlayLayer(() => {});
+    const loop = beatClock();
+    const layer = new OverlayLayer(() => {}, () => null, loop.play);
     layer.showFrame(frame);
     layer.flashFrame(900);
-    expect(raf).not.toHaveBeenCalled();
+    expect(loop.played).toBe(0);
   });
 
   it('has nothing to flash without a frame', () => {
-    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
-    new OverlayLayer(() => {}).flashFrame(900);
-    expect(raf).not.toHaveBeenCalled();
+    const loop = beatClock();
+    new OverlayLayer(() => {}, () => null, loop.play).flashFrame(900);
+    expect(loop.played).toBe(0);
   });
 });

@@ -1,38 +1,41 @@
 import { lazy, Suspense, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { TouchReach } from '../../../primitives/TouchReach';
-import { CloseIcon, MinusIcon, PlusIcon } from '../../../primitives/line-glyphs';
+import { CloseIcon, LetterIcon, MinusIcon, PlusIcon, RouteIcon } from '../../../primitives/line-glyphs';
 import { useFrameZoom } from '../../use-frame-zoom';
 import { useVersioned } from '../../../primitives/use-versioned';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
-import { chipTextSize, type NoteTag, type ZoneTextSize } from '../../../../core/model/annotations';
+import { AnimatePresence, motion, useReducedMotionConfig, type TargetAndTransition } from 'framer-motion';
+import { chipTextSize, type ZoneTextSize } from '../../../../core/model/annotations';
 import { CHIP_TEXT_SIZES, ZONE_TEXT_SIZES } from '../../../../tools/pointer/annotate/facts';
 import { ANNOTATION_COLORS } from '../../../../config/annotation-palette';
 import { SELECTABLE_ANNOTATION_TAGS } from '../../../../config/annotation-tags';
 import { type AnnotationTool } from '../../../../state/editing/vocabulary';
+import { shapeTakesSize } from '../../../../state/editing/edit-mode';
+import { contextKeysDoing, toolbarLabel } from '../../../../state/keymap/toolbar';
 import { approvedTexts, onTextVerdicts, textVerdictsVersion } from '../../../../state/text-verdicts';
 import { RenderBoundary } from '../../../primitives/RenderBoundary';
 import { ChunkNotice } from '../../../chrome/guards/FailureNotice';
 import { useSurfaceScope } from '../../../primitives/surface-scope';
 import { amplitude, presence, cssMotion } from '../../../design/motion';
 import { helpTargetAttr } from '../../../session/help-targets';
-import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, TAG_H } from '../terrain-cells';
+import { SWATCH_ROW_BOTTOM, SWATCH_ROW_GAP, TAG_H, commandLabel } from '../terrain-cells';
 import { usePlanGlide, useRailClearance } from '../../frame-layout';
 import { useTransition } from '../../../design/motion/use-motion';
 import { MOTIONS } from '../../../design/motion/registry';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { discardDraft } from '../../../../editor/editing/annotation-edit';
+import { draftAwaitsDone } from '../../../../editor/editing/annotation-edit';
 import { btnReset, cursors, interactionProfilesFor, radii, UNAVAILABLE } from '../../../design/styles';
 import { ACTIVE, DANGER_INK, DARK_PLATE, INK, ON_DARK, PLATE, PLATE_INK, plateShapeEdge } from '../../../design/tokens';
 import type { Glyph } from '../../frame';
-import { QUAD, SCALE, TEXT } from '../../units';
+import { roleSize } from '../../../design/text-weight';
+import { QUAD } from '../../units';
 import { BarText, Action } from '../bar-atoms';
 import { LiveBrushSize } from '../BrushSizeControl';
 import { ToolPill, toolPillCentre } from '../ToolPill';
 import { ShapeOptions } from '../ShapeOptions';
-import { OptionPill } from '../OptionPill';
-import { GROW, TILE, hoverBleed, useSwatchStripRow } from '../swatch-strip';
+import { OptionPill, OPTION_GLYPH } from '../OptionPill';
+import { GAP, GROW, TILE, hoverBleed, useSwatchStripRow } from '../swatch-strip';
 import { SWATCH_FACE, SwatchTile } from '../SwatchTile';
 import { DimensionsToggle } from '../DimensionsToggle';
 import { useNameReveal } from '../../../primitives/use-name-reveal';
@@ -40,8 +43,8 @@ import { useNameReveal } from '../../../primitives/use-name-reveal';
 const NewTagCard = lazy(loadNewTagCard);
 import { type ToolbarSlot, type ToolbarSpec } from '../toolbar-morph';
 import { loadNewTagCard } from '../../warm/loaders';
-import type { I18nKey } from '../../../../i18n/keys';
 import { useInteractionProfiles } from '../../../design/input-mode';
+import { useRunCommand } from '../../use-shell-commands';
 
 /** A cell drawing of this bar's own, emitted as SVG in the row's ink: the terrain row's drawings
  *  each carry their surface (its eraser stands on a mountain), so an annotation cell wearing one
@@ -93,15 +96,19 @@ const MEASURE_GLYPH = svgGlyph(
   { x: 5.5, y: 18.5, w: 53, h: 27, gx: 32, gy: 32, area: 650 },
 );
 
-/** `slot` is the pill's toolbar identity: the brush and eraser are the terrain bar's own two, so
- *  they stay in place when the bar changes. */
-const NOTE_TOOLS: { tool: Exclude<AnnotationTool, 'none'>; slot: string; labelKey: I18nKey; glyph: Glyph; commandId: string }[] = [
-  { tool: 'zone', slot: 'brush', labelKey: 'terrain.brush', glyph: PEN_GLYPH, commandId: 'tool.brush' },
-  { tool: 'erase', slot: 'eraser', labelKey: 'annot.erase', glyph: ERASE_GLYPH, commandId: 'tool.erase' },
-  { tool: 'chip', slot: 'chip', labelKey: 'annot.chip', glyph: CHIP_GLYPH, commandId: 'tool.trim' },
-  { tool: 'route', slot: 'route', labelKey: 'annot.route', glyph: ROUTE_GLYPH, commandId: 'tool.smart' },
-  { tool: 'measure', slot: 'measure', labelKey: 'annot.measure', glyph: MEASURE_GLYPH, commandId: 'tool.measure' },
-];
+const NOTE_GLYPHS: Record<Exclude<AnnotationTool, 'none'>, Glyph> = {
+  zone: PEN_GLYPH, erase: ERASE_GLYPH, chip: CHIP_GLYPH, route: ROUTE_GLYPH, measure: MEASURE_GLYPH,
+};
+
+/** The pills' toolbar identities that differ from their tool: the brush and eraser are the terrain
+ *  bar's own two, so they stay in place when the bar changes. */
+const SHARED_SLOTS: Partial<Record<AnnotationTool, string>> = { zone: 'brush', erase: 'eraser' };
+
+/** The notes tools in key order, each under the command its key runs and the name that command shows
+ *  here; every notes toolbar arms the same tools. */
+const NOTE_TOOLS = contextKeysDoing('notes-other', 'note-tool').map(({ id, action: { tool } }) => ({
+  tool, slot: SHARED_SLOTS[tool] ?? tool, labelKey: toolbarLabel('notes-other', id) ?? commandLabel(id), glyph: NOTE_GLYPHS[tool], commandId: id,
+}));
 
 const TAG_GROW = GROW * 0.6;
 /** The removal badge: its side, and how far it stands past the pill's top and far edges. */
@@ -129,18 +136,14 @@ export function useNotesToolbar(): ToolbarSpec {
   const t = useT();
   const tool = useEditorStore((s) => s.annotationTool);
   const zoneShape = useEditorStore((s) => s.annotationZoneShape);
-  const setTool = useEditorStore((s) => s.toggleAnnotationTool);
-  const setZoneShape = useEditorStore((s) => s.setAnnotationZoneShape);
+  const run = useRunCommand();
   const eraserShape = useEditorStore((s) => s.eraserShape);
-  const setEraserShape = useEditorStore((s) => s.setEraserShape);
   const draft = useEditorStore((s) => s.annotationDraft);
-  const commitDraft = useEditorStore((s) => s.commitAnnotationDraft);
   // The eraser takes the road eraser's shapes and the brush the road brush's, so both size alike.
   const shape = tool === 'erase' ? eraserShape : zoneShape;
-  const sized = (tool === 'erase' || tool === 'zone') && shape !== 'rect' && shape !== 'circle';
+  const sized = (tool === 'erase' || tool === 'zone') && shapeTakesSize(shape);
   const activeIndex = NOTE_TOOLS.findIndex(cell => cell.tool === tool);
-  // A draft with something in it can be finished; a route needs two points to be a route.
-  const drafted = draft?.kind === 'zone' ? draft.cells.length > 0 : draft?.kind === 'route' ? draft.points.length >= 2 : false;
+  const drafted = draftAwaitsDone(draft);
   const actionsArrive = presence('draft.actions.arrive', { opacity: 0, y: MOTIONS['draft.actions.arrive'].amplitude, scale: DRAFT_ACTIONS_FROM }, { reduced: useReducedMotionConfig() });
   const colorClearance = useRailClearance(SWATCH_ROW_BOTTOM, TILE);
   const glide = usePlanGlide('frame.layout.adapt');
@@ -149,7 +152,7 @@ export function useNotesToolbar(): ToolbarSpec {
   const options: ToolbarSlot[] = [
     // One picker for both: brush and eraser offer the same shapes, so it stays and its plate slides.
     ...(tool === 'zone' || tool === 'erase' ? [{ id: 'shape', node: <ShapeOptions value={shape}
-      onChange={tool === 'erase' ? next => setEraserShape(next) : setZoneShape}/> }] : []),
+      onChange={next => run('tool.shape', { value: next })}/> }] : []),
     ...(tool === 'zone' || tool === 'chip' ? [{ id: 'font-size', node: <SizeOptions/> }] : []),
     ...(tool === 'zone' ? [{ id: 'dimensions', node: <ZoneDimensions/> }] : []),
     ...(tool === 'route' ? [{ id: 'route-style', node: <RouteOptions/> }] : []),
@@ -159,8 +162,8 @@ export function useNotesToolbar(): ToolbarSpec {
       {...actionsArrive}
       style={{ display: 'flex', alignItems: 'center', gap: QUAD.gap, marginLeft: ACTION_GAP - QUAD.gap }}
     >
-      <Action label={t('annot.discard')} onPress={discardDraft} />
-      <Action label={t('annot.done')} primary onPress={() => { commitDraft(); }} />
+      <Action label={t('annot.discard')} onPress={() => run('notes.draft', { keep: false })} />
+      <Action label={t('annot.done')} primary onPress={() => run('notes.draft', { keep: true })} />
     </motion.span> }] : []),
     // The route's line width rides the same slider, from its own value, so the slider stays across the switch.
     ...(sized || tool === 'route' ? [{ id: 'size', end: true, sizeSlider: true, node: <LiveBrushSize of={tool === 'route' ? 'route' : 'brush'}/> }] : []),
@@ -173,14 +176,15 @@ export function useNotesToolbar(): ToolbarSpec {
     ],
     pills: NOTE_TOOLS.map((cell, i) => ({ id: cell.slot, node: <ToolPill glyph={cell.glyph} label={t(cell.labelKey)}
       helpTarget={{ page: 'notes', anchor: `notes-${cell.tool === 'erase' ? 'edit' : cell.tool}` }} commandId={cell.commandId}
-      active={tool === cell.tool} centre={toolPillCentre(i, activeIndex)} onSelect={() => setTool(cell.tool)} /> })),
+      active={tool === cell.tool} centre={toolPillCentre(i, activeIndex)} onSelect={() => run(cell.commandId)} /> })),
     activePill: NOTE_TOOLS[activeIndex]?.slot ?? null,
     options, trailing,
   };
 }
 
 const SIZE_KEY = { s: 'annot.size_s', m: 'annot.size_m', l: 'annot.size_l', none: 'annot.size_none' } as const;
-const SIZE_GLYPH = { s: 8, m: 11, l: 14, none: 11 } as const;
+/** Each size's letter height in the glyph's 24 units. */
+const SIZE_CAP = { s: 10, m: 12, l: 14, none: 12 } as const;
 
 /** How far under its size the Done and Discard pair starts as it arrives. */
 const DRAFT_ACTIONS_FROM = 0.92;
@@ -190,34 +194,28 @@ function SizeOptions() {
   const t = useT();
   const size = useEditorStore(s => s.annotationSize);
   const zone = useEditorStore(s => s.annotationTool === 'zone');
-  const set = useEditorStore(s => s.setAnnotationSize);
+  const run = useRunCommand();
   const sizes: readonly ZoneTextSize[] = zone ? ZONE_TEXT_SIZES : CHIP_TEXT_SIZES;
-  return <OptionPill value={zone ? size : chipTextSize(size)} label={t('annot.size')} commandId="tool.option_cycle" onChange={set} options={sizes.map(value => ({
-    value, label: t(SIZE_KEY[value]), glyph: <svg width={51 * SCALE} height={51 * SCALE} viewBox="0 0 24 24" aria-hidden>
-      <text x="12" y="17" textAnchor="middle" fontSize={SIZE_GLYPH[value] + 6} fontWeight="800" fill="currentColor" fontFamily="inherit"
-        opacity={value === 'none' ? 0.45 : 1}>T</text>
-      {value === 'none' && <path d="M5 19 19 5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/>}
-    </svg>,
+  return <OptionPill value={zone ? size : chipTextSize(size)} label={t('annot.size')} commandId="tool.option_cycle" onChange={(value) => run('notes.size', { value })} options={sizes.map(value => ({
+    value, label: t(SIZE_KEY[value]), glyph: <LetterIcon size={OPTION_GLYPH} cap={SIZE_CAP[value]} struck={value === 'none'} />,
   }))}/>;
 }
 
 /** The region selection's own Dimensions picker, for a zone's width and height. */
 function ZoneDimensions() {
   const shown = useEditorStore(s => s.annotationDimensions);
-  const set = useEditorStore(s => s.setAnnotationDimensions);
-  return <DimensionsToggle value={shown} onChange={set} commandId={null}/>;
+  const run = useRunCommand();
+  return <DimensionsToggle value={shown} onChange={(on) => run('notes.dimensions', { on })} commandId={null}/>;
 }
 
 function RouteOptions() {
   const t = useT();
   const dashed = useEditorStore(s => s.annotationRouteDashed);
-  const set = useEditorStore(s => s.setAnnotationRouteDashed);
+  const run = useRunCommand();
   return <OptionPill value={dashed ? 'dashed' : 'solid'} label={t('annot.line_style')} commandId="tool.option_cycle"
-    onChange={value => set(value === 'dashed')} options={(['solid', 'dashed'] as const).map(value => ({
+    onChange={value => run('notes.route_dashed', { on: value === 'dashed' })} options={(['solid', 'dashed'] as const).map(value => ({
       value, label: t(value === 'dashed' ? 'annot.line_dashed' : 'annot.line_solid'),
-      glyph: <svg width={51 * SCALE} height={51 * SCALE} viewBox="0 0 24 24" aria-hidden>
-        <path d="M3 17C8 17 8 7 13 7c3.5 0 4.5 3 8 3.6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeDasharray={value === 'dashed' ? '4 3.4' : undefined}/>
-      </svg>,
+      glyph: <RouteIcon size={OPTION_GLYPH} dashed={value === 'dashed'} />,
     }))}/>;
 }
 
@@ -227,9 +225,8 @@ function RouteOptions() {
 function TagRow() {
   const t = useT();
   const tag = useEditorStore((s) => s.annotationTag);
-  const tool = useEditorStore((s) => s.annotationTool);
-  const setTag = useEditorStore((s) => s.setAnnotationTag);
-  const removeCustomTag = useEditorStore((s) => s.removeCustomTag);
+  const run = useRunCommand();
+  const pick = (id: string) => run('notes.tag', { tag: id });
   // The tag list is edited in place on the map's notes; the epoch says it moved.
   const epoch = useEditorStore((s) => s.annotationsEpoch);
   const map = useEditorStore((s) => s.gridState);
@@ -242,12 +239,21 @@ function TagRow() {
   const addRef = useRef<HTMLButtonElement>(null);
   const removeRef = useRef<HTMLButtonElement>(null);
   const { rowRef, rowProps } = useSwatchStripRow('none', TAG_ROW_BLEED);
-  const pick = (id: NoteTag) => setTag(id === tag && tool !== 'chip' ? null : id);
   const canRemove = custom.length > 0;
   // Removal ends with the last custom tag; pressing the remove pill again, Escape or a press outside the row puts it away.
   const removing = removeAsked && canRemove;
   useSurfaceScope({ open: removing, root: rowRef, trigger: removeRef, onClose: () => setRemoving(false), outside: true });
-  const pill = presence('tag.pill.arrive', { opacity: 0, scale: 1 - amplitude('tag.pill.arrive') }, { leave: 'tag.pill.leave', reduced: useReducedMotionConfig() });
+  const faded = presence('tag.pill.arrive', { opacity: 0, scale: 1 - amplitude('tag.pill.arrive') }, { leave: 'tag.pill.leave', reduced: useReducedMotionConfig() });
+  // A pill takes its width and the gap after it as it arrives and gives them back as it leaves, so the
+  // row's length changes in one motion and a row scrolled to its end eases back rather than stepping;
+  // it clips only while it resizes, as its removal badge overhangs its corner at rest.
+  const shut = { width: 0, marginRight: -GAP, overflow: 'hidden' };
+  const pill = {
+    ...faded,
+    initial: { ...(faded.initial as TargetAndTransition), ...shut },
+    animate: { ...(faded.animate as TargetAndTransition), width: 'auto', marginRight: 0, transitionEnd: { overflow: 'visible' } },
+    exit: { ...(faded.exit as TargetAndTransition), ...shut },
+  };
   return (
     <div ref={rowRef} role="group" aria-label={t('annot.tag')} title={removing ? t('annot.tag_remove_hint') : undefined} {...rowProps}>
       {/* Presets cannot be removed, so in removal they stand dimmed and offer nothing. */}
@@ -263,7 +269,7 @@ function TagRow() {
               onPress={() => {
                 if (!removing) { pick(entry.id); return; }
                 if (custom.length === 1) setRemoving(false);
-                removeCustomTag(entry.id);
+                run('notes.tag_remove', { tag: entry.id });
               }} />
           </motion.span>
         ))}
@@ -277,7 +283,7 @@ function TagRow() {
       <RenderBoundary resetKey={adding} fallback={<ChunkNotice />}>
         <Suspense fallback={null}>
           <AnimatePresence>
-            {adding && <NewTagCard key="new-tag" anchor={addRef} custom={allCustom} onClose={() => setAdding(false)} />}
+            {adding && <NewTagCard key="new-tag" anchor={addRef} onClose={() => setAdding(false)} />}
           </AnimatePresence>
         </Suspense>
       </RenderBoundary>
@@ -286,7 +292,7 @@ function TagRow() {
 }
 
 /** The add and remove pills' marks: the set's plus, 14 of its 24 units, spans two thirds of the lettering size. */
-const SIGN_SIZE = TEXT.label * (2 / 3) * (24 / 14);
+const SIGN_SIZE = roleSize('chip') * (2 / 3) * (24 / 14);
 
 /** The removal badge's cross, half its own box, spans 0.3 of the badge. */
 const BADGE_CROSS = BADGE_SIDE * 0.6;
@@ -347,7 +353,7 @@ function TagPill({ label, aria, named, on, onPress, removing = false, quiet = fa
           inset: on ? -TAG_GROW : 0, borderRadius: radii.pill,
         }}
       />
-      <span style={{ position: 'relative', display: 'flex' }}>{typeof label === 'string' ? <BarText size={TEXT.label} color={PLATE_INK}>{label}</BarText> : label}</span>
+      <span style={{ position: 'relative', display: 'flex' }}>{typeof label === 'string' ? <BarText role="chip" color={PLATE_INK}>{label}</BarText> : label}</span>
       <TouchReach zoom={zoom} />
       {naming?.bubble}
       <AnimatePresence initial={false}>
@@ -379,12 +385,12 @@ function TagPill({ label, aria, named, on, onPress, removing = false, quiet = fa
 function SwatchRow() {
   const t = useT();
   const color = useEditorStore((s) => s.annotationColor);
-  const setColor = useEditorStore((s) => s.setAnnotationColor);
+  const run = useRunCommand();
   const { rowRef, rowProps } = useSwatchStripRow('none', SWATCH_ROW_BLEED);
   return (
     <div ref={rowRef} role="group" aria-label={t('annot.color')} {...rowProps}>
       {ANNOTATION_COLORS.map((c) => (
-        <SwatchTile key={c} aria-label={t('annot.color')} active={c === color} onClick={() => setColor(c)}>
+        <SwatchTile key={c} aria-label={t('annot.color')} active={c === color} onClick={() => run('notes.color', { value: c })}>
           {/* The cream tint on the cream plate needs the hairline; every swatch takes it so the row is
               one treatment (plateShapeEdge, the drawn set's own edge). */}
           <span style={{ ...SWATCH_FACE, background: c, boxShadow: plateShapeEdge() }} />

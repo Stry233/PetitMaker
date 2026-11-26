@@ -1,8 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import earcut, { flatten, deviation } from 'earcut';
-import {
-  roadBandLayout, roadMaterialPatches as buildRoadMaterial, roadMaterialSettled, type RoadMaterialPatch,
-} from '../../../../view/shared/road/material';
+import { roadBandLayout, roadMaterialSettled, type RoadMaterialPatch } from '../../../../view/shared/road/material';
 import { buildRoadRegions } from '../../../../view/shared/road/region';
 import { CANONICAL_ROAD_STATES } from '../../../../core/domain/edge-cut/road-cut-states';
 import { type PlacedObject, type Rotation } from '../../../../core/model/types';
@@ -16,6 +14,13 @@ import { cellCornerWorld } from '../../../../view/map3d/geometry/coords';
 import { roadEdgeJointCuts } from '../../../../view/shared/road/edge-joints';
 import type { RoadMaterialSpec } from '../../../../config/catalog/road-material';
 import { PLACEMENT_GRID } from '../../../../core/game/profile';
+
+type BandRegion = Parameters<typeof roadBandLayout>[0];
+type BandSpec = Parameters<typeof roadBandLayout>[1];
+
+/** Every band patch of a region, window by window, as both views draw them. */
+const buildRoadMaterial = (region: BandRegion, spec: BandSpec): RoadMaterialPatch[] =>
+  roadBandLayout(region, spec).windows.flatMap((window) => window.patches());
 
 const spec = getCatalogItem('path-urban-asphalt')!.roadMaterial!;
 const stripe = spec.layers[2]!.color;

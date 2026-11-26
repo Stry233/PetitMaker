@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEditorStore } from '../../../state/store';
 import { newMap } from '../../../editor/operations/map';
 import { editorPort } from '../../../editor/session/context';
-import { enterPlanetSession, finishPlanetSession, leavePlanetSession, sessionPlanet } from '../../../editor/operations/planet-session';
+import { sessionCut } from '../../_support/planet-session';
+import { enterPlanetSession, finishPlanetSession, leavePlanetSession } from '../../../editor/operations/planet-session';
 import { host } from '../../../editor/host/host';
 import { isGrassZone, CellZone } from '../../../core/game/zones';
 import { objectRect } from '../../../state/object-geometry';
@@ -34,7 +35,7 @@ describe('a planet session opened from a draft', () => {
     expect(at.map((c) => [c.x - ox, c.y - oy])).toEqual([[0, 0], [3, 1], [7, 5]]);
     // Cell 0 is the draft's corner, embedded on a chunk line.
     expect([ox % CHUNK_SIZE, oy % CHUNK_SIZE]).toEqual([0, 0]);
-    const cut = sessionPlanet(store().gridState!)!.template;
+    const cut = sessionCut()!.template;
     expect([cut.width, cut.height]).toEqual([template.width, template.height]);
     const grass = (t: typeof template) => t.zones.flat().filter((z) => isGrassZone(z)).length;
     expect(grass(cut)).toBe(grass(template));
@@ -44,10 +45,10 @@ describe('a planet session opened from a draft', () => {
   it('saves the same planet a drawn session of that ground saves', () => {
     const template = planetFixture();
     enterPlanetSession(editorPort, { template, review: { cells: [], landmark: false } });
-    const drafted = sessionPlanet(store().gridState!)?.template ?? null;
+    const drafted = sessionCut()?.template ?? null;
     leavePlanetSession(editorPort);
     enterPlanetSession(editorPort, { template });
-    expect(sessionPlanet(store().gridState!)!.template.id).toBe(drafted!.id);
+    expect(sessionCut()!.template.id).toBe(drafted!.id);
     expect(store().planetSession!.review).toBeUndefined();
     const done = finishPlanetSession(editorPort, 'Bay');
     expect(done.ok).toBe(true);
@@ -70,15 +71,15 @@ describe('a planet session opened from a draft', () => {
     expect(at).not.toBeNull();
     const { x, y } = at!;
     // The tools plan against the session as against any planet session: the ground stays flat.
-    const ctx = makeToolCtx(grid, exec, 1, 3, { groundEditable: store().planetSession !== null, planetMaterial: 'mountain' });
+    const ctx = makeToolCtx(grid, exec, 1, { groundEditable: store().planetSession !== null, planetMaterial: 'mountain' });
     expect(ctx.arming.groundEditable).toBe(true);
     expect(planPaint([{ x, y }], ctx, 'mountain', new Set()).commands).toEqual([]);
-    const before = sessionPlanet(store().gridState!)!.template;
+    const before = sessionCut()!.template;
     const pond = planPaint([{ x: x + 1, y }, { x: x + 2, y }], ctx, 'water', new Set());
     const start = exec.beginStroke();
     for (const cmd of pond.commands) expect(exec.execute(cmd).success).toBe(true);
     expect(start.commit()).toEqual([]);
-    const after = sessionPlanet(store().gridState!)!.template;
+    const after = sessionCut()!.template;
     expect(after.zones).toEqual(before.zones);
     expect(after.water?.reduce((n, v) => n + v, 0)).toBe(2);
   });

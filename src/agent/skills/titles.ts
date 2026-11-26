@@ -5,9 +5,7 @@ import type { I18nKey } from '../../i18n/keys';
 
 /** Every skill name; `index.ts:SKILLS` holds exactly these. */
 const SKILL_NAMES = [
-  'site-analysis', 'plan-on-map', 'build-from-plan', 'composition', 'terrain-shaping', 'settlement-design', 'ecology-planting', 'street-grammar',
-  'design-review', 'pro-terraforming', 'garden-town', 'water-garden', 'figure-landscape', 'cozy-village',
-  'terraced-hill-park',
+  'layout-patterns', 'plan-island', 'region-kinds', 'neighbors', 'plan-on-map', 'build-from-plan', 'terrain-shaping', 'pro-terraforming', 'figure-landscape',
 ] as const;
 
 export type SkillName = typeof SKILL_NAMES[number];

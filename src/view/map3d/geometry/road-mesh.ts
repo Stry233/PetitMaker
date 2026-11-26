@@ -10,6 +10,7 @@ import { roadPatternKey } from '../../shared/road/pattern';
 import { objectElevation } from '../../../state/object-geometry';
 import { getCatalogItem } from '../../../state/catalog';
 import { roadLookup } from '../../../state/object-index';
+import type { RoadLookup } from '../../../core/model/road-lookup';
 import { ROAD_FEATHER } from '../../shared/road/shape';
 import type { RoadRegion } from '../../shared/road/region';
 import { RoadRegionCache, roadSurfaceTiles } from '../../shared/road/region-cache';
@@ -161,9 +162,9 @@ export function buildRoadTrimMeshes(
   hiddenLayers?: ReadonlySet<number>,
   offsets?: ReadonlyMap<string, { dx: number; dz: number }>,
   cache: RoadTrimCache = new RoadTrimCache(),
+  roads: RoadLookup = roadLookup(state),
 ): RoadTrimPart[] {
   const { width, height } = state.template;
-  const roads = roadLookup(state);
   const roadObjs = roadSurfaceTiles(state);
   const origin = cellCornerWorld(0, 0, width, height, PLACEMENT_GRID);
   const bands = roadMaterialReady(cache.onMaterialReady);

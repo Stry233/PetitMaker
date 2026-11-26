@@ -39,8 +39,8 @@ function setup(tool: ToolType) {
   // A block whose outer corner the edge cut can round: its NW corner is intersection (5, 5).
   if (tool === ToolType.EdgeCut) for (let y = 6; y < 9; y++) for (let x = 6; x < 9; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
   useEditorStore.setState({
-    gridState: state, commandExecutor: executor, region: [], selectingRegion: false, selection: [],
-    layerPinned: false, activeLayer: 1, autoEdgeCut: 'off', eraserShape: 'free',
+    gridState: state, commandExecutor: executor, regions: {}, selectingRegion: false, selection: [],
+    autoEdgeCut: 'off', eraserShape: 'free',
     ...armedEditMode({ tool, macro: null, item: tool === ToolType.ObjectPlacer ? ITEM : null, content: 'mountain' }),
   });
   const manager = new ToolManager(makeStubView(), executor, state, editorToolWiring());
@@ -52,7 +52,7 @@ function setup(tool: ToolType) {
     camera: { pan: vi.fn(), zoomBy: vi.fn() },
     ...headlessViewVerbs(),
   } as unknown as ActiveView;
-  manager.setActiveTool(tool); useEditorStore.setState({ activeLayer: 1 });
+  manager.setActiveTool(tool);
   registerToolManager(manager); setActiveView(view);
   const canvas = render(<Host />).getByTestId('canvas');
   const snapshot = () => JSON.stringify([state.cells, [...state.objects.keys()]]);

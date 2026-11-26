@@ -35,7 +35,7 @@ function Device({ shape, children }: { shape: LayoutShape; children: ReactNode }
 }
 
 function mount(shape: LayoutShape) {
-  const shell = (s: LayoutShape) => <Device shape={s}><Shell onRestoreSession={() => {}}><div /></Shell></Device>;
+  const shell = (s: LayoutShape) => <Device shape={s}><Shell><div /></Shell></Device>;
   const view = render(shell(shape));
   return { ...view, turn: (s: LayoutShape) => view.rerender(shell(s)) };
 }

@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildTerrainMeshes } from '../../../_support/terrain-meshes';
 import { shadeFall } from '../../../../view/map3d/layers/terrain-layer';
 import { TerrainType } from '../../../../core/model/types';
 import type { GridState } from '../../../../core/model/types';

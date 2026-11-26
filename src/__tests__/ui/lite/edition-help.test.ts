@@ -3,16 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => { (globalThis as { __PETIT_LITE__?: boolean }).__PETIT_LITE__ = true; });
 // The offline build aliases the edition's Help module to its own (`scripts/edition-build.mts`).
 vi.mock('../../../ui/help/edition-help', () => import('../../../ui/lite/edition-help'));
-import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/help/catalog';
+import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../editor/help/catalog';
+import { pageFigure } from '../../../ui/help/page-figures';
 import { tourCards } from '../../../ui/chrome/tour/deck';
 import { REEL_FILES } from '../../../ui/lite/tour-reel-files';
 import { TABS } from '../../../ui/shell/bars/generate/generate-shelf';
-import { START_PAGES } from '../../../ui/help/pages/start';
-import { BUILD_PAGES } from '../../../ui/help/pages/build';
-import { GENERATE_PAGES } from '../../../ui/help/pages/generate';
-import { PLAN_PAGES } from '../../../ui/help/pages/plan';
-import { SHARE_PAGES } from '../../../ui/help/pages/share';
-import { MISC_PAGES } from '../../../ui/help/pages/misc';
+import { START_PAGES } from '../../../editor/help/pages/start';
+import { BUILD_PAGES } from '../../../editor/help/pages/build';
+import { GENERATE_PAGES } from '../../../editor/help/pages/generate';
+import { PLAN_PAGES } from '../../../editor/help/pages/plan';
+import { SHARE_PAGES } from '../../../editor/help/pages/share';
+import { MISC_PAGES } from '../../../editor/help/pages/misc';
 
 /** Every string key a record names, at any depth. */
 function keysOf(value: unknown): string[] {
@@ -25,8 +26,8 @@ function keysOf(value: unknown): string[] {
 describe('Lite help and tour', () => {
   it('documents available features with reachable related pages', () => {
     expect(HELP_GROUPS).not.toContain('agent');
-    expect(HELP_PAGE_ORDER).toEqual(expect.arrayContaining(['welcome', 'tour', 'terrain', 'objects', 'gen-island', 'maze', 'share', 'save']));
-    for (const id of ['json', 'gen-letter', 'gen-picture']) expect(HELP_PAGE_ORDER).not.toContain(id);
+    expect(HELP_PAGE_ORDER).toEqual(expect.arrayContaining(['welcome', 'tour', 'terrain', 'objects', 'gen-island', 'maze', 'gen-letter', 'gen-picture', 'share', 'save']));
+    expect(HELP_PAGE_ORDER).not.toContain('json');
     for (const id of HELP_PAGE_ORDER) {
       const page = HELP_PAGES[id];
       expect(page.sections.some(section => section.kind === 'steps')).toBe(false);
@@ -34,8 +35,8 @@ describe('Lite help and tour', () => {
     }
     expect(HELP_PAGES.share.ledeKey).toBe('lite.save_hint');
     expect(HELP_PAGES.share).toMatchObject({ titleKey: 'share.title', navKey: 'share.title' });
-    expect(HELP_PAGES.welcome.figure).toEqual({ kind: 'surface', surface: 'frame-overview', captionKey: 'help.frame.figcap' });
-    expect(HELP_PAGES.generate.figure).toBeUndefined();
+    expect(pageFigure('welcome')).toEqual({ kind: 'surface', surface: 'frame-overview', captionKey: 'help.frame.figcap' });
+    expect(pageFigure('generate')).toBeUndefined();
     for (const id of HELP_PAGE_ORDER) expect(HELP_PAGES[id]).not.toHaveProperty('lite');
     expect(HELP_PAGES.share.sections.some(section => section.kind === 'keys' && section.rows.some(row => row.doKey === 'help.share.key_json'))).toBe(false);
   });
@@ -63,12 +64,14 @@ describe('Lite help and tour', () => {
 
   it('[UI-46] leaves out the assistant\'s card and words the cards for the offline edition', () => {
     const cards = tourCards(true);
-    expect(cards.map(card => card.kind)).toEqual(['welcome', 'move', 'shape', 'objects', 'view3d', 'generate', 'share']);
+    expect(cards.map(card => card.kind)).toEqual(['welcome', 'move', 'shape', 'objects', 'blueprint', 'view3d', 'generate', 'share']);
     expect(tourCards(false).map(card => card.kind)).not.toContain('view3d');
     expect(cards.find(card => card.kind === 'share')).toMatchObject({ bodyKey: 'lite.save_hint' });
     // Its save window has no tabs to show, so the share card offers no Show me.
     expect(cards.find(card => card.kind === 'share')?.show ?? []).toEqual([]);
-    expect(cards.find(card => card.kind === 'generate')).toMatchObject({ bodyKey: 'lite.tour_generate' });
+    expect(cards.find(card => card.kind === 'generate')).toMatchObject({ bodyKey: 'tour.generate_body' });
+    // Lite writes no files, so the library step names the folders without Export and Import.
+    expect(cards.find(card => card.kind === 'blueprint')?.show?.find(step => step.id === 'library')).toMatchObject({ textKey: 'lite.tour_blueprint_library' });
     for (const card of cards) expect(card).not.toHaveProperty('needsWebGL2');
   });
 
@@ -76,7 +79,7 @@ describe('Lite help and tour', () => {
     expect(REEL_FILES).toEqual({});
   });
 
-  it('offers the island and maze generators only', () => {
-    expect(TABS.map(tab => tab.id)).toEqual(['maze', 'island']);
+  it('offers every generator kind', () => {
+    expect(TABS.map(tab => tab.id)).toEqual(['maze', 'text', 'image', 'island']);
   });
 });

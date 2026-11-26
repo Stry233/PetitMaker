@@ -2,7 +2,7 @@
  * the algorithm. The map records it opaquely (`core/model/types.ts:GenerationRecord`). */
 import { fnv1aInts, hashJSON } from '../../core/base/hash';
 import { BASE_SUPPORT, ELEVATION_MAX } from '../../core/game/profile';
-import type { MacroCoord, TerrainType } from '../../core/model/types';
+import type { MacroCoord, Rotation, TerrainType } from '../../core/model/types';
 
 /**
  * What kind of picture a stencil was read from, which decides how it is read and how it is matched.
@@ -66,6 +66,9 @@ export interface StencilPlan {
   stencil: Stencil;
   /** Where the stencil's top-left cell lands on the map. */
   origin: MacroCoord;
+  /** The map direction the picture's top points, clockwise from north; absent is north. The stencil
+   *  is already turned to it (`stencil/stencil-turn.ts`); the pieces laid turn with it. */
+  facing?: Rotation;
   /**
    * The cells the run may write to, as flat `y * mapWidth + x` indices, or absent for "anywhere
    * buildable". A stencil is fitted to the region's bounding box, which is not the region: a
@@ -264,7 +267,7 @@ function stencilPlanDigest(plan: StencilPlan): unknown {
 /** The version of what the generators lay for a recipe. One recipe on one template and catalog
  *  lays one map per version; a change that moves a generated map on purpose bumps it, together with
  *  the golden digests `generation-determinism.slow.test.ts` holds. Not recorded in recipes or share codes. */
-export const GENERATOR_VERSION = 6;
+export const GENERATOR_VERSION = 8;
 
 /** A run's identity: every setting of `config`, with a stencil's picture folded in by content. A
  *  recipe without a picture hashes as `hashJSON(config)`. The candidate cache and the provenance a

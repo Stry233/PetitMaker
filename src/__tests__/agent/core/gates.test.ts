@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { append, createLog, eventsOf } from '../../../agent/core/log';
-import { answerGate, askGate, awaitGate, pendingGate, shouldGate, shouldGatePlan } from '../../../agent/core/gates';
+import { answerGate, answerWithOption, askGate, awaitGate, pendingGate, shouldGate, shouldGatePlan } from '../../../agent/core/gates';
 import type { Oversight } from '../../../agent/core/gates';
 
 describe('shouldGate', () => {
@@ -119,6 +119,34 @@ describe('askGate / pendingGate / answerGate', () => {
     const gateId = askGate(log, { scope: 'tool', summary: 'do it' });
     answerGate(log, gateId, 'allow');
     expect(() => answerGate(log, gateId, 'skip')).toThrow();
+  });
+});
+
+describe('answerWithOption', () => {
+  function asked() {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    const gateId = askGate(log, { scope: 'tool', summary: 'Which shore?', options: [{ cap: 'The north shore' }, { cap: 'The bay' }] });
+    return { log, gateId };
+  }
+
+  it('answers in words with the caption of the option taken', () => {
+    const { log, gateId } = asked();
+    answerWithOption(log, gateId, 1);
+    expect(eventsOf(log).at(-1)).toMatchObject({ kind: 'gateAnswered', gateId, answer: 'words', words: 'The bay' });
+    expect(pendingGate(log)).toBeUndefined();
+  });
+
+  it('refuses an option the gate never offered, and leaves the gate open', () => {
+    const { log, gateId } = asked();
+    expect(() => answerWithOption(log, gateId, 2)).toThrow();
+    expect(pendingGate(log)?.gateId).toBe(gateId);
+  });
+
+  it('refuses a gate already answered', () => {
+    const { log, gateId } = asked();
+    answerGate(log, gateId, 'skip');
+    expect(() => answerWithOption(log, gateId, 0)).toThrow();
   });
 });
 

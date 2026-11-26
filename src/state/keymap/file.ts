@@ -4,7 +4,7 @@
  * Import must reject conflicts so a crafted or edited file can't collide two commands onto one key.
  */
 import { normalizeCombo } from '../../platform/input/combo';
-import { META_BY_ID, UI_ZOOM_IDS, withCurrentIds } from './registry';
+import { META_BY_ID, UI_ZOOM_IDS, comboBindable, withCurrentIds } from './registry';
 import { currentBinds, uiZoomVariantCombos, type Overrides } from './resolve';
 
 const FILE_MARK = 'petitmaker-keybinds';
@@ -26,7 +26,8 @@ interface ParseResult {
 /** Parse + validate imported keybinds JSON → a binds map limited to known commands. Accepts either
  *  the exported envelope ({binds:{…}}) or a bare id→combo map. Rejects malformed combos, duplicates,
  *  and a command parked on a shifted twin of the file's own UI-zoom bindings; silently ignores
- *  unknown command ids (forward-compat). */
+ *  unknown command ids (forward-compat) and drops a binding on a key the browser or the system
+ *  takes (`registry.ts:UNBINDABLE_KEYS`), whose command then keeps its shipped key. */
 export function parseKeybinds(text: string): ParseResult {
   let data: unknown;
   try { data = JSON.parse(text); } catch { return { ok: false, error: 'invalid-json' }; }
@@ -36,12 +37,14 @@ export function parseKeybinds(text: string): ParseResult {
 
   const binds: Record<string, string | null> = {};
   const seen = new Map<string, string>(); // normalized combo → command id
+  const dropped = new Set<string>();
   for (const [id, val] of Object.entries(withCurrentIds(raw as Record<string, unknown>))) {
     if (!META_BY_ID.has(id)) continue; // ignore unknown ids
     if (val === null) { binds[id] = null; continue; }
     if (typeof val !== 'string') return { ok: false, error: 'invalid-combo' };
     const n = normalizeCombo(val);
     if (!n) return { ok: false, error: 'invalid-combo' };
+    if (!comboBindable(n)) { dropped.add(id); continue; }
     const prev = seen.get(n);
     if (prev && prev !== id) return { ok: false, error: 'duplicate-combo' };
     seen.set(n, id);
@@ -60,7 +63,7 @@ export function parseKeybinds(text: string): ParseResult {
     const parsed = Object.keys(exact).length ? parseKeybinds(JSON.stringify(exact)) : { ok: true, binds: {} };
     if (!parsed.ok || !parsed.binds) return { ok: false, error: 'invalid-shape' };
     for (const [id, combo] of currentBinds(parsed.binds)) {
-      if (binds[id] !== combo) return { ok: false, error: 'invalid-shape' };
+      if (!dropped.has(id) && binds[id] !== combo) return { ok: false, error: 'invalid-shape' };
     }
     return { ok: true, binds, overrides: parsed.binds };
   }

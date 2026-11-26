@@ -7,7 +7,7 @@
  */
 import { type ComposerRoute, displayAgentText } from '../../../agent/panel';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react';
-import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import { Icon } from '../parts/sprite';
 import { zoneEnter } from '../parts/panel-parts';
@@ -21,7 +21,8 @@ import { useNameReveal } from '../../primitives/use-name-reveal';
 import { cssMotion, framerMotion } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
 import { useObservedSize } from '../../primitives/use-observed-size';
-import { ExpandedField, isCompositionKey, type SeatRect } from './ExpandedField';
+import { ExpandedField, type SeatRect } from './ExpandedField';
+import { useComposition } from './use-composition';
 import { CLUSTER_SIZE, COMPOSER_HEIGHT, FIELD_LINE, FIELD_MAX_LINES, PILL_RADIUS, WELL_LEAD_IN, WELL_PAD } from './metrics';
 import type { I18nKey } from '../../../i18n/keys';
 import { useEffectEvent } from '../../primitives/use-effect-event';
@@ -161,6 +162,8 @@ interface ComposerProps {
   focusRef?: MutableRefObject<(() => void) | null>;
   /** Standing reminder under the well while the assistant waits for an order. */
   caveat?: string;
+  /** The panel is put away: closed, folded under the dock's sheet or hidden with the interface. */
+  away?: boolean;
 }
 
 export function Composer({
@@ -180,6 +183,7 @@ export function Composer({
   onDraftChange,
   fill,
   focusRef,
+  away = false,
 }: ComposerProps) {
   const t = useT();
   const sendName = useNameReveal(t('agent.action_send'));
@@ -189,12 +193,15 @@ export function Composer({
   const [value, setValue] = useState('');
   /** Whether the single shared field is rendered in the floating editor. */
   const [expanded, setExpanded] = useState(false);
+  // The body-portaled card goes with its panel, leaving included, and its words stay in the well.
+  const gone = !useIsPresent() || away;
+  if (gone && expanded) setExpanded(false);
   /** Well geometry: CSS-pixel height for its seat and screen-pixel rect for the body portal. */
   const [seat, setSeat] = useState<{ height: number; rect: SeatRect } | null>(null);
   /** Whether the draft exceeds the inline line limit. */
   const [overflows, setOverflows] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const composing = useRef(false);
+  const composition = useComposition();
   const wellRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef<HTMLButtonElement>(null);
   /** Whether focus should return to the docked field after folding. */
@@ -251,8 +258,8 @@ export function Composer({
   useEffect(() => {
     if (expanded || !returning.current) return;
     returning.current = false;
-    inputRef.current?.focus({ preventScroll: true });
-  }, [expanded]);
+    if (!gone) inputRef.current?.focus({ preventScroll: true });
+  }, [expanded, gone]);
 
   /** Measures the well and hands the shared field to the floating editor. */
   function unfold(): void {
@@ -285,7 +292,7 @@ export function Composer({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
-    if (composing.current || isCompositionKey(e.nativeEvent)) {
+    if (composition.owns(e)) {
       e.stopPropagation();
       return;
     }
@@ -297,7 +304,7 @@ export function Composer({
       return;
     }
     if (e.key === 'Escape') {
-      // Each Escape consumes one local layer: suggestion first, then draft, then the parent panel.
+      // Each Escape consumes one local layer, suggestion first, then draft; an empty field leaves it to the back key.
       if (showGhost) {
         e.preventDefault();
         e.stopPropagation();
@@ -341,8 +348,8 @@ export function Composer({
           className={FIELD_WRAP_CLASS}
           style={off ? OFF_WELL_STYLE : WELL_STYLE}
         >
-          {/* The attached-region chip occupies the well's leading slot. */}
-          {regionChip}
+          {/* The attached-region chip occupies the well's leading slot, and fades out of it when let go. */}
+          <AnimatePresence initial={false}>{regionChip}</AnimatePresence>
           {/* The wrapper title exposes an ellipsized suggestion while preserving textarea pointer input. */}
           <div
             style={{ ...FIELD_WRAP_STYLE, ...(off ? { pointerEvents: 'none' } : null) }}
@@ -360,8 +367,7 @@ export function Composer({
               // The suggestion overlay replaces the ordinary placeholder while visible.
               placeholder={showGhost ? '' : t(placeholderKey)}
               onChange={(e) => setValue(e.target.value)}
-              onCompositionStart={() => { composing.current = true; }}
-              onCompositionEnd={() => { composing.current = false; }}
+              {...composition.bind}
               onKeyDown={onKeyDown}
               style={{
                 ...INPUT_STYLE,

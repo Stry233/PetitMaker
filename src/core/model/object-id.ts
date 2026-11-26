@@ -1,5 +1,5 @@
 /**
- * New object, note and planet ids. Uniqueness is an invariant: `state.objects` is keyed by id, so
+ * New object, note, planet and record ids. Uniqueness is an invariant: `state.objects` is keyed by id, so
  * a repeat would replace the object holding it, which the placement rules refuse rather than let
  * happen (`rules/placement-overlap.ts`). Every id comes from the one installed `IdSource`.
  */
@@ -40,4 +40,12 @@ export function generateId(prefix: string): string {
 
 export function generateObjectId(): string {
   return generateId('');
+}
+
+/** A new id for a record a library keeps (a blueprint, a planet), kept through exports and imports:
+ *  a random UUID where the platform has one, so a file opened on another device never meets its id
+ *  there; else, and under sequential ids, the next id after `prefix`. */
+export function generateRecordId(prefix: string): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return source === sessionIds && typeof c?.randomUUID === 'function' ? c.randomUUID() : generateId(prefix);
 }

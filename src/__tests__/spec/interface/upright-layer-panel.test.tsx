@@ -26,7 +26,7 @@ function sizeWindow(w: number, h: number): void {
 function mount(inputMode: InputMode) {
   return render(
     <InputModeProvider inputMode={inputMode} shape="portrait">
-      <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+      <I18nProvider><Shell><div /></Shell></I18nProvider>
     </InputModeProvider>,
   );
 }

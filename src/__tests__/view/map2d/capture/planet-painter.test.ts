@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { mapRevisionOf } from '../../../../state/map-revision';
+import { mapRevisionOf } from '../../../../core/model/grid-model';
 import { paintPlanet, planetBounds, planetPictureSide, type CellExtent } from '../../../../view/map2d/capture/planet-painter';
 import { mapCaptureFrame } from '../../../../core/grid/map-chunks';
 import { mapPictureFrame } from '../../../../view/map2d/capture/thumbnail';
@@ -12,6 +12,7 @@ import { createGridState } from '../../../../core/model/template';
 import { TerrainType, type GridState, type MapTemplate } from '../../../../core/model/types';
 import { CellZone } from '../../../../core/game/zones';
 import { LOSS_COLOR } from '../../../../view/shared/viewport/view-constants';
+import { setGlQualityOverride } from '../../../../platform/device/device-quality';
 
 interface Call { op: string; args: unknown[]; fillStyle: unknown; alpha: number; target: HTMLCanvasElement }
 
@@ -95,12 +96,21 @@ describe('paintPlanet', () => {
     expect(calls.some((c) => c.op === 'drawImage' && c.target === canvas)).toBe(false);
   });
 
-  it('sizes the backing store to the device-pixel ratio', () => {
+  it('sizes the backing store to the render scale', () => {
     recordCanvases();
     vi.stubGlobal('devicePixelRatio', 2);
-    const canvas = canvasOf(300, 200);
-    paintPlanet(canvas, { template: emptyPlanet() }, null, { tx: 0, ty: 0, scale: 1 }, { margin: 0 });
-    expect([canvas.width, canvas.height]).toEqual([600, 400]);
+    setGlQualityOverride('full');
+    try {
+      const canvas = canvasOf(300, 200);
+      paintPlanet(canvas, { template: emptyPlanet() }, null, { tx: 0, ty: 0, scale: 1 }, { margin: 0 });
+      expect([canvas.width, canvas.height]).toEqual([600, 400]);
+      // A GPU held to the light tier draws its pictures at one device px per css px.
+      setGlQualityOverride('lite');
+      paintPlanet(canvas, { template: emptyPlanet() }, null, { tx: 0, ty: 0, scale: 1 }, { margin: 0 });
+      expect([canvas.width, canvas.height]).toEqual([300, 200]);
+    } finally {
+      setGlQualityOverride(null);
+    }
   });
 
   it('fits the land, not the grid, with equal margins and centred, then zooms about the centre and pans', () => {
@@ -213,17 +223,44 @@ describe('planetPicture', () => {
     const asked: { state: GridState; side: number; opts: unknown }[] = [];
     vi.resetModules();
     vi.doMock('../../../../view/map2d/capture/thumbnail', () => ({
-      mapPicture: async (state: GridState, side: number, opts: unknown) => { asked.push({ state, side, opts }); return null; },
+      mapPicture: async (state: GridState, side: number, opts: unknown) => { asked.push({ state, side, opts }); return document.createElement('canvas'); },
     }));
     const painter = await import('../../../../view/map2d/capture/planet-painter');
     const template = getMapTemplate('hexia');
     const state = createGridState(template);
-    await painter.planetPicture({ template, state, revision: '3:4' }, 1024);
-    await painter.planetPicture({ template }, 512);
-    await painter.planetPicture({ template }, 512);
+    const { signal } = new AbortController();
+    await painter.planetPicture({ template, state, revision: '3:4' }, 1024, signal);
+    await painter.planetPicture({ template }, 512, signal);
+    await painter.planetPicture({ template }, 512, signal);
     expect(asked[0]).toEqual({ state, side: 1024, opts: { version: '3:4' } });
     expect(asked[1]!.state.template).toBe(template);
     expect(asked[2]!.state, 'one fresh map per template').toBe(asked[1]!.state);
+    vi.doUnmock('../../../../view/map2d/capture/thumbnail');
+  });
+
+  it('asked before a renderer stands, is taken once one does, and is dropped once its asker has gone', async () => {
+    let picture: HTMLCanvasElement | null = null;
+    vi.resetModules();
+    vi.doMock('../../../../view/map2d/capture/thumbnail', () => ({ mapPicture: async () => picture }));
+    const painter = await import('../../../../view/map2d/capture/planet-painter');
+    const { setMapRenderer } = await import('../../../../view/map2d/scene/renderer-registry');
+    const template = getMapTemplate('hexia');
+
+    const asker = new AbortController();
+    let taken: HTMLCanvasElement | null | undefined;
+    void painter.planetPicture({ template }, 512, asker.signal).then((got) => { taken = got; });
+    await Promise.resolve(); await Promise.resolve();
+    expect(taken, 'no renderer yet').toBeUndefined();
+    picture = document.createElement('canvas');
+    setMapRenderer({} as never);
+    await vi.waitFor(() => expect(taken).toBe(picture));
+
+    picture = null;
+    const gone = new AbortController();
+    const dropped = painter.planetPicture({ template }, 512, gone.signal);
+    gone.abort();
+    await expect(dropped).resolves.toBeNull();
+    setMapRenderer(null);
     vi.doUnmock('../../../../view/map2d/capture/thumbnail');
   });
 });

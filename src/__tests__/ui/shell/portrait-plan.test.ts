@@ -40,7 +40,7 @@ describe('the upright frame plan', () => {
     expect(p.character.top + CHARACTER_SEAT.h).toBeLessThan(p.railTop);
   });
 
-  spec('UI-28', 'every upright window keeps all five tiles and their splat inside its width', () => {
+  spec('UI-28', 'every upright window keeps all six tiles and their splat inside its width', () => {
     for (const [vw, vh] of UPRIGHT) {
       const p = upright(vw, vh);
       const row = p.modeRow;

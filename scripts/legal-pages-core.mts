@@ -20,7 +20,8 @@ import { localeTag } from '../src/i18n/locale-info';
 import { registerLocaleTable } from '../src/i18n/translations';
 import { brandName } from '../src/i18n/terms/brand';
 import { toDocumentCspMeta } from '../security/headers-policy';
-import { BROWN_TEXT, FRAME_INK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, rgbaOf } from '../src/assets/brand-palette';
+import { BROWN_TEXT, FRAME_INK, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY } from '../src/assets/brand-palette';
+import { rgbaOf } from '../src/core/base/color';
 
 export type Lang = 'en' | 'zh';
 

@@ -89,3 +89,32 @@ it('keeps both short-span endpoints reachable without changing a click into a re
   fireEvent.pointerUp(last, { clientX: x, clientY: 40 });
   expect(s().annotationUndoLane.length).toBe(lane);
 });
+
+it('[EDIT-81] offers each verb where its verb acts: Merge for two or more selected zones, Flip for any selected measurement', () => {
+  /** The row's verbs over `selection`, rendered afresh so no leaving row stands beside it. */
+  const verbsOver = (selection: string[]) => {
+    cleanup();
+    s().setAnnotationSelection(selection);
+    render(<I18nProvider><AnnotationEditor /></I18nProvider>);
+    return screen.queryAllByRole('button').map((b) => b.textContent).filter((text) => ['Merge', 'Flip', 'Delete'].includes(text ?? ''));
+  };
+  s().addAnnotation({ kind: 'zone', id: 'a', color: '#FFB347', cells: [{ x: 2, y: 8 }], tag: null, num: 1 });
+  s().addAnnotation({ kind: 'zone', id: 'b', color: '#FFB347', cells: [{ x: 6, y: 8 }], tag: null, num: 2 });
+  expect(verbsOver(['m'])).toEqual(['Flip', 'Delete']);
+  expect(verbsOver(['a'])).toEqual(['Delete']);
+  expect(verbsOver(['a', 'b'])).toEqual(['Merge', 'Delete']);
+  expect(verbsOver(['a', 'm', 'b'])).toEqual(['Merge', 'Flip', 'Delete']);
+  fireEvent.click(screen.getByRole('button', { name: 'Flip' }));
+  expect(note()).toMatchObject({ id: 'm', flipped: false });
+  fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+  expect(s().gridState!.annotations!.items.map((n) => n.id)).toEqual(['m', 'a']);
+  expect(s().annotationSelection).toEqual(['a']);
+});
+
+it('[EDIT-81] shows the verbs unavailable on a locked layer, where each is refused', () => {
+  act(() => { s().setAnnotationsLocked(true); });
+  const flip = screen.getByRole('button', { name: 'Flip' }) as HTMLButtonElement;
+  expect(flip.disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(note()).toMatchObject({ id: 'm', flipped: true });
+});

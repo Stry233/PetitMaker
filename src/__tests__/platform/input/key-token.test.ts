@@ -5,13 +5,37 @@
  * ('1'..'8'), but on AZERTY (and other non-QWERTY layouts) the unshifted digit row types a
  * symbol, not the digit (French Digit1 → '&'), so those bindings would never fire without a
  * physical-row fallback. Letters are deliberately excluded (WASD-style bindings follow the
- * layout's own keycap), and a shifted digit combo stays character-based.
+ * layout's own keycap), and a shifted digit combo reads first by the symbol it types; the engine also
+ * reads it as its digit, which a cycle's way back on Shift and a digit relies on.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { eventKeyToken } from '../../../platform/input/key-token';
+import { eventKeyToken, eventKeyTokens, shiftKeepsToken } from '../../../platform/input/key-token';
 import { ShortcutManager } from '../../../platform/input/shortcut-manager';
 
 const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent;
+
+describe('eventKeyTokens: what the shortcut engine matches a press by', () => {
+  it('reads Shift on the digit row as the symbol it types, then as its digit', () => {
+    expect(eventKeyTokens(ev({ key: '%', shiftKey: true, code: 'Digit5' }))).toEqual(['%', '5']);
+    // A Russian Shift+7 types '?', which shift+? keeps before the digit.
+    expect(eventKeyTokens(ev({ key: '?', shiftKey: true, code: 'Digit7' }))).toEqual(['?', '7']);
+    expect(eventKeyTokens(ev({ key: '5', shiftKey: true, code: 'Digit5' }))).toEqual(['5']);
+  });
+
+  it('reads any other press once', () => {
+    expect(eventKeyTokens(ev({ key: '<', shiftKey: true, code: 'Comma' }))).toEqual(['<']);
+    expect(eventKeyTokens(ev({ key: 'L', shiftKey: true, code: 'KeyL' }))).toEqual(['l']);
+    expect(eventKeyTokens(ev({ key: '&', code: 'Digit1' }))).toEqual(['1']);
+  });
+});
+
+describe('shiftKeepsToken', () => {
+  it('holds for Latin letters and digits, and not for a key whose character with Shift depends on the layout', () => {
+    expect(['l', 'q', '5', '0'].map(shiftKeepsToken)).toEqual([true, true, true, true]);
+    // A French ù types % with Shift; numpad digits lose Shift to NumLock on Windows.
+    expect([',', '[', 'ù', 'ß', 'д', 'num5', 'space', 'dead'].map(shiftKeepsToken)).toEqual([false, false, false, false, false, false, false, false]);
+  });
+});
 
 describe('eventKeyToken: physical digit-row fallback', () => {
   it('falls back to the code-named digit when the unshifted key is a layout symbol (AZERTY)', () => {

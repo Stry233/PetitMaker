@@ -31,6 +31,7 @@ import {
   showCharacter, watchDeskSeat,
 } from './seat';
 import { useObservedSize } from '../../primitives/use-observed-size';
+import { useViewportEpoch } from '../../primitives/use-viewport-epoch';
 import { ActionButton } from '../../primitives/ActionButton';
 import { onMorph, onMorphLayout, pageMorphing, type MorphRun } from '../../primitives/morph';
 
@@ -47,6 +48,9 @@ const LAYER_STYLE: CSSProperties = {
 
 /** Docked character sits one rung above the ground-level desk. */
 const GROUND_LAYER_STYLE: CSSProperties = { ...LAYER_STYLE, zIndex: z.ground + 1 };
+
+/** A frame surface standing over her seat covers her: she stands one step under the frame plane. */
+const COVERED_LAYER_STYLE: CSSProperties = { ...LAYER_STYLE, zIndex: z.panel - 1 };
 
 /** The parked character's box in the layer's own space, which the chip is placed from. */
 interface Parked { left: number; top: number; width: number; height: number }
@@ -68,6 +72,8 @@ interface CharacterHostProps {
   connected: boolean;
   /** The interface has been put away, so the character goes with the frame she stands on. */
   hidden?: boolean;
+  /** A surface of the frame stands over her seat (the wide blueprint library unfolded): she stands under it. */
+  covered?: boolean;
   /** Character width before the first seat measurement. */
   size: number;
   /** Opens the panel from the hero chip. */
@@ -77,7 +83,7 @@ interface CharacterHostProps {
 }
 
 export function CharacterHost({
-  entranceRef, open, connected, hidden = false, size, onOpen, onToggle,
+  entranceRef, open, connected, hidden = false, covered = false, size, onOpen, onToggle,
 }: CharacterHostProps) {
   const { place, sheetAside } = useDockStage();
   // The bottom dock's seam moves her desk seat when the handle sets a new depth.
@@ -134,8 +140,10 @@ export function CharacterHost({
     const frame = requestAnimationFrame(() => parkNow.current());
     return () => cancelAnimationFrame(frame);
   }, []);
-  // A dock change can move a reused seat element without calling its ref, so the stage re-parks too.
-  useEffect(() => parkSettled(), [parkSettled, park, chromeScale, place, depth]);
+  // A dock change can move a reused seat element without calling its ref, so the stage re-parks too,
+  // as it does for a resize that leaves the chrome's scale where it was.
+  const viewport = useViewportEpoch();
+  useEffect(() => parkSettled(), [parkSettled, park, chromeScale, place, depth, viewport]);
   // CSS zoom changes the containing plane's layout size, while each seat keeps its local size.
   useObservedSize(() => {
     const planes = new Set<HTMLElement>();
@@ -146,16 +154,6 @@ export function CharacterHost({
     }
     return [...planes];
   }, () => parkNow.current(), [entranceRef, seated], { layout: false, immediate: false });
-  // A stable listener also catches height-only resizes that do not change chrome scale.
-  useEffect(() => {
-    let settle = () => {};
-    const onResize = () => { settle(); settle = parkSettled(); };
-    window.addEventListener('resize', onResize);
-    return () => {
-      settle();
-      window.removeEventListener('resize', onResize);
-    };
-  }, [parkSettled]);
 
   /** Animates one interruptible progress value; docked and reduced-motion states settle immediately. */
   const away = place === 'leaving' || place === 'folded';
@@ -249,8 +247,8 @@ export function CharacterHost({
     <div
       data-testid="character-layer"
       style={{
-        ...(place === 'ground' ? GROUND_LAYER_STYLE : LAYER_STYLE),
-        visibility: hidden ? 'hidden' : 'visible',
+        ...(place === 'ground' ? GROUND_LAYER_STYLE : covered ? COVERED_LAYER_STYLE : LAYER_STYLE),
+        visibility: hidden ? 'hidden' : undefined,
       }}
     >
       {/* The character itself is the control; this layer draws no surrounding plate. */}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The arrival notice as seen: which planet it names, when it may say so, and the eyebrow's one swap.
- * The gate's reasoning is tested in `arrival-gate.test.ts`; this pins that the component collects
+ * The gate's reasoning is tested in `__tests__/state/greetings.test.ts`; this pins that the component collects
  * the right facts and retries when they change, so an arrival under the tour comes up after it.
  *
  * Fake timers run the eyebrow's three seconds. The dismissals live in
@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { ArrivalToast } from '../../../../ui/chrome/floating/ArrivalToast';
-import { __resetArrivals, announceArrival } from '../../../../ui/session/arrival-bus';
-import { __resetRestoreOffer, offerRestoreDismiss } from '../../../../ui/session/restore-offer';
+import { __resetArrivals, announceArrival } from '../../../../editor/session/arrival';
+import { __setRestoreOffer, whenRestoreDeclined } from '../../../../editor/session/restore';
+import type { RestoredAutosave } from '../../../../io/storage/autosave';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../../_support/tour';
 import { I18nProvider } from '../../../../i18n/context';
 import { InputModeProvider } from '../../../../ui/design/input-mode';
@@ -59,10 +60,16 @@ const eyebrow = () => screen.getAllByTestId('arrival-eyebrow').map((e) => e.text
 const settle = () => act(() => { vi.advanceTimersByTime(1); });
 const wait = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 
+/** A saved-session offer standing beside the notice, its decline heard by `decline`. */
+function standOffer(decline: () => void): void {
+  __setRestoreOffer({ state: mapOn() } as RestoredAutosave);
+  whenRestoreDeclined(decline);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   __resetArrivals();
-  __resetRestoreOffer();
+  __setRestoreOffer(null);
   localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   const st = useEditorStore.getState();
   useEditorStore.setState({
@@ -183,7 +190,7 @@ describe('the arrival notice', () => {
 
   it('stands beside a saved-session offer rather than behind it', () => {
     const decline = vi.fn();
-    offerRestoreDismiss(decline);
+    standOffer(decline);
     mount();
     act(() => announceArrival({ kind: 'boot' }));
     settle();
@@ -195,7 +202,7 @@ describe('the arrival notice', () => {
 
   it('answers the standing offer when a HAND takes it', () => {
     const decline = vi.fn();
-    offerRestoreDismiss(decline);
+    standOffer(decline);
     mount({ reduced: true });
     act(() => announceArrival({ kind: 'boot' }));
     settle();
@@ -205,7 +212,7 @@ describe('the arrival notice', () => {
 
   it('answers it from the other button too, on the way to the planet chooser', () => {
     const decline = vi.fn();
-    offerRestoreDismiss(decline);
+    standOffer(decline);
     mount({ reduced: true });
     act(() => announceArrival({ kind: 'boot' }));
     settle();
@@ -222,7 +229,7 @@ describe('the arrival notice', () => {
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 100 });
     try {
       const decline = vi.fn();
-      offerRestoreDismiss(decline);
+      standOffer(decline);
       mount({ reduced: true });
       act(() => announceArrival({ kind: 'boot' }));
       settle();

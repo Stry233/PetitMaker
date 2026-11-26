@@ -1,57 +1,24 @@
-// Thumbnail capture for the export 3D-shots menu. Each still is captured once and cached by its
-// camera angle, so add/delete/reorder reuse cached images and only a genuinely-new angle triggers a
-// capture. This matters for performance: capturing spins up (and disposes) a whole throwaway
-// three.js scene, so recapturing the whole set on every delete freezes the main thread mid-animation.
-// The cache is cleared when the map (GridState) changes. Returns one data URL per shot in order
-// ('' for any not yet captured / that failed); [] when WebGL is unavailable.
-import { useEffect, useRef, useState } from 'react';
+// The export 3D-shots menu's thumbnails, one per shot in order, as `view/map3d/capture/stills.ts:createStillShelf`
+// keeps them: '' for a shot not captured yet or that failed, and none where WebGL is unavailable.
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { GridState } from '../../../../core/model/types';
-import { captureMapStills, angleKey } from '../../../../view/map3d/capture/stills';
+import { angleKey, createStillShelf, type StillShelfState } from '../../../../view/map3d/capture/stills';
 import type { CameraAngle } from '../../../../state/view-camera';
 import { CARD_3D_CELL_ASPECT } from '../../../../io/export/facts';
 import { useSettledValue } from '../../../primitives/use-settled-value';
 
 const THUMB_PX = 220;
-// Capturing builds a throwaway three.js scene, which blocks the main thread. Defer it until after
-// the shots strip's add/expand spring (springs.gentle, ~400ms) has settled, so the heavy build
-// never stalls that animation mid-flight (a stall snaps the layout on the final frame). Placeholders
-// show meanwhile. Delete needs no capture (cached), so it stays instant.
-const DEBOUNCE_MS = 480;
+// A capture waits out the shots strip's resize (`export.shot.resize`): building the scene mid-flight
+// stalls that animation, and a stall snaps the layout on its final frame. Placeholders show meanwhile.
+const SETTLE_MS = 480;
 
-export function useShot3dThumbs(
-  shotsIn: CameraAngle[],
-  state: GridState | null,
-  open: boolean,
-): { urls: string[]; loading: boolean } {
-  const [urls, setUrls] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const gen = useRef(0);
-  const cache = useRef(new Map<string, string>());
-  const lastState = useRef<GridState | null>(null);
+export function useShot3dThumbs(shotsIn: CameraAngle[], state: GridState | null, open: boolean): StillShelfState {
+  const [shelf] = useState(() => createStillShelf({ maxPx: THUMB_PX, aspect: CARD_3D_CELL_ASPECT, settleMs: SETTLE_MS }));
+  const stills = useSyncExternalStore(shelf.subscribe, shelf.snapshot);
   const shots = useSettledValue(shotsIn, (list) => list.map(angleKey).join('|'));
 
-  useEffect(() => {
-    if (!open || !state || shots.length === 0) { setUrls([]); setLoading(false); return; }
-    // A new map invalidates every cached still.
-    if (lastState.current !== state) { cache.current.clear(); lastState.current = state; }
+  useEffect(() => { shelf.show(open ? state : null, shots); }, [shelf, open, state, shots]);
+  useEffect(() => () => shelf.release(), [shelf]);
 
-    const build = () => shots.map((s) => cache.current.get(angleKey(s)) ?? '');
-    const missing = shots.filter((s) => !cache.current.has(angleKey(s)));
-    setUrls(build()); // show whatever is already cached immediately
-
-    if (missing.length === 0) { setLoading(false); return; }
-    const my = ++gen.current;
-    setLoading(true);
-    const id = setTimeout(async () => {
-      // Capture only the missing angles (one scene for the batch).
-      const out = await captureMapStills(state, missing, { maxPx: THUMB_PX, aspect: CARD_3D_CELL_ASPECT });
-      if (gen.current !== my) return;
-      missing.forEach((s, i) => { if (out[i]) cache.current.set(angleKey(s), out[i]!); });
-      setUrls(build());
-      setLoading(false);
-    }, DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [open, state, shots]);
-
-  return { urls, loading };
+  return stills;
 }

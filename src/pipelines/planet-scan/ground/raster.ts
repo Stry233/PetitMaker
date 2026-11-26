@@ -3,7 +3,7 @@
 // border; components are 4-connected unless `eight` is set; hole filling floods the clear cells
 // 4-connected from the border.
 import { gaussianKernel } from '../../../core/base/fields';
-import { floodFrom, labelComponents, stepDistance } from '../../../core/grid/cell-sets';
+import { labelComponents, outsideClear, stepDistance } from '../../../core/grid/cell-sets';
 
 /** Dilation by a (2r+1)-square, which equals r iterations of a 3 x 3 square. */
 export function dilate(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
@@ -63,10 +63,7 @@ export function componentsTouching(mask: Uint8Array, seeds: Uint8Array, w: numbe
 
 /** The mask with every clear region that does not reach the border set. */
 export function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
-  const border: number[] = [];
-  for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
-  for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
-  const outside = floodFrom(border.filter((i) => !mask[i]), (i) => !mask[i], w, h);
+  const outside = outsideClear(mask, w, h);
   const out = new Uint8Array(w * h);
   for (let i = 0; i < out.length; i++) out[i] = outside[i] ? 0 : 1;
   return out;

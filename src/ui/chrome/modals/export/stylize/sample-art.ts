@@ -1,29 +1,16 @@
 /*
  * The stand-in a style direction wears while its committed sample is absent (paper, grain, three strokes
- * and the pack's palette as dabs: it shows the palette and nothing else), and the one ratio every
- * picture box in this window is drawn at.
+ * and the pack's palette as dabs: it shows the palette and nothing else), drawn at the samples' own
+ * ratio; a picture of the open map takes that map's ratio instead.
  */
 import { INK, rgbaOf } from '../../../../design/tokens';
+import { STYLE_SAMPLE_ASPECT } from '../../../../../assets/style-sample-urls';
+import { makeRng } from '../../../../../core/base/rng';
 
-/** The 2D share-image map band's own ratio. Every thumbnail, sample, card and canvas in this
- *  window is drawn at it, never stretched: a picture of the map at a different shape is a picture
- *  of a different map. */
-export const MAP_ASPECT = 10848 / 8992;
 
 export interface SampleArt {
   paper: string;
   palette: readonly string[];
-}
-
-/** A small deterministic source, so a card repaints identically at every render. */
-function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /** One hand-drawn line: a run of short segments each nudged off the straight, which is what reads
@@ -32,7 +19,7 @@ function wobbleLine(
   ctx: CanvasRenderingContext2D, from: { x: number; y: number }, len: number, amp: number, seed: number,
 ): void {
   const { x, y } = from;
-  const r = rng(seed);
+  const r = makeRng(seed).float;
   const steps = 14;
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -43,7 +30,7 @@ function wobbleLine(
 }
 
 /**
- * Paints `art` into `canvas` at the map's ratio, sized from the element's own layout box and backed
+ * Paints `art` into `canvas` at the samples' ratio, sized from the element's own layout box and backed
  * at twice that, which is what keeps the strokes crisp on a 2x display.
  *
  * A box with no measured width has no picture to paint into: an unlaid-out canvas would take a
@@ -52,7 +39,7 @@ function wobbleLine(
 export function paintSampleArt(canvas: HTMLCanvasElement, art: SampleArt): void {
   const w = canvas.clientWidth;
   if (!w) return;
-  const h = Math.round(w / MAP_ASPECT);
+  const h = Math.round(w / STYLE_SAMPLE_ASPECT);
   canvas.width = w * 2;
   canvas.height = h * 2;
   const ctx = canvas.getContext('2d');
@@ -62,7 +49,7 @@ export function paintSampleArt(canvas: HTMLCanvasElement, art: SampleArt): void 
   ctx.fillStyle = art.paper;
   ctx.fillRect(0, 0, w, h);
 
-  const grain = rng(11);
+  const grain = makeRng(11).float;
   ctx.fillStyle = rgbaOf(INK, 0.05);
   for (let i = 0; i < 60; i += 1) ctx.fillRect(grain() * w, grain() * h, 1.2, 1.2);
 

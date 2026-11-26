@@ -17,6 +17,7 @@ import { cursors } from '../../design/styles';
 import { useUiPreview } from '../../design/preview';
 import { useHover } from '../../design/input-mode';
 import { useMorph } from '../../primitives/morph';
+import { beatCss } from '../../design/motion/timeline';
 
 /** The live character's element and parts, for the seat module to place. */
 interface CharacterHandle {
@@ -192,7 +193,7 @@ function DreamPlume({ glyph, reduced }: { glyph: IconId | null; reduced: boolean
         data-part="dream-zzz"
         style={{
           opacity: glyph ? 0 : 1,
-          transition: reduced ? 'none' : `opacity ${DREAM.zzzFade.dur}ms ${DREAM.zzzFade.easing}`,
+          transition: reduced ? 'none' : beatCss(DREAM.zzzFade, 'opacity'),
           width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >
@@ -207,8 +208,8 @@ function DreamPlume({ glyph, reduced }: { glyph: IconId | null; reduced: boolean
           opacity: glyph ? 1 : 0,
           transform: glyph ? 'none' : `scale(${DREAM.glyphFrom})`,
           transition: reduced ? 'none' : [
-            `opacity ${DREAM.glyphFade.dur}ms ${DREAM.glyphFade.easing}`,
-            `transform ${DREAM.glyphRise.dur}ms ${DREAM.glyphRise.easing}`,
+            beatCss(DREAM.glyphFade, 'opacity'),
+            beatCss(DREAM.glyphRise, 'transform'),
           ].join(', '),
         }}
       >

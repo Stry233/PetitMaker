@@ -181,7 +181,7 @@ describe('the right-hand column', () => {
 
     it('declares the plate\'s depth the browser draws, so the plan is planning the real thing', () => {
       // Localized floor names widen their tracks without adding a line.
-      expect(PLATE_DEPTH).toBeCloseTo(359, 6);
+      expect(PLATE_DEPTH).toBeCloseTo(358, 6);
     });
 
     it('limits the view kit to four files and history to one pair', () => {
@@ -281,10 +281,10 @@ describe('the right-hand column', () => {
     });
 
     it('breaks the kit into files only where one file will not fit', () => {
-      // Seven buttons, the hide toggle included, fit one file from about 965 px of window height.
+      // Seven buttons, the hide toggle included, fit one file from about 966 px of window height.
       expect(plan(720, false).kitFiles, 'a laptop cannot hold the seven in one').toBe(2);
       expect(plan(900, false).kitFiles, 'nor can a 900px window').toBe(2);
-      expect(plan(965, false).kitFiles, 'and just above the fold').toBe(1);
+      expect(plan(966, false).kitFiles, 'and just above the fold').toBe(1);
       expect(plan(1440, false).kitFiles).toBe(1);
       expect(railStack(2)).toBe(2 * RAIL.button + RAIL.gap);
     });

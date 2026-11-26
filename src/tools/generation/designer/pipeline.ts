@@ -8,7 +8,7 @@ import { flatIndex } from '../../../core/grid/rect';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
 import type { Command, GridState, MacroCoord, ValidationResult } from '../../../core/model/types';
 import { makeCtx } from '../../placement/object';
-import { makeScope } from './build/scope';
+import { makeScope } from '../terrain-plan/scope';
 import { paveFloors, type FloorOutcome } from './build/floors';
 import { keepClear } from './build/keep-clear';
 import { buildNetwork } from './build/network';
@@ -22,6 +22,7 @@ import { planStreets } from './streets/streets';
 import type { StreetPlan } from './streets/model';
 import { sculptTerrain, type TerrainSculpt } from './terrain/terrain-sculpt';
 import type { DesignInput, DesignPlan } from './types';
+import { landMask, readPlanet, type PlanetReading } from './planet';
 import type { PlanetKind } from '../recipe';
 import { pavableMask, plantableSurface } from '../../reading/surface';
 
@@ -90,6 +91,8 @@ export interface DesignedOutcome {
 /** Every pure plan a designed run builds from, in the order the stages produce them. */
 interface DesignBundle {
   composition: CompositionPlan;
+  /** The planet read once for the composition, which every later stage takes. */
+  planet: PlanetReading;
   line: MovementLine;
   streets: StreetPlan;
   districts: DistrictPlan;
@@ -109,29 +112,31 @@ interface DesignBundle {
  * water it asks for beside it, and stage C meets its stops in the order a visitor does.
  */
 export function planDesign(input: DesignInput): DesignBundle {
-  const composition = planComposition(input);
-  const line = planMovementLine({ ...input, composition });
-  const streets = planStreets({ ...input, composition, line });
-  const districts = planDistricts({ ...input, composition, streets, line });
+  const land = landMask(input.template);
+  const composition = planComposition({ ...input, land });
+  const planet = readPlanet(input.template, composition, land);
+  const line = planMovementLine({ ...input, composition, planet });
+  const streets = planStreets({ ...input, composition, line, planet });
+  const districts = planDistricts({ ...input, composition, streets, line, planet });
   const plan = districts.design;
   const anchors = planAnchors({ ...input, plan, flights: streets.flights.map((f) => f.corridor) });
   const ground = planKitGround({ ...input, plan });
-  return { composition, line, streets, districts, plan, anchors, ground };
+  return { composition, planet, line, streets, districts, plan, anchors, ground };
 }
 
 export function generateDesigned(ctx: DesignedContext): DesignedOutcome {
   const { state, seed, richness } = ctx;
   const scope = makeScope(ctx.region, state.template.width, state.template.height);
-  const { composition, line, streets, districts, plan, anchors, ground } = planDesign({
+  const { composition, planet, line, streets, districts, plan, anchors, ground } = planDesign({
     seed, template: state.template, richness,
     ...(ctx.maxElevation !== undefined ? { maxElevation: ctx.maxElevation } : {}),
   });
   const sculpt = sculptTerrain({
-    template: state.template, composition, streets, plan, anchors, seed, richness, ground, line,
+    template: state.template, composition, planet, streets, plan, anchors, seed, richness, ground, line,
     waterScale: WATER_SCALE[ctx.mode ?? 'mixed'],
     ...(ctx.maxElevation !== undefined ? { maxElevation: ctx.maxElevation } : {}),
   });
-  const terrain = commitTerrain(ctx, sculpt, ctx.region ?? null);
+  const terrain = commitTerrain(ctx, sculpt, scope);
   const pavable = pavableMask(state);
   const surface = plantableSurface(state);
 

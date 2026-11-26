@@ -77,6 +77,7 @@ const STRIP_REACH = Math.ceil(Math.max(DOOR.dropDepth, DOOR.riseDepth)) + 1;
 
 export const doorGroundRule = definePreRule({
   id: 'V-PLACE-DOOR',
+  description: `A house's door is the middle of its bottom side at rotation 0 and turns with it (90 faces -x, 180 faces -y, 270 faces +x). Measured out from the whole door side of the footprint, along its full length: the first ${DOOR.dropDepth} cells must be land at the house's elevation (no cliff drop, sea or map edge), and nothing higher than the house and no water may come nearer than ${DOOR.riseDepth} cells.`,
   appliesTo: [CommandType.PlaceObject, CommandType.PaintTerrain, CommandType.EraseTerrain],
 
   validate(cmd, state, fail) {

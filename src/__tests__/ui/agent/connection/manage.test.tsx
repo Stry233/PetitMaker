@@ -14,8 +14,6 @@ import { ManageScreen } from '../../../../ui/agent/connection/ManageScreen';
 import { forgetRosters } from '../../../../agent/connection/model-roster';
 import { __resetAgentConnection, isConnected, useAgentConnection } from '../../../../agent/connection/store';
 import { prettyModel } from '../../../../ui/agent/connection/pretty-model';
-import { endpointCheckVerdict } from '../../../../ui/agent/connection/setup-parts';
-import { NO_ENDPOINT_ADDRESS } from '../../../../agent/core/errors';
 import { PROVIDER_IDS, PROVIDER_META, type ProviderId } from '../../../../agent/providers/defaults';
 import { setToastPresenter } from '../../../../platform/channels/toast-bus';
 
@@ -282,7 +280,7 @@ describe('the list the card asks for', () => {
   it('asks for the armed provider\'s models, and survives a refusal', async () => {
     const listModels = vi.fn(() => Promise.reject(new Error('offline')));
     await act(async () => { mount({ listModels }); });
-    expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: 'sk-ant-api03-abcdefghijkl' });
+    expect(listModels).toHaveBeenCalledWith({ provider: 'claude', apiKey: 'sk-ant-api03-abcdefghijkl' }, expect.any(AbortSignal));
     expect(screen.getByTestId('manage-oversight-caption')).toBeTruthy();
     expect(screen.getByTestId('manage-forget-key')).toBeTruthy();
   });
@@ -307,7 +305,7 @@ describe('the list the card asks for', () => {
     expect(useAgentConnection.getState().model.claude).toBe('claude-sonnet-4-5');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(useAgentConnection.getState().model.claude).toBe('claude-haiku-4-5');
-    expect(screen.queryByTestId('manage-model-input')).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId('manage-model-input')).toBeNull());
   });
 
   it('keeps manual IDs in the same list as suggestions and confirms only once', async () => {
@@ -409,7 +407,7 @@ describe('the address of the user\'s own server', () => {
     await act(async () => { mount({ listModels }); });
     expect(listModels).toHaveBeenLastCalledWith({
       provider: 'custom', apiKey: 'sk-9f2c0123456789abcdef0123456789ab', customBaseUrl: 'https://old.example/v1',
-    });
+    }, expect.any(AbortSignal));
 
     fireEvent.change(input(), { target: { value: 'https://new.example/v1' } });
     await act(async () => { enter(); });
@@ -417,7 +415,7 @@ describe('the address of the user\'s own server', () => {
     expect(useAgentConnection.getState().customBaseUrl).toBe('https://new.example/v1');
     expect(listModels).toHaveBeenLastCalledWith({
       provider: 'custom', apiKey: 'sk-9f2c0123456789abcdef0123456789ab', customBaseUrl: 'https://new.example/v1',
-    });
+    }, expect.any(AbortSignal));
   });
 
   /** The quiet is the key field's `IDLE_MS` and restarts per keystroke, so typing a URL costs one
@@ -441,7 +439,7 @@ describe('the address of the user\'s own server', () => {
     await act(async () => { vi.advanceTimersByTime(450); });
     expect(useAgentConnection.getState().customBaseUrl).toBe('https://new.example/v1');
     expect(listModels).toHaveBeenCalledTimes(2);
-    expect(listModels).toHaveBeenLastCalledWith(expect.objectContaining({ customBaseUrl: 'https://new.example/v1' }));
+    expect(listModels).toHaveBeenLastCalledWith(expect.objectContaining({ customBaseUrl: 'https://new.example/v1' }), expect.any(AbortSignal));
     vi.useRealTimers();
   });
 
@@ -696,31 +694,6 @@ describe('model discovery preserves explicit selections', () => {
     await fileAddress('https://fixed.example/v1');
     expect(useAgentConnection.getState().model.custom).toBe('kept-model');
     expect(toasts).toEqual([]);
-  });
-});
-
-/** `setup-parts.ts:endpointCheckVerdict`: an endpoint fails when nothing answered or no request could
- *  be built; any server answer, however unhelpful, only makes the list unavailable. */
-describe('what counts as the endpoint failing its check', () => {
-  const UNREACHABLE: [string, unknown][] = [
-    ['a fetch that failed', new Error('Failed to fetch')],
-    ['a check the deadline ended', new Error('The endpoint answered nothing in 8s; the request timed out.')],
-    ['a CORS-shaped opaque refusal', Object.assign(new Error('blocked'), { status: 0 })],
-    ['a request that could not be built', new Error(NO_ENDPOINT_ADDRESS)],
-  ];
-  const ANSWERED: [string, unknown][] = [
-    ['an auth refusal', Object.assign(new Error('Unauthorized'), { status: 401 })],
-    ['a rate limit', Object.assign(new Error('Too many requests'), { status: 429 })],
-    ['a gateway with no models route', Object.assign(new Error('Not Found'), { status: 404 })],
-    ['a server fault', Object.assign(new Error('Internal Server Error'), { status: 500 })],
-  ];
-
-  it.each(UNREACHABLE)('%s is the endpoint failing', (_name, err) => {
-    expect(endpointCheckVerdict(err)).toBe('unreachable');
-  });
-
-  it.each(ANSWERED)('%s is a server that answered, so only the list is unavailable', (_name, err) => {
-    expect(endpointCheckVerdict(err)).toBe('no-list');
   });
 });
 

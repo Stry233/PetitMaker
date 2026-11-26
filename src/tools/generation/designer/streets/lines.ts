@@ -5,7 +5,7 @@
 import { flatIndex } from '../../../../core/grid/rect';
 import { mix, hash01 } from '../../../../core/base/rng';
 import { lerpClamped } from '../../../../core/base/math';
-import type { CompositionPlan } from '../composition/composition';
+import { compositionPeak, type CompositionPlan } from '../composition/composition';
 import { LINE_W, type MovementLine } from '../composition/movement-line';
 import { BRANCH_W, TRUNK_W } from '../types';
 import { cutDistricts } from './blocks';
@@ -113,7 +113,7 @@ export function layStreets(
  * ledger reads as a tofu lake.
  */
 function crownMask(board: Board, composition: CompositionPlan): Uint8Array {
-  const top = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
+  const top = compositionPeak(composition).tier;
   const mask = new Uint8Array(board.W * board.H);
   if (top <= 0) return mask;
   for (let i = 0; i < mask.length; i++) if (board.tier[i] === top) mask[i] = 1;

@@ -10,7 +10,7 @@ import { Text, type Container } from 'pixi.js-legacy';
 import { serialize } from '../../../io/save/json-codec';
 import { deserialize } from '../../_support/save-file';
 import { decodeAnnotations } from '../../../io/save/annotations-codec';
-import { canonicalize, toSaveJSON } from '../../../io/save/canonical';
+import { canonicalize, toSaveFile } from '../../../io/save/canonical';
 import { decodeMapPayload, encodeMapPayload } from '../../../io/share/codec/payload';
 import { exportable } from '../../_support/exportable';
 import { tagLabel } from '../../../i18n/terms/annotation-tags';
@@ -58,7 +58,7 @@ describe('custom tags in saves and share codes', () => {
     const decoded = await decodeMapPayload(await encodeMapPayload(state, null, { appVersion: 'custom-tags', saveVersion: 1 }));
     expect(decoded.annotations?.customTags).toEqual(notes().customTags);
     expect(decoded.annotations?.items.map((n) => ('tag' in n ? n.tag : null))).toEqual([ORCHARD, 'homes', PIER]);
-    const shared = deserialize(toSaveJSON(canonicalize(state), state.annotations), state.template).annotations!;
+    const shared = deserialize(JSON.stringify(toSaveFile(canonicalize(state), state.annotations)), state.template).annotations!;
     expect(shared.customTags).toEqual(notes().customTags);
   });
 

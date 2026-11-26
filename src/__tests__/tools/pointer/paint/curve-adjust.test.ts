@@ -22,7 +22,7 @@ const MICRO = { x: 0, y: 0 };
 function world(autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(40, 40);
   const executor = makeExecutor(state);
-  const ctx = makeToolCtx(state, executor, 1, 1, { autoEdgeCut });
+  const ctx = makeToolCtx(state, executor, 1, { autoEdgeCut });
   const tool = new DrawingTool();
   arm(ctx, { shape: 'curve', contentType: 'mountain' });
   tool.onActivate(ctx);
@@ -194,7 +194,7 @@ describe('escape', () => {
 });
 
 describe('switching away', () => {
-  /** Whether the open session is still bound to what `ctx` has armed (`CurveHandles` closes it
+  /** Whether the open session is still bound to what `ctx` has armed (the session's wiring closes it
    *  the moment it is not). */
   const bound = (ctx: { arming: Parameters<typeof curveArmingKey>[0] }): boolean =>
     getCurveSession()?.armingKey === curveArmingKey(ctx.arming);
@@ -217,10 +217,10 @@ describe('switching away', () => {
     expect(bound(ctx)).toBe(false);
   });
 
-  it('but not when the same value is written again, or the brush size moves', () => {
+  it('but not when the same value is written again, or the brush size or thickness moves', () => {
     const { ctx, tool } = world();
     draw(tool, ctx, [{ x: 4, y: 10 }, { x: 12, y: 10 }]);
-    arm(ctx, { shape: 'curve', contentType: 'mountain', brushSize: 3, floor: 2 });
+    arm(ctx, { shape: 'curve', contentType: 'mountain', brushSize: 3, terrainThickness: 2 });
     expect(bound(ctx)).toBe(true);
   });
 });

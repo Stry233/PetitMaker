@@ -14,6 +14,7 @@ import {
 } from '../../../../state/build-checklist';
 import type { GridState } from '../../../../core/model/types';
 import { useEditorStore } from '../../../../state/store';
+import { copyText } from '../../../../platform/device/clipboard';
 import { radii} from '../../../design/styles';
 import { skin, windowChip } from '../../../design/window-skin';
 import { roleFont, roleWeight } from '../../../design/text-weight';
@@ -21,7 +22,7 @@ import { useMapRevision } from '../../../session/use-map-revision';
 import { CopiedBubble, useCopyFeedback } from '../../../primitives/CopiedBubble';
 
 const sectionTitle: CSSProperties = { ...roleFont('head'), color: skin.ink };
-const noteText: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
+const noteText: CSSProperties = { ...roleFont('note'), color: skin.plateInk, opacity: 0.8, lineHeight: 1.45 };
 const totalChip: CSSProperties = { ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums' };
 
 /** The supply crate itself: an inset plate (the same fill the rows stand on), heavy
@@ -174,8 +175,8 @@ const copyButton: CSSProperties = { color: skin.ink };
 function CopyChecklistButton({ list }: { list: BuildChecklistData }) {
   const t = useT();
   const locale = useLocale();
-  const { copied, copy: copyText } = useCopyFeedback();
-  const copy = () => copyText(buildChecklistText(list, locale, t));
+  const { copied, copy: copyShown } = useCopyFeedback(copyText);
+  const copy = () => copyShown(buildChecklistText(list, locale, t));
 
   return (
     <div style={copyButtonWrap}>
@@ -198,7 +199,6 @@ export function BuildChecklist({ subject }: { subject?: GridState } = {}) {
   if (!list) return null;
 
   const groupsWithItems = list.groups.filter((g) => g.items.length > 0);
-  const placedTotal = list.groups.reduce((n, g) => n + g.total, 0);
   const nothing = groupsWithItems.length === 0 && list.roads.length === 0 && list.layers.length === 0;
 
   return (
@@ -217,7 +217,7 @@ export function BuildChecklist({ subject }: { subject?: GridState } = {}) {
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
             <span style={sectionTitle}>{t('checklist.sec_objects')}</span>
-            <span style={totalChip}>{t('checklist.total', { n: placedTotal })}</span>
+            <span style={totalChip}>{t('checklist.total', { n: list.placedTotal })}</span>
           </div>
           {groupsWithItems.map((group) => (
             <CategoryCard key={group.category} group={group} />

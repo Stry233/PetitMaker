@@ -14,7 +14,7 @@ import { useKeybinds } from '../../state/keymap/store';
 import { useEditorStore } from '../../state/store';
 import { useWindow, type WindowProps } from '../chrome/modals/use-window';
 import { useWindowColumns } from '../chrome/modals/use-window-columns';
-import { useLeavingView } from '../chrome/modals/WindowStep';
+import { useAway } from '../primitives/away';
 import { useTransition } from '../design/motion/use-motion';
 import { MOTIONS } from '../design/motion/registry';
 import { useHelpTables, useLocale, useT } from '../../i18n/context';
@@ -22,18 +22,21 @@ import { ModalShell, useModalEntered } from '../primitives/ModalShell';
 import { FloatMenu } from '../primitives/FloatMenu';
 import { ActionButton } from '../primitives/ActionButton';
 import { useNameReveal } from '../primitives/use-name-reveal';
+import { TextField } from '../primitives/TextField';
+import { QuestionIcon, SearchIcon } from '../primitives/line-glyphs';
 import { WindowBack, WindowClose } from '../primitives/Window';
 import { windowIconButton } from '../design/window-skin';
 import { roleFont } from '../design/text-weight';
-import { ACTIVE, INK, INSET, LINE, MUTED, PLATE, PLATE_INK, TRACK, WASH, rgbaOf } from '../design/tokens';
+import { ACTIVE, INK, LINE, MUTED, PLATE, PLATE_INK, TRACK, WASH, rgbaOf } from '../design/tokens';
 import { cursors, radii, z } from '../design/styles';
-import { HELP_GROUPS, HELP_GROUP_TITLES, HELP_PAGES, HELP_PAGE_ORDER } from './catalog';
-import type { HelpPageId } from './page-schema';
+import { HELP_GROUPS, HELP_GROUP_TITLES, HELP_PAGES, HELP_PAGE_ORDER } from '../../editor/help/catalog';
+import type { HelpPageId } from '../../editor/help/page-schema';
 import { PageView } from './PageView';
 import { FigureReadyContext } from './figures/figure-ready';
 import { FigureSightContext } from './figures/figure-scale';
 import { useObservedSize } from '../primitives/use-observed-size';
-import { searchHelp, type HelpHit } from './search';
+import { searchHelp, type HelpHit } from '../../editor/help/search';
+import { helpFactsAbove } from './facts';
 import { useReading, useReadingT } from '../design/reading';
 
 const NAV_W = 252;
@@ -46,15 +49,6 @@ const SCREEN_TRAVEL = MOTIONS['help.screen'].amplitude;
 const screenCell: CSSProperties = { display: 'grid', gridTemplateRows: 'minmax(0, 1fr)', minHeight: 0, minWidth: 0 };
 /** Both screens of a one-column Help share the body's one cell. */
 const stackedCell: CSSProperties = { gridArea: '1 / 1' };
-
-function QuestionGlyph() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={INK} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8.6 9a3.6 3.6 0 1 1 5.2 3.2c-1.2.6-1.8 1.3-1.8 2.6" />
-      <circle cx="12" cy="18.6" r="1.1" fill={INK} stroke="none" />
-    </svg>
-  );
-}
 
 export function HelpModal(props: WindowProps) {
   const t = useT();
@@ -77,7 +71,7 @@ export function HelpModal(props: WindowProps) {
   // The list stands until a pick, an outside press or Escape puts it away; the next keystroke brings
   // it back. Hits follow the live reading, so a mode flip rewords open results.
   const [listed, setListed] = useState(false);
-  const hits = useMemo<HelpHit[]>(() => (listed ? searchHelp(locale, query, reading) : []), [listed, locale, query, reading]);
+  const hits = useMemo<HelpHit[]>(() => (listed ? searchHelp(locale, query, helpFactsAbove, reading) : []), [listed, locale, query, reading]);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reading area's height, which a miniature of a whole window stands within (UI-63).
   const [sight, setSight] = useState(0);
@@ -258,20 +252,11 @@ export function HelpModal(props: WindowProps) {
               {/* The auto margin pushes the pill to the row's right, beside the what's-this arm. In one
                   column the pill takes a row of its own under the title. */}
               <div style={single ? { flex: '1 0 100%', minWidth: 0, order: 1 } : { flex: '0 1 330px', marginLeft: 'auto' }}>
-                <div ref={searchRef} style={{ display: 'flex', alignItems: 'center', gap: 8, background: INSET, borderRadius: radii.pill, padding: '8px 16px' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-                    <circle cx="10.5" cy="10.5" r="6" /><path d="M15.5 15.5 20 20" />
-                  </svg>
-                  <input
-                    type="search"
-                    className="pw-search-field pw-field-input"
-                    value={query}
-                    onChange={(e) => { setQuery(e.target.value); setListed(true); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) go(hits[0].page, hits[0].anchor); }}
-                    placeholder={t('help.search_placeholder')}
-                    aria-label={t('help.search_placeholder')}
-                    style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none', ...roleFont('field'), color: PLATE_INK, fontFamily: 'inherit' }}
-                  />
+                <div ref={searchRef}>
+                  <TextField shape="pill" type="search" leading={<SearchIcon size={16} />}
+                    value={query} onChange={(text) => { setQuery(text); setListed(true); }}
+                    onEnter={() => { if (hits[0]) go(hits[0].page, hits[0].anchor); }}
+                    placeholder={t('help.search_placeholder')} label={t('help.search_placeholder')} />
                 </div>
                 <FloatMenu
                   row={null}
@@ -292,7 +277,7 @@ export function HelpModal(props: WindowProps) {
                 onClick={() => { setWhatsThis(true); onClose(); }}
                 style={windowIconButton}
              >
-                <QuestionGlyph />
+                <QuestionIcon size={18} />
                 {whatsThisName.bubble}
               </ActionButton>
               <WindowClose label={t('hint.close')} onPress={onClose} />
@@ -328,7 +313,7 @@ type Leave = 'travel' | 'still' | 'stay';
 function HelpScreen({ cell, travel, still, children }: { cell: CSSProperties; travel: number; still: boolean; children: ReactNode }) {
   const reduced = useReducedMotionConfig();
   const transition = useTransition('help.screen');
-  const leaving = useLeavingView();
+  const leaving = useAway();
   // AnimatePresence hands a leaving screen its latest `custom`, the one that says how it goes.
   const variants = {
     away: (leave: Leave) => (leave === 'stay' ? {} : leave === 'still' ? { opacity: 0, transition: NO_MOTION } : { opacity: 0, x: travel }),

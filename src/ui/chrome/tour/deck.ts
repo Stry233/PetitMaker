@@ -1,11 +1,11 @@
 /*
  * The tour: its cards in the order a first visit needs them, and each card's Show me, which has the
- * visitor try the live controls step by step. A change worth showing again raises `version.ts:TOUR_VERSION`.
+ * visitor try the live controls step by step. A change worth showing again raises `state/tour-version.ts:TOUR_VERSION`.
  *
  * Copy written for a mouse has its touch reading in `i18n/terms/device-readings.ts`; the deck reads
  * every key through `useReadingT`. A card's reel is found by its kind (`reels.ts`).
  */
-import { forEdition, type EditionVariant } from '../../../platform/build/edition';
+import { EDITION_COPY, forEdition, type EditionVariant } from '../../../platform/build/edition';
 import type { CommandId } from '../../../state/keymap/registry';
 import type { TourPose } from '../../../state/slices/shell';
 import type { Arming, BuildMode } from '../../../state/editing/edit-mode';
@@ -14,7 +14,7 @@ import type { I18nKey } from '../../../i18n/keys';
 import type { TourWatch } from '../../session/tour-watch';
 import type { TourTargetId } from './steps';
 
-export const TOUR_KINDS = ['welcome', 'move', 'shape', 'objects', 'view3d', 'generate', 'assistant', 'share'] as const;
+export const TOUR_KINDS = ['welcome', 'move', 'shape', 'objects', 'blueprint', 'view3d', 'generate', 'assistant', 'share'] as const;
 export type TourKind = (typeof TOUR_KINDS)[number];
 
 /** A keyboard hint on a card: the live bindings of `commands`, then what they do. Shown in PC mode only. */
@@ -82,7 +82,8 @@ const shown = (view: TourWatch['view']): Done => (_from, now) => now.view === vi
 const built = (...armings: Arming['kind'][]): Done => (from, now) => now.edits > from.edits && armings.includes(now.arming);
 /** Whether the 2D camera stands where Fit lands it, within half a screen px and a thousandth of its zoom. */
 const fitted = (w: TourWatch): boolean => !!w.camera2d && !!w.fit2d
-  && Math.abs(w.camera2d.x - w.fit2d.x) < 0.5 && Math.abs(w.camera2d.y - w.fit2d.y) < 0.5 && Math.abs(Math.log(w.camera2d.zoom / w.fit2d.zoom)) < 1e-3;
+  && Math.abs(w.camera2d.x - w.fit2d.x) < 0.5 && Math.abs(w.camera2d.y - w.fit2d.y) < 0.5 && Math.abs(Math.log(w.camera2d.zoom / w.fit2d.zoom)) < 1e-3
+  && Math.abs((w.camera2d.rotation ?? 0) - (w.fit2d.rotation ?? 0)) < 1e-3;
 const camera2d = (moved: (a: NonNullable<TourWatch['camera2d']>, b: NonNullable<TourWatch['camera2d']>) => boolean): Done =>
   (from, now) => !!from.camera2d && !!now.camera2d && moved(from.camera2d, now.camera2d);
 const camera3d = (moved: (a: NonNullable<TourWatch['camera3d']>, b: NonNullable<TourWatch['camera3d']>) => boolean): Done =>
@@ -91,11 +92,15 @@ const camera3d = (moved: (a: NonNullable<TourWatch['camera3d']>, b: NonNullable<
 const turnBetween = (a: number, b: number): number => Math.abs(((b - a + 540) % 360) - 180);
 
 /** A step that has the visitor open a mode: its tile is ringed with no mode open. */
-const openMode = (mode: 'mountain' | 'object' | 'generate', textKey: I18nKey): ShowEntry => ({
+const openMode = (mode: 'mountain' | 'object' | 'blueprint' | 'generate', textKey: I18nKey): ShowEntry => ({
   id: `open-${mode}`, textKey, ring: [`mode:${mode}`], or: ['modes'], pose: { mode: null }, done: opened(mode), side: 'above',
 });
 const FLAT: TourPose = { mode: null, view: '2d' };
 const STANDING: TourPose = { mode: null, view: '3d' };
+const BLUEPRINT: TourPose = { mode: 'blueprint' };
+/** The placement selected whole both when the step began and now. */
+const placement = (moved: (a: NonNullable<TourWatch['group']>, b: NonNullable<TourWatch['group']>) => boolean): Done =>
+  (from, now) => !!from.group && !!now.group && moved(from.group, now.group);
 
 const CARDS: readonly CardEntry[] = [
   { kind: 'welcome', titleKey: 'tour.welcome_title', bodyKey: 'tour.welcome_body', keys: [] },
@@ -124,10 +129,10 @@ const CARDS: readonly CardEntry[] = [
     show: [
       openMode('mountain', 'tour.show.mountain_open'),
       { id: 'paint', textKey: 'tour.show.mountain_paint', ring: ['brush'], map: true, pose: { mode: 'mountain' }, side: 'above', done: built('brush', 'shape') },
+      // Done once a stroke builds above the layer the readout showed, which a stroke on fresh ground never does.
+      { id: 'higher', textKey: 'tour.show.mountain_higher', ring: ['brush'], map: true, pose: { mode: 'mountain' }, side: 'above',
+        done: (from, now, tried) => built('brush', 'shape')(from, now, tried) && now.layer > from.layer },
       { id: 'erase', textKey: 'tour.show.mountain_erase', ring: ['eraser'], map: true, pose: { mode: 'mountain' }, side: 'above', done: built('erase') },
-      { id: 'layer', textKey: 'tour.show.mountain_layer', ring: ['add-layer'], pose: { mode: 'mountain' }, side: 'left',
-        done: (from, now) => now.layer > from.layer },
-      { id: 'higher', textKey: 'tour.show.mountain_higher', ring: ['brush'], map: true, pose: { mode: 'mountain' }, side: 'above', done: built('brush', 'shape') },
     ],
   },
   {
@@ -138,6 +143,34 @@ const CARDS: readonly CardEntry[] = [
       { id: 'card', textKey: 'tour.show.objects_card', ring: ['shelf-card'], pose: { mode: 'object' }, side: 'above',
         done: (_from, now) => now.mode === 'object' && (now.arming === 'item' || now.arming === 'macro') },
       { id: 'place', textKey: 'tour.show.objects_place', ring: [], map: true, pose: { mode: 'object' }, side: 'below', done: built('item', 'macro') },
+    ],
+  },
+  {
+    kind: 'blueprint', titleKey: 'tour.blueprint_title', bodyKey: 'tour.blueprint_body', tileKey: 'tour.blueprint_tile',
+    keys: [{ commands: ['selection.rotate_cw'], labelKey: 'tour.key_turn' }],
+    show: [
+      openMode('blueprint', 'tour.show.blueprint_open'),
+      { id: 'pick', textKey: 'tour.show.blueprint_pick', ring: ['blueprint-card'], pose: BLUEPRINT, side: 'above',
+        done: (_from, now) => now.mode === 'blueprint' && now.blueprint !== null },
+      // A placement is one undo step and stands selected whole.
+      { id: 'place', textKey: 'tour.show.blueprint_place', ring: [], map: true, pose: BLUEPRINT, side: 'below',
+        done: (from, now) => now.edits > from.edits && !!now.group },
+      // A turn takes the place of the placement's own step, so it is read from the placement, not the history.
+      { id: 'turn', textKey: 'tour.show.blueprint_turn', ring: ['selection-rotate'], pose: BLUEPRINT, side: 'left',
+        done: placement((a, b) => a.lie !== b.lie) },
+      // A turn about the frame's centre shifts it by at most half a cell.
+      { id: 'move', textKey: 'tour.show.blueprint_move', ring: [], map: true, pose: BLUEPRINT, side: 'below',
+        done: placement((a, b) => Math.hypot(b.cx - a.cx, b.cy - a.cy) >= 1) },
+      { id: 'new', textKey: 'tour.show.blueprint_new', ring: ['blueprint-new'], pose: BLUEPRINT, side: 'above',
+        done: (_from, now) => now.blueprintStep === 'frame' },
+      { id: 'frame', textKey: 'tour.show.blueprint_frame', ring: ['region-done'], map: true, pose: BLUEPRINT, side: 'above',
+        done: (_from, now) => now.blueprintStep === 'save' },
+      // Saving stands unavailable while a Show me stands (`state/slices/shell.ts:blueprintSavable`).
+      { id: 'save', textKey: 'tour.show.blueprint_save', ring: ['blueprint-save'], pose: BLUEPRINT, side: 'above' },
+      { id: 'unfold', textKey: 'tour.show.blueprint_unfold', ring: ['blueprint-unfold'], pose: { mode: 'blueprint', blueprint: 'strip' }, side: 'above',
+        done: (_from, now) => now.explorer },
+      { id: 'library', textKey: 'tour.show.blueprint_library', ring: ['blueprint-folders', 'blueprint-export', 'blueprint-import'], pose: BLUEPRINT, side: 'above',
+        lite: { textKey: 'lite.tour_blueprint_library' } },
     ],
   },
   {
@@ -158,10 +191,9 @@ const CARDS: readonly CardEntry[] = [
   },
   {
     kind: 'generate', titleKey: 'tour.generate_title', bodyKey: 'tour.generate_body', tileKey: 'tour.generate_tile', keys: [],
-    lite: { bodyKey: 'lite.tour_generate' },
     show: [
       openMode('generate', 'tour.show.generate_open'),
-      { id: 'kinds', textKey: 'tour.show.generate_kinds', ring: ['generate-kinds'], pose: { mode: 'generate' }, side: 'above', lite: { textKey: 'lite.tour_generate_kinds' } },
+      { id: 'kinds', textKey: 'tour.show.generate_kinds', ring: ['generate-kinds'], pose: { mode: 'generate' }, side: 'above' },
       { id: 'recipe', textKey: 'tour.show.generate_recipe', ring: ['recipe'], pose: { mode: 'generate' }, side: 'above',
         done: (from, now) => now.edits > from.edits },
     ],
@@ -171,7 +203,7 @@ const CARDS: readonly CardEntry[] = [
   },
   {
     kind: 'share', titleKey: 'tour.share_title', bodyKey: 'tour.share_body', tileKey: 'tour.share_tile', keys: [],
-    lite: { bodyKey: 'lite.save_hint' },
+    lite: { bodyKey: EDITION_COPY.saveHint },
     show: [
       { id: 'open', textKey: 'tour.show.share_open', ring: ['share'], pose: { mode: null, share: null }, side: 'below', lite: false,
         done: (_from, now) => now.share },

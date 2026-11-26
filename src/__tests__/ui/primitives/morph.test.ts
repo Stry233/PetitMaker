@@ -7,11 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubCanvasContext } from '../../_support/canvas-context';
 import { installWebAnimations, type RecordedAnimation } from '../../_support/web-animations';
 import {
-  MORPH_ANIMATION, MORPH_PIECE_ATTR, MORPH_PRESENCE_ATTR, MORPH_RAISED_ATTR, MORPH_SHAPE_ATTR, MORPH_STAND_IN_ATTR, MORPHING_ATTR,
-  measureMorph, morphScope, onMorph, playMorph, restingRect, stopMorph, watchShownBoxes,
+  MORPH_ANIMATION, MORPH_GUIDE_ATTR, MORPH_PIECE_ATTR, MORPH_PRESENCE_ATTR, MORPH_RAISED_ATTR, MORPH_RIDE_ATTR, MORPH_RIDE_AT_ATTR, MORPH_SHAPE_ATTR,
+  MORPH_FACE_ATTR, MORPH_STAND_IN_ATTR, MORPHING_ATTR,
+  measureMorph, morphFrom, morphScope, onMorph, onMorphLayout, playMorph, restingRect, stopMorph, watchShownBoxes,
   type MorphRun,
 } from '../../../ui/primitives/morph';
-import { outSeconds, seconds } from '../../../ui/design/motion';
+import { easingCss, fadeShares, outSeconds, seconds } from '../../../ui/design/motion';
 
 let env: ReturnType<typeof installWebAnimations>;
 
@@ -201,6 +202,30 @@ describe('a re-arrangement drawn as a move', () => {
     expect([from.left, from.top, from.width, from.height].map((v) => +v.toFixed(3))).toEqual([0, 500, 800, 100]);
   });
 
+  it('keeps a rounded plate\'s corners round while it stretches from its old box', () => {
+    const el = piece('band', { left: 0, top: 500, width: 800, height: 100 });
+    el.setAttribute(MORPH_SHAPE_ATTR, 'fill');
+    Object.assign(el.style, { borderTopLeftRadius: '24px', borderTopRightRadius: '24px' });
+    const first = measureMorph();
+    const now = { left: 0, top: 200, width: 800, height: 400 };
+    place(el, now);
+    playMorph(first, 'shell.mode.resize');
+    const [move] = transformsOf(el) as [RecordedAnimation];
+    const corners = env.animations.find((a) => a.target === el && a.keyframes[0]?.borderTopLeftRadius !== undefined)!;
+    expect(corners, 'the corners run against the stretch').toBeTruthy();
+    expect(corners.options.duration).toBe(move.options.duration);
+    for (const frame of corners.keyframes) {
+      const p = Number(frame.offset);
+      // The plate is drawn at this scale per axis here: its own sampled radius times it is the same 24 px both ways.
+      const y = 0.25 + 0.75 * p;
+      const [rx, ry] = String(frame.borderTopLeftRadius).split(' ').map(parseFloat) as [number, number];
+      expect(rx * 1).toBeCloseTo(24);
+      expect(ry * y).toBeCloseTo(24);
+      expect(String(frame.borderBottomLeftRadius)).toBe('0px 0px');
+    }
+    expect(corners.keyframes.at(-1)!.borderTopLeftRadius).toBe('24px 24px');
+  });
+
   it('scales a piece whose width the window decides by its heights, keeping its leading edge or its centre', () => {
     const start = piece('row', { left: 20, top: 500, width: 760, height: 80 });
     start.setAttribute(MORPH_SHAPE_ATTR, 'span-start');
@@ -301,6 +326,57 @@ describe('a re-arrangement drawn as a move', () => {
     // At the start the content's foot stands on the old outline's foot.
     const m0 = /scale\(([-\d.e]+), ([-\d.e]+)\)/.exec(String(scale.keyframes[0]!.transform))!;
     expect(Number(m0[2]) * sy * 580).toBeCloseTo(sy * 600);
+  });
+
+  /** A window turned upright (`shell.shape.morph`, `fitCards`) and one an input mode re-sizes. */
+  function reflowedCard() {
+    const card = piece('window', { left: 100, top: 300, width: 400, height: 300 });
+    card.setAttribute(MORPH_SHAPE_ATTR, 'card');
+    card.style.overflow = 'hidden';
+    const body = document.createElement('div');
+    body.setAttribute('data-kid', '');
+    place(body, { left: 100, top: 300, width: 400, height: 300 });
+    card.appendChild(body);
+    const first = measureMorph();
+    const now = { left: 0, top: 0, width: 400, height: 600 };
+    place(card, now);
+    place(body, { left: 0, top: 0, width: 400, height: 580 });
+    return { card, body, first, now };
+  }
+  const scaleOf = (frame: Keyframe) => {
+    const m = /scale\(([-\d.e]+), ([-\d.e]+)\)/.exec(String(frame.transform));
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 1, y: 1 };
+  };
+
+  it('[UI-27] starts a card\'s content at the size it stood at when an input mode re-sizes it, the outline cutting off its foot', () => {
+    const { card, body, first, now } = reflowedCard();
+    playMorph(first, 'shell.mode.resize', { fitCards: false });
+    const sy = drawn(transformsOf(card)[0]!.keyframes[0]!, now).height / now.height;
+    const [scale] = transformsOf(body) as [RecordedAnimation];
+    expect(scaleOf(scale.keyframes[0]!).y * sy, 'on screen, the content starts at its own size').toBeCloseTo(1);
+  });
+
+  it('[UI-27] carries a card\'s old content from exactly where it stood along the new content\'s path, so the two stay one over the other', () => {
+    for (const fitCards of [true, false]) {
+      document.body.innerHTML = '';
+      const { card, body, first, now } = reflowedCard();
+      playMorph(first, 'shell.mode.resize', { fitCards });
+      const outline = drawn(transformsOf(card)[0]!.keyframes[0]!, now);
+      const sx = outline.width / now.width, sy = outline.height / now.height;
+      const copy = card.querySelector(`[${MORPH_STAND_IN_ATTR}]`)!;
+      expect(copy, 'the old content stands in inside the card').not.toBeNull();
+      const carried = env.animations.find((a) => a.target === copy && a.keyframes[0]?.transform !== undefined)!;
+      const fresh = (transformsOf(body) as [RecordedAnimation])[0];
+      const start = scaleOf(carried.keyframes[0]!);
+      expect(start.x * sx, `fitCards ${fitCards}: drawn at the size it stood at`).toBeCloseTo(1);
+      expect(start.y * sy).toBeCloseTo(1);
+      // Its scale is the new content's, by the ratio the two started at, all the way along.
+      const ratio = start.y / scaleOf(fresh.keyframes[0]!).y;
+      carried.keyframes.forEach((frame, i) => {
+        expect(scaleOf(frame).y / scaleOf(fresh.keyframes[i]!).y).toBeCloseTo(ratio);
+      });
+      stopMorph();
+    }
   });
 
   it('carries the old centres across a window resized since the first measure, in proportion', () => {
@@ -653,6 +729,29 @@ describe('a re-flowing piece\'s crossfade', () => {
     expect(copiesIn(el), 'the first pass\'s copy gone, and no new one').toHaveLength(0);
     expect(env.animations.slice(before).some((a) => a.target === kid && a.keyframes[0]?.opacity === 0), 'nothing fades in again').toBe(false);
   });
+
+  it('[BLUE-03] stands a fitted piece\'s old words at the size they stood at, however small the piece starts', () => {
+    // A strip's tab, its name over its mark, turning into a list entry four times as wide.
+    const el = piece('folder', { left: 20, top: 500, width: 60, height: 40 });
+    el.setAttribute(MORPH_SHAPE_ATTR, 'fit');
+    const kid = document.createElement('div');
+    kid.setAttribute('data-kid', '');
+    kid.textContent = 'All';
+    place(kid, { left: 30, top: 505, width: 40, height: 24 });
+    el.appendChild(kid);
+    const first = measureMorph();
+    const now = { left: 20, top: 200, width: 240, height: 40 };
+    place(el, now);
+    place(kid, { left: 60, top: 208, width: 40, height: 24 });
+    playMorph(first, 'blueprint.library.unfold');
+    const start = drawn(transformsOf(el)[0]!.keyframes[0]!, now).width / now.width;
+    expect(start, 'the entry starts within the tab, at a quarter of its size').toBeCloseTo(0.25);
+    const [copy] = copiesIn(el);
+    // The copy's type is drawn at its zoom under the scale its piece starts at.
+    expect(Number(copy!.style.zoom || 1) * start, 'the old name drawn at its own size').toBeCloseTo(1);
+    const r = copy!.getBoundingClientRect();
+    expect([r.left, r.top, r.width, r.height], 'where it stood').toEqual([30, 505, 40, 24]);
+  });
 });
 
 describe('a pass that reads the page again as it sets off', () => {
@@ -708,6 +807,59 @@ describe('a pass that reads the page again as it sets off', () => {
     expect(fade.options.duration).toBe(seconds('shell.shape.morph') * 1000);
   });
 
+  it('[UI-28] places again what stands on a piece when a later commit re-aims that piece, so it ends where it rests', async () => {
+    // The pass follows its pieces before each paint, which a size observer marks.
+    vi.stubGlobal('ResizeObserver', class {
+      private on = true;
+      constructor(private readonly tell: () => void) {}
+      observe() { const tick = () => { if (!this.on) return; this.tell(); requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+      unobserve() {}
+      disconnect() { this.on = false; }
+    });
+    const panel = piece('assistant', { left: 0, top: 0, width: 200, height: 100 });
+    // The pass reads a piece's layout through its offsets, which jsdom does not lay out.
+    for (const [key, from] of [['offsetLeft', 'left'], ['offsetTop', 'top'], ['offsetWidth', 'width'], ['offsetHeight', 'height']] as const) {
+      Object.defineProperty(panel, key, { configurable: true, get: () => parseFloat(panel.style[from]) });
+    }
+    let placed = 0;
+    const off = onMorphLayout(() => { placed += 1; });
+    const first = measureMorph();
+    place(panel, { left: 0, top: 300, width: 200, height: 100 });
+    playMorph(first, 'shell.shape.morph');
+    expect(placed, 'placed once before the pass measures').toBe(1);
+    await nextFrame();
+    await nextFrame();
+    place(panel, { left: 0, top: 500, width: 300, height: 200 });
+    await nextFrame();
+    await nextFrame();
+    expect(placed, 'placed again on the panel\'s new box').toBe(2);
+    off();
+    stopMorph();
+    vi.unstubAllGlobals();
+  });
+
+  it('[UI-27] fades a piece the new arrangement veils out where it stands, drawn until the fade ends', () => {
+    const el = piece('rail-fit', { left: 0, top: 0, width: 40, height: 40 });
+    const first = measureMorph();
+    Object.assign(el.style, { visibility: 'hidden', opacity: '0' });
+    place(el, { left: 0, top: 80, width: 40, height: 40 });
+    playMorph(first, 'shell.shape.morph');
+    const fade = env.animations.find((a) => a.target === el && a.keyframes[0]?.opacity !== undefined)!;
+    expect(fade.keyframes.map((k) => k.opacity)).toEqual(['1', '0']);
+    expect(fade.keyframes.map((k) => k.visibility)).toEqual(['inherit', 'inherit']);
+  });
+
+  it('[UI-27] fades in a piece the old arrangement veiled', () => {
+    const el = piece('rail-fit', { left: 0, top: 0, width: 40, height: 40 });
+    el.style.visibility = 'hidden';
+    const first = measureMorph();
+    el.style.visibility = '';
+    place(el, { left: 0, top: 80, width: 40, height: 40 });
+    playMorph(first, 'shell.shape.morph');
+    const fade = env.animations.find((a) => a.target === el && a.keyframes[0]?.opacity !== undefined)!;
+    expect(fade.keyframes.map((k) => k.opacity)).toEqual(['0', '1']);
+  });
+
   it('[UI-28] starts content only one arrangement shows from where its piece was last shown when the window turned first', async () => {
     stopMorph();
     const stop = watchShownBoxes();
@@ -728,5 +880,274 @@ describe('a pass that reads the page again as it sets off', () => {
     // Shifted with its piece to where it was shown, then carried across the turn in proportion.
     expect(parseFloat(pin.style.top)).toBeCloseTo((520 * 800) / 600 - 10);
     stop();
+  });
+});
+
+describe('the choreography every pass keeps', () => {
+  /** A scoped morph's element over the window's foot, with pieces and guides of its own. */
+  function stage() {
+    const root = document.createElement('div');
+    root.setAttribute('data-scope-root', '');
+    place(root, { left: 0, top: 0, width: 800, height: 600 });
+    document.body.appendChild(root);
+    type Box = { left: number; top: number; width: number; height: number };
+    const add = (id: string, box: Box, attrs: Record<string, string> = {}, parent: HTMLElement = root) => {
+      const el = document.createElement('div');
+      el.setAttribute(MORPH_PIECE_ATTR, id);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      place(el, box);
+      parent.appendChild(el);
+      return el;
+    };
+    return { root, add };
+  }
+  const opacityOf = (el: Element) => env.animations.filter((a) => a.target === el && a.keyframes.some((k) => k.opacity !== undefined));
+  const movesOf = (el: Element) => env.animations
+    .filter((a) => a.target === el && a.animation.id === MORPH_ANIMATION && a.keyframes.some((k) => k.transform !== undefined));
+  const translate = (frame: Keyframe) => /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(String(frame.transform))!.slice(1).map(Number);
+  const MOTION = 'blueprint.library.unfold' as const;
+  const shares = fadeShares(MOTION);
+
+  it('carries a piece riding another only as far as that one moves, fading it in late where it has no partner', () => {
+    const { root, add } = stage();
+    const search = add('search', { left: 100, top: 450, width: 80, height: 20 });
+    const scope = morphScope();
+    const first = scope.measure(root);
+    place(search, { left: 100, top: 300, width: 160, height: 20 });
+    const view = add('view', { left: 270, top: 300, width: 30, height: 20 }, { [MORPH_RIDE_ATTR]: 'search' });
+    scope.play(first, MOTION);
+    const [move, ...more] = movesOf(view);
+    expect(more, 'one move, its own and no other').toEqual([]);
+    // It holds to the right edge of what it rides, which rose 150 px and grew 80 px rightwards.
+    expect(translate(move!.keyframes[0]!)).toEqual([-80, 150]);
+    expect(move!.options.composite).toBe('add');
+    expect([move!.options.duration, move!.options.easing]).toEqual([seconds(MOTION) * 1000, easingCss(MOTION)]);
+    const [fade] = opacityOf(view);
+    expect(fade!.keyframes).toEqual([{ opacity: 0, offset: 0 }, { opacity: 0, offset: shares.in }]);
+    expect([fade!.options.duration, fade!.options.easing], 'on the travel\'s own clock and curve').toEqual([seconds(MOTION) * 1000, easingCss(MOTION)]);
+    scope.stop();
+  });
+
+  it('crosses a riding piece over where its place beside what it rides changed, and rides it whole where it did not', () => {
+    const { root, add } = stage();
+    const search = add('search', { left: 100, top: 450, width: 80, height: 20 });
+    const tab = add('tab', { left: 190, top: 450, width: 40, height: 20 }, { [MORPH_RIDE_ATTR]: 'search' });
+    const pick = add('pick', { left: 60, top: 450, width: 30, height: 20 }, { [MORPH_RIDE_ATTR]: 'search' });
+    const scope = morphScope();
+    const first = scope.measure(root);
+    place(search, { left: 100, top: 300, width: 80, height: 20 });
+    place(tab, { left: 190, top: 340, width: 40, height: 20 });
+    place(pick, { left: 60, top: 300, width: 30, height: 20 });
+    scope.play(first, MOTION);
+    // The pick stands as it stood beside the search: it rides, whole, and nothing crosses over.
+    expect(opacityOf(pick)).toEqual([]);
+    expect(translate(movesOf(pick)[0]!.keyframes[0]!)).toEqual([0, 150]);
+    // The tab stands lower beside it now: its old self rides out from where it stood, fading early, as
+    // its new self rides in, fading late.
+    const copies = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)];
+    expect(copies).toHaveLength(1);
+    const [copy] = copies as [HTMLElement];
+    expect([copy.style.left, copy.style.top]).toEqual(['190px', '450px']);
+    expect(translate(movesOf(copy)[0]!.keyframes.at(-1)!)).toEqual([0, -150]);
+    expect(opacityOf(copy)[0]!.keyframes.map((k) => [k.opacity, k.offset])).toEqual([['1', 0], [0, shares.out], [0, 1]]);
+    expect(opacityOf(tab)[0]!.keyframes).toEqual([{ opacity: 0, offset: 0 }, { opacity: 0, offset: shares.in }]);
+    expect(translate(movesOf(tab)[0]!.keyframes[0]!)).toEqual([0, 150]);
+    scope.stop();
+  });
+
+  it('keeps a piece pinned to a guide\'s corner on that corner\'s path, never flying across on its own', () => {
+    const { root, add } = stage();
+    const band = document.createElement('div');
+    band.setAttribute(MORPH_GUIDE_ATTR, 'band');
+    band.setAttribute('data-clip', '');
+    place(band, { left: 0, top: 450, width: 700, height: 150 });
+    root.appendChild(band);
+    const pinned = { [MORPH_RIDE_ATTR]: 'band', [MORPH_RIDE_AT_ATTR]: 'top right' };
+    const square = add('unfold', { left: 600, top: 500, width: 80, height: 80 }, pinned);
+    const scope = morphScope();
+    const first = scope.measure(root);
+    square.remove();
+    place(band, { left: 0, top: 100, width: 800, height: 500 });
+    const small = add('unfold', { left: 740, top: 120, width: 40, height: 40 }, pinned);
+    scope.play(first, MOTION);
+    // The band's top right corner rose 350 px and went 100 px right; the square starts where that corner
+    // stood, as far from it as it stands now, and its old self rides the corner the same way.
+    expect(translate(movesOf(small)[0]!.keyframes[0]!)).toEqual([-100, 350]);
+    const [copy] = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)] as [HTMLElement];
+    expect(translate(movesOf(copy)[0]!.keyframes.at(-1)!)).toEqual([100, -350]);
+    expect(movesOf(band), 'the guide is its owner\'s to move').toEqual([]);
+    scope.stop();
+  });
+
+  it('fades what only one arrangement has where it stands: out early and in late, on the travel\'s clock', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const gone = piece('caption', { left: 0, top: 500, width: 200, height: 40 });
+    parent.appendChild(gone);
+    const first = measureMorph();
+    gone.remove();
+    const arrived = piece('title', { left: 0, top: 100, width: 200, height: 40 });
+    playMorph(first, MOTION);
+    const [fadeIn] = opacityOf(arrived);
+    expect(fadeIn!.keyframes).toEqual([{ opacity: 0, offset: 0 }, { opacity: 0, offset: shares.in }]);
+    expect([fadeIn!.options.duration, fadeIn!.options.delay ?? 0, fadeIn!.options.easing]).toEqual([seconds(MOTION) * 1000, 0, easingCss(MOTION)]);
+    expect(movesOf(arrived), 'it does not fly').toEqual([]);
+    const [fadeOut] = opacityOf(gone);
+    expect(fadeOut!.keyframes.map((k) => [k.opacity, k.offset])).toEqual([['1', 0], [0, shares.out], [0, 1]]);
+    expect([fadeOut!.options.duration, fadeOut!.options.easing]).toEqual([seconds(MOTION) * 1000, easingCss(MOTION)]);
+    expect(movesOf(gone)).toEqual([]);
+    stopMorph();
+  });
+
+  it('sets a piece off from where the screen drew it rather than its old slot, one measured nowhere too', () => {
+    const { root, add } = stage();
+    const card = add('card', { left: 20, top: 460, width: 80, height: 60 });
+    const scope = morphScope();
+    const first = scope.measure(root);
+    // Out of the scope's view as it was measured, so measured nowhere.
+    const hidden = add('hidden', { left: 900, top: 460, width: 80, height: 60 });
+    const copy = { left: 300, top: 420, width: 96, height: 72 };
+    // The carried copy that drew the card there, standing over the page.
+    const carried = document.createElement('div');
+    carried.setAttribute('data-kid', '');
+    place(carried, copy);
+    carried.style.zIndex = '9';
+    document.body.appendChild(carried);
+    for (const id of ['card', 'hidden']) morphFrom(first, id, { ...copy, x: copy.left, y: copy.top, right: 396, bottom: 492 }, { drew: id === 'card' ? carried : null });
+    carried.remove();
+    const now = { left: 500, top: 460, width: 80, height: 60 };
+    place(card, now);
+    place(hidden, now);
+    scope.play(first, MOTION);
+    for (const el of [card, hidden]) {
+      const from = drawn(movesOf(el)[0]!.keyframes[0]!, now);
+      expect(centre(from)).toEqual(centre(copy));
+      expect(from.width * from.height).toBeCloseTo(copy.width * copy.height);
+    }
+    // The copy travels around the card from where it stood, fading out early.
+    const [stood, ...more] = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)];
+    expect(more, 'one copy, for the card it drew').toEqual([]);
+    expect(opacityOf(stood!)[0]!.keyframes.map((k) => [k.opacity, k.offset])).toEqual([['1', 0], [0, shares.out], [0, 1]]);
+    const [trail] = movesOf(stood!);
+    expect(trail!.keyframes[0]!.transform).toBe('translate(0px, 0px) scale(1)');
+    expect(scaleOf(trail!.keyframes.at(-1)!), 'at the card\'s own scale').toBeCloseTo(80 / 96);
+    scope.stop();
+  });
+
+  it('draws a travelling piece of a lifting scope by a copy over every clip, and shows the piece again as it lands', async () => {
+    const { root, add } = stage();
+    const scroller = document.createElement('div');
+    scroller.setAttribute('data-clip', '');
+    place(scroller, { left: 0, top: 450, width: 800, height: 100 });
+    scroller.style.overflow = 'hidden';
+    root.appendChild(scroller);
+    const card = add('card', { left: 20, top: 460, width: 80, height: 60 }, {}, scroller);
+    const scope = morphScope({ lift: true });
+    const first = scope.measure(root);
+    place(scroller, { left: 0, top: 100, width: 800, height: 400 });
+    place(card, { left: 40, top: 120, width: 160, height: 120 });
+    const run = scope.play(first, MOTION);
+    const [copy] = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)] as [HTMLElement];
+    expect(scroller.contains(copy), 'outside the scroller that clips the card').toBe(false);
+    expect(copy.parentElement!.parentElement, 'in a layer of its own on the page').toBe(document.body);
+    expect(movesOf(card), 'the card itself stays in its place').toEqual([]);
+    expect(movesOf(copy)).not.toEqual([]);
+    const hide = opacityOf(card)[0]!;
+    expect(hide.keyframes.every((k) => k.opacity === 0)).toBe(true);
+    await nextFrame();
+    await nextFrame();
+    for (const a of env.animations) if (a.animation.id === MORPH_ANIMATION) a.animation.finish();
+    await run.settled;
+    await Promise.resolve();
+    expect(copy.isConnected, 'the copy goes as it lands').toBe(false);
+    expect(hide.animation.playState, 'the card shows again').toBe('idle');
+  });
+
+  /** A card in the lifting stage: its plate, its face holding the picture `src`, and its name. */
+  function faceCard(add: ReturnType<typeof stage>['add']) {
+    const card = add('card:a', { left: 20, top: 460, width: 160, height: 110 });
+    const part = (box: { left: number; top: number; width: number; height: number }, attrs: Record<string, string> = {}) => {
+      const el = document.createElement('span');
+      el.setAttribute('data-kid', '');
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      place(el, box);
+      card.appendChild(el);
+      return el;
+    };
+    part({ left: 20, top: 460, width: 160, height: 110 }, { 'data-plate': '' });
+    const face = part({ left: 30, top: 468, width: 140, height: 80 }, { [MORPH_FACE_ATTR]: '' });
+    face.appendChild(Object.assign(document.createElement('img'), { src: 'a.png' }));
+    part({ left: 20, top: 550, width: 160, height: 20 }, { 'data-name': '' });
+    return card;
+  }
+  /** A details row's picture, `src`, the card's piece in that arrangement. */
+  function rowPicture(root: HTMLElement) {
+    const img = Object.assign(document.createElement('img'), { src: 'a.png' });
+    img.setAttribute(MORPH_PIECE_ATTR, 'card:a');
+    img.setAttribute(MORPH_SHAPE_ATTR, 'fit');
+    place(img, { left: 100, top: 100, width: 64, height: 40 });
+    root.appendChild(img);
+    return img;
+  }
+  const centre = (b: { left: number; top: number; width: number; height: number }) => [b.left + b.width / 2, b.top + b.height / 2];
+  const scaleOf = (frame: Keyframe) => Number(/scale\(([-\d.e]+)/.exec(String(frame.transform))![1]);
+
+  it('carries a card around its picture to a details row, its plate and name fading out early as they go', () => {
+    const { root, add } = stage();
+    const card = faceCard(add);
+    const scope = morphScope({ lift: true });
+    const first = scope.measure(root);
+    card.remove();
+    const row = rowPicture(root);
+    scope.play(first, MOTION);
+    const copies = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)];
+    const old = copies.find((c) => c.querySelector(`[${MORPH_FACE_ATTR}]`))!;
+    const picture = copies.find((c) => c.tagName === 'IMG')!;
+    expect(old.parentElement!.parentElement, 'over every clip, as the picture is').toBe(document.body);
+    expect(old.parentElement!.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING, 'under the picture').toBeTruthy();
+    // The picture sets off fitted in the card's face, which then stands as it did about it.
+    const from = drawn(movesOf(picture)[0]!.keyframes[0]!, { left: 100, top: 100, width: 64, height: 40 });
+    expect(centre(from)).toEqual(centre({ left: 30, top: 468, width: 140, height: 80 }));
+    const [move] = movesOf(old);
+    expect(move!.keyframes[0]!.transform).toBe('translate(0px, 0px) scale(1)');
+    expect([move!.options.duration, move!.options.easing]).toEqual([seconds(MOTION) * 1000, easingCss(MOTION)]);
+    // As the picture lands on the row, the card's face stands about it at the picture's own scale.
+    const [tx, ty] = translate(move!.keyframes.at(-1)!), s = scaleOf(move!.keyframes.at(-1)!);
+    const face = { left: 20 + tx! + s * (30 - 20), top: 460 + ty! + s * (468 - 460), width: 140 * s, height: 80 * s };
+    expect(s).toBeCloseTo(64 / from.width);
+    expect(centre(face)[0]).toBeCloseTo(100 + 32);
+    expect(centre(face)[1]).toBeCloseTo(100 + 20);
+    expect(face.width >= 64 && face.height >= 40, 'around the picture').toBe(true);
+    expect(opacityOf(old)[0]!.keyframes.map((k) => [k.opacity, k.offset])).toEqual([['1', 0], [0, shares.out], [0, 1]]);
+    expect(movesOf(row), 'the row itself stays in its place').toEqual([]);
+    scope.stop();
+  });
+
+  it('carries a card from a details row around its picture, all of it but the picture fading in late', () => {
+    const { root, add } = stage();
+    const row = rowPicture(root);
+    const scope = morphScope({ lift: true });
+    const first = scope.measure(root);
+    row.remove();
+    const card = faceCard(add);
+    scope.play(first, MOTION);
+    const copies = [...document.querySelectorAll<HTMLElement>(`[${MORPH_STAND_IN_ATTR}]`)];
+    expect(copies, 'one lifted card, its picture in it').toHaveLength(1);
+    const [copy] = copies as [HTMLElement];
+    const face = copy.querySelector<HTMLElement>(`[${MORPH_FACE_ATTR}]`)!;
+    // The card starts where its face covers the row's picture at the picture's area.
+    const start = drawn(movesOf(copy)[0]!.keyframes[0]!, { left: 20, top: 460, width: 160, height: 110 });
+    const s = start.width / 160;
+    const faceAt = { left: start.left + s * 10, top: start.top + s * 8, width: 140 * s, height: 80 * s };
+    expect(centre(faceAt)[0]).toBeCloseTo(132);
+    expect(centre(faceAt)[1]).toBeCloseTo(120);
+    expect(faceAt.width * faceAt.height).toBeCloseTo(64 * 40);
+    expect(opacityOf(face), 'the picture shows all the way').toEqual([]);
+    for (const part of [copy.querySelector('[data-plate]')!, copy.querySelector('[data-name]')!]) {
+      expect(opacityOf(part)[0]!.keyframes).toEqual([{ opacity: 0, offset: 0 }, { opacity: 0, offset: shares.in }]);
+    }
+    expect(movesOf(card), 'the card itself stays in its place').toEqual([]);
+    expect(opacityOf(card)[0]!.keyframes.every((k) => k.opacity === 0), 'hidden until the pass lands').toBe(true);
+    scope.stop();
   });
 });

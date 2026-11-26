@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { PlacedObject } from '../../../../core/model/types';
 import { flatOutline, footprintMark, isFlatBody, underLandmark } from '../../geometry/object-marks';
 import { ribbonStrips } from '../../geometry/ink-path';
+import { toPlainGeometry } from '../../draw/mesh-upload';
 import { FLAG_MARK, GHOST_LOSS } from '../../../shared/viewport/view-constants';
 import { BodyOutlines3D, type BodyOutlineLook } from '../body-outlines';
 import { footprintShadow } from './boxes';
@@ -79,12 +80,7 @@ export class OverlayFlagged3D {
         const { fill, rim } = footprintShadow(footprintMark(s, o), 0);
         const parts: (THREE.Mesh | THREE.LineSegments)[] = [new THREE.Mesh(fill, paint.wash), new THREE.LineSegments(rim, paint.edge)];
         const ribbon = isFlatBody(o) ? ribbonStrips([flatOutline(s, o)], FLAT_EDGE) : null;
-        if (ribbon) {
-          const geo = new THREE.BufferGeometry();
-          geo.setAttribute('position', new THREE.Float32BufferAttribute(ribbon.positions, 3));
-          geo.setIndex(ribbon.index);
-          parts.push(new THREE.Mesh(geo, paint.line));
-        }
+        if (ribbon) parts.push(new THREE.Mesh(toPlainGeometry(ribbon), paint.line));
         for (const part of parts) part.renderOrder = SHADOW_ORDER;
         this.host.group.add(...parts);
         this.drawn.push(...parts);

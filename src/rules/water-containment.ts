@@ -15,15 +15,14 @@ import { TerrainType, type ValidationError } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
 import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
 import { traceToMountain } from '../core/domain/terrain/waterfall-geometry';
-import { DIR_OFFSETS, PERP_DIRS, type Direction } from '../core/grid/directions';
+import { DIRECTIONS, DIR_OFFSETS, PERP_DIRS } from '../core/grid/directions';
 import { TERRAIN_GRID } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
 import { definePostRule } from './define';
 
-const ALL_DIRS: Direction[] = ['north', 'south', 'east', 'west'];
-
 export const waterContainmentRule = definePostRule({
   id: 'V-WTR-02',
+  description: 'Every water cell on the map with a lower neighbor (an exposed face) must be capped by mountains at exactly the water elevation on both perpendicular ends. Nothing may stand on a cap: painting a cap above the water uncaps it, and the stroke is rolled back.',
 
   validate(state, opts, fail) {
     const { width, height } = state.template;
@@ -37,7 +36,7 @@ export const waterContainmentRule = definePostRule({
 
         const elev = terrain.elevation;
 
-        for (const dir of ALL_DIRS) {
+        for (const dir of DIRECTIONS) {
           const { dx, dy } = DIR_OFFSETS[dir];
           const nx = x + dx, ny = y + dy;
           const neighborCell = getCell(state.cells, nx, ny);

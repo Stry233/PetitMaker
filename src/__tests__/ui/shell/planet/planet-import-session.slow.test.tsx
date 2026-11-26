@@ -34,7 +34,7 @@ let uninstall: (() => void) | null = null;
 /** The shell over the editor session's planet overlays, which the edition root installs. */
 function mount() {
   uninstall = installPlanetOverlays(0);
-  return render(<Shell onRestoreSession={() => {}}><div /></Shell>, { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> });
+  return render(<Shell><div /></Shell>, { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> });
 }
 
 const plate = () => screen.getByTestId('planet-nameplate');
@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => { stopPlanetEditing(); });
+  act(() => { stopPlanetEditing({ discard: true }); });
   host.camera.takeQueued();
   cleanup();
   uninstall?.();

@@ -25,6 +25,8 @@ import { __setCatalogItem } from '../../../../state/catalog';
 import { makeState } from '../../../_support/map-state';
 import type { GridId } from '../../../../core/grid/grids';
 import { ItemCategory } from '../../../../config/catalog/categories';
+import type { PlayBeat } from '../../../../view/shared/viewport/frame-loop';
+import { beatClock } from '../../../_support/beat-clock';
 import { OBJECT_CHILD } from '../../../../view/map2d/draw/object-children';
 
 __setCatalogItem({
@@ -185,13 +187,10 @@ function wrapper(x: number, y: number, withIcon: boolean): PIXI.Container {
   return c;
 }
 
-function withFakeRaf(): { step: (ts: number) => void; restore: () => void } {
-  let queue: FrameRequestCallback[] = [];
-  const spy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => { queue.push(cb); return queue.length; });
-  return {
-    step: (ts: number) => { const due = queue; queue = []; for (const cb of due) cb(ts); },
-    restore: () => spy.mockRestore(),
-  };
+/** The frame loop's clock: `step(ts)` steps every live beat at `ts`. */
+function onFrameLoop(): { play: PlayBeat; step: (ts: number) => void; readonly played: number } {
+  const clock = beatClock();
+  return { play: clock.play, step: (ts: number) => { clock.frame(ts); }, get played() { return clock.played; } };
 }
 
 describe('animateRotation onFrame (the seam animateRotation offers the ring)', () => {
@@ -199,25 +198,24 @@ describe('animateRotation onFrame (the seam animateRotation offers the ring)', (
     const w = wrapper(0, 0, true);
     const map = new Map([['a', w]]);
     const frames: number[] = [];
-    const raf = withFakeRaf();
-    animateRotation(map, 'a', { fromDeg: 0, toDeg: 90 }, () => {}, (eased) => frames.push(eased));
+    const loop = onFrameLoop();
+    animateRotation(map, 'a', { fromDeg: 0, toDeg: 90 }, loop.play, (eased) => frames.push(eased));
     const { durationMs, overshoot } = animConfig.rotation;
-    raf.step(0);
-    raf.step(0.5 * durationMs);
-    raf.step(durationMs);
+    loop.step(0);
+    loop.step(0.5 * durationMs);
+    loop.step(durationMs);
     const icon = w.children[0]!;
     expect(frames).toEqual([
       easeOutBack(0, overshoot), easeOutBack(0.5, overshoot), 1,
     ]);
     expect(icon.rotation).toBeCloseTo(Math.PI / 2, 10); // lands exactly where the icon does
-    raf.restore();
   });
 
   it('never fires under reduced motion: the ring was already painted at the end state', () => {
     setReducedMotion(true);
     const w = wrapper(0, 0, true);
     const onFrame = vi.fn();
-    animateRotation(new Map([['a', w]]), 'a', { fromDeg: 0, toDeg: 90 }, () => {}, onFrame);
+    animateRotation(new Map([['a', w]]), 'a', { fromDeg: 0, toDeg: 90 }, beatClock().play, onFrame);
     expect(onFrame).not.toHaveBeenCalled();
   });
 });
@@ -230,21 +228,20 @@ describe('animateGroupRotation onFrame (the seam animateGroupRotation offers the
       members: [{ id: 'a', from: { x: 4.5, y: 4.5 }, spun: true }, { id: 'b', from: { x: 5.5, y: 4.5 }, spun: true }],
     };
     const frames: number[] = [];
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {}, (eased) => frames.push(eased));
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play, (eased) => frames.push(eased));
     const { durationMs, overshoot } = animConfig.groupRotation;
-    raf.step(0);
-    raf.step(0.3 * durationMs);
-    raf.step(durationMs);
+    loop.step(0);
+    loop.step(0.3 * durationMs);
+    loop.step(durationMs);
     expect(frames).toEqual([easeOutBack(0, overshoot), easeOutBack(0.3, overshoot), 1]);
-    raf.restore();
   });
 
   it('never fires under reduced motion', () => {
     setReducedMotion(true);
     const map = new Map<string, PIXI.Container>([['a', wrapper(5, 3, true)]]);
     const onFrame = vi.fn();
-    animateGroupRotation(map, { pivot: { x: 5, y: 3 }, sweepDeg: 90, members: [{ id: 'a', from: { x: 5, y: 3 }, spun: true }] }, () => {}, onFrame);
+    animateGroupRotation(map, { pivot: { x: 5, y: 3 }, sweepDeg: 90, members: [{ id: 'a', from: { x: 5, y: 3 }, spun: true }] }, beatClock().play, onFrame);
     expect(onFrame).not.toHaveBeenCalled();
   });
 });

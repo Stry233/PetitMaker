@@ -16,7 +16,7 @@ import { ActionButton } from '../../primitives/ActionButton';
 import { amplitude, cssMotion, framerMotion } from '../../design/motion';
 import { useT } from '../../../i18n/context';
 import { openHelp } from '../../session/help-targets';
-import type { HelpPageId } from '../../help/page-schema';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import type { OpRow } from '../../../agent/panel';
 
 const HELP_LINK: CSSProperties = {

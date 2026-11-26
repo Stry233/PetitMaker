@@ -1,11 +1,9 @@
 /* Shared connection-flow types, provider roster and styles for setup and management. */
 import type { CSSProperties } from 'react';
 import type { Transition } from 'framer-motion';
-import {
-  classify, type Oversight, PROVIDER_IDS, type ProviderId, toRawFailure,
-} from '../../../agent/panel';
-import { cursors, font, radii } from '../../design/styles';
-import { INSET, MUTED, PLATE_INK } from '../../design/tokens';
+import { type Oversight, PROVIDER_IDS, type ProviderId } from '../../../agent/panel';
+import { font } from '../../design/styles';
+import { MUTED, PLATE_INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { framerMotion } from '../../design/motion';
 import type { I18nKey } from '../../../i18n/keys';
@@ -31,14 +29,6 @@ export const OVERSIGHT_COPY: Record<Oversight, { label: I18nKey; caption: I18nKe
   yolo: { label: 'agent.oversight_yolo', caption: 'agent.oversight_yolo_caption' },
 };
 
-/** `unreachable` means no usable response; `no-list` means the server responded without a model catalog. */
-type EndpointVerdict = 'unreachable' | 'no-list';
-
-export function endpointCheckVerdict(err: unknown): EndpointVerdict {
-  const cls = classify(toRawFailure(err, false)).cls;
-  return cls === 'network' || cls === 'cors' || cls === 'config' ? 'unreachable' : 'no-list';
-}
-
 /* ── the boxes both screens stand controls in ─────────────── */
 
 export const WRAP_STYLE: CSSProperties = {
@@ -48,19 +38,6 @@ export const WRAP_STYLE: CSSProperties = {
 /** Field label style; zero margin removes the browser's paragraph spacing. */
 export const SAY_STYLE: CSSProperties = {
   ...roleFont('label'), fontFamily: font.family, color: PLATE_INK, lineHeight: 1.5, margin: 0,
-};
-
-/** Field wrapper; longhand border properties allow safe `borderColor` overrides and wrapper focus rings. */
-export const FIELD_STYLE: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8,
-  background: INSET, borderRadius: radii.md, padding: '10px 12px',
-  borderWidth: 1, borderStyle: 'solid', borderColor: 'transparent',
-};
-
-export const INPUT_STYLE: CSSProperties = {
-  flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-  ...roleFont('field'), fontFamily: font.family, color: PLATE_INK, letterSpacing: '.05em',
-  cursor: cursors.text,
 };
 
 export const NOTE_STYLE: CSSProperties = {

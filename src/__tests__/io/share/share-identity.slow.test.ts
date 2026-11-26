@@ -21,12 +21,12 @@ vi.setConfig({ testTimeout: 30_000 });
  *  the map its share code was written from. */
 interface PinnedCase { payload: string; canonical: string; templateId: string; opened?: string }
 const CASES = Object.entries(pinned.cases as Record<string, PinnedCase>);
-const CURRENT_CATALOG_HASH = 3180557252;
+const CURRENT_CATALOG_HASH = 3864796908;
 
 beforeAll(() => setToastPresenter(() => {}));
 
 describe('recorded identities', () => {
-  it('signs the catalog with the corrected five-by-five neighbor footprints', () => {
+  it('signs the catalog as it stands', () => {
     expect(catalogHash()).toBe(CURRENT_CATALOG_HASH);
   });
 

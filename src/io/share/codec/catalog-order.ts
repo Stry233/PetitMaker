@@ -144,6 +144,21 @@ export const SHARE_CATALOG_ORDER: readonly string[] = [
   'print-flight-jump-4',
   'print-flight-jump-5',
   'print-flight-jump-6',
+  'flower-petunia',
+  'flower-petunia-red',
+  'flower-petunia-white',
+  'flower-adonis',
+  'flower-adonis-red',
+  'flower-adonis-white',
+  'plant-bird-of-paradise',
+  'plant-desert-rose',
+  'plant-nandina',
+  'tree-welcoming-pine',
+  'bridge-floradise',
+  'ramp-fluorite-steps',
+  'building-pine-cabin',
+  'building-peach-cabin',
+  'building-orchard-cabin',
 ];
 
 /** How many entries the index can address. */

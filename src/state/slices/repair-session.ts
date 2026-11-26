@@ -6,7 +6,7 @@
  */
 import type { StateCreator } from 'zustand';
 import type { GridState } from '../../core/model/types';
-import type { CompatibilityReport } from '../landmark-clearance';
+import type { CompatibilityReport } from '../../core/model/compatibility';
 import type { ParkedEditor } from './planet-session';
 
 /** The map a load brought as it came, before any repair, for Export first: the file opened, as read
@@ -43,6 +43,13 @@ export type RepairSession =
 
 /** The modes a hand repair offers: none, so only selection, moving and deleting act. */
 export const REPAIR_BUILD_MODES = [] as const;
+
+/** What the automatic repair does to the report's objects: how many it moves, and how many find no
+ *  place and are removed. */
+export function automaticRepairCounts(report: CompatibilityReport): { moved: number; removed: number } {
+  const moved = report.plan.moves.filter((m) => m.proposal.kind !== 'no-place').length;
+  return { moved, removed: report.plan.moves.length - moved };
+}
 
 export interface RepairSessionSlice {
   /** Null when no repair is under way. */

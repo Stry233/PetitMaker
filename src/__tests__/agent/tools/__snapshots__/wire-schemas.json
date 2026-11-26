@@ -247,7 +247,7 @@
  },
  {
   "name": "inspect_region",
-  "description": "Read the terrain of a rectangle (max 45x45) as a compact token grid. Use this before editing — do not guess current terrain.",
+  "description": "Read a rectangle (max 45x45) as a compact token grid: what an object on each cell stands on. Use this before editing — do not guess current terrain.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -274,7 +274,7 @@
  },
  {
   "name": "get_objects",
-  "description": "List placed objects (id, catalogId, position, rotation, elevation). Optionally filter by catalog category.",
+  "description": "List placed objects (id, catalogId, position, rotation, elevation), at most 80 per call. Pass x1,y1,x2,y2 to list only objects placed in that rectangle, and category to list one catalog category.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -289,6 +289,18 @@
       "ramp",
       "facility"
      ]
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
     }
    }
   }
@@ -318,7 +330,7 @@
  },
  {
   "name": "view_map",
-  "description": "See the map as a rendered image (on vision models) or a token grid. Pass x1,y1,x2,y2 to view just that region, close up. Rendered images carry a coordinate ruler so you can map what you see to the cells you edit. Use it to judge COMPOSITION — shapes, balance, ragged edges — after major terrain or decoration work. Costs tokens on vision models; prefer evaluate_map for objective metrics.",
+  "description": "See the map as a rendered image (on vision models) or a token grid. Pass x1,y1,x2,y2 to view just that region, close up. Rendered images carry a coordinate ruler so you can map what you see to the cells you edit. Use it to judge COMPOSITION — shapes, balance, ragged edges — after major terrain or decoration work. The map shows what is built in its true colours; layer \"plan\" adds the planning annotations. layer \"ground\" shows the terrain alone, one colour per level, water by its level and every waterfall marked: the picture to judge levels, terraces and falls by, which the rendered map shows only as faint shades. Costs tokens on vision models; prefer evaluate_map for objective metrics.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -333,6 +345,15 @@
     },
     "y2": {
      "type": "number"
+    },
+    "layer": {
+     "type": "string",
+     "enum": [
+      "map",
+      "plan",
+      "ground"
+     ],
+     "description": "map (default): the rendered map as built, true colours. plan: the same with the planning annotations drawn over it. ground: the terrain alone by level."
     }
    }
   }
@@ -375,21 +396,31 @@
   }
  },
  {
-  "name": "export_map",
-  "description": "Open the export flow for the user to save their map: kind 'image' (a shareable PNG with the visible share-code band) or 'json' (the sectioned project file). This opens the export dialog for the user to confirm and download — you do not receive the file. Use only when the user asks to export, save, or share their map.",
+  "name": "list_app_actions",
+  "description": "List what you can do in the app outside the map: settings, view options, windows, preparing an export, the blueprint and planet libraries, and reading the app's Help and key bindings. Returns each action id with its arguments, its effect (answer, change or outward) and its current value. Call it before run_app_action.",
+  "parameters": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ {
+  "name": "run_app_action",
+  "description": "Run one app action from list_app_actions. Use it only for what the user asked: it changes the app, never the map. An export action opens the export window with the choices set, or the export notice for a blueprint file; the user confirms the download there.",
   "parameters": {
    "type": "object",
    "properties": {
-    "kind": {
+    "id": {
      "type": "string",
-     "enum": [
-      "image",
-      "json"
-     ]
+     "description": "The action id from list_app_actions."
+    },
+    "args": {
+     "type": "object",
+     "properties": {},
+     "description": "The action's arguments by name, as list_app_actions gives them."
     }
    },
    "required": [
-    "kind"
+    "id"
    ]
   }
  },
@@ -411,7 +442,7 @@
  },
  {
   "name": "paint_terrain",
-  "description": "Paint mountain or water using shape + flat coordinates (e.g. shape \"rect\" with x1,y1,x2,y2). For a pond on flat grass, paint water at elevation 0 only: surrounding grass contains it; no mountain rim is needed. Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; mountain elevation 0 clears terrain). Elevated water needs supporting terrain and enclosing banks before this call finishes. Read partial results before continuing.",
+  "description": "Paint mountain or water under the cells of a shape given as flat coordinates: shape \"rect\" with x1,y1,x2,y2, \"circle\", or \"picture\" (rows of text) for any outline, such as a terrace with bays and spurs or a crescent round a pool. The terrain lies under exactly those cells and reaches half a cell past them on every side, so it is centred where the same rectangle of objects would be; the cells touching it rest partly on it, and the result names the nearest clear ones. For a pond on flat grass, paint water at elevation 0 only: surrounding grass contains it; no mountain rim is needed. Mountain auto-builds support tiers 1..elevation (give only the FINAL elevation; mountain elevation 0 clears terrain). Elevated water needs supporting terrain and enclosing banks before this call finishes. Read partial results before continuing.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -421,9 +452,10 @@
       "rect",
       "circle",
       "line",
-      "cells"
+      "cells",
+      "picture"
      ],
-     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array; \"picture\" reads a shape drawn as rows of text from x1,y1."
     },
     "x1": {
      "type": "integer"
@@ -454,7 +486,7 @@
     },
     "outline": {
      "type": "boolean",
-     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+     "description": "With rect or circle: only the border cells (e.g. a mountain rim to contain water)."
     },
     "cells": {
      "type": "array",
@@ -474,6 +506,19 @@
       ]
      },
      "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "picture": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "For shape \"picture\": the shape drawn as rows of text, top row first, its top-left cell at x1,y1. \"#\" is a cell of the shape, \".\" is not. Draw any outline this way: a star, a letter, a crescent, an island with coves. Make the rows mirror images of themselves when the shape should be symmetric. Write a run of one mark as the mark and its count in braces: \"#{12}.{4}\" is twelve \"#\" then four \".\"."
+    },
+    "scale": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 6,
+     "description": "For shape \"picture\": how many cells each character stands for on a side (default 1). At 4 a row of 35 characters spans 140 cells, for outlines at island scale."
     },
     "rect": {
      "type": "object",
@@ -584,7 +629,7 @@
  },
  {
   "name": "erase_terrain",
-  "description": "Clear terrain (mountain/water) back to flat ground on cells.",
+  "description": "Clear the terrain (mountain/water) under cells back to flat ground; like paint_terrain it reaches half a cell past them on every side.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -594,9 +639,10 @@
       "rect",
       "circle",
       "line",
-      "cells"
+      "cells",
+      "picture"
      ],
-     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array; \"picture\" reads a shape drawn as rows of text from x1,y1."
     },
     "x1": {
      "type": "integer"
@@ -627,7 +673,7 @@
     },
     "outline": {
      "type": "boolean",
-     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+     "description": "With rect or circle: only the border cells (e.g. a mountain rim to contain water)."
     },
     "cells": {
      "type": "array",
@@ -647,6 +693,19 @@
       ]
      },
      "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "picture": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "For shape \"picture\": the shape drawn as rows of text, top row first, its top-left cell at x1,y1. \"#\" is a cell of the shape, \".\" is not. Draw any outline this way: a star, a letter, a crescent, an island with coves. Make the rows mirror images of themselves when the shape should be symmetric. Write a run of one mark as the mark and its count in braces: \"#{12}.{4}\" is twelve \"#\" then four \".\"."
+    },
+    "scale": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 6,
+     "description": "For shape \"picture\": how many cells each character stands for on a side (default 1). At 4 a row of 35 characters spans 140 cells, for outlines at island scale."
     },
     "rect": {
      "type": "object",
@@ -799,7 +858,7 @@
  },
  {
   "name": "trim_corner",
-  "description": "Cosmetic corner trim on a terrain cell: style 'fan' (rounded), 'tri' (45-degree bevel), 'square' (reset), 'empty' (cut away).",
+  "description": "Cosmetic corner trim on the terrain under cell x,y: corner names which corner of that cell's ground is cut, so the TL corner of a pond painted under x1,y1..x2,y2 is x1,y1 with corner TL and its BR corner is x2,y2 with corner BR. Style 'fan' (rounded), 'tri' (45-degree bevel), 'square' (reset), 'empty' (cut away).",
   "parameters": {
    "type": "object",
    "properties": {
@@ -909,7 +968,7 @@
  },
  {
   "name": "scatter_objects",
-  "description": "Place many items at once. Choose pattern explicitly: \"scatter\" distributes across the entire area for groves and meadows; \"fill\" visits cells in row order until count is reached; \"grid\" uses every step-th cell. For separate flower beds, make one call per small bed rectangle with its intended species and enough count to fill that rectangle. A low count over a large rect makes a partial row, not a compact bed. Illegal spots are skipped. One undo step. Returns counts and placed anchors.",
+  "description": "Place many items at once in an ordered pattern over a rectangle. \"grid\" (the default) plants a lattice on every step-th cell, an orchard or a bed of evenly spaced plants; \"fill\" covers every cell in row order, a solid bed; \"border\" lines the rectangle's edge, a hedge or a flower frame around a plot, a pool or a house (around water or a platform painted under x1,y1..x2,y2 the nearest clear border is the rectangle two cells larger on every side, which the paint result names); \"checker\" takes alternate cells, and two checker calls with offset 0 and 1 weave two species. \"scatter\" places at random and is for a wild look the user asked for. One species per call reads as one bed; make one call per bed, row or frame with enough count to complete it. Illegal spots are skipped. One undo step. Returns counts and placed anchors.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -918,7 +977,7 @@
      "items": {
       "type": "string"
      },
-     "description": "Pool to sample from (ONE id for ordered patterns; mix species only for natural scatter)."
+     "description": "ONE id for an ordered pattern; several are drawn from at random, for scatter only."
     },
     "count": {
      "type": "integer",
@@ -969,11 +1028,32 @@
     "pattern": {
      "type": "string",
      "enum": [
-      "scatter",
+      "grid",
       "fill",
-      "grid"
+      "even",
+      "border",
+      "checker",
+      "scatter"
      ],
-     "description": "scatter = natural arrangement (default); fill = solid row-major fill; grid = a lattice of every step-th cell."
+     "description": "grid = a lattice of every step-th cell (default); fill = every cell; even = columns x rows spread evenly across the rectangle, equal gaps and equal margins; border = the edge of the rectangle; checker = alternate cells; scatter = random."
+    },
+    "columns": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 40,
+     "description": "For pattern \"even\": how many across."
+    },
+    "rows": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 40,
+     "description": "For pattern \"even\": how many down."
+    },
+    "offset": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 1,
+     "description": "Which half of the checker to take (default 0)."
     },
     "step": {
      "type": "integer",
@@ -984,7 +1064,7 @@
     "spacing": {
      "type": "integer",
      "minimum": 0,
-     "description": "Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Ignored by fill/grid."
+     "description": "Extra min distance between placed items (default 0; trees already keep their own exclusion radius). Read by pattern \"scatter\" only."
     }
    },
    "required": [
@@ -1079,7 +1159,7 @@
     },
     "flood": {
      "type": "boolean",
-     "description": "Sink a crest pool (water at crest elevation inside a 1-cell rim)."
+     "description": "Sink a crest pool (water at crest elevation inside its own rim)."
     },
     "smooth": {
      "type": "string",
@@ -1094,7 +1174,7 @@
  },
  {
   "name": "sink_pool",
-  "description": "Sink a POOL COURT in one legal stroke: a 1-cell bench rim (mountain at `elevation`) holding water at the bench's own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves a step-3 lattice of bench islets inside the water (the parterre grid; plant it with scatter_objects pattern \"grid\" step 3). For terraced pool courts; ground-level lakes stay paint_terrain/draw_figure work.",
+  "description": "Sink a POOL COURT in one legal stroke: a narrow bench rim (mountain at `elevation`) along the rectangle's edge holding water at the bench's own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves bench islets inside the water, each holding one object and 4 cells from the next (the parterre grid; the result names the scatter_objects call that plants them). For terraced pool courts; ground-level lakes stay paint_terrain work.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -1118,7 +1198,7 @@
     },
     "islets": {
      "type": "boolean",
-     "description": "Leave the step-3 islet lattice inside the water."
+     "description": "Leave the lattice of plantable islets inside the water."
     },
     "smooth": {
      "type": "string",
@@ -1138,45 +1218,208 @@
   }
  },
  {
-  "name": "draw_figure",
-  "description": "Paint an ICONIC ground-water figure with true symmetry: heart, ring or crescent, centered at cx,cy, size cells across. Optional ringId places a single-species ring of trees/flowers around the outline (the classic peach ring). For lettering and custom figures, compose cells yourself with paint_terrain (the figure-landscape skill has the rules).",
+  "name": "raise_platform",
+  "description": "Raise a rectangle of ground x1,y1,x2,y2 to an elevation and place a ramp up to it on one side, in one step: a terrace behind buildings, a platform under a court or pool, a step of a stepped garden. access names the side the ramp goes on (the side the path arrives from); the ramp lands as near the middle of that side as the rules allow. For a platform higher than one layer, raise it one layer at a time, each call a smaller rectangle on the last (at most 3). Objects stand on top on exactly the cells of the rectangle, and the result names the nearest clear cells around it. Build on top with the usual tools; objects take the elevation under them.",
   "parameters": {
    "type": "object",
    "properties": {
-    "shape": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "elevation": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3,
+     "description": "The elevation of the top; the ground is 0."
+    },
+    "access": {
      "type": "string",
      "enum": [
-      "heart",
-      "ring",
-      "crescent"
-     ]
-    },
-    "cx": {
-     "type": "integer"
-    },
-    "cy": {
-     "type": "integer"
-    },
-    "size": {
-     "type": "integer",
-     "minimum": 8,
-     "maximum": 48,
-     "description": "Width in cells."
-    },
-    "ringId": {
-     "type": "string",
-     "description": "Catalog id planted in a ring around the figure (one species; omit for bare water)."
-    },
-    "islandFor": {
-     "type": "string",
-     "description": "A building id to stand on a dry islet at the figure's heart (the house-in-a-pond set piece); the islet is sized for its footprint and margin, and a bridge reaches it via find_bridge_sites."
+      "north",
+      "south",
+      "east",
+      "west"
+     ],
+     "description": "The side the ramp goes on."
     }
    },
    "required": [
-    "shape",
-    "cx",
-    "cy",
-    "size"
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "elevation",
+    "access"
+   ]
+  }
+ },
+ {
+  "name": "copy_area",
+  "description": "Repeat a finished motif: copy the terrain and objects inside the source rectangle x1,y1,x2,y2 (at most 32 cells a side) to each place in copies, in one step. Build one unit well (a framed bed, a house with its yard, an orchard block, a pool court), then lay it in a row, a grid or mirrored pairs. Each copy gives x,y, the top-left cell its frame lands on. flip \"horizontal\" mirrors it left to right and \"vertical\" top to bottom; turns rotates it clockwise by quarter turns after the flip. For left-right symmetry about a vertical axis with the source spanning x1..x2 and the axis lying between columns a and a+1, the mirrored copy has x = 2a + 1 - x2, the same y and flip \"horizontal\". Copies land on open ground: what already stands at a target is kept, and the result names what each copy could not lay.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "copies": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "x": {
+        "type": "integer"
+       },
+       "y": {
+        "type": "integer"
+       },
+       "flip": {
+        "type": "string",
+        "enum": [
+         "none",
+         "horizontal",
+         "vertical"
+        ],
+        "description": "Mirror before turning (default none)."
+       },
+       "turns": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 3,
+        "description": "Clockwise quarter turns (default 0)."
+       }
+      },
+      "required": [
+       "x",
+       "y"
+      ]
+     },
+     "description": "Where each copy lands, at most 12."
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "copies"
+   ]
+  }
+ },
+ {
+  "name": "replace_objects",
+  "description": "Replace every object of one catalog id inside the rectangle x1,y1,x2,y2 with another id of the same footprint, each at the same cell and rotation, in one step. Use it after copy_area so that copies of one layout differ in species or colour, or to change the planting of a bed without rebuilding it.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "from": {
+     "type": "string",
+     "description": "Catalog id to replace."
+    },
+    "to": {
+     "type": "string",
+     "description": "Catalog id to put in its place."
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "from",
+    "to"
+   ]
+  }
+ },
+ {
+  "name": "mirror_area",
+  "description": "Make two sides match: build ONE side of an entrance, a path, a court or a pond, then mirror the rectangle x1,y1,x2,y2 across a line, in one step. The tool computes where the mirror image lands, so the two sides are exactly symmetric, terrain and objects alike. Never build the two sides of something symmetric with separate calls. The other side must be open ground: what already stands there is kept and reported.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "axisX": {
+     "type": "number",
+     "description": "A vertical mirror line: a whole number c runs through the middle of column c (a path 1 or 3 wide centred on c); c + 0.5 runs between columns c and c + 1 (a path 2 wide on c and c + 1)."
+    },
+    "axisY": {
+     "type": "number",
+     "description": "A horizontal mirror line, given the same way for rows."
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
+   ]
+  }
+ },
+ {
+  "name": "check_build",
+  "description": "Check what stands in the rectangle x1,y1,x2,y2 for faults a careful builder would fix, found by computation, not by looking: a door with no path, a path cut off or leading nowhere, water left in two pieces, sides meant to match that do not (objects, paving, water and raised ground alike), a row with uneven gaps, planting off-centre on its bed. Each finding names the cells. Call it once when a part is built, before you move on, while a fix is still one step.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
    ]
   }
  },
@@ -1211,7 +1454,7 @@
      "type": "integer",
      "minimum": 2,
      "maximum": 5,
-     "description": "Channel width (default 4)."
+     "description": "Channel width (default 4). An even width is centred on the waypoints' cells; an odd one lies half a cell up and left of them."
     },
     "smooth": {
      "type": "string",
@@ -1229,7 +1472,7 @@
  },
  {
   "name": "clear_area",
-  "description": "Make room: in ONE step, remove every (non-locked) object touching the given cells AND erase the terrain there back to flat grass. Use before reshaping an area instead of removing objects one by one. NEVER answer a refused placement by clearing a district you built — fix the exact cells instead. A clear removing more than 25 objects or covering more than 400 cells refuses unless demolish:true acknowledges the scale.",
+  "description": "Make room: in ONE step, remove every (non-locked) object touching the given cells AND erase the terrain under them back to flat grass. Use before reshaping an area instead of removing objects one by one. NEVER answer a refused placement by clearing a district you built — fix the exact cells instead. A clear removing more than 25 objects or covering more than 400 cells refuses unless demolish:true acknowledges the scale.",
   "parameters": {
    "type": "object",
    "properties": {
@@ -1239,9 +1482,10 @@
       "rect",
       "circle",
       "line",
-      "cells"
+      "cells",
+      "picture"
      ],
-     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array."
+     "description": "Area form: \"rect\" fills x1,y1..x2,y2 (inclusive corners); \"circle\" fills radius r around cx,cy; \"line\" strokes x1,y1..x2,y2 at width; \"cells\" reads the cells array; \"picture\" reads a shape drawn as rows of text from x1,y1."
     },
     "x1": {
      "type": "integer"
@@ -1272,7 +1516,7 @@
     },
     "outline": {
      "type": "boolean",
-     "description": "With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water)."
+     "description": "With rect or circle: only the border cells (e.g. a mountain rim to contain water)."
     },
     "cells": {
      "type": "array",
@@ -1292,6 +1536,19 @@
       ]
      },
      "description": "Explicit cell list, for shape \"cells\"."
+    },
+    "picture": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "For shape \"picture\": the shape drawn as rows of text, top row first, its top-left cell at x1,y1. \"#\" is a cell of the shape, \".\" is not. Draw any outline this way: a star, a letter, a crescent, an island with coves. Make the rows mirror images of themselves when the shape should be symmetric. Write a run of one mark as the mark and its count in braces: \"#{12}.{4}\" is twelve \"#\" then four \".\"."
+    },
+    "scale": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 6,
+     "description": "For shape \"picture\": how many cells each character stands for on a side (default 1). At 4 a row of 35 characters spans 140 cells, for outlines at island scale."
     },
     "rect": {
      "type": "object",
@@ -1580,6 +1837,143 @@
   }
  },
  {
+  "name": "lay_route",
+  "description": "Lay one path from (x1,y1) to (x2,y2) across whatever lies between, in one step: it climbs each change of level with a stair or ramp, crosses water with a bridge, goes round what stands in the way and meets standing pavement squarely. A point on a building means its door. It connects the two points or lays nothing and says where it stopped. Use it for each stretch of the main route, giving the places it should pass as the ends of successive calls, and for the path to each door, so that every level and every door is reached.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "catalogId": {
+     "type": "string",
+     "description": "The paving, a road id from the CATALOG (default: the map's main paving)."
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3,
+     "description": "Cells wide (default 1)."
+    }
+   },
+   "required": [
+    "x1",
+    "y1",
+    "x2",
+    "y2"
+   ]
+  }
+ },
+ {
+  "name": "draw_area",
+  "description": "Build a whole place from a drawing: rows of text, one character per cell, top-left at (x,y). Built-in marks: \".\" leaves the cell as it is, \"~\" water, a digit raised ground at that level (0 is flat ground, 1-9 higher). Every other character is defined in legend, one line each: \"T=tree-apple\", \"p=path-stone\", \"h=house-id@90\" (rotation), and \"+\" joins ground with things: \"t=1+tree-apple\" is a tree on level 1, \"a=1+path-stone\" paving on level 1. Ground is laid first, then paving, then everything else, in one undo step. A thing with no level of its own stands at the level of the ground drawn around it. Ground reaches half a cell past its marks. Whatever stands keeps its ground, so water drawn right beside a thing stops half a cell short of it and the thing stays on dry ground; water between two things needs two \"~\" across to show. Where two kinds of ground meet, the half cell between them goes to the one drawn less, the figure: a pool in a terrace or a shape of land in a pool keeps its drawn shape. A water body takes the level of the lowest ground around it, so a pool drawn on a terrace lies in the terrace. An item larger than one cell is one mark at its top-left cell, the rest of its footprint left \".\"; trees and houses need a free cell between them. mirror completes the drawing so both sides match exactly: \"x\" mirrors it to the right (draw the left half), \"y\" downward (draw the top half), \"xy\" both (draw the top-left quarter); give x2,y2, the far corner of the area, and draw the half rounded up: the tool completes it to exactly that size. repeatX and repeatY lay the finished drawing as a tile, gapX and gapY cells apart. scale draws ground at island size: each character stands for a square of that many cells on a side, so 35 characters span 140 cells; a drawing at a scale holds ground marks only, and x2,y2 stay in cells. The result counts what landed per mark and names what was refused.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "integer",
+     "description": "Left column of the drawing."
+    },
+    "y": {
+     "type": "integer",
+     "description": "Top row of the drawing."
+    },
+    "reads_as": {
+     "type": "string",
+     "description": "Before the rows: what a visitor must see here to call this place what was asked, and where this drawing puts each of it. A court is closed in on its sides, has a floor to stand on and one thing at its centre; an orchard is one tree in rows with lanes between; a word is letters a visitor can read, each one drawn as its letter. For a correction, what it restores."
+    },
+    "x2": {
+     "type": "integer",
+     "description": "Right column the finished drawing must end on. With mirror \"x\" or \"xy\" draw the left half, rounded up: the tool completes it to exactly this width, sharing the middle column when the width is odd."
+    },
+    "y2": {
+     "type": "integer",
+     "description": "Bottom row the finished drawing must end on; with mirror \"y\" or \"xy\" draw the top half, rounded up."
+    },
+    "rows": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "The drawing, top row first; every row the same length. Write a run of one mark as the mark and its count in braces: \"2{26}3{20}\" is twenty-six 2s then twenty 3s."
+    },
+    "legend": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "One line per mark you define: \"<character>=<catalogId>\", optionally \"@<rotation>\" and \"<level>+\" or \"water+\" before it. A mark may also be ground alone: \"<character>=<level>\" for land, \"<character>=water<level>\" for water held at that level, such as a pool raised on a terrace inside a ring of the terrace. A drawing does not make falls: unstated water touching lower ground is laid at the lower level, and water at a stated level must be ringed by ground of its own level; carve_river begun inside a raised pool makes the falls."
+    },
+    "mirror": {
+     "type": "string",
+     "enum": [
+      "x",
+      "y",
+      "xy"
+     ],
+     "description": "Complete the drawing by its mirror image: x to the right, y downward, xy both."
+    },
+    "seam": {
+     "type": "string",
+     "enum": [
+      "shared",
+      "doubled"
+     ],
+     "description": "Only without x2/y2. shared (default): the last column or row drawn is the middle, drawn once, for an odd size. doubled: it is repeated, for an even size."
+    },
+    "repeatX": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 96,
+     "description": "How many copies across (default 1)."
+    },
+    "repeatY": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 80,
+     "description": "How many copies down (default 1)."
+    },
+    "gapX": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 20,
+     "description": "Untouched cells between copies across (default 0)."
+    },
+    "gapY": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 20,
+     "description": "Untouched cells between copies down (default 0)."
+    },
+    "replace": {
+     "type": "boolean",
+     "description": "Remove what already stands on the cells that carry a mark before drawing (default false: occupied cells are skipped and reported)."
+    },
+    "scale": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 6,
+     "description": "Cells each character stands for on a side (default 1). Above 1 the drawing holds ground only: digits, \"~\", \".\" and ground marks of the legend."
+    }
+   },
+   "required": [
+    "x",
+    "y",
+    "reads_as",
+    "rows"
+   ]
+  }
+ },
+ {
   "name": "list_skills",
   "description": "List the available build playbooks (proven multi-step recipes for villages, hills, rivers…). Cheap — call it when the user asks for a composite scene.",
   "parameters": {
@@ -1604,21 +1998,83 @@
  },
  {
   "name": "delegate_task",
-  "description": "Spawn a focused sub-agent with a FRESH context to execute one well-scoped build task, and get back its summary. Use for big requests: split them into independent parts (e.g. \"terrain the north hills\", \"build the village at (40,60)-(70,90)\", \"decorate the lakeshore\") and delegate each. The sub-agent sees the live map but NOT this conversation — the task text must be self-contained (locations, sizes, style). While it works, the panel names it by `label` if you gave one, else by the first line of `task` — so give a short `label` whenever `task` runs longer than a few words.",
+  "description": "Hand one region of a job of several regions to a helper: a sub-agent with a fresh context that builds on the same map and sees none of this conversation, so the brief must say everything it needs. Build the shared ground and paths yourself first. The helper edits only inside x1,y1..x2,y2 (inclusive corners, cut to the user's region when one is set) and cannot undo. A region of at most 1600 cells with no side over 56 is one place, built by a helper. A larger one, up to 72 on a side, is a district: it goes to a lead of its own, who plans it and briefs helpers for its places. Helpers briefed in the same turn work at the same time, so brief every region that is ready in one turn and give them bounds that do not overlap. The result gives a status (done, partial, capped or failed), how many write calls landed and how many were refused or reverted, what the region gained or lost, and the helper's report. Read it instead of inspecting the region again, and look only where it names a problem.",
   "parameters": {
    "type": "object",
    "properties": {
-    "task": {
-     "type": "string",
-     "description": "Complete, self-contained instructions incl. coordinates/area and desired style."
-    },
     "label": {
      "type": "string",
-     "description": "Optional short name (a few words, e.g. \"north grove\") shown in the panel while the helper works. Omit only when task already reads as one."
+     "description": "Short name shown to the user while the helper works, a few words, e.g. \"north grove\"."
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "x2": {
+     "type": "integer"
+    },
+    "y2": {
+     "type": "integer"
+    },
+    "goal": {
+     "type": "string",
+     "description": "The idea of the whole place in a sentence, then what this region is and the one thing that makes it memorable."
+    },
+    "include": {
+     "type": "array",
+     "maxItems": 8,
+     "items": {
+      "type": "string"
+     },
+     "description": "What must be there, one short phrase each."
+    },
+    "preserve": {
+     "type": "array",
+     "maxItems": 8,
+     "items": {
+      "type": "string"
+     },
+     "description": "What must be kept as it is, one short phrase each."
+    },
+    "interfaces": {
+     "type": "string",
+     "description": "How the region meets its neighbours: entry cells, the ground level at its edges."
+    },
+    "skills": {
+     "type": "array",
+     "maxItems": 3,
+     "items": {
+      "type": "string",
+      "enum": [
+       "layout-patterns",
+       "plan-island",
+       "region-kinds",
+       "neighbors",
+       "plan-on-map",
+       "build-from-plan",
+       "terrain-shaping",
+       "pro-terraforming",
+       "figure-landscape"
+      ]
+     },
+     "description": "Skills the helper loads before it builds."
+    },
+    "done": {
+     "type": "array",
+     "maxItems": 8,
+     "items": {
+      "type": "string"
+     },
+     "description": "Completion checks, one short phrase each."
     }
    },
    "required": [
-    "task"
+    "x1",
+    "y1",
+    "x2",
+    "y2"
    ]
   }
  },
@@ -1634,119 +2090,6 @@
      "maximum": 10
     }
    }
-  }
- },
- {
-  "name": "decorate_zone",
-  "description": "Decorate a rect or a planning zone (zone) in a professional theme using the procedural populator's decorators: orchard (fruit grids), farm (crop rows), garden (flower beds), hamlet (homes + gardens), waterfront (promenade), peak (lookout ring). Places MANY objects in one validated stroke. Use it instead of placing objects one by one.",
-  "parameters": {
-   "type": "object",
-   "properties": {
-    "x": {
-     "type": "integer"
-    },
-    "y": {
-     "type": "integer"
-    },
-    "w": {
-     "type": "integer"
-    },
-    "h": {
-     "type": "integer"
-    },
-    "zone": {
-     "type": "integer",
-     "minimum": 1,
-     "description": "A planning zone's number (get_annotations): the call keeps to that zone's cells, and to the given area as well when one is given."
-    },
-    "theme": {
-     "type": "string",
-     "enum": [
-      "orchard",
-      "farm",
-      "garden",
-      "hamlet",
-      "waterfront",
-      "peak"
-     ]
-    },
-    "seed": {
-     "type": "integer"
-    }
-   },
-   "required": [
-    "theme"
-   ]
-  }
- },
- {
-  "name": "plant_forest",
-  "description": "Plant a layered forest (stands with glades, flora drifts) across the rect or a planning zone (zone) in one validated stroke. Species follow the ground the way a Smart Build planting does: a dominant species chosen for the ground, with accents suited to wetter, higher or edge ground. A large rect is planted as patches about 24 cells across, each led by its own species. density 0-1 controls tree/flora density.",
-  "parameters": {
-   "type": "object",
-   "properties": {
-    "x": {
-     "type": "integer"
-    },
-    "y": {
-     "type": "integer"
-    },
-    "w": {
-     "type": "integer"
-    },
-    "h": {
-     "type": "integer"
-    },
-    "zone": {
-     "type": "integer",
-     "minimum": 1,
-     "description": "A planning zone's number (get_annotations): the call keeps to that zone's cells, and to the given area as well when one is given."
-    },
-    "density": {
-     "type": "number",
-     "minimum": 0,
-     "maximum": 1,
-     "description": "Vegetation density 0-1 (default 0.6)."
-    },
-    "seed": {
-     "type": "integer"
-    }
-   }
-  }
- },
- {
-  "name": "build_road_network",
-  "description": "Route a road network connecting the existing buildings through validated crossings (the procedural generator's region-portal router). Reads the current map's buildings and terrain to determine hub + hamlet nodes, scans for bridge/ramp crossing sites, then routes roads and any needed crossings in one stroke.",
-  "parameters": {
-   "type": "object",
-   "properties": {
-    "seed": {
-     "type": "integer",
-     "description": "Determinism seed (optional)."
-    }
-   }
-  }
- },
- {
-  "name": "frame_crossing",
-  "description": "Find the crossing site (bridge or ramp) nearest to (x,y), realize just that one crossing, and decorate it with a mirrored flora scene on both ends. Reports \"no crossing site found\" gracefully if no valid portal exists on the map.",
-  "parameters": {
-   "type": "object",
-   "properties": {
-    "x": {
-     "type": "integer"
-    },
-    "y": {
-     "type": "integer"
-    },
-    "seed": {
-     "type": "integer"
-    }
-   },
-   "required": [
-    "x",
-    "y"
-   ]
   }
  },
  {

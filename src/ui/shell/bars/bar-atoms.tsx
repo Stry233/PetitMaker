@@ -7,14 +7,16 @@ import { motion } from 'framer-motion';
 import { effectiveCombo } from '../../../state/keymap/resolve';
 import { useKeybinds } from '../../../state/keymap/store';
 import { prettyCombo } from '../../../platform/input/combo';
-import { MAP_LABEL, ON_DARK, ACTIVE, DARK_GROOVE, PLATE, PLATE_INK } from '../../design/tokens';
-import { SCALE, TEXT } from '../units';
+import { MAP_LABEL, ON_DARK, ACTIVE, DARK_GROOVE, INSET, PLATE, PLATE_INK } from '../../design/tokens';
+import { SCALE } from '../units';
+import { roleSize, type TextRole } from '../../design/text-weight';
 import { useTransition } from '../../design/motion/use-motion';
 import { useTouchMode } from '../../design/input-mode';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { BADGE, PLATE_ART, plateRight, CELL_BOX } from './terrain-cells';
-import { usePanelInk } from './bar-panel';
+import { usePanelInk, usePanelTone } from './bar-panel';
 import { useT } from '../../../i18n/context';
+import { tourTargetAttr, type TourTargetId } from '../../chrome/tour/steps';
 
 /** The live key combo of a bar command in the toolbar's context, or null where it has none. */
 function useCommandCombo(): (commandId: string) => string | null {
@@ -65,10 +67,31 @@ export function ShortcutBadge({ commandId, active = false, grown = false }: {
       }}
     >
       <Plate src={PLATE_ART.badge} style={{ inset: 0, width: '100%', height: '100%' }} />
-      <BarText size={TEXT.small} color={ON_DARK} weight={900} style={{ position: 'relative' }}>
+      <BarText role="small" color={ON_DARK} weight={900} style={{ position: 'relative' }}>
         {prettyCombo(combo)}
       </BarText>
     </motion.span>
+  );
+}
+
+/** A count on a card's top right corner, on the shelves' badge plate: how many of an item stand on the
+ *  map, or how many cards a carried stack holds. `height` is the plate's depth, `pad` the room past the
+ *  figures and `right` and `top` where it stands off the card's corner, in the card's px. */
+export function CardCount({ n, height, pad, right, top, label, testId }: {
+  n: number; height: number; pad: number; right: number; top: number; label?: string; testId?: string;
+}) {
+  return (
+    <span
+      data-testid={testId}
+      aria-label={label}
+      style={{
+        position: 'absolute', right, top, minWidth: height, height, padding: `0 ${pad}px`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+      }}
+    >
+      <Plate src={PLATE_ART.badge} style={{ inset: 0, width: '100%', height: '100%' }} />
+      <BarText role="small" color={ON_DARK} weight={900} style={{ position: 'relative' }}>{String(n)}</BarText>
+    </span>
   );
 }
 
@@ -87,10 +110,10 @@ export const BAR_LINE_HEIGHT = 1.15;
  * inside an upright panel is that panel's plate.
  */
 export function BarText({
-  size, color, onMap, weight = 800, align = 'center', style, children,
+  role, color, onMap, weight = 800, align = 'center', style, children,
 }: {
-  /** css px, from `units.ts:TEXT` — a role, not a measurement of the slot. */
-  size: number;
+  /** The kind of text it is; its size is the role's, drawn under the frame's zoom. */
+  role: TextRole;
   color?: string;
   onMap?: boolean;
   weight?: number;
@@ -100,6 +123,7 @@ export function BarText({
 }) {
   const weightAt = useFrameReadableWeight();
   const panelInk = usePanelInk();
+  const size = roleSize(role);
   return (
     <span
       style={{
@@ -107,7 +131,7 @@ export function BarText({
         alignItems: 'center',
         justifyContent: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
         pointerEvents: 'none',
-        fontSize: size,
+        fontSize: roleSize(role),
         fontWeight: weightAt(weight, size),
         whiteSpace: 'nowrap',
         lineHeight: BAR_LINE_HEIGHT,
@@ -121,23 +145,27 @@ export function BarText({
   );
 }
 
-export function Action({ label, primary, disabled, onPress }: {
-  label: string; primary?: boolean; disabled?: boolean; onPress: () => void;
+/** A bar's text button, as tall as the bar's cells unless `height` names the box of the fields it stands beside.
+ *  Its quiet fill is the cream plate, one step down to the inset on a cream panel, where the plate would not show. */
+export function Action({ label, primary, disabled, onPress, height = CELL_BOX.h, tourTarget }: {
+  label: string; primary?: boolean; disabled?: boolean; onPress: () => void; height?: number; tourTarget?: TourTargetId;
 }) {
+  const quiet = usePanelTone() === 'cream' ? INSET : PLATE;
   return (
     <ActionButton
       interaction="action" unavailable={disabled}
+      {...(tourTarget ? tourTargetAttr(tourTarget) : {})}
       onClick={() => { if (!disabled) onPress(); }}
       style={{
         ...btnReset, flex: 'none', pointerEvents: 'auto',
         cursor: disabled ? cursors.blocked : cursors.clickable,
         opacity: disabled ? UNAVAILABLE : 1,
-        height: CELL_BOX.h, padding: '0 18px', borderRadius: radii.pill,
-        background: primary ? ACTIVE : PLATE,
+        height, padding: '0 18px', borderRadius: radii.pill,
+        background: primary ? ACTIVE : quiet,
         display: 'flex', alignItems: 'center',
       }}
     >
-      <BarText size={TEXT.label} color={PLATE_INK}>{label}</BarText>
+      <BarText role="action" color={PLATE_INK}>{label}</BarText>
     </ActionButton>
   );
 }

@@ -324,3 +324,19 @@ describe('busy', () => {
     expect(el.style.cursor).toBe(cursorCss('mountain', { forbidden: true }));
   });
 });
+
+describe('the system-cursors preference', () => {
+  it('repaints the surface when the store flips it, with no component mounted', () => {
+    useEditorStore.setState({ systemCursors: false });
+    const el = document.createElement('div');
+    registerCursorSurface(el);
+    setToolCursor('mountain');
+    expect(el.style.cursor).toBe(css('mountain'));
+
+    useEditorStore.getState().setSystemCursors(true);
+    expect(el.style.cursor).toBe(css('mountain', false, { system: true }));
+
+    useEditorStore.getState().setSystemCursors(false);
+    expect(el.style.cursor).toBe(css('mountain'));
+  });
+});

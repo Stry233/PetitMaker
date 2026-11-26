@@ -18,7 +18,7 @@ import { EDGE, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, LABEL_BOX_DEPTH, MODE, PLATE_BAN
 const foldedHeight = (n: number, files: number) => railStack(Math.ceil(n / files));
 
 /** Fold order for fitting the view kit, history pair, and optional layer panel into one lane. */
-export const RAIL_FOLDS: readonly { kit: number; history: number }[] = [
+export const RAIL_FOLDS: readonly RailFold[] = [
   { kit: 1, history: 1 },
   { kit: 2, history: 1 },
   { kit: 2, history: 2 },
@@ -26,6 +26,12 @@ export const RAIL_FOLDS: readonly { kit: number; history: number }[] = [
   { kit: 4, history: 2 },
 ];
 const MOST_FOLDED = RAIL_FOLDS[RAIL_FOLDS.length - 1]!;
+
+/** How many files the view kit and history each stand in. */
+export type RailFold = { kit: number; history: number };
+
+/** The fold a rail plan stands in, to hold it while another room is planned. */
+export const railFoldOf = (rail: RailPlan): RailFold => ({ kit: rail.kitFiles, history: rail.historyFiles });
 
 /** Where the right-hand column's groups stand on one window, and where the open plate stands. */
 export interface RailPlan {
@@ -72,7 +78,9 @@ function railMode(inputMode?: InputMode): { touch: boolean; kitButtons: number; 
 }
 
 /** Fold and lower the controls before yielding the right lane to a scrollable layer panel. */
-export function planRail(vh: number, opts: { open: boolean; plateDepth: number; plateMinDepth?: number; top?: number; inputMode?: InputMode }): RailPlan {
+export function planRail(vh: number, opts: {
+  open: boolean; plateDepth: number; plateMinDepth?: number; top?: number; inputMode?: InputMode; railFold?: RailFold;
+}): RailPlan {
   const top = opts.top ?? RAIL_TOP;
   const { touch, kitButtons, layerClearance } = railMode(opts.inputMode);
   const leastGap = Math.max(RAIL.gap, layerClearance);
@@ -86,9 +94,9 @@ export function planRail(vh: number, opts: { open: boolean; plateDepth: number; 
     top + depth + 2 * RAIL.groupMin + groupHeight(fold) + floor <= vh;
   const restingFold = folds.find(fold => fits(fold, RAIL.layer.h, RAIL_FLOOR))
     ?? folds.find(fold => fits(fold, RAIL.layer.h, EDGE)) ?? mostFolded;
-  const fold = opts.open
+  const fold = opts.railFold ?? (opts.open
     ? folds.find(fold => fits(fold, opts.plateDepth, EDGE)) ?? mostFolded
-    : restingFold;
+    : restingFold);
   const gap = Math.max(leastGap, Math.min(RAIL.groupMin,
     (vh - EDGE - layerBottom - groupHeight(fold)) / 2));
   const floor = Math.max(EDGE, Math.min(RAIL_FLOOR,
@@ -130,7 +138,10 @@ export interface FrameLayout {
   modeRow: { left: number; top: number; gap: number; placement: 'top' | 'bottom'; band: number;
     /** On a wide window too narrow for the whole row beside the corner actions, the modes fold into one
      *  stack at the row's start (`controls/ModeRow.tsx:ModeTiles`); `open`, it stands unfolded. */
-    folded?: true; open?: true };
+    folded?: true; open?: true;
+    /** Upright, where the margins leave less than the whole row needs: the tiles keep their size, abut and
+     *  scroll sideways in a box this wide (`controls/ModeRow.tsx`). */
+    scroll?: { width: number } };
   /** The character's folded seat box, top-left corner (`panel-frame.ts:CHARACTER_SEAT`). */
   character: { left: number; top: number };
   /** The free assistant panel's top-left corner, before it slides up for room (`panel-frame.ts:panelTop`). */
@@ -141,8 +152,10 @@ export interface FrameLayout {
    *  undo and redo, the view kit's rows under it stepping aside (`portraitRoom`); `reach` is how tall one
    *  a handle sizes may be drawn, over the column up to the top row. `tabsLeft`, on a wide window short
    *  enough that the character's seat reaches down to the shelves' names, is where the names start,
-   *  past her seat; absent, they start at `SHELF_TABS.left`. */
-  bar: { bottom: number; height: number; tabsTop: number; room?: number; reach?: number; tabsLeft?: number };
+   *  past her seat; absent, they start at `SHELF_TABS.left`. `unfold`, on a wide window, is how tall a
+   *  shelf unfolded across the window stands above the bar's foot: up to the column's top, under the
+   *  mode row's caption and the corner actions, over the column's rows and the character's seat. */
+  bar: { bottom: number; height: number; tabsTop: number; room?: number; reach?: number; tabsLeft?: number; unfold?: number };
   /** On an upright window, the least height the frame can stand in, in its own px: the column down
    *  to the foot of undo and redo under the least top margin, the band, and the least depth of a panel
    *  open on the bar, so `bar.room` is never short of that panel at this height or above. 0 on a wide
@@ -214,11 +227,15 @@ const PORTRAIT_BAR_H = BAR_PAD + MODE.height + MODE.label.gap + LABEL_BOX_DEPTH 
 /**
  * The upright mode row across the bottom bar, between the side margins `edges`: its blocks spread
  * across them up to twice the landscape gap, then centred on the window while that keeps them inside
- * the margins. `EDGE` exceeds `PLATE_OVERHANG`, so the splat under an end block stays on screen.
+ * the margins. `EDGE` exceeds `PLATE_OVERHANG`, so the splat under an end block stays on screen. Where
+ * the blocks abutting still do not fit between the margins, the row scrolls in a box as wide as they leave.
  */
 function portraitModeRow(width: number, height: number, count: number, edges: { left: number; right: number }): FrameLayout['modeRow'] {
   const n = Math.max(1, count);
   const room = width - edges.left - edges.right;
+  if (room < modeRowSpan(n, 0)) {
+    return { left: edges.left, top: height - PORTRAIT_BAR_H + BAR_PAD, gap: 0, placement: 'bottom', band: PORTRAIT_BAR_H, scroll: { width: room } };
+  }
   const spread = n > 1 ? (room - n * MODE.size) / (n - 1) : 0;
   const gap = Math.max(0, Math.min(2 * MODE.gap, spread));
   const left = Math.max(edges.left, (width - modeRowSpan(n, gap)) / 2);
@@ -255,14 +272,16 @@ function portraitRoom(height: number, band: number, historyFoot: number): number
  * view kit, folding only when the window is too short for one file. An open layer plate stands
  * beside the column rather than in it.
  */
-function planPortraitRail(vh: number, top: number, floor: number, edgeRight: number, opts: { inputMode?: InputMode; panelDepth?: number }): RailPlan {
+function planPortraitRail(
+  vh: number, top: number, floor: number, edgeRight: number, opts: { inputMode?: InputMode; panelDepth?: number; railFold?: RailFold },
+): RailPlan {
   const { touch, kitButtons } = railMode(opts.inputMode);
   const gap = portraitRailGap(opts.inputMode);
   const layerBottom = top + RAIL.layer.h;
   const bottom = vh - floor;
   const depth = (fold: typeof RAIL_FOLDS[number]) =>
     gap + foldedHeight(HISTORY_BUTTONS, fold.history) + RAIL.groupGap + foldedHeight(kitButtons, fold.kit);
-  const fold = RAIL_FOLDS.find((f) => layerBottom + depth(f) <= bottom) ?? MOST_FOLDED;
+  const fold = opts.railFold ?? RAIL_FOLDS.find((f) => layerBottom + depth(f) <= bottom) ?? MOST_FOLDED;
   const { historyTop, historyFoot, kitTop } = portraitColumn(top, opts.inputMode, fold);
   // A panel open on the bar takes the room under the kit's rows that would stand on it, all of them
   // where it stands up to history. A panel a handle draws taller than that room covers the column
@@ -303,6 +322,8 @@ export function planFrame(
     panelLeast?: number;
     /** Whether a folded mode row stands unfolded (`FrameLayout.modeRow.open`). */
     rowOpen?: boolean;
+    /** The right-hand column's fold where it is held rather than chosen for this room (`railFoldOf`). */
+    railFold?: RailFold;
   },
 ): FrameLayout {
   if (opts.shape === 'portrait') return planPortrait(width, height, opts);
@@ -335,7 +356,10 @@ export function planFrame(
   rail = { ...rail, plateMaxH: rail.plateMaxH - (plateTop - railTop) };
   // The shelves' heading stands on the bar's floor; a short window brings it up beside her seat.
   const namesTop = height - LANDSCAPE_BAR.bottom - LANDSCAPE_BAR.tabsTop - SHELF_HEADING_HEIGHT;
-  const besideSeat = CHARACTER_SEAT.top + CHARACTER_SEAT.h - CHARACTER_SEAT.pad > namesTop;
+  const seatFoot = CHARACTER_SEAT.top + CHARACTER_SEAT.h - CHARACTER_SEAT.pad;
+  const besideSeat = seatFoot > namesTop;
+  const unfoldTop = Math.max(railTop, modeBottom);
+  const unfold = Math.max(LANDSCAPE_BAR.height, height - LANDSCAPE_BAR.bottom - unfoldTop);
   return {
     width, height,
     shape: 'landscape',
@@ -343,8 +367,8 @@ export function planFrame(
     character: { left: CHARACTER_SEAT.left, top: CHARACTER_SEAT.top },
     panel: LANDSCAPE_PANEL,
     bar: besideSeat
-      ? { ...LANDSCAPE_BAR, tabsLeft: CHARACTER_SEAT.left + CHARACTER_SEAT.w - CHARACTER_SEAT.pad + RAIL.groupMin - SHELF_TABS.padX }
-      : LANDSCAPE_BAR,
+      ? { ...LANDSCAPE_BAR, unfold, tabsLeft: CHARACTER_SEAT.left + CHARACTER_SEAT.w - CHARACTER_SEAT.pad + RAIL.groupMin - SHELF_TABS.padX }
+      : { ...LANDSCAPE_BAR, unfold },
     leastHeight: 0,
     edgeLeft: EDGE_LEFT, edgeRight, cornerLeft: width - edgeRight - corner, cornerTop, railTop, plateTop, plateMaxWidth, compact, rail,
   };

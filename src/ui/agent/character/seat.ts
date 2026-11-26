@@ -8,6 +8,7 @@ import { CHARACTER_SEAT } from '../../shell/panel-frame';
 import { visualRect } from '../../design/visual-rect';
 import { restingRect } from '../../primitives/morph';
 import { createSignal } from '../../../core/base/signal';
+import { CSS_CURVES } from '../../design/motion/curves';
 
 function layerOrigin(el: HTMLElement): { left: number; top: number } {
   const layer = el.parentElement;
@@ -146,7 +147,7 @@ export function popCharacter(
       home,
     ]
     : [{ ...home, easing: shape.easing }, small];
-  return hero.el.animate(frames, { duration: shape.total * 1000, easing: 'linear' });
+  return hero.el.animate(frames, { duration: shape.total * 1000, easing: CSS_CURVES.linear });
 }
 
 /** Writes visibility immediately for reduced motion and unchanged-form placement. */

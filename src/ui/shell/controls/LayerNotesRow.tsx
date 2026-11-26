@@ -9,25 +9,22 @@ import { useT } from '../../../i18n/context';
 import { openHelp } from '../../session/help-targets';
 import { useEditorStore } from '../../../state/store';
 import { notesOpenable } from '../../../state/slices/shell';
-import { showNotesForEditing } from '../../../editor/editing/annotation-edit';
 import { btnReset, cursors, font, UNAVAILABLE } from '../../design/styles';
-import { roleFont } from '../../design/text-weight';
+import { roleFont, roleSize } from '../../design/text-weight';
 import { ACTIVE, INK, INSET, PLATE_INK } from '../../design/tokens';
-import { TEXT } from '../units';
 import { useFrameReadableWeight, useFrameZoom } from '../use-frame-zoom';
 import { useUiPreviewPose } from '../../design/preview';
+import { useRunCommand } from '../use-shell-commands';
 
 /**
  * The plan-notes row, pinned between the head and the floors: not a floor, so outside the scroller.
- * Selecting it enters annotation editing (and shows a hidden layer); its eye and lock write the map's
- * annotation state.
+ * Selecting it enters annotation editing (and shows a hidden layer); its eye and lock press the
+ * commands over the map's annotation state.
  */
 export function NotesRow({ lane, selected }: { lane: number; selected: boolean }) {
   const t = useT();
   const fw = useFrameReadableWeight();
-  const setEditMode = useEditorStore((s) => s.setEditMode);
-  const setAnnotationsVisible = useEditorStore((s) => s.setAnnotationsVisible);
-  const setAnnotationsLocked = useEditorStore((s) => s.setAnnotationsLocked);
+  const run = useRunCommand();
   // The data mutates in place; the epoch is what re-renders this row's count and toggles.
   useEditorStore((s) => s.annotationsEpoch);
   const data = useEditorStore((s) => s.gridState)?.annotations;
@@ -72,25 +69,25 @@ export function NotesRow({ lane, selected }: { lane: number; selected: boolean }
           ?
           {measurer ? null : <TouchReach zoom={zoom} />}
         </ActionButton>
-        <span style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, opacity: dim, whiteSpace: 'nowrap', ...(measurer ? {} : { overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
+        <span style={{ fontSize: roleSize('label'), fontWeight: fw(800, roleSize('label')), color: ink, opacity: dim, whiteSpace: 'nowrap', ...(measurer ? {} : { overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
           {t('annot.layer')}
         </span>
       </div>
-      <span style={{ minWidth: tileM.count, textAlign: 'right', fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, opacity: dim, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+      <span style={{ minWidth: tileM.count, textAlign: 'right', fontSize: roleSize('small'), fontWeight: fw(800, roleSize('small')), color: ink, opacity: dim, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: tileM.toggleGap }}>
         <TileToggle
           icon={`${visible ? 'eye-open' : 'eye-closed'}-selected`}
           label={t('a11y.toggle_visibility')}
           testId={measurer ? 'shell-layer-annotation-eye-width' : 'shell-layer-annotation-eye'}
           size={tileM.icon}
-          onPress={measurer || posed ? () => {} : () => setAnnotationsVisible(!visible)}
+          onPress={measurer || posed ? () => {} : () => run('view.annotations', { on: !visible })}
         />
         <TileToggle
           icon={`${locked ? 'lock' : 'unlock'}-selected`}
           label={t('a11y.toggle_lock')}
           testId={measurer ? 'shell-layer-annotation-lock-width' : 'shell-layer-annotation-lock'}
           size={tileM.icon}
-          onPress={measurer || posed ? () => {} : () => setAnnotationsLocked(!locked)}
+          onPress={measurer || posed ? () => {} : () => run('view.annotations_locked', { on: !locked })}
         />
       </div>
     </div>
@@ -107,7 +104,7 @@ export function NotesRow({ lane, selected }: { lane: number; selected: boolean }
         dim="caller"
         aria-label={t('annot.layer')}
         data-testid="shell-layer-annotation"
-        onClick={() => (selected ? setEditMode({ mode: null }) : showNotesForEditing())}
+        onClick={() => run('mode.set', { mode: selected ? 'none' : 'annotate' })}
         style={{ borderRadius: tileM.radius, pointerEvents: 'auto' }}
       />
       {/* The row reads in the file tile's own columns — the same padding, the same figure slot,

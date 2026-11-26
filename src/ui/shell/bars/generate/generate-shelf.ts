@@ -5,61 +5,41 @@
  */
 import { forEdition, type EditionVariant } from '../../../../platform/build/edition';
 import {
-  CANDIDATES, KIND_ENGINE, RECIPE_RANGES, SEED_MAX, STENCIL_MIN_SIDE, fillLaysTerrain,
+  CANDIDATES, KIND_ENGINE, RECIPE_RANGES, SEED_MAX, STENCIL_MIN_SIDE, fillTakesElevation, fillTakesItem, kindNeeds,
   type GenerateKind, type KindEngine, type StencilFillKind,
 } from '../../../../tools/generation/facts';
-import type { HelpPageId } from '../../../help/page-schema';
+import { hasCustomCard } from '../../../../editor/editing/custom-card';
+import type { HelpPageId } from '../../../../editor/help/page-schema';
 import { EDGE, EDGE_RIGHT, RAIL, SHELF_SCALE, SHELF_TABS } from '../../units';
 import type { SliderShape } from '../BarSlider';
-import { IS_DEV_BUILD } from '../../../../platform/build/build-info';
 import type { I18nKey } from '../../../../i18n/keys';
 
 export type { GenerateKind, StencilFillKind };
-export { CANDIDATES, STENCIL_MIN_SIDE };
+export { CANDIDATES, STENCIL_MIN_SIDE, fillTakesElevation, fillTakesItem, hasCustomCard };
 
-/** Everything the shelf, its strip and Help read about a kind; no surface tests a kind by name. */
-interface KindTraits extends KindEngine {
+/** How a kind is shown: its tab's name, its object material's name and its Help page. */
+interface KindDisplay {
   readonly labelKey: I18nKey;
-  /** Whether released builds offer the visitor's own card. Development builds offer every card. */
-  readonly customCardReleased: boolean;
   /** The object material's name: one chosen item for a letter, a mixed composition for a picture. */
   readonly objectFillKey: I18nKey;
-  /** Whether the object material lays the one item the visitor picks. */
-  readonly pickItem: boolean;
-  /** Whether the strip's upper knob is the corridor width rather than richness. */
-  readonly corridor: boolean;
-  /** Whether the picture's contrast is a knob. */
-  readonly contrast: boolean;
-  /** Where the height knob applies: every material, terrain-coloured materials only, or none (a
-   *  letter follows its base surface). */
-  readonly elevation: 'always' | 'terrain' | 'none';
   /** The Help page the kind's tab opens. */
   readonly helpPage: HelpPageId;
 }
 
-const BUILT: Pick<KindTraits, 'pickItem' | 'contrast' | 'objectFillKey'> = {
-  pickItem: false, contrast: false, objectFillKey: 'generate.fill_object',
+const KIND_DISPLAY: Readonly<Record<GenerateKind, KindDisplay>> = {
+  maze: { labelKey: 'generate.kind_maze', objectFillKey: 'generate.fill_object', helpPage: 'maze' },
+  text: { labelKey: 'generate.kind_text', objectFillKey: 'generate.fill_object', helpPage: 'gen-letter' },
+  image: { labelKey: 'generate.kind_image', objectFillKey: 'generate.fill_mixed', helpPage: 'gen-picture' },
+  island: { labelKey: 'generate.kind_planet', objectFillKey: 'generate.fill_object', helpPage: 'gen-island' },
 };
 
-export const GENERATE_KIND: Readonly<Record<GenerateKind, KindTraits>> = {
-  maze: {
-    ...KIND_ENGINE.maze, ...BUILT, labelKey: 'generate.kind_maze', customCardReleased: true,
-    corridor: true, elevation: 'always', helpPage: 'maze',
-  },
-  text: {
-    ...KIND_ENGINE.text, labelKey: 'generate.kind_text', customCardReleased: true,
-    objectFillKey: 'generate.fill_object', pickItem: true, corridor: false, contrast: false,
-    elevation: 'none', helpPage: 'gen-letter',
-  },
-  image: {
-    ...KIND_ENGINE.image, labelKey: 'generate.kind_image', customCardReleased: false,
-    objectFillKey: 'generate.fill_mixed', pickItem: false, corridor: false, contrast: true,
-    elevation: 'terrain', helpPage: 'gen-picture',
-  },
-  island: {
-    ...KIND_ENGINE.island, ...BUILT, labelKey: 'generate.kind_planet', customCardReleased: true,
-    corridor: false, elevation: 'always', helpPage: 'gen-island',
-  },
+/** Everything the shelf, its strip and Help read about a kind, the engine's traits beside how it is
+ *  shown; no surface tests a kind by name. */
+export const GENERATE_KIND: Readonly<Record<GenerateKind, KindEngine & KindDisplay>> = {
+  maze: { ...KIND_ENGINE.maze, ...KIND_DISPLAY.maze },
+  text: { ...KIND_ENGINE.text, ...KIND_DISPLAY.text },
+  image: { ...KIND_ENGINE.image, ...KIND_DISPLAY.image },
+  island: { ...KIND_ENGINE.island, ...KIND_DISPLAY.island },
 };
 
 interface GenerateTab {
@@ -67,17 +47,13 @@ interface GenerateTab {
   labelKey: I18nKey;
 }
 
-/** Display order, left to right; Lite offers the kinds that read no input. */
-const ALL_TABS: readonly (GenerateTab & EditionVariant<GenerateTab>)[] = (['maze', 'text', 'image', 'island'] as const).map((id) => ({
-  id, labelKey: GENERATE_KIND[id].labelKey, ...(GENERATE_KIND[id].input ? { lite: false as const } : {}),
-}));
+/** Display order, left to right. */
+const ALL_TABS: readonly (GenerateTab & EditionVariant<GenerateTab>)[] = (['maze', 'text', 'image', 'island'] as const).map((id) => {
+  const needs = kindNeeds(id);
+  return { id, labelKey: GENERATE_KIND[id].labelKey, ...(needs ? { needs } : {}) };
+});
 
 export const TABS: readonly GenerateTab[] = forEdition(ALL_TABS);
-
-/** Whether the shelf offers the visitor's own card for `kind`. */
-export function hasCustomCard(kind: GenerateKind, devBuild: boolean = IS_DEV_BUILD): boolean {
-  return devBuild || GENERATE_KIND[kind].customCardReleased;
-}
 
 /** Available materials by generated content kind. */
 export function fillKindsFor(kind: GenerateKind): readonly StencilFillKind[] {
@@ -97,18 +73,6 @@ const FILL_KEY: Record<StencilFillKind, I18nKey> = {
 
 export function fillLabelKey(kind: GenerateKind, fill: StencilFillKind): I18nKey {
   return fill === 'object' ? GENERATE_KIND[kind].objectFillKey : FILL_KEY[fill];
-}
-
-/** Whether the material needs the selected-item control. */
-export function fillTakesItem(kind: GenerateKind, fill: StencilFillKind): boolean {
-  return GENERATE_KIND[kind].pickItem && fill === 'object';
-}
-
-/** Whether the height knob applies to the kind's material. */
-export function fillTakesElevation(kind: GenerateKind, fill: StencilFillKind): boolean {
-  const { elevation } = GENERATE_KIND[kind];
-  if (elevation === 'terrain') return fillLaysTerrain(fill);
-  return elevation === 'always';
 }
 
 /** The picture's contrast knob, as the slider reads it: percent, 100 leaving the image alone. */
@@ -142,6 +106,15 @@ export const CHOSEN = {
   /** Its corner, per axis, as a share of the marker's own box: the plate's radius plus the band. */
   radiusX: (CARD.radius + CARD.ring) / (CARD.w + 2 * RING_OUT),
   radiusY: (CARD.radius + CARD.ring) / (CARD.h + 2 * RING_OUT),
+} as const;
+
+/** The card plate's own box, inside its art's edge, as shares of the card's box per axis, and its
+ *  corner per axis as a share of that box: where a plate drawn without the art stands. */
+export const PLATE_BOX = {
+  insetX: PLATE_INSET / CARD.w,
+  insetY: PLATE_INSET / CARD.h,
+  radiusX: CARD.radius / (CARD.w - 2 * PLATE_INSET),
+  radiusY: CARD.radius / (CARD.h - 2 * PLATE_INSET),
 } as const;
 
 /** Tall, narrow batch-control geometry at the end of the candidate row. */

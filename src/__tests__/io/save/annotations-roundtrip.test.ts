@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { serialize } from '../../../io/save/json-codec';
 import { deserialize } from '../../_support/save-file';
 import { decodeAnnotations } from '../../../io/save/annotations-codec';
-import { canonicalize, toSaveJSON } from '../../../io/save/canonical';
+import { canonicalize, toSaveFile } from '../../../io/save/canonical';
 import { autosaveWorthy } from '../../../io/storage/facts';
 import { makeState } from '../../_support/map-state';
 import { routeWidth, type AnnotationsState, type ChipNote, type RouteNote, type ZoneNote } from '../../../core/model/annotations';
@@ -67,6 +67,17 @@ describe('annotations through serialize/deserialize', () => {
     expect(back.annotations!.locked).toBe(false);
   });
 
+  it('opens custom tags an earlier release kept too long whole, and two that read alike as one', () => {
+    const chip = (id: string, tag: string) => ({ kind: 'chip', id, x: 2, y: 2, tag, size: 'm', color: '#FFB347' });
+    const raw = {
+      items: [chip('c1', 'custom:t1'), chip('c2', 'custom:t2')],
+      customTags: [{ id: 'custom:t1', text: `a${'🌸'.repeat(23)}` }, { id: 'custom:t2', text: `a${'🌸'.repeat(22)}🌼` }],
+    };
+    const back = decodeAnnotations(raw)!;
+    expect(back.customTags).toEqual([{ id: 'custom:t1', text: `a${'🌸'.repeat(11)}` }]);
+    expect(back.items.map((n) => (n as ChipNote).tag)).toEqual(['custom:t1', 'custom:t1']);
+  });
+
   it('a save from before tags loads its zones untagged and without its text notes', () => {
     const state = makeState(8, 8);
     const raw = JSON.parse(serialize(state));
@@ -88,7 +99,7 @@ describe('annotations through serialize/deserialize', () => {
     state.annotations = notes();
     const canonical = canonicalize(state);
     expect(JSON.stringify(canonical)).not.toContain('"tag"');
-    expect(toSaveJSON(canonical)).not.toContain('annotations');
+    expect(JSON.stringify(toSaveFile(canonical))).not.toContain('annotations');
   });
 
   it('an annotation-only map is autosave-worthy', () => {
@@ -132,7 +143,7 @@ describe('a zone with no text', () => {
     const state = makeState(8, 8);
     state.annotations = { items: [{ kind: 'zone', id: 'z', cells: [{ x: 1, y: 1 }], color: '#FF8A7A', tag: 'homes', num: 2, size: 'none' }], visible: true, locked: false };
     expect((deserialize(serialize(state), state.template).annotations!.items[0] as ZoneNote).size).toBe('none');
-    const shared = deserialize(toSaveJSON(canonicalize(state), state.annotations), state.template);
+    const shared = deserialize(JSON.stringify(toSaveFile(canonicalize(state), state.annotations)), state.template);
     expect((shared.annotations!.items[0] as ZoneNote).size).toBe('none');
   });
 
@@ -160,7 +171,8 @@ describe('route width in saves', () => {
       { kind: 'route', id: 'a', points: [{ x: 1, y: 1 }, { x: 5, y: 2 }], color: '#FFB347', dashed: false, width: 4 },
       { kind: 'route', id: 'b', points: [{ x: 1, y: 3 }, { x: 5, y: 4 }], color: '#FFB347', dashed: true },
     ], visible: true, locked: false };
-    for (const back of [deserialize(serialize(state), state.template), deserialize(toSaveJSON(canonicalize(state), state.annotations), state.template)]) {
+    const shared = JSON.stringify(toSaveFile(canonicalize(state), state.annotations));
+    for (const back of [deserialize(serialize(state), state.template), deserialize(shared, state.template)]) {
       expect(back.annotations!.items.map((n) => (n as RouteNote).width)).toEqual([4, undefined]);
     }
   });
@@ -189,7 +201,7 @@ describe('half-cell notes in saves and share codes', () => {
   it('round-trips half-grid zones, half-cell measurements and routes losslessly through a save', () => {
     const state = makeState(12, 12);
     state.annotations = half();
-    for (const json of [serialize(state), toSaveJSON(canonicalize(state), state.annotations)]) {
+    for (const json of [serialize(state), JSON.stringify(toSaveFile(canonicalize(state), state.annotations))]) {
       expect(deserialize(json, state.template).annotations).toEqual(state.annotations);
     }
   });

@@ -12,7 +12,8 @@ import type { CSSProperties } from 'react';
 import type { CommandCategory } from '../../state/keymap/registry';
 import { ZONE_COLORS } from '../../core/model/palette';
 import { CellZone } from '../../core/game/zones';
-import { BROWN_TEXT, ERROR_RED, FRAME_INK, MAP_EDGE_ALPHA, MAP_INK, MAP_TEXT, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY, rgbaOf } from '../../assets/brand-palette';
+import { BROWN_TEXT, ERROR_RED, FRAME_INK, MAP_EDGE_ALPHA, MAP_INK, MAP_TEXT, PLATE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY } from '../../assets/brand-palette';
+import { rgbaOf } from '../../core/base/color';
 
 /** Glyph ink: the dark brown every icon and unplated label is drawn in. */
 export const INK = MAP_INK;
@@ -150,7 +151,6 @@ export const KEY_CATEGORY_COLORS: Record<CommandCategory, string> = {
   surface: TILE_GREEN,
   tool: ACTIVE,
   brush: TILE_PALE_YELLOW,
-  layer: '#A9D8E8',
   selection: '#FFB39A',
   camera: '#C9BEF0',
   view: '#8ED9C0',
@@ -194,7 +194,7 @@ export const TAPE = {
  *  alpha is what makes it the shape's own shading rather than a line drawn around it. */
 export { MAP_TEXT, MAP_EDGE_ALPHA };
 
-const LABEL_EDGE = `${INK}${Math.round(MAP_EDGE_ALPHA * 255).toString(16).padStart(2, '0')}`;
+const LABEL_EDGE = rgbaOf(INK, MAP_EDGE_ALPHA);
 
 /**
  * The treatment every word on the map wears, and what makes plates unnecessary: one dark pixel
@@ -245,7 +245,7 @@ export function plateShapeEdge(): string {
   const dense = (typeof window === 'undefined' ? 2 : window.devicePixelRatio) >= 1.5;
   return dense
     ? `0 0 0 0.5px ${LABEL_EDGE}`
-    : `0 0 0 1px ${INK}${Math.round((MAP_EDGE_ALPHA / 2) * 255).toString(16).padStart(2, '0')}`;
+    : `0 0 0 1px ${rgbaOf(INK, MAP_EDGE_ALPHA / 2)}`;
 }
 
 /**

@@ -6,10 +6,10 @@ vi.mock('../../platform/build/build-info', async (importOriginal) => {
   return { ...actual, IS_DEV_BUILD: true };
 });
 import { HELP_TABLES, translations } from '../_support/locale-tables';
-import { helpFacts } from '../../ui/help/facts';
+import { readerFacts } from '../../ui/help/facts';
 
 const CJK = '[\\u3040-\\u30ff\\u3400-\\u9fff]';
-const facts = helpFacts('en');
+const facts = readerFacts('en');
 const NUMBERS = [
   'n', 'm', 'max', 'min', 'w', 'h', 'total', 'count', 'seconds', 'layer', 'elev', 'crest', 'reach', 'window',
   ...Object.keys(facts).filter((key) => typeof facts[key] === 'number'),

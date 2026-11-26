@@ -3,7 +3,8 @@
 import { TILE, GAP, INNER, GROW, SLACK, useSwatchStripRow } from '../swatch-strip';
 import { SWATCH_FACE, SwatchTile } from '../SwatchTile';
 import { useRef, useState, type ReactNode } from 'react';
-import { ContentSwap } from './ContentSwap';
+import { motion } from 'framer-motion';
+import { useSwapReel } from '../../../primitives/use-swap-clip';
 import { SwapIcon } from '../../../primitives/line-glyphs';
 import { iconUrl } from '../../../../assets/icon-urls';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
@@ -18,6 +19,7 @@ import { ROW } from '../objects/object-shelf';
 import { usePlanGlide, useRailClearance } from '../../frame-layout';
 import { SWATCH_ROW_BOTTOM } from '../terrain-cells';
 import { cssMotion } from '../../../design/motion';
+import { useRunCommand } from '../../use-shell-commands';
 
 /** The row's negative top margin collapses out of its wrapper. The name keeps the shelf's
  *  clearance above the hovered plate, including the additional overhang. */
@@ -38,26 +40,26 @@ export function RoadStyles() {
   const t = useT();
   const locale = useLocale();
   const tileMaterial = useEditorStore((s) => s.tileMaterial);
-  const setTileMaterial = useEditorStore((s) => s.setTileMaterial);
+  const run = useRunCommand();
+  const setTileMaterial = (id: string) => run('tool.material', { value: id });
   const rotation = useEditorStore(s => s.placementRotation);
   const prints = isSurfacePrint(getCatalogItem(tileMaterial));
-  // Each family remembers the material last chosen in it, written as the switch leaves it.
-  const remembered = useRef<[string | undefined, string | undefined]>([undefined, undefined]);
   const swatches = getRoadMaterials(prints).map((item): MaterialSwatch => ({
     id: item.id, name: localizedName(item.name, locale), icon: item.icon ? iconUrl(item.icon) : undefined, color: item.color,
     transparent: prints, rotation: prints && item.id === tileMaterial ? rotation : 0,
   }));
-  const toggle = () => {
-    remembered.current[prints ? 1 : 0] = tileMaterial;
-    const next = remembered.current[prints ? 0 : 1] ?? getRoadMaterials(!prints)[0]?.id;
-    if (next) setTileMaterial(next);
-  };
+  const toggle = () => run('tool.road_family', { family: prints ? 'roads' : 'prints' });
+  // The other family's strip comes in as a shelf's category does; the bar opens on its strip standing.
+  const family = prints ? 'prints' : 'roads';
+  const swap = useSwapReel(family, { fromRest: true });
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: GAP, pointerEvents: 'auto' }}>
       <SurfaceSwitch prints={prints} onToggle={toggle} />
-      <ContentSwap contentKey={prints ? 'prints' : 'roads'} travel style={{ flex: 1, minWidth: 0 }}>
-        <MaterialStrip label={t(prints ? 'design.surface_prints' : 'design.road_surface')} swatches={swatches} active={tileMaterial} onPick={setTileMaterial} />
-      </ContentSwap>
+      <div style={{ display: 'flex', flex: 1, minWidth: 0, ...swap.clip }}>
+        <motion.div key={family} {...swap.reel} style={{ flex: 1, minWidth: 0 }}>
+          <MaterialStrip label={t(prints ? 'design.surface_prints' : 'design.road_surface')} swatches={swatches} active={tileMaterial} onPick={setTileMaterial} />
+        </motion.div>
+      </div>
     </div>
   );
 }

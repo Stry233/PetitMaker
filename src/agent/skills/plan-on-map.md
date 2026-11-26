@@ -1,26 +1,36 @@
 PLAN ON THE MAP
 
-WHEN TO USE: a layout across several areas or the whole island, or an order asking for a plan. Draw it with set_annotation before any terrain or object edit; the written plan is a short legend. Stages 1 to 3 are thinking, not calls. To build from annotations later, load build-from-plan.
+WHEN TO USE: a design for one district or several areas, up to a few thousand cells, or an order asking for a plan. For a whole island load plan-island instead. Draw the plan with set_annotation before any terrain or object edit; the filed plan is a short legend. To build from the user's own annotations, load build-from-plan.
 
-1. SITE: from the map context take the open ground, the fixed structures (the plaza and every other arrival point, such as a station), the coast, existing terrain and standing annotations (the user's requirements: plan around them, never change them unless asked). The planned area is the selection when there is one; an order for the island, the map or a place on it as a whole (a village, a park, a farm island) plans all of its open ground; only an order for one spot or feature (a picnic spot, a corner, a single garden) gets a small plan there.
+1. SITE. From the map context take the open ground and its bounds, the plaza, every arrival point, the coast, existing terrain and standing annotations (the user's requirements: plan around them).
 
-2. PROGRAMME TABLE, for every function asked and the support it needs:
-- instances: what comes in numbers is several parcels. Homes are plots in clusters of three to six around a lane or green; fields and orchards are strips or blocks; forest is belts and groves; water is several pieces, each with a job. A venue (cafe, library, stage) is one parcel; one that serves several districts may repeat. Never promise more of an item than its catalog max allows.
-- size, from what will stand there: a home plot is its house plus a yard and a margin, a venue its building plus a forecourt; the main attraction gets the most room.
-- totals: paths take a tenth to a fifth of the planned ground and parcels share the rest; a whole island is usually one parcel per few hundred cells, no parcel a large share unless it is the main attraction. Leftover ground never becomes one catch-all zone; reserved means kept free on purpose.
+2. IDEA. One sentence for the whole area: what it is about and the one sight a visitor will remember, and where that sight lies. A brief you were given states these; keep them.
 
-3. ADJACENCY: homes with gardens and a short walk to services; cafes and shops on a main route or at the plaza; farms with orchards and water; a sequence the order names in order along one walk. Noisy uses (stages, markets) away from homes, rest areas and libraries, with a path, forest belt or water between. Forest along the coast and between conflicts; quiet places at branch ends.
+3. LEVELS, one gesture for the whole area on the level you were given: a rise toward the sight in one to three steps, the way in lowest. Every place takes the level it lies on. Keep the levels at your edges and the water your brief preserves; inside, shape your own ground on them.
 
-4. PATHS FIRST, as zones tagged entrance (never a customTag): a main route 4 to 5 wide joining the plaza to every arrival point and crossing the area; branches 2 to 3 wide that cut the ground into blocks a parcel or two deep, so every parcel will front a path; lanes 1 to 2 wide into clusters. Every path joins another. A walk or loop is itself a zone (a ring or a closed band for a loop); a route arrow only adds direction to a drawn path. One zone per route or level, numbered first; band and polygon shapes follow the coast and the ground.
+4. ROUTE. One main path 2 or 3 wide in one material from the way in to the sight, joined to the routes at the area's edges. Branches 2 wide leave it so that every place touches a path. Paths run along the borders between places, never through the middle of one.
 
-5. BLOCKS INTO PARCELS: divide each block between paths into parcels that meet the paths and each other edge to edge: neighbouring rects share an edge (one ends at x, the next starts at x+1), a polygon follows a diagonal path, fill with a box takes what a block has left. Draw generously over paths and coast: clip keeps unclaimed open ground only, so paths stay whole. Edges mostly straight along paths and coast; no slivers unless a channel or hedge on purpose. Blocks take the size of what they hold: an even grid of identical blocks means the programme did not size them.
+5. PLACES. Divide all the open ground between the paths into places, 4 to 8 for a district, each about 400 to 1200 cells and seldom over 40 on a side, rectangles that meet the paths and each other edge to edge with nothing left over. A helper builds one place and is refused a larger one, so cut a large idea (a hill, a long shore) into halves that answer each other. Where the area is symmetric about its main path, plan the places of one side only; the other side is their mirror image. For each place decide:
+- its idea, in one phrase no other place repeats, stated as ground, structure and planting: what the land or water draws, what divides it, what rule fills it;
+- its level, and the cell where a path enters it;
+- whether it carries a main idea or supports one. A supporting place still has its ground designed and is planted to its edges by one rule; none is left as open lawn with a few things on it.
+Every place is ordered, not natural: figures, frames, rows and lattices, mirrored about the line its way in lies on. Vary the kind from neighbour to neighbour; region-kinds lists them. Each building of the catalogue stands once, in a place of its own composed around it.
 
-6. ASSIGN the programme to blocks by adjacency, each function in its instance count.
+6. DRAW it with set_annotation in one turn: each path a zone tagged entrance (a band through its points, size none), each place one rect zone with a customTag naming its idea in the user's language (at most 24 characters), one colour per kind, size s, clip "unclaimed".
 
-7. REFINE: water with jobs (a focus pond, channels between plots, irrigation by fields), forest belts as edges and buffers, a readable forecourt at the plaza, chips only for points (a viewpoint, a gate), routes only where direction matters.
+7. CHECK once with get_annotations: every place touches a path, no open ground unplanned. Repair with mode add or cut.
 
-8. CHECK with get_annotations against the table and the survey: the survey's count by label matches each item's instances (a dozen homes in clusters is a dozen plots, not three blocks); the main route reads 4 to 5 wide in the survey, branches 2 to 3; every parcel touches a path (extend one with mode add); edges facing open unplanned ground, or unplanned pieces inside the area, mean the tiling is unfinished; split an oversized parcel; cut overlaps; one colour per label.
+8. FILE update_plan with three stages: "Ground and paths", "Places" (name the zone numbers), "Joining and finish". Filing is how the user approves the drawing; do not ask in text.
 
-9. FILE update_plan with stages naming zone numbers ("Main route #1-#3", "Homes #8-#13"). Filing is how the user approves the drawing; do not ask in text.
+9. BUILD THE GROUND AND PATHS yourself. The ground of the whole area first, as one draw_area drawing over its corners (mirror for a symmetric area): the levels in digits, the water, the figure of the main sight. Keep what your brief preserves. Then the main path and branches with lay_route from junction to junction, which sets a stair at each level and a bridge at each water.
 
-LEGIBILITY: one colour per function (every forest one green, every path one grey); different facilities, different colours. Facilities take a customTag in the user's language, generic functions a preset. Number in reading order. Size s on a dense plan or a small area; paths in a plan of more than a dozen zones take size none, so their captions do not crowd the parcels; in a row of plots too narrow for their caption, one plot per cluster keeps it. No chip as a label, no label on the fixed plaza.
+10. HAND OVER THE PLACES: one delegate_task per place, all in the same turn so the helpers work at the same time; for a symmetric area brief one side only. A helper knows nothing but its brief, so each brief gives:
+- bounds: the place's rectangle, inside the paths, overlapping no other;
+- goal: the idea of the whole in a sentence, then this place's idea and what makes it memorable;
+- include: its ground figure with sizes (the pool, the terrace, the channel and their shape), what divides it, the rule that fills each part and the species or colours to use so neighbours differ, the building's catalogId if it has one;
+- preserve: the paths that run along or into it;
+- interfaces: the cell where the path enters, the ground level, what lies on each side;
+- skills: layout-patterns, neighbors for a place with a house; done: every part planted to its edges, the way in joined, sides matched.
+Say what the place is, not which tools to use. Never ask for scattered, sparse or informal planting, and do not ration plants for the load cap: say that planting in numbers uses the light species.
+
+11. JOIN AND FINISH. Read the results. Lay the mirrored side with mirror_area across the main path, place by place; each building stands once, so a place with a house is briefed whole, never mirrored. Brief a place again only for what its report says is missing. lay_route from a way in to the path wherever they do not meet. check_build along the paths, view_map once, then close with what was built.

@@ -19,6 +19,7 @@ import {
   type ValidationResult,
 } from '../model/types';
 import type { SourceContext, MapProvenanceSummary } from '../provenance/types';
+import { groupsAfterEdit, type PlacedGroup } from '../model/placed-group';
 import {
   applyCommand,
   entryCells,
@@ -28,6 +29,7 @@ import {
   touchedObjectId,
   readGenerationMark,
   writeGenerationMark,
+  writeGroups,
   type HistoryEntry,
   type TrimApplier,
 } from './command-apply';
@@ -87,6 +89,9 @@ export interface Stroke {
   /** Write the map's generation, recorded on the stroke's top entry so undo and redo restore it
    *  with the stroke. Called after `commit`; a stroke that left no entry writes it unrecorded. */
   setGeneration(mark: GenerationMark): void;
+  /** Write the map's placed groups, recorded on the stroke's top entry as `setGeneration` records
+   *  the generation; a stroke that left no entry writes nothing. */
+  setGroups(groups: readonly PlacedGroup[]): void;
 }
 
 /**
@@ -317,7 +322,15 @@ export class CommandExecutor {
       rollback: () => { if (!over()) this.rollbackTo(start); },
       collapse: () => { if (!over()) this.collapseHistory(start); },
       setGeneration: (mark) => { if (!over()) this.recordGeneration(start, mark); },
+      setGroups: (groups) => { if (!over()) this.recordGroups(start, groups); },
     };
+  }
+
+  private recordGroups(start: number, groups: readonly PlacedGroup[]): void {
+    const top = this.undoStack.length > start ? this.undoStack[this.undoStack.length - 1]! : undefined;
+    if (!top) return;
+    top.groups = { before: top.groups?.before ?? this.state.groups ?? [], after: groups };
+    writeGroups(this.state, groups);
   }
 
   private recordGeneration(start: number, mark: GenerationMark): void {
@@ -365,6 +378,12 @@ export class CommandExecutor {
     const taint = this.provenance.capture(cmd, before, after, objectOps);
 
     const entry: HistoryEntry = objectOps ? { cmd, before, after, objectOps, taint } : { cmd, before, after, taint };
+    // A member this command changed leaves its group in the same step, so undo brings it back.
+    const groups = groupsAfterEdit(this.state, touched === undefined ? [] : [touched], coords);
+    if (groups) {
+      entry.groups = { before: this.state.groups ?? [], after: groups };
+      writeGroups(this.state, groups);
+    }
     this.undoStack.push(entry);
     if (this.aside) this.spans.set(entry, { before: this.aside.read(), after: undefined });
     this.clearRedo();
@@ -503,6 +522,7 @@ export class CommandExecutor {
     const added = new Map<string, PlacedObject>();
     const removed = new Map<string, PlacedObject>();
     const marked = group.filter((e) => e.generation);
+    const grouped = group.filter((e) => e.groups);
     for (const entry of group) {
       for (const s of entry.before) {
         const k = cellKey(s.coord.x, s.coord.y);
@@ -529,6 +549,9 @@ export class CommandExecutor {
       taint: mergedTaint,
       ...(marked.length > 0
         ? { generation: { before: marked[0]!.generation!.before, after: marked[marked.length - 1]!.generation!.after } }
+        : {}),
+      ...(grouped.length > 0
+        ? { groups: { before: grouped[0]!.groups!.before, after: grouped[grouped.length - 1]!.groups!.after } }
         : {}),
     };
     this.undoStack.push(merged);
@@ -637,6 +660,35 @@ export class CommandExecutor {
     const cells = restoredCells(coords);
     this.eventBus.emit('cells-changed', { cells });
     this.eventBus.emit('history-applied', { cells, objects: this.flashObjects(reapplied) });
+    this.emitHistoryChanged();
+    return true;
+  }
+
+  /**
+   * Takes the newest map step back as a step of its own, which an undo reverses and a redo repeats:
+   * removing exactly what one step laid, as an ordinary edit. The map returns to how it stood before
+   * that step, a state the history recorded as legal. False with no map step to take back.
+   */
+  revertTopAsStep(): boolean {
+    this.abandonStroke();
+    const top = this.undoStack[this.undoStack.length - 1];
+    if (!top) return false;
+    const swap = <T extends { before: unknown; after: unknown }>(d: T): T => ({ ...d, before: d.after, after: d.before });
+    const inverse: HistoryEntry = {
+      cmd: top.cmd, before: top.after, after: top.before,
+      ...(top.objectOps ? { objectOps: { added: top.objectOps.removed, removed: top.objectOps.added } } : {}),
+      // The inverse carries no ops of its own: the step's ops stay applied while the step stands.
+      ...(top.taint ? { taint: { cells: top.taint.cells.map(swap), objects: top.taint.objects.map(swap), opIds: [] } } : {}),
+      ...(top.generation ? { generation: swap(top.generation) } : {}),
+      ...(top.groups ? { groups: swap(top.groups) } : {}),
+    };
+    const coords: MacroCoord[] = [];
+    this.objectChanges.hold(() => { coords.push(...this.reapplyEntry(inverse)); });
+    this.undoStack.push(inverse);
+    this.clearRedo();
+    const cells = restoredCells(coords);
+    this.eventBus.emit('cells-changed', { cells });
+    this.eventBus.emit('history-applied', { cells, objects: this.flashObjects([inverse]) });
     this.emitHistoryChanged();
     return true;
   }

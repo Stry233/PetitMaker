@@ -1,11 +1,14 @@
 /**
- * The per-chunk terrain mesher: the 3D editor rebuilds only edited chunks, so
- * chunked output must be geometry-identical (as a set) to the whole-map mesher
- * on any state. Cells only read their neighbors through GridState, never
- * sibling meshes, so partitioning cannot change what a cell emits.
+ * The per-chunk terrain mesher: the 3D editor rebuilds only edited chunks, so after an edit the
+ * chunks it dirtied, rebuilt, must give the geometry (as a set) a fresh build of the edited map
+ * gives. Cells only read their neighbors through GridState, never sibling meshes, so partitioning
+ * cannot change what a cell emits.
  */
 import { describe, it, expect } from 'vitest';
-import { buildTerrainMeshes, buildChunkTerrain } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildChunkTerrain } from '../../../../view/map3d/geometry/terrain-geometry';
+import { dirtyChunksFor } from '../../../../view/map3d/geometry/chunk-dirty';
+import { chunkKey } from '../../../../core/grid/rect';
+import type { TerrainMeshes } from '../../../../view/map3d/geometry/types';
 import { TerrainType } from '../../../../core/model/types';
 import { CellZone } from '../../../../core/game/zones';
 import type { GridState, MacroCell, MapTemplate, CornerTrim } from '../../../../core/model/types';
@@ -59,24 +62,29 @@ function sortedTriples(positions: number[]): string[] {
 }
 
 describe('buildChunkTerrain', () => {
-  it('the union of all chunks equals the whole-map mesher, mesh by mesh', () => {
+  it('an edit across chunk borders, its dirty chunks rebuilt, meshes as the edited map built fresh', () => {
     const state = mixedState();
-    const whole = buildTerrainMeshes(state);
-    const chunksX = Math.ceil(state.template.width / BUCKET_SIZE);
-    const chunksY = Math.ceil(state.template.height / BUCKET_SIZE);
-    const union = { solid: [] as number[], ground: [] as number[], water: [] as number[], fall: [] as number[] };
-    for (let cy = 0; cy < chunksY; cy++) {
-      for (let cx = 0; cx < chunksX; cx++) {
-        const m = buildChunkTerrain(state, cx, cy);
-        union.solid.push(...m.solid.positions);
-        union.ground.push(...m.ground.positions);
-        union.water.push(...m.water.positions);
-        union.fall.push(...m.fall.positions);
-      }
+    const { width, height } = state.template;
+    const chunksX = Math.ceil(width / BUCKET_SIZE), chunksY = Math.ceil(height / BUCKET_SIZE);
+    const buildAll = (): Map<string, TerrainMeshes> => {
+      const out = new Map<string, TerrainMeshes>();
+      for (let cy = 0; cy < chunksY; cy++) for (let cx = 0; cx < chunksX; cx++) out.set(chunkKey(cx, cy), buildChunkTerrain(state, cx, cy));
+      return out;
+    };
+    const kept = buildAll();
+    // Raise the pond's rim and drain the river where both cross the border between chunk columns.
+    const edited = [{ x: 15, y: 8 }, { x: 16, y: 8 }, { x: 15, y: 14 }, { x: 16, y: 14 }, { x: 16, y: 15 }];
+    state.cells[8]![15]!.terrain = { type: TerrainType.Mountain, elevation: 3 };
+    state.cells[8]![16]!.terrain = { type: TerrainType.Mountain, elevation: 3 };
+    for (const { x, y } of edited.slice(2)) state.cells[y]![x]!.terrain = null;
+    for (const key of dirtyChunksFor(edited, width, height)) {
+      const [cx, cy] = key.split(',').map(Number) as [number, number];
+      kept.set(key, buildChunkTerrain(state, cx, cy));
     }
-    for (const key of ['solid', 'ground', 'water', 'fall'] as const) {
-      expect(union[key].length, `${key} vertex count`).toBe(whole[key].positions.length);
-      expect(sortedTriples(union[key]), `${key} geometry set`).toEqual(sortedTriples(whole[key].positions));
+    const fresh = buildAll();
+    for (const kind of ['solid', 'ground', 'water', 'fall'] as const) {
+      const of = (chunks: Map<string, TerrainMeshes>) => sortedTriples([...chunks.values()].flatMap((m) => m[kind].positions));
+      expect(of(kept), `${kind} geometry set`).toEqual(of(fresh));
     }
   });
 

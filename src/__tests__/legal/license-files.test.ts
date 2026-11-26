@@ -3,73 +3,42 @@ import { existsSync, readFileSync } from 'node:fs';
 import { APP_NAME } from '../../i18n/terms/brand';
 import { LEGAL } from '../../legal/config';
 
-// `LICENSE` is the official Apache-2.0 text (https://www.apache.org/licenses/LICENSE-2.0.txt,
-// 201 lines, 11,357 bytes) with one edit: the appendix template carries the project's copyright
-// line, the same as in `NOTICE`, in place of the `[yyyy] [name of copyright owner]` placeholder.
+// `LICENSE` is the official FSL-1.1-ALv2 template (getsentry/fsl.software, `FSL-1.1-ALv2.template.md`,
+// sha256 36b6082235c0a2105174927fc57cc6ae9c41f45a08af2bdcaee18a8dace56177) with its two placeholders
+// filled: the year and the licensor, the collective "contributors", the same line as in `NOTICE`.
 const LICENSE = readFileSync('LICENSE', 'utf8');
 
-// Apache-2.0 section 4(d) makes downstream reproduce whatever `NOTICE` holds, so it carries
+// `NOTICE` travels with every copy (FSL's Redistribution keeps its copyright notices), so it carries
 // attribution and pointers, never terms.
 const NOTICE = readFileSync('NOTICE', 'utf8');
 
-describe('LICENSE — Apache-2.0 verbatim', () => {
-  it('starts with the Apache License 2.0 title block', () => {
-    expect(LICENSE.startsWith('                                 Apache License\n                           Version 2.0, January 2004')).toBe(true);
+const sha256 = async (text: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+describe('LICENSE: FSL-1.1-ALv2 verbatim', () => {
+  const COPYRIGHT = `Copyright 2026 ${APP_NAME} contributors`;
+
+  it('is the official template, byte for byte, once its two placeholders are put back', async () => {
+    expect(LICENSE).toContain(COPYRIGHT);
+    const template = LICENSE.replace(COPYRIGHT, 'Copyright ${year} ${licensor name}');
+    expect(await sha256(template)).toBe('36b6082235c0a2105174927fc57cc6ae9c41f45a08af2bdcaee18a8dace56177');
   });
 
-  it('is exactly 201 lines', () => {
-    // Strip the final newline so the count matches `wc -l`.
-    expect(LICENSE.replace(/\n$/, '').split('\n').length).toBe(201);
-  });
-
-  it('is the canonical length, less the copyright substitution', () => {
-    const PLACEHOLDER = '   Copyright [yyyy] [name of copyright owner]';
-    const ACTUAL = `   Copyright 2026 ${APP_NAME} contributors`;
-    expect(LICENSE).toContain(ACTUAL);
-    expect(LICENSE).not.toContain(PLACEHOLDER);
-    const restored = LICENSE.replace(ACTUAL, PLACEHOLDER);
-    expect(new TextEncoder().encode(restored).length).toBe(11357);
+  it('fills both placeholders, since a shipped file should not read as a template', () => {
+    expect(LICENSE).not.toContain('${year}');
+    expect(LICENSE).not.toContain('${licensor name}');
   });
 
   it('states the same copyright as NOTICE, so the two cannot drift apart', () => {
-    const line = `Copyright 2026 ${APP_NAME} contributors`;
-    expect(LICENSE).toContain(line);
-    expect(NOTICE).toContain(line);
+    expect(NOTICE).toContain(COPYRIGHT);
   });
 
-  it('contains all section titles 1-9', () => {
-    expect(LICENSE).toContain('1. Definitions.');
-    expect(LICENSE).toContain('2. Grant of Copyright License.');
-    expect(LICENSE).toContain('3. Grant of Patent License.');
-    expect(LICENSE).toContain('4. Redistribution.');
-    expect(LICENSE).toContain('5. Submission of Contributions.');
-    expect(LICENSE).toContain('6. Trademarks.');
-    expect(LICENSE).toContain('7. Disclaimer of Warranty.');
-    expect(LICENSE).toContain('8. Limitation of Liability.');
-    expect(LICENSE).toContain('9. Accepting Warranty or Additional Liability.');
-  });
-
-  it('contains the closing terms marker', () => {
-    expect(LICENSE).toContain('END OF TERMS AND CONDITIONS');
-  });
-
-  it('fills the appendix placeholder, since a shipped file should not read as a template', () => {
-    // The appendix is an example, not part of the terms, so filling it changes nothing legally.
-    // The owner is the collective "contributors", naming no individual.
-    expect(LICENSE).not.toContain('[yyyy]');
-    expect(LICENSE).not.toContain('[name of copyright owner]');
-    expect(LICENSE).toMatch(/^   Copyright 2026 \S.* contributors$/m);
-  });
-
-  it('pins full content by SHA-256 hash', async () => {
-    // Byte and line counts cannot catch a same-length edit.
-    const buffer = new TextEncoder().encode(LICENSE);
-    const digest = await crypto.subtle.digest('SHA-256', buffer);
-    const hash = Array.from(new Uint8Array(digest))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    expect(hash).toBe(
-      '62ab8bbc137efb9dfef98bcb5a876a27fa250d07fedb58eb8eb9fa284535eba9');
+  it('grants the Apache License, Version 2.0 as its future license', () => {
+    expect(LICENSE.startsWith('# Functional Source License, Version 1.1, ALv2 Future License\n')).toBe(true);
+    expect(LICENSE).toContain('## Grant of Future License');
+    expect(LICENSE).toContain('the Apache License, Version 2.0 that is effective on the second anniversary');
   });
 });
 

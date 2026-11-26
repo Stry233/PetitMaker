@@ -1,19 +1,18 @@
 import { SUPPORTS_EXTERNAL_LINKS } from '../../platform/build/edition';
 /**
- * React emitter for the constrained legal-markdown node tree
- * (`src/legal/markdown.ts`) — the in-app modal counterpart to the static
- * HTML serializer (`markdown-html.ts`). Same source tree, same DOM shape
- * (structural parity is unit-tested), styled inline from the `PROSE` map
- * below (espresso-on-cream tokens from `src/ui/design/styles.ts`, no invented
- * colors). Renders no wrapping element at the root (a `Fragment`) so its
- * DOM output matches `renderHtml`'s unwrapped block sequence exactly.
+ * The React emitter for the constrained Markdown node tree (`src/legal/markdown.ts`): `markdownBlocks`
+ * draws a tree in a caller's look (each element's style and what a link becomes), and `LegalMarkdown`
+ * is the in-app counterpart of the static HTML serializer (`markdown-html.ts`), the same source tree
+ * in the same DOM shape (structural parity is unit-tested), styled from the `PROSE` map below. It
+ * renders no wrapping element at the root (a `Fragment`), so its DOM output matches `renderHtml`'s
+ * unwrapped block sequence exactly.
  *
  * Security: React escapes all text/attribute values by default, so nothing
  * here may use `dangerouslySetInnerHTML`.
  */
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { Fragment, useRef } from 'react';
+import { Fragment, useMemo, useRef } from 'react';
 import { headingSlug, inlineText, type Inline, type MdNode } from '../../legal/markdown';
 import { font, radii } from '../design/styles';
 import { HAIRLINE, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY } from '../design/tokens';
@@ -67,7 +66,7 @@ const PROSE = {
   } satisfies CSSProperties,
   code: {
     fontFamily: 'monospace',
-    fontSize: '0.92em',
+    fontSize: TEXT_ROLES.chip.px,
     fontWeight: 400,
     background: SURFACE_SECONDARY,
     padding: '1px 4px',
@@ -115,153 +114,111 @@ const PROSE = {
   } satisfies CSSProperties,
 } as const;
 
-/** Optional callback: when a root-relative internal link (`/privacy`,
- *  `/zh/terms`, …) is clicked, intercept the default full-page navigation and
- *  hand the slug path to the caller (the in-modal reader re-opens the target
- *  doc in place). Fragment links (`#anchor`) and external links are never
- *  intercepted. `undefined` (the static-page/default case) leaves links as
- *  plain navigations. */
-type InternalLinkHandler = ((slugPath: string) => void) | undefined;
+type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4';
+type LinkNode = Extract<Inline, { t: 'link' }>;
+
+/** How a Markdown tree is drawn: each element's style, and what a link becomes. */
+export interface MarkdownLook {
+  /** A heading level's tag and style; a surface whose own hierarchy the prose must not change
+   *  draws every level as one tag. */
+  heading(level: 1 | 2 | 3 | 4): { tag: HeadingTag; style: CSSProperties };
+  /** A paragraph, and each line of a quote. */
+  p: CSSProperties;
+  list: CSSProperties;
+  li?: CSSProperties;
+  blockquote: CSSProperties;
+  hr: CSSProperties;
+  tableWrap: CSSProperties;
+  table: CSSProperties;
+  th: CSSProperties;
+  td: CSSProperties;
+  code: CSSProperties;
+  /** Bold text outside a heading; inside one it takes the heading's weight. */
+  strong: CSSProperties;
+  /** Gives each heading the id its text slugs to, as the static pages do. */
+  anchors?: boolean;
+  link(node: LinkNode, key: number): ReactNode;
+}
 
 /** A markdown table's scroll wrapper, as its own component rather than a call inline in
- *  `renderBlock`: `renderBlock` is a plain function invoked once per node from a `.map()`, so a
- *  hook call there would run a variable number of times per `LegalMarkdown` render (once per table
- *  in the doc) and break the rules of hooks. A real component sidesteps that — React gives each
- *  mounted `<TableWrap>` its own hook call, however many a doc holds. */
-function TableWrap({ zoom, children }: { zoom: number; children: ReactNode }): ReactNode {
+ *  `block`: `block` is a plain function invoked once per node from a `.map()`, so a hook call
+ *  there would run a variable number of times per render (once per table in the doc) and break the
+ *  rules of hooks. A real component gives each mounted `<TableWrap>` its own hook call. */
+function TableWrap({ zoom, style, children }: { zoom: number; style: CSSProperties; children: ReactNode }): ReactNode {
   const ref = useRef<HTMLDivElement>(null);
   const row = useScrollRow(ref, { zoom, pointerEvents: 'auto' });
   return (
-    <div ref={ref} className="tbl" style={{ ...PROSE.tblWrap, ...row }}>
+    <div ref={ref} className="tbl" style={{ ...style, ...row }}>
       {children}
     </div>
   );
 }
 
-function renderInlineOne(node: Inline, key: number, onInternalLink: InternalLinkHandler, strongWeight: CSSProperties['fontWeight']): ReactNode {
+function inlineOne(node: Inline, key: number, look: MarkdownLook, strong: CSSProperties): ReactNode {
   switch (node.t) {
     case 'text':
       return node.text;
     case 'strong':
-      return <strong key={key} style={{ fontWeight: strongWeight }}>{node.text}</strong>;
+      return <strong key={key} style={strong}>{node.text}</strong>;
     case 'em':
       return <em key={key}>{node.text}</em>;
     case 'code':
-      return (
-        <code key={key} style={PROSE.code}>
-          {node.text}
-        </code>
-      );
-    case 'link': {
-      if (!SUPPORTS_EXTERNAL_LINKS) return <span key={key}>{node.text}</span>;
-      if (node.external) {
-        return (
-          <a key={key} href={node.href} target="_blank" rel="noopener noreferrer" style={PROSE.link}>
-            {node.text}
-          </a>
-        );
-      }
-      // Internal link. When a handler is supplied and this is a root-relative
-      // path (not a pure `#fragment` in-page anchor), intercept the click so the
-      // in-modal reader switches docs instead of full-page navigating out of the
-      // SPA. The `href` stays set for right-click/open-in-new-tab + a11y.
-      const isSlugPath = node.href.startsWith('/');
-      const onClick =
-        onInternalLink && isSlugPath
-          ? (e: ReactMouseEvent) => {
-              // Respect modifier-click / middle-click (open in new tab).
-              if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-              e.preventDefault();
-              onInternalLink(node.href);
-            }
-          : undefined;
-      return (
-        <a key={key} href={node.href} style={PROSE.link} onClick={onClick}>
-          {node.text}
-        </a>
-      );
-    }
+      return <code key={key} style={look.code}>{node.text}</code>;
+    case 'link':
+      return look.link(node, key);
   }
 }
 
-function renderInline(children: Inline[], onInternalLink: InternalLinkHandler, strongWeight: CSSProperties['fontWeight'] = roleWeight('label')): ReactNode {
-  return children.map((node, i) => (
-    <Fragment key={i}>{renderInlineOne(node, i, onInternalLink, strongWeight)}</Fragment>
-  ));
+/** One run of inline spans in `look`, each keyed `keyPrefix` and its index, so runs from several
+ *  blocks can stand in one list. */
+export function markdownInline(children: Inline[], look: MarkdownLook, keyPrefix = '', strong: CSSProperties = look.strong): ReactNode[] {
+  return children.map((node, i) => <Fragment key={`${keyPrefix}${i}`}>{inlineOne(node, i, look, strong)}</Fragment>);
 }
 
-function renderBlock(
-  node: MdNode, key: number, onInternalLink: InternalLinkHandler, weightAt: (nominal: number, size: number) => number, zoom: number,
-): ReactNode {
+function block(node: MdNode, key: number, look: MarkdownLook, zoom: number): ReactNode {
+  const inline = (children: Inline[]) => markdownInline(children, look);
   switch (node.t) {
     case 'h': {
-      const Tag = `h${node.level}` as 'h1' | 'h2' | 'h3' | 'h4';
-      const id = headingSlug(inlineText(node.children));
+      const { tag: Tag, style } = look.heading(node.level);
+      const id = look.anchors ? headingSlug(inlineText(node.children)) : undefined;
       return (
-        <Tag key={key} id={id} style={{ ...PROSE[Tag], fontWeight: weightAt(PROSE[Tag].fontWeight, PROSE[Tag].fontSize) }}>
-          {renderInline(node.children, onInternalLink, 'inherit')}
+        <Tag key={key} id={id} style={style}>
+          {markdownInline(node.children, look, '', { ...look.strong, fontWeight: 'inherit' })}
         </Tag>
       );
     }
     case 'p':
-      return (
-        <p key={key} style={PROSE.body}>
-          {renderInline(node.children, onInternalLink)}
-        </p>
-      );
+      return <p key={key} style={look.p}>{inline(node.children)}</p>;
     case 'ul':
+    case 'ol': {
+      const List = node.t;
       return (
-        <ul key={key} style={{ ...PROSE.body, ...PROSE.list }}>
-          {node.items.map((item, i) => (
-            <li key={i} style={PROSE.li}>
-              {renderInline(item, onInternalLink)}
-            </li>
-          ))}
-        </ul>
+        <List key={key} style={look.list}>
+          {node.items.map((item, i) => <li key={i} style={look.li}>{inline(item)}</li>)}
+        </List>
       );
-    case 'ol':
-      return (
-        <ol key={key} style={{ ...PROSE.body, ...PROSE.list }}>
-          {node.items.map((item, i) => (
-            <li key={i} style={PROSE.li}>
-              {renderInline(item, onInternalLink)}
-            </li>
-          ))}
-        </ol>
-      );
+    }
     case 'blockquote':
       return (
-        <blockquote key={key} style={PROSE.blockquote}>
-          {node.children.map((line, i) => (
-            <p key={i} style={PROSE.body}>
-              {renderInline(line, onInternalLink)}
-            </p>
-          ))}
+        <blockquote key={key} style={look.blockquote}>
+          {node.children.map((line, i) => <p key={i} style={look.p}>{inline(line)}</p>)}
         </blockquote>
       );
     case 'hr':
-      return <hr key={key} style={PROSE.hr} />;
+      return <hr key={key} style={look.hr} />;
     case 'table':
       return (
-        <TableWrap key={key} zoom={zoom}>
-          <table style={PROSE.table}>
+        <TableWrap key={key} zoom={zoom} style={look.tableWrap}>
+          <table style={look.table}>
             <thead>
               <tr>
-                {node.header.map((cell, i) => (
-                  <th key={i} scope="col" style={PROSE.th}>
-                    {renderInline(cell, onInternalLink)}
-                  </th>
-                ))}
+                {node.header.map((cell, i) => <th key={i} scope="col" style={look.th}>{inline(cell)}</th>)}
               </tr>
             </thead>
             <tbody>
               {node.rows.map((row, ri) => (
                 <tr key={ri}>
-                  {row.map((cell, ci) => (
-                    <td key={ci} style={PROSE.td}>
-                      {renderInline(cell, onInternalLink)}
-                    </td>
-                  ))}
+                  {row.map((cell, ci) => <td key={ci} style={look.td}>{inline(cell)}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -269,6 +226,37 @@ function renderBlock(
         </TableWrap>
       );
   }
+}
+
+/** A tree's blocks drawn in `look`; `zoom` is the CSS zoom they stand under, which a wide table's
+ *  wheel travel divides out. */
+export function markdownBlocks(nodes: readonly MdNode[], look: MarkdownLook, zoom = 1): ReactNode[] {
+  return nodes.map((node, i) => block(node, i, look, zoom));
+}
+
+/** Optional callback: when a root-relative internal link (`/privacy`, `/zh/terms`, …) is clicked,
+ *  intercept the default full-page navigation and hand the slug path to the caller (the in-modal
+ *  reader re-opens the target doc in place). Fragment links (`#anchor`) and external links are never
+ *  intercepted. `undefined` (the static-page/default case) leaves links as plain navigations. */
+type InternalLinkHandler = ((slugPath: string) => void) | undefined;
+
+/** A legal link: inert text where the edition opens no outside page, a new tab for an external one,
+ *  and an internal one handed to `onInternalLink` on a plain click (the `href` stays for
+ *  open-in-new-tab and assistive technology). */
+function legalLink(node: LinkNode, key: number, onInternalLink: InternalLinkHandler): ReactNode {
+  if (!SUPPORTS_EXTERNAL_LINKS) return <span key={key}>{node.text}</span>;
+  if (node.external) {
+    return <a key={key} href={node.href} target="_blank" rel="noopener noreferrer" style={PROSE.link}>{node.text}</a>;
+  }
+  const onClick = onInternalLink && node.href.startsWith('/')
+    ? (e: ReactMouseEvent) => {
+        // Modifier and middle clicks open a new tab.
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onInternalLink(node.href);
+      }
+    : undefined;
+  return <a key={key} href={node.href} style={PROSE.link} onClick={onClick}>{node.text}</a>;
 }
 
 export function LegalMarkdown({
@@ -284,5 +272,24 @@ export function LegalMarkdown({
   zoom?: number;
 }) {
   const weightAt = useReadableWeight(dense);
-  return <>{nodes.map((node, i) => renderBlock(node, i, onInternalLink, weightAt, zoom))}</>;
+  const look = useMemo((): MarkdownLook => ({
+    heading: (level) => {
+      const tag = `h${level}` as const;
+      return { tag, style: { ...PROSE[tag], fontWeight: weightAt(PROSE[tag].fontWeight, PROSE[tag].fontSize) } };
+    },
+    p: PROSE.body,
+    list: { ...PROSE.body, ...PROSE.list },
+    li: PROSE.li,
+    blockquote: PROSE.blockquote,
+    hr: PROSE.hr,
+    tableWrap: PROSE.tblWrap,
+    table: PROSE.table,
+    th: PROSE.th,
+    td: PROSE.td,
+    code: PROSE.code,
+    strong: { fontWeight: roleWeight('label') },
+    anchors: true,
+    link: (node, key) => legalLink(node, key, onInternalLink),
+  }), [weightAt, onInternalLink]);
+  return <>{markdownBlocks(nodes, look, zoom)}</>;
 }

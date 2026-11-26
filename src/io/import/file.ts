@@ -1,14 +1,16 @@
-/** Shared JSON and PetitGlyph import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
+/** Shared JSON, PetitGlyph and map-link import path. Inspection decodes without replacing the live map; callers present the returned outcomes. */
 import { isOwnImageExport } from '../export/own-image-receipts';
 import { parseSave } from '../save/parse';
-import type { CompatibilityReport, LandmarkClearance } from '../../state/landmark-clearance';
+import type { CompatibilityReport } from '../../core/model/compatibility';
+import type { LandmarkClearance } from '../../tools/repair';
 import { loadParsedSave } from './open-save';
 import { ImportError, type ImportErrorCode, type ImportWarning } from '../save/import-error';
 import { MAX_IMPORT_BYTES } from '../save/limits';
-import { classifyImportSource } from './kind';
+import { classifyImport, type ClassifiedImport } from './kind';
 import { verifyIntegrity } from '../save/sections';
 import { applyOptionalSections, type SectionRestoreDeps } from './sections-restore';
-import { importFromRaster } from '../share';
+import { importFromPayload, importFromRaster } from '../share';
+import { decodeMapLinkCode } from '../share/link';
 import { readRasterImage } from './raster';
 import { readBlob } from './read-blob';
 import { adoptInstalledPlanet } from '../storage/planet-library';
@@ -23,8 +25,8 @@ function clearanceWarnings(cleared: LandmarkClearance): ImportWarning[] {
 
 /** A decoded file, not yet installed: what the confirmation shows before the map is replaced. */
 export interface ImportPreview {
-  /** Selects the warning order in the import UI. */
-  source: 'json' | 'raster';
+  /** Selects the warning order in the import UI; a link reads as a picture's code does. */
+  source: 'json' | 'raster' | 'link';
   state: GridState;
   notes?: MapNotes;
   warnings: ImportWarning[];
@@ -46,7 +48,7 @@ export type ImportInspection =
 
 export type FileImportOutcome =
   | { status: 'imported'; source: 'json'; warnings: ImportWarning[]; notes?: MapNotes }
-  | { status: 'imported'; source: 'raster'; warnings: ImportWarning[]; notes?: MapNotes }
+  | { status: 'imported'; source: 'raster' | 'link'; warnings: ImportWarning[]; notes?: MapNotes }
   | ImportRefusal;
 
 export interface ImportFileDeps {
@@ -82,16 +84,17 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** Decodes without installing. What the file is comes from `classifyImportFile`'s own decision;
- *  an input the readers refuse returns a failure outcome, and anything else they throw is logged. */
-export async function inspectImportFile(file: File | Blob, name: string): Promise<ImportInspection> {
+/** Decodes without installing. What the file is comes from `classifyImportFile`'s own decision,
+ *  `classified` where the caller already made it; an input the readers refuse returns a failure
+ *  outcome, and anything else they throw is logged. */
+export async function inspectImportFile(file: File | Blob, name: string, classified?: ClassifiedImport): Promise<ImportInspection> {
   if (file.size > MAX_IMPORT_BYTES) return { status: 'too-large' };
   let reader: ImportPreview['source'] | undefined;
   try {
-    const source = await classifyImportSource(file, name);
+    const { source, text: read } = classified ?? await classifyImport(file, name);
     if (source === 'map-save') {
       reader = 'json';
-      const text = await readBlob(file, 'text');
+      const text = read ?? await readBlob(file, 'text');
       const parsed = parseSave(parseJson(text));
       // Modified exports remain importable with a warning; files without a checksum stay silent.
       const integrity = verifyIntegrity(parsed.raw);
@@ -123,6 +126,23 @@ export async function inspectImportFile(file: File | Blob, name: string): Promis
     if (e instanceof ImportError) return { status: 'failed', code: e.code, ...(reader ? { source: reader } : {}) };
     console.error('[import] unexpected failure', e);
     return { status: 'failed', ...(reader ? { source: reader } : {}) };
+  }
+}
+
+/** Decodes the map a link's code carries, without installing it. */
+export async function inspectMapLink(code: string): Promise<ImportInspection> {
+  const payload = decodeMapLinkCode(code);
+  if (!payload) return { status: 'failed', code: 'malformed', source: 'link' };
+  try {
+    const result = await importFromPayload(payload);
+    if (!result.ok) return { status: 'failed', code: result.error.code, source: 'link' };
+    const warnings: ImportWarning[] = [...result.warnings];
+    if (result.cleared) warnings.push(...clearanceWarnings(result.cleared));
+    return readyImport('link', result.state, warnings, () => warnings, result.cleared?.report);
+  } catch (e) {
+    if (e instanceof ImportError) return { status: 'failed', code: e.code, source: 'link' };
+    console.error('[import] unexpected link failure', e);
+    return { status: 'failed', source: 'link' };
   }
 }
 

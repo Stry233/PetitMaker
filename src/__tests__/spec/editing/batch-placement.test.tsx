@@ -31,8 +31,14 @@ import type { BuildShape } from '../../../state/editing/vocabulary';
 const ROSE = 'flower-rose';
 const DAISY = 'flower-daisy';
 const CABIN = 'building-forest-cabin';
+/** A one-cell item that turns and may be laid many at a time. */
+const STALL = 'building-stall';
 const noop = (): void => {};
-const overlay = new Proxy({} as ToolOverlay, { get: () => noop });
+/** Each placement ghost the overlay was asked to show: its members, newest last. */
+let ghosts: { rotation: number }[][] = [];
+const overlay = new Proxy({} as ToolOverlay, {
+  get: (_t, prop) => (prop === 'showGroupPlacementGhost' ? (members: { rotation: number }[]) => { ghosts.push(members); } : noop),
+});
 const view = {
   projection: {
     screenToPoint: (sx: number, sy: number) => ({ x: sx / 10, y: sy / 10 }),
@@ -90,6 +96,7 @@ beforeEach(() => {
   setActiveView(view);
   canvas = render(<Canvas />).getByTestId('canvas');
   toasts = [];
+  ghosts = [];
   stopToasts = setToastPresenter((text) => { toasts.push(text); });
   // A curve's double-click reads each release's own time; every event here lands a millisecond apart.
   clock = 1000;
@@ -156,6 +163,23 @@ describe('painting', () => {
     expect(toasts).toEqual([]);
     w.undo();
     expect(w.fingerprint(), 'one undo takes the whole rectangle back').toBe(before);
+  });
+
+  spec('EDIT-65', 'a turn pressed while a rectangle is dragged turns its preview at once, before the pointer moves', () => {
+    const w = world();
+    const o = w.openGround(8, 6);
+    open(w, STALL);
+    paint('rect', 1);
+    const end = { x: o.x + 4, y: o.y + 2 };
+    canvas.dispatchEvent(mouse('pointerdown', { button: 0, buttons: 1, ...screen(o) }));
+    window.dispatchEvent(mouse('pointermove', { buttons: 1, ...screen(end) }));
+    const turns = () => new Set((ghosts[ghosts.length - 1] ?? []).map((m) => m.rotation));
+    expect(turns()).toEqual(new Set([0]));
+    key('selection.rotate_cw');
+    expect(turns()).toEqual(new Set([90]));
+    window.dispatchEvent(mouse('pointerup', { button: 0, buttons: 0, ...screen(end) }));
+    expect(placedOf(w, STALL).length).toBeGreaterThan(0);
+    expect(new Set(placedOf(w, STALL).map((s) => s.rotation))).toEqual(new Set([90]));
   });
 
   spec('EDIT-66', 'a rectangle dragged up and to the left lays from its starting corner', () => {

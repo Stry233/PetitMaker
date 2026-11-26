@@ -42,6 +42,10 @@ export const SCORES = {
        *  The two plates cross: separated in time they read as two events, and the switch is one. */
       { target: 'plate.leaving', motion: 'mode.plate.leave', at: 0 },
       { target: 'caption', motion: 'mode.caption.swap', at: 0 },
+      /** The chosen block's drawing grows into its chosen pose with the plate under it, and the one
+       *  left shrinks back as its plate goes. */
+      { target: 'tile.arriving', motion: 'mode.plate.arrive', at: 0 },
+      { target: 'tile.leaving', motion: 'mode.plate.leave', at: 0 },
       /** Behind the one it replaces, so the two bars are a handover rather than a dissolve. Short
        *  enough that the arriving bar is still on its way while the plate is. */
       { target: 'bar.arriving', motion: 'mode.bar.enter', at: BAR_IN },

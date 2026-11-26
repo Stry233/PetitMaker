@@ -22,7 +22,13 @@ export interface GuideTools {
   search: string;
   /** Reads the planning annotations back. */
   sketch: string;
+  /** Hands one region to a helper. */
+  helper: string;
 }
+
+/** The approval a call needs: none, an ordinary write's (asked under strict oversight) or a wide
+ *  call's (asked under checkpoint oversight too). */
+export type GateLevel = 'none' | 'write' | 'wide';
 
 export interface ToolFacts {
   /** What the named tool may do to the map, or undefined for a name no tool has. */
@@ -31,13 +37,29 @@ export interface ToolFacts {
   verifies(name: string): boolean;
   /** Whether the named tool draws planning annotations, the plan the plan protocol files. */
   sketches(name: string): boolean;
+  /** Whether a successful call of the named tool delivers what a job was asked without editing the
+   *  map, as an app action does. */
+  delivers(name: string): boolean;
   /** The cells a call's arguments name, as their bounding box, where they name a place. */
   footprint(input: Record<string, unknown>): CellBox | undefined;
+  /** The approval this call needs where its arguments decide it; absent or undefined, the tool's
+   *  access decides (`gateLevelOf`). */
+  gateLevel?(name: string, input: Record<string, unknown>): GateLevel | undefined;
   /** The tools the nudges name, so core prose names no tool itself. */
   guides: GuideTools;
 }
 
-/** Whether the named tool edits the map: the approval gate and the edit counters read this. */
+/** The approval a call needs: what its tool answers for these arguments, else what its access to
+ *  the map implies. A call may need approval without editing the map, so the edit counters read
+ *  `writesMap`, never this. */
+export function gateLevelOf(facts: Pick<ToolFacts, 'access' | 'gateLevel'>, name: string, input: Record<string, unknown>): GateLevel {
+  const own = facts.gateLevel?.(name, input);
+  if (own !== undefined) return own;
+  const access = facts.access(name);
+  return access === 'write' || access === 'wide' ? access : 'none';
+}
+
+/** Whether the named tool edits the map: the edit counters, the undo floor and the result stamps read this. */
 export function writesMap(facts: Pick<ToolFacts, 'access'>, name: string): boolean {
   const access = facts.access(name);
   return access === 'write' || access === 'wide';

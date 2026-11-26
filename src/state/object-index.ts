@@ -4,9 +4,16 @@
  * catalog lookup per entry), and generation/agent strokes ask it millions of
  * times on a decorated map.
  *
+ * Keyed by the objects Map rather than the GridState holding it, since the index reads nothing but
+ * the objects: a scratch copy of a map (`scratchGrid`), which shares its source's Map with cells of
+ * its own, reads the source's index instead of indexing every object again. A copy with a Map of its
+ * own (`cloneGridState`) has an index of its own.
+ *
  * Freshness: keyed on `state.objectsVersion`, bumped at every object mutation
  * site (command-apply and the placer's temporary self-removal). The size check
- * is a backstop for a missed bump on an add/remove path.
+ * is a backstop for a missed bump on an add/remove path. A copy that shares the Map but was taken
+ * before the Map changed asks with an older version than the cache's, which has no deltas to fold,
+ * so it rebuilds from what the Map holds.
  *
  * Incremental: when every mutation since this cache's version left an `objectsDelta`, the changed
  * entries are patched in, step by step. Anything unexpected (no delta, a step without one, an
@@ -59,7 +66,7 @@ export interface ObjectIndex {
 }
 
 interface Cached { version: number; size: number; index: ObjectIndex; nextOrd: number }
-const cache = new WeakMap<GridState, Cached>();
+const cache = new WeakMap<GridState['objects'], Cached>();
 
 /** Every chunk key an object's rect touches, padded by the terrain grid's offset so a terrain
  *  cell's overlap query never needs to look past its own chunk range. */
@@ -201,13 +208,13 @@ function patchCached(state: GridState, cached: Cached, version: number): boolean
 
 export function getObjectIndex(state: GridState): ObjectIndex {
   const version = state.objectsVersion;
-  const hit = cache.get(state);
+  const hit = cache.get(state.objects);
   if (hit) {
     if (hit.version === version && hit.size === state.objects.size) return hit.index;
     if (patchCached(state, hit, version)) return hit.index;
   }
   const index = buildIndex(state);
-  cache.set(state, { version, size: state.objects.size, index, nextOrd: index.entries.length });
+  cache.set(state.objects, { version, size: state.objects.size, index, nextOrd: index.entries.length });
   return index;
 }
 
@@ -263,13 +270,13 @@ export function objectAt(index: ObjectIndex, coord: MacroCoord): PlacedObject | 
  * The object whose footprint holds map point `point`, or null: the point test the pointer needs,
  * where `objectAt`'s cell test also answers for a half-anchored footprint over the half of the cell
  * it does not cover. Footprints are half-open, [x, x + w) on each axis, and the priority is
- * `objectAt`'s. `among`, when given, is the only objects it may answer.
+ * `objectAt`'s. `among`, when given, is the only objects it may answer, and `admits` passes each.
  */
-export function objectAtPoint(index: ObjectIndex, point: MapPoint, among?: ReadonlySet<string>): PlacedObject | null {
+export function objectAtPoint(index: ObjectIndex, point: MapPoint, among?: ReadonlySet<string>, admits?: (obj: PlacedObject) => boolean): PlacedObject | null {
   let picked: ObjectIndexEntry | undefined;
   for (const e of entriesCovering(index, { x: Math.floor(point.x), y: Math.floor(point.y), w: 1, h: 1 })) {
     const r = e.rect;
-    if (among && !among.has(e.obj.id)) continue;
+    if ((among && !among.has(e.obj.id)) || (admits && !admits(e.obj))) continue;
     if (!e.item || point.x < r.x || point.x >= r.x + r.w || point.y < r.y || point.y >= r.y + r.h) continue;
     if (outranks(e, picked)) picked = e;
   }

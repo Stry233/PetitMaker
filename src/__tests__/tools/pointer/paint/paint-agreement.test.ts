@@ -97,7 +97,7 @@ describe('the paint cursor and the paint click answer the same question', () => 
           let attempted = 0;
           let applied = 0;
           const ctx: HostedToolContext = {
-            ...makeToolCtx(state, exec, 1, floor),
+            ...makeToolCtx(state, exec, 1),
             execute: (cmd: Command): ValidationResult => {
               attempted++;
               const result = exec.execute(cmd);
@@ -137,7 +137,7 @@ describe('the paint cursor and the paint click answer the same question', () => 
         let attempted = 0;
         let applied = 0;
         const ctx: HostedToolContext = {
-          ...makeToolCtx(state, exec, 1, 2),
+          ...makeToolCtx(state, exec, 1),
           execute: (cmd: Command): ValidationResult => {
             attempted++;
             const result = exec.execute(cmd);

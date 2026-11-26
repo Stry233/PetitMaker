@@ -20,7 +20,7 @@ export class LabelLayer {
   /** Rebuilds the legend for `template` over the next frames; `current` turning false stops it. */
   build(template: MapTemplate, current: () => boolean): void {
     cancelAnimationFrame(this.raf);
-    this.container.removeChildren();
+    this.clear();
 
     const frame = mapFrame(template);
     const { columns, rows } = mapChunkAxes(template);
@@ -60,8 +60,14 @@ export class LabelLayer {
     step();
   }
 
-  /** Stops a build in progress. */
+  /** Stops a build in progress and frees the labels. */
   dispose(): void {
     cancelAnimationFrame(this.raf);
+    this.clear();
+  }
+
+  /** Each label's text owns a canvas texture Pixi keeps in its global cache until the text is destroyed. */
+  private clear(): void {
+    for (const label of this.container.removeChildren()) label.destroy();
   }
 }

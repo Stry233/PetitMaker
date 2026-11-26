@@ -33,6 +33,7 @@ const HALF_WINDOW = (BASE_SUPPORT.window - 1) / 2;
 
 export const baseSupportRule = definePostRule({
   id: 'V-MTN-03',
+  description: `A mountain cell at elevation N>=${BASE_SUPPORT.fromLayer} needs a full ${BASE_SUPPORT.window}x${BASE_SUPPORT.window} base at some elevation >= N-${BASE_SUPPORT.reach} below it.`,
 
   validate(state, opts, fail) {
     const { width, height } = state.template;

@@ -78,7 +78,7 @@ This project includes the following third-party open-source packages, resolved f
 | @types/earcut | 2.1.4 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/earcut |
 | @types/emscripten | 0.0.34 | MIT | — | — |
 | @types/long | 4.0.2 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/long |
-| @types/node | 26.4.0 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node |
+| @types/node | 26.6.6 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node |
 | @types/node-fetch | 2.6.13 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node-fetch |
 | @types/offscreencanvas | 2019.7.3 | MIT | — | https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/offscreencanvas |
 | @types/offscreencanvas | 2019.3.0 | MIT | — | — |
@@ -103,7 +103,7 @@ This project includes the following third-party open-source packages, resolved f
 | delayed-stream | 1.0.0 | MIT | Felix Geisendörfer <felix@debuggable.com> (http://debuggable.com/) | https://github.com/felixge/node-delayed-stream |
 | dunder-proto | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/es-shims/dunder-proto#readme |
 | earcut | 2.2.4 | ISC | Vladimir Agafonkin | — |
-| earcut | 3.2.3 | ISC | Volodymyr Agafonkin | — |
+| earcut | 3.2.4 | ISC | Volodymyr Agafonkin | — |
 | emoji-regex | 8.0.0 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/emoji-regex |
 | es-define-property | 1.0.1 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-define-property#readme |
 | es-errors | 1.3.0 | MIT | Jordan Harband <ljharb@gmail.com> | https://github.com/ljharb/es-errors#readme |
@@ -147,8 +147,8 @@ This project includes the following third-party open-source packages, resolved f
 | nsfwjs | 4.4.0 | MIT | Gant Laborde | https://nsfwjs.com |
 | object-inspect | 1.13.4 | MIT | James Halliday <mail@substack.net> (http://substack.net) | https://github.com/inspect-js/object-inspect |
 | obscenity | 0.4.6 | MIT | Joseph Liu <https://github.com/jo3-l> | https://github.com/jo3-l/obscenity#readme |
-| onnxruntime-common | 1.29.0 | MIT | fs-eire | — |
-| onnxruntime-web | 1.29.0 | MIT | fs-eire | — |
+| onnxruntime-common | 1.31.1 | MIT | fs-eire | — |
+| onnxruntime-web | 1.31.1 | MIT | fs-eire | — |
 | openai | 6.42.0 | Apache-2.0 | OpenAI <support@openai.com> | — |
 | opencc-js | 1.4.2 | MIT AND Apache-2.0 | The nk2028 Project | https://github.com/nk2028/opencc-js#readme |
 | opencollective-postinstall | 2.0.3 | MIT | Xavier Damman (@xdamman) | https://github.com/opencollective/opencollective-postinstall#readme |
@@ -159,7 +159,7 @@ This project includes the following third-party open-source packages, resolved f
 | punycode | 1.4.1 | MIT | Mathias Bynens (https://mathiasbynens.be/) | https://mths.be/punycode |
 | qrcode-generator | 2.0.4 | MIT | Kazuhiko Arase | — |
 | qs | 6.16.1 | BSD-3-Clause | — | https://github.com/ljharb/qs |
-| re2js | 2.9.0 | MIT | Oleksii Vasyliev | https://github.com/le0pard/re2js#readme |
+| re2js | 2.10.0 | MIT | Oleksii Vasyliev | https://github.com/le0pard/re2js#readme |
 | react | 18.3.1 | MIT | — | https://reactjs.org/ |
 | react-dom | 18.3.1 | MIT | — | https://reactjs.org/ |
 | regenerator-runtime | 0.13.11 | MIT | Ben Newman <bn@cs.stanford.edu> | — |
@@ -185,10 +185,10 @@ This project includes the following third-party open-source packages, resolved f
 | ts-algebra | 2.0.0 | MIT | Thomas Aribart | https://github.com/ThomasAribart/ts-algebra#readme |
 | tslib | 2.8.1 | 0BSD | Microsoft Corp. | https://www.typescriptlang.org/ |
 | uc.micro | 3.0.0 | MIT | — | — |
-| undici-types | 8.3.0 | MIT | — | https://undici.nodejs.org |
+| undici-types | 8.9.0 | MIT | — | https://undici.nodejs.org |
 | url | 0.11.4 | MIT | defunctzombie | — |
 | use-sync-external-store | 1.6.0 | MIT | — | — |
-| wasm-feature-detect | 1.9.0 | Apache-2.0 | Surma <surma@surma.link> | — |
+| wasm-feature-detect | 1.10.1 | Apache-2.0 | Surma <surma@surma.link> | — |
 | webidl-conversions | 3.0.1 | BSD-2-Clause | Domenic Denicola <d@domenic.me> (https://domenic.me/) | — |
 | whatwg-url | 5.0.0 | MIT | Sebastian Mayr <github@smayr.name> | — |
 | wrap-ansi | 7.0.0 | MIT | Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com) | — |

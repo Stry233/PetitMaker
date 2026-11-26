@@ -1,26 +1,21 @@
-// The Lite edition's text-review and export policy. The container cannot run the review workers, so
-// outside text passes as export text does here, under the export notice's manual review; a preset
-// also sets the presentation choices the Lite card is drawn with.
+// The Lite edition's text-review and export policy. Text a player types, and text that arrives from outside,
+// passes the review the web edition runs, here on this thread (`pipelines/moderation/text/reviewer-lite.ts`),
+// then the host's own check where its container has one. The map is not checked automatically, since its
+// check needs a worker the package refuses, and a preset also sets the presentation choices the Lite card is
+// drawn with.
 import type * as Web from './edition-review';
 import type { ExportOptions, ExportPreset } from '../../io/export/types';
-import { listPlanets, settlePlanetName } from '../../io/storage/planet-library';
-import { uncheckedPlanetName } from '../../state/planet-name-verdict';
-import { recordTextVerdict } from '../../state/text-verdicts';
-import { useEditorStore } from '../../state/store';
+import { ReviewTooLong } from '../../pipelines/moderation/text-check';
+
+export { reviewBlueprintText, reviewCustomTags, reviewGroupText, reviewPlanetNames } from './background';
 
 export const automaticExportReview: typeof Web.automaticExportReview = false;
-export const isReviewTooLong: typeof Web.isReviewTooLong = () => false;
+export const liveMapCheck: typeof Web.liveMapCheck = null;
+export const automaticTextReview: typeof Web.automaticTextReview = true;
+export const textReviewAtCommit: typeof Web.textReviewAtCommit = false;
+export const isReviewTooLong: typeof Web.isReviewTooLong = (error) => error instanceof ReviewTooLong;
 
-export const reviewPlanetNames: typeof Web.reviewPlanetNames = async () => {
-  for (const entry of listPlanets()) if (!entry.nameReviewed) settlePlanetName(entry.entryId, entry.name, null);
-  const template = useEditorStore.getState().gridState?.template;
-  const name = template ? uncheckedPlanetName(template, listPlanets()) : null;
-  if (name !== null) recordTextVerdict(name, true);
-};
-
-export const reviewCustomTags: typeof Web.reviewCustomTags = async () => {
-  for (const tag of useEditorStore.getState().gridState?.annotations?.customTags ?? []) recordTextVerdict(tag.text, true);
-};
+export const exportPresetDescriptions: typeof Web.exportPresetDescriptions = { share: 'lite.preset_share_desc', plain: 'lite.preset_plain_desc' };
 
 export const applyExportPreset: typeof Web.applyExportPreset = (options: ExportOptions, preset: ExportPreset): ExportOptions => {
   const share = preset === 'share';

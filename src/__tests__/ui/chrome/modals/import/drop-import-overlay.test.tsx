@@ -22,7 +22,6 @@ function ready(notes?: { title?: string; description?: string }) {
 
 import { DropImportOverlay } from '../../../../../ui/chrome/modals/import/DropImportOverlay';
 import { setStoreState, setStoreModal } from '../../../../_support/store';
-import { offerRestoreDismiss, __resetRestoreOffer } from '../../../../../ui/session/restore-offer';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   // Reduced motion, as the app sets it, so exit animations do not race the assertions.
@@ -94,17 +93,6 @@ describe('DropImportOverlay', () => {
     expect(commitMock).not.toHaveBeenCalled();
     await act(async () => { screen.getByText('Import').click(); });
     expect(commitMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('a dropped file withdraws the saved-session offer, so its countdown cannot restore over the import', async () => {
-    const declined = vi.fn();
-    const off = offerRestoreDismiss(declined);
-    render(<DropImportOverlay />, { wrapper: Wrapper });
-    fireWindow(dragEvent('dragenter'));
-    fireWindow(dragEvent('drop', { files: [{ name: 'map.json', type: 'application/json', text: async () => '{}' }] }));
-    await waitFor(() => expect(declined).toHaveBeenCalledTimes(1));
-    off();
-    __resetRestoreOffer();
   });
 
   it('drops on a map WITH content warn that the import replaces it', async () => {

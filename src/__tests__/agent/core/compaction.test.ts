@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { append, createLog } from '../../../agent/core/log';
 import { COMPACTION_RESERVE, compact, needsCompaction } from '../../../agent/core/compaction';
-import { deriveMessages } from '../../../agent/core/project-messages';
+import { deriveMessages, projectRequest } from '../../../agent/core/project-messages';
 import { FIRST_EVENT_IDLE_MS } from '../../../agent/core/stream-idle';
 import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
 import type { Part, StreamEvent } from '../../../agent/core/types';
@@ -16,14 +16,18 @@ const bigEstimate = (): number => 9000;
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 
 describe('needsCompaction', () => {
-  it('is false at exactly the reserve boundary and true one token past it', () => {
+  it('weighs the whole replay, not the window a budget keeps, and is false at exactly the reserve boundary', () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'a'.repeat(50), mapContext: 'ctx' });
+    append(log, { kind: 'order', text: 'b'.repeat(50), mapContext: 'ctx' });
     const messages = deriveMessages(log, { budgetTokens: Number.MAX_SAFE_INTEGER, estimate });
     const total = messages.reduce((sum, m) => sum + estimate(m.role === 'user' ? m.text : ''), 0);
+    const trimmed = projectRequest(log, { budgetTokens: 1, estimate });
+    expect(trimmed.messages.length).toBeLessThan(messages.length);
+    expect(trimmed.total).toBe(total);
 
-    expect(needsCompaction(log, { contextWindow: total + COMPACTION_RESERVE + 1, estimate })).toBe(false);
-    expect(needsCompaction(log, { contextWindow: total + COMPACTION_RESERVE - 1, estimate })).toBe(true);
+    expect(needsCompaction(total, total + COMPACTION_RESERVE)).toBe(false);
+    expect(needsCompaction(total, total + COMPACTION_RESERVE - 1)).toBe(true);
   });
 });
 

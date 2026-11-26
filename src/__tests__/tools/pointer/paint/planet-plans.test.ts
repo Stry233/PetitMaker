@@ -28,7 +28,7 @@ function session(w = 12, h = 12) {
   const state = makeState(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) setZone(state, x, y, CellZone.Void);
   const ex = makeExecutor(state, createPlanetRegistry());
-  return { state, ex, ctx: makeToolCtx(state, ex, 1, 1, { groundEditable: true, planetMaterial: 'mountain' }) };
+  return { state, ex, ctx: makeToolCtx(state, ex, 1, { groundEditable: true, planetMaterial: 'mountain' }) };
 }
 
 const m = (x: number, y: number): MacroCoord => ({ x, y });
@@ -70,7 +70,7 @@ describe('planet session plans', () => {
 
   it('mountain on grass stays at layer 0 at the profile ceiling of 0', () => withMaxLayer(0, () => {
     const { state, ctx } = session(); setZone(state, 5, 5, CellZone.Grass);
-    expect(planPaint([m(5, 5)], { ...ctx, arming: { ...ctx.arming, floor: 3 } }, 'mountain', new Set()).commands).toEqual([]);
+    expect(planPaint([m(5, 5)], { ...ctx, arming: { ...ctx.arming, terrainThickness: 3 } }, 'mountain', new Set()).commands).toEqual([]);
   }));
 
   it('never raises a layer the planet already holds above the ceiling', () => withMaxLayer(0, () => {
@@ -90,9 +90,9 @@ describe('planet session plans', () => {
     });
   });
 
-  it('a higher build floor still lays only the ground on sea', () => {
+  it('a thickness of 3 still lays only the ground on sea', () => {
     const { ctx } = session();
-    const plan = planPaint([{ x: 5, y: 5 }], { ...ctx, arming: { ...ctx.arming, floor: 3 } }, 'mountain', new Set());
+    const plan = planPaint([{ x: 5, y: 5 }], { ...ctx, arming: { ...ctx.arming, terrainThickness: 3 } }, 'mountain', new Set());
     expect(plan.commands).toEqual([expect.objectContaining({ elevation: 0, ground: CellZone.Grass })]);
   });
 
@@ -119,11 +119,6 @@ describe('planet session plans', () => {
     const plan = planPaint([m(4, 4), m(5, 4)], ctx, 'water', new Set());
     expect(plan.commands).toEqual([{ type: CommandType.PaintTerrain, cells: [m(4, 4), m(5, 4)], terrainType: TerrainType.Water, elevation: 0 }]);
     expect(plan.clipped).toBeFalsy();
-  });
-
-  it('a pinned layer never lifts a pond above the ground ceiling', () => {
-    const { state, ctx } = session(); land(state, 2, 2, 6, 6);
-    expect(planPaint([m(4, 4)], { ...ctx, arming: { ...ctx.arming, layerPinned: true, floor: 3 } }, 'water', new Set()).commands).toEqual([expect.objectContaining({ elevation: 0 })]);
   });
 
   it('the eraser peels bare ground to sea, and the water eraser has nothing to take on bare ground or sea', () => {
@@ -217,7 +212,7 @@ describe('planet session tools', () => {
   it('highlights layer 0 over grass while the ground stays flat', () => {
     const { state, ctx } = session(); setZone(state, 5, 5, CellZone.Grass);
     const layers: (number | null)[] = [];
-    const watched = { ...ctx, arming: { ...ctx.arming, floor: 2 }, setDisplayLayer: (l: number | null) => { layers.push(l); } };
+    const watched = { ...ctx, arming: { ...ctx.arming, terrainThickness: 2 }, setDisplayLayer: (l: number | null) => { layers.push(l); } };
     const tool = new DrawingTool();
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     tool.onPointerDown(cell(m(5, 5)), point(m(5, 5)), watched);
@@ -268,7 +263,7 @@ describe('planet session tools', () => {
   it('outside the session a mountain dab stays atomic', () => {
     const state = makeState(12, 12);
     setZone(state, 4, 4, CellZone.Beach);
-    const ctx = makeToolCtx(state, makeExecutor(state), 3, 1);
+    const ctx = makeToolCtx(state, makeExecutor(state), 3);
     const tool = new DrawingTool();
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     stroke(tool, ctx, [m(5, 5)]);
@@ -278,7 +273,7 @@ describe('planet session tools', () => {
   it('highlights layer 0 while a session stroke lays ground on sea', () => {
     const { state, ctx } = session();
     const layers: (number | null)[] = [];
-    const watched = { ...ctx, arming: { ...ctx.arming, floor: 2 }, setDisplayLayer: (l: number | null) => { layers.push(l); } };
+    const watched = { ...ctx, arming: { ...ctx.arming, terrainThickness: 2 }, setDisplayLayer: (l: number | null) => { layers.push(l); } };
     const tool = new DrawingTool();
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     tool.onPointerDown(cell(m(5, 5)), point(m(5, 5)), watched);
@@ -299,24 +294,27 @@ describe('planet session tools', () => {
     expect(state.cells[4]![4]!.zone).toBe(CellZone.Void);
   });
 
-  it('one eraser dab peels a layer-1 block and clears the ground above and left of it', () => {
+  it('an eraser dab takes only the layer its press starts on: the block, or the ground around it', () => {
     const { state, ex, ctx } = session();
     for (let y = 2; y <= 6; y++) for (let x = 2; x <= 6; x++) setZone(state, x, y, CellZone.Grass);
     setTerrain(state, 4, 4, TerrainType.Mountain, 1);
+    const wide = { ...ctx, arming: { ...ctx.arming, brushSize: 3 } };
     const before = ex.historyDepth();
-    stroke(new EraserTool(), { ...ctx, arming: { ...ctx.arming, brushSize: 3 } }, [m(4, 4)]);
+    stroke(new EraserTool(), wide, [m(4, 4)]);
     expect(ex.historyDepth()).toBe(before + 1);
     expect(state.cells[4]![4]!.terrain).toBeNull();
     expect(state.cells[4]![4]!.zone).toBe(CellZone.Grass);
-    for (const [x, y] of [[3, 3], [4, 3], [3, 4], [5, 5]] as const) expect(state.cells[y]![x]!.zone).toBe(CellZone.Void);
+    for (const [x, y] of [[3, 3], [4, 3], [3, 4], [5, 5]] as const) expect(state.cells[y]![x]!.zone, 'the ground stays').toBe(CellZone.Grass);
+    stroke(new EraserTool(), wide, [m(4, 4)]);
+    for (const [x, y] of [[3, 3], [4, 3], [3, 4], [5, 5], [4, 4]] as const) expect(state.cells[y]![x]!.zone, 'pressed on the ground').toBe(CellZone.Void);
   });
 
-  it('beside a layer-2 block the dab peels one layer and leaves the ground the block still bleeds onto', () => {
+  it('a dab pressed on the ground beside a block leaves the block and the ground it bleeds onto', () => {
     const { state, ctx } = session();
     for (let y = 2; y <= 6; y++) for (let x = 2; x <= 6; x++) setZone(state, x, y, CellZone.Grass);
     setTerrain(state, 4, 4, TerrainType.Mountain, 2);
-    stroke(new EraserTool(), { ...ctx, arming: { ...ctx.arming, brushSize: 3 } }, [m(4, 4)]);
-    expect(state.cells[4]![4]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 1 });
+    stroke(new EraserTool(), { ...ctx, arming: { ...ctx.arming, brushSize: 3 } }, [m(5, 5)]);
+    expect(state.cells[4]![4]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 2 });
     for (const [x, y] of [[3, 3], [4, 3], [3, 4]] as const) expect(state.cells[y]![x]!.zone).toBe(CellZone.Grass);
     expect(state.cells[5]![5]!.zone).toBe(CellZone.Void);
     expect(ctx.state.cells.flat().every((c) => !c.terrain || c.zone === CellZone.Grass)).toBe(true);

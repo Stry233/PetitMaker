@@ -48,17 +48,6 @@ export function signedTurn(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-/** Per-channel interpolation; weights zero and one return the endpoints exactly. */
-export function blendColor(from: number, to: number, weight: number): number {
-  if (weight <= 0) return from;
-  if (weight >= 1) return to;
-  const mix = (shift: number): number => {
-    const a = (from >> shift) & 0xff, b = (to >> shift) & 0xff;
-    return Math.round(a + (b - a) * weight);
-  };
-  return ((mix(16) << 16) | (mix(8) << 8) | mix(0)) >>> 0;
-}
-
 /** The nearest entry of a palette to a colour, and how far off it is (channel-weighted, not squared). */
 export function nearestEntry(
   entries: readonly { rgb: number }[], rgb: number,

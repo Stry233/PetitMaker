@@ -9,14 +9,17 @@
 import { ActionButton } from '../../../../primitives/ActionButton';
 import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { motion, useAnimationControls, useReducedMotionConfig } from 'framer-motion';
-import { font, radii } from '../../../../design/styles';
+import { radii } from '../../../../design/styles';
 import { DANGER_INK, DANGER_SURFACE } from '../../../../design/tokens';
 import { skin, windowIconButton } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { Spinner } from '../../../../primitives/Spinner';
+import { GearIcon } from '../../../../primitives/line-glyphs';
+import { TextField, type TextFieldProps } from '../../../../primitives/TextField';
 import { useT } from '../../../../../i18n/context';
 import type { StylizeStatus } from '../../../../../pipelines/stylize';
-import { MAP_ASPECT, paintSampleArt, type SampleArt } from './sample-art';
+import { paintSampleArt, type SampleArt } from './sample-art';
+import { STYLE_SAMPLE_ASPECT } from '../../../../../assets/style-sample-urls';
 import { amplitude, framerMotion, staggerDelay } from '../../../../design/motion';
 import type { I18nKey } from '../../../../../i18n/keys';
 import { useInteractionProfiles } from '../../../../design/input-mode';
@@ -39,22 +42,8 @@ const STATUS_KEYS: Record<SlotStatus, I18nKey> = {
   map_changed: 'stylize.status_map_changed',
 };
 
-/** A field: its own label above a box that carries its own radius (so the house focus-ring marker,
- *  which exists for bare inputs inside rounded wrappers, is not this shape's business). */
+/** A field's caption. */
 export const fieldLabel: CSSProperties = { ...roleFont('caption'), color: skin.ink };
-
-export const fieldBox: CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  background: skin.plate,
-  border: `1.5px solid ${skin.line}`,
-  borderRadius: radii.md,
-  padding: '8px 10px',
-  fontFamily: font.family,
-  ...roleFont('field'),
-  color: skin.ink,
-  resize: 'none',
-};
 
 /**
  * The props that make a part arrive as the `index`-th member of its page.
@@ -71,12 +60,13 @@ export function entering(index: number) {
   } as const;
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+/** A text field under its caption, standing on the window's inset panes. */
+export function Field(field: TextFieldProps) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-      <span style={fieldLabel}>{label}</span>
-      {children}
-    </label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+      <span style={fieldLabel}>{field.label}</span>
+      <TextField on="inset" {...field} />
+    </div>
   );
 }
 
@@ -190,10 +180,10 @@ export function IconVerb({ label, onClick, children }: {
 }
 
 /**
- * A picture of one direction at the map's ratio: the committed sample where one exists, the
+ * A picture of one direction at the samples' ratio: the committed sample where one exists, the
  * palette-painted fallback otherwise.
  *
- * The box's shape is the map's whatever the source is, so a sample and a fallback occupy the same
+ * The box's shape is the sample's whatever the source is, so a sample and a fallback occupy the same
  * rect and a direction never changes size when its asset lands.
  */
 export function SampleTile({ url, art, radius = 8, style }: {
@@ -206,7 +196,7 @@ export function SampleTile({ url, art, radius = 8, style }: {
 
   const box: CSSProperties = {
     width: '100%',
-    aspectRatio: String(MAP_ASPECT),
+    aspectRatio: String(STYLE_SAMPLE_ASPECT),
     borderRadius: radius,
     display: 'block',
     background: art.paper,
@@ -220,21 +210,13 @@ export function SampleTile({ url, art, radius = 8, style }: {
  *  the button's own ink. It leans into a turn while its button is hovered, riding `IconVerb`'s
  *  variants; the turn is decoration, so reduced motion leaves the gear square. */
 export function GearGlyph() {
-  const teeth = Array.from({ length: 8 }, (_, i) => {
-    const a = (i * Math.PI) / 4;
-    const cos = Math.cos(a), sin = Math.sin(a);
-    return { x1: 12 + 8.2 * cos, y1: 12 + 8.2 * sin, x2: 12 + 10.4 * cos, y2: 12 + 10.4 * sin };
-  });
   return (
     <motion.span
       aria-hidden
       variants={{ rest: { rotate: 0 }, hover: { rotate: 32 }, tap: { rotate: 48 } }}
       style={{ display: 'flex' }}
    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-        <circle cx="12" cy="12" r="5.4" />
-        {teeth.map((l, i) => <line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />)}
-      </svg>
+      <GearIcon size={16} />
     </motion.span>
   );
 }

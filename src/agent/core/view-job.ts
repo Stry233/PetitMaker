@@ -1,7 +1,7 @@
 /** One job's span of the log, accumulated while `deriveView` folds it and settled into a `JobView`. */
 import { resultStatus } from './tool-result';
 import { thoughtSize } from './types';
-import type { GateAnswer, JobOutcome, OrderRegion, Part, PlanStage, SessionEvent, TextPart } from './types';
+import type { GateAnswer, JobOutcome, JobStopCause, OrderRegion, Part, PlanStage, SessionEvent, TextPart } from './types';
 import type {
   AskRecord, GateVerdict, JobView, OpRow, ProjectionFacts, ThoughtTurn,
 } from './view-types';
@@ -132,7 +132,8 @@ function buildOps(
     }
     const checkpoint = job.checkpointByCall.get(callId);
     if (checkpoint !== undefined) row.checkpointIndex = checkpoint;
-    if (stage !== undefined && job.plan) row.stageIndex = stage;
+    // A call the log has not registered yet, a live turn's, is filed under the stage being worked.
+    if (job.plan) row.stageIndex = stage ?? Math.min(job.plan.currentIndex, job.plan.stages.length - 1);
     if (result?.detail) row.detail = result.detail;
     // Persisted logs omit rendered images and retain only the result summary.
     if (result?.image !== undefined) row.image = result.image;
@@ -175,7 +176,7 @@ export function markChars(parts: readonly Part[], text: string): number {
 
 /** Builds the shared panel view for an active or settled job, including kind and celebration state. */
 export function settle(
-  job: JobBuilder, end: { outcome: JobOutcome; summary?: string; question?: boolean; undoIndex?: number } | undefined,
+  job: JobBuilder, end: { outcome: JobOutcome; summary?: string; question?: boolean; undoIndex?: number; stoppedBy?: JobStopCause } | undefined,
   steers: { recalled: ReadonlySet<number>; steerBySeq: ReadonlyMap<number, string> },
   extra: { live?: readonly Part[]; facts?: ProjectionFacts } = {},
 ): JobView {
@@ -199,6 +200,7 @@ export function settle(
   if (job.refusals.length > 0) view.refusals = job.refusals;
   if (job.mapId !== undefined) view.mapId = job.mapId;
   if (end?.undoIndex !== undefined) view.endUndoIndex = end.undoIndex;
+  if (end?.stoppedBy) view.stoppedBy = end.stoppedBy;
   // Include the uncommitted live turn so reasoning totals update while it streams.
   const liveChars = live ? thoughtOf(live) : 0;
   const chars = job.thoughtChars + liveChars;

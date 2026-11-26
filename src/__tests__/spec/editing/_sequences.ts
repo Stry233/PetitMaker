@@ -10,7 +10,7 @@ import { mapFingerprint } from '../../../core/model/fingerprint';
 import type { GridState, MacroCoord, Rotation } from '../../../core/model/types';
 import { ToolType, type BuildShape } from '../../../state/editing/vocabulary';
 import { createDefaultRegistry } from '../../../rules';
-import { illegalTerrain, isLegalMap, standingViolations } from '../../../state/relocation-plan';
+import { illegalTerrain, isLegalMap, standingViolations } from '../../../rules/legality';
 import { serialize } from '../../../io/save/json-codec';
 import { openSave } from '../../../io/import/open-save';
 import { canonicalize } from '../../../io/save/canonical';
@@ -37,7 +37,7 @@ type Cell = readonly [number, number];
  *  from it. Turning, deleting, copying and a
  *  `fresh` paste (copy, then paste) first click their object when nothing is selected. */
 export type Step =
-  | { k: 'paint'; surface: 'mountain' | 'water'; floor: number; shape: BuildShape; size: number; path: Cell[] }
+  | { k: 'paint'; surface: 'mountain' | 'water'; thickness: number; shape: BuildShape; size: number; path: Cell[] }
   | { k: 'road'; material: string; shape: BuildShape; path: Cell[] }
   | { k: 'erase'; pick: number; path: Cell[] }
   | { k: 'cut'; pick: number; corner: Cell }
@@ -91,7 +91,7 @@ export function randomSteps(seed: number, length: number, templateId: string): S
   for (let i = 0; i < length; i++) {
     const roll = r();
     let s: Step;
-    if (roll < 0.16) s = { k: 'paint', surface: r() < 0.75 ? 'mountain' : 'water', floor: 1 + int(3), shape: of(SHAPES), size: 1 + int(2), path: path() };
+    if (roll < 0.16) s = { k: 'paint', surface: r() < 0.75 ? 'mountain' : 'water', thickness: 1 + int(3), shape: of(SHAPES), size: 1 + int(2), path: path() };
     else if (roll < 0.24) s = { k: 'road', material: of(ROADS), shape: of(SHAPES), path: path() };
     else if (roll < 0.30) s = { k: 'erase', pick: int(256), path: path().map(([x, y], _, all) => [x - all[0]![0], y - all[0]![1]] as const) };
     else if (roll < 0.35) s = { k: 'cut', pick: int(256), corner: [of([-0.45, 0.45]), of([-0.45, 0.45])] };
@@ -184,7 +184,7 @@ class Session {
     const w = this.world;
     switch (s.k) {
       case 'paint':
-        this.arm(`paint:${s.surface}:${s.floor}:${s.shape}:${s.size}`, { tool: ToolType.TerrainBrush, contentType: s.surface, floor: s.floor, shape: s.shape, brushSize: s.size });
+        this.arm(`paint:${s.surface}:${s.thickness}:${s.shape}:${s.size}`, { tool: ToolType.TerrainBrush, contentType: s.surface, terrainThickness: s.thickness, shape: s.shape, brushSize: s.size });
         this.sweep(s.path, terrainPoint);
         break;
       case 'road':

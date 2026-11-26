@@ -36,6 +36,9 @@ export interface LaneView {
   done?: boolean;
 }
 
+/** The helpers at work, by the call that started each: a running hand-over row wears its own. */
+export type LaneViews = Readonly<Record<string, LaneView>>;
+
 /** Lane indentation in CSS pixels, separating child work from the parent's next step. */
 const LANE_INDENT = 28;
 

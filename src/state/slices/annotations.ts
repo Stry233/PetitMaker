@@ -2,7 +2,7 @@
 import type { HistoryLane } from '../history-lane';
 import { flippedNotes, keptNotes, recordNotes, repointedMeasure, stepNotes, toolForDraft, type NoteSnapshot } from '../note-lane';
 import type { StateCreator } from 'zustand';
-import { CUSTOM_TAG_MAX, annotationsOf, generateCustomTagId, isEmptyNote, keepCustomTags, mergeZones, withTag, withoutTagsOn, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag, type ZoneTextSize } from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, admitTagText, annotationsOf, generateCustomTagId, isEmptyNote, keepCustomTags, mergeZones, withTag, withoutTagsOn, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag, type ZoneTextSize } from '../../core/model/annotations';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { DEFAULT_TAG } from '../../config/annotation-tags';
 import { type AnnotationTool } from '../editing/vocabulary';
@@ -55,6 +55,9 @@ export interface AnnotationsSlice {
   setAnnotationColor: (c: string) => void;
   /** Arm a tag; a standing draft or selection takes it too. */
   setAnnotationTag: (tag: NoteTag | null) => void;
+  /** A tag pill pressed: arms `tag`, or, when it is the armed tag, clears a zone's text tag, while a
+   *  chip keeps its tag. */
+  pickAnnotationTag: (tag: NoteTag) => void;
   /** Add `text` to the map's custom tags and arm it, applying it to the draft and selection, as one
    *  lane entry. The caller passes text the text check approved. Null when the map holds the most
    *  custom tags it can; a text the map already carries arms that tag. */
@@ -187,14 +190,18 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
     setAnnotationZoneShape: (shape) => set({ annotationZoneShape: shape }),
     setAnnotationColor: (c) => set({ annotationColor: c, ...patchStanding(get(), (n) => ({ ...n, color: c } as MapAnnotation)) }),
     setAnnotationTag: (tag) => set({ annotationTag: tag, ...patchStanding(get(), tagPatch(tag)) }),
+    pickAnnotationTag: (tag) => {
+      const { annotationTag, annotationTool } = get();
+      get().setAnnotationTag(tag === annotationTag && annotationTool !== 'chip' ? null : tag);
+    },
     addCustomTag: (text) => {
       const d = data();
-      const trimmed = text.trim();
-      if (!d || !trimmed) return null;
-      const existing = d.customTags?.find((t) => t.text === trimmed);
+      const admitted = admitTagText(text);
+      if (!d || !admitted) return null;
+      const existing = d.customTags?.find((t) => t.text === admitted);
       if (existing) { get().setAnnotationTag(existing.id); return existing.id; }
       if ((d.customTags?.length ?? 0) >= CUSTOM_TAG_MAX) return null;
-      const tag: CustomTag = { id: generateCustomTagId(), text: trimmed };
+      const tag: CustomTag = { id: generateCustomTagId(), text: admitted };
       const lane = strokeFields(get(), d);
       d.customTags = [...(d.customTags ?? []), tag];
       const s = get();
@@ -301,10 +308,12 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice & Deps, [], [
         if (i >= 0) d.items[i] = { ...d.items[i], ...patch } as MapAnnotation;
       });
     },
+    // Hiding the layer drops the selection on it, as the pointer and select-all take no hidden note.
     setAnnotationsVisible: (v) => {
       const d = data();
       if (!d || d.visible === v) return;
       d.visible = v;
+      if (!v && get().annotationSelection.length > 0) set({ annotationSelection: [] });
       bump();
     },
     setAnnotationsLocked: (v) => {

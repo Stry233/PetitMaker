@@ -79,7 +79,7 @@ function openPanel(shape: 'portrait' | 'landscape' = 'portrait'): { w: SpecWorld
   unsync = useEditorStore.subscribe(() => manager.syncArming());
   render(
     <InputModeProvider inputMode="touch" shape={shape}>
-      <I18nProvider><Shell onRestoreSession={() => {}}><Canvas /></Shell><HoldRing /></I18nProvider>
+      <I18nProvider><Shell><Canvas /></Shell><HoldRing /></I18nProvider>
     </InputModeProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: translate('mode.object') }));

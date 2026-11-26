@@ -59,7 +59,7 @@ describe('CommandExecutor', () => {
   it('rejects command when pre-command rule fails', () => {
     const { executor, registry, eventBus } = setup();
     registry.register({
-      id: 'blocker', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain],
+      id: 'blocker', description: 'A rule this test registers.', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain],
       validate: () => [{ ruleId: 'blocker', message: 'no', ...evidenceOn('object', []) }],
     });
     const spy = vi.fn();
@@ -90,7 +90,7 @@ describe('CommandExecutor', () => {
   it('commitStroke auto-reverts when post-stroke rule fails', () => {
     const { executor, registry, state } = setup();
     registry.register({
-      id: 'post-blocker', phase: 'post-stroke',
+      id: 'post-blocker', description: 'A rule this test registers.', phase: 'post-stroke',
       validate: (s) => {
         const cell = s.cells[5]?.[5];
         if (cell?.terrain?.elevation === 1) {

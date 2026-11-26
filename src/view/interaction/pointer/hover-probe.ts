@@ -10,7 +10,7 @@ import { getActiveView } from '../../active-view';
 import { toolDeclares } from '../../../tools/pointer/runtime';
 import { armingInputs, armingOf } from '../../../state/editing/arming';
 import { isCommandHeld } from '../../../state/keymap/held';
-import { selectionHoverBox } from '../selection-hover';
+import { groupHoverFrame, selectionHoverBox } from '../selection-hover';
 import { cursorFactsFor } from '../press/press-plan';
 import { pressFactsAt, probePointer } from './press-facts';
 import { PRIMARY_BUTTON } from '../press/pointer-buttons';
@@ -18,6 +18,7 @@ import {
   setCursorForbidden, setCursorOverSelected, setCursorCtrlHint, setCursorPressSelects,
 } from '../cursor-controller';
 import { activeToolOf } from '../../../state/editing/edit-mode';
+import { standInShown } from '../../../state/map-stand-in';
 
 /**
  * Non-positional inputs that invalidate hover previews and cursors, compared by identity so a large
@@ -101,9 +102,13 @@ export class HoverProbe {
     }
     const { x: sx, y: sy } = clientPoint(e);
     const probe = probePointer(sx, sy);
-    // The box is the press's own target, so what the box shows is what a click selects.
-    const box = probe
-      ? selectionHoverBox(probe.gridState, probe.target, toolDeclares(activeToolOf(probe.store)).selectMode(armingOf(probe.store)), probe.store.selectingRegion)
+    // The box is the press's own target, so what the box shows is what a click selects; over a
+    // stand-in a click selects nothing.
+    const box = probe && !standInShown(probe.store)
+      ? selectionHoverBox(
+        probe.gridState, probe.target, toolDeclares(activeToolOf(probe.store)).selectMode(armingOf(probe.store)),
+        probe.store.selectingRegion, groupHoverFrame(probe.store, probe.target, probe.macro),
+      )
       : null;
     if (box) hoverView.overlay.showHover(box, box.grid);
     else hoverView.overlay.clearHover();

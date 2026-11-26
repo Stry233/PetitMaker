@@ -17,6 +17,7 @@ const STATE_DRIVEN: Readonly<Record<string, string>> = {
   'chrome/modals/export/review/ExportNotice.tsx': 'the export it stands in front of, which awaits its decision',
   'chrome/modals/import/DropImportOverlay.tsx': 'a file dragged over the page',
   'chrome/tour/TourDeck.tsx': 'the tour, open while a run stands on a card or its summary',
+  'lite/LinkImport.tsx': 'a map the page was opened with through a link, offered once the page settles',
 };
 
 /** Store flags whose surface is not a `ModalShell` window, and what it is instead. */

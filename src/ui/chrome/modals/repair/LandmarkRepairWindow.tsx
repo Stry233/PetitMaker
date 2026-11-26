@@ -6,33 +6,33 @@
  * shows the one picture. Export first downloads the map as it came, before any repair, and the
  * choice stays open. Cancel, Close and Escape bring back the map that was open before.
  */
-import { useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useId, useMemo, useState, type CSSProperties } from 'react';
 import { quantityParams, useLocale, useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { LOSS_COLOR } from '../../../../view/shared/viewport/view-constants';
-import {
-  cancelRepair, exportUnrepaired, repairAutomatically, repairByHand, repairPreviews, unrepairedFormat,
-} from '../../../../editor/session/landmark-repair';
-import { SUPPORTS_JSON_FILES } from '../../../../platform/build/edition';
+import { automaticRepairCounts } from '../../../../state/slices/repair-session';
+import { canExportUnrepaired, exportUnrepaired, repairPreviews, unrepairedFormat } from '../../../../editor/session/landmark-repair';
+import { pressCommand } from '../../../../editor/commands/run';
 import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { WindowBody, WindowFooter, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
 import { useWindow } from '../use-window';
-import { PictureOption, pictureStage } from '../planet/PictureOption';
+import { PictureChoices, pictureStage } from '../planet/PictureOption';
 import { PlanetPreview } from '../planet/PlanetPreview';
 import { ExportFirstButton } from '../ExportFirstButton';
 import { useExportNotice } from '../export/review/ExportNotice';
 import { useWindowColumns } from '../use-window-columns';
 
 type Choice = 'auto' | 'hand';
-const ORDER: readonly Choice[] = ['auto', 'hand'];
 
+const cancelRepair = (): void => pressCommand('repair.cancel');
+
+/** No report, nothing moved. */
+const NO_MOVES = { moved: 0, removed: 0 } as const;
 const cardStyle: CSSProperties = windowFrame;
 const bodyStyle: CSSProperties = { ...windowColumn, gap: 18 };
 const choiceStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18 };
-const optionsStyle = (columns: 1 | 2): CSSProperties => ({ display: 'flex', gap: 16, ...(columns === 1 ? { flexDirection: 'column' } : null) });
 const leadStyle: CSSProperties = { ...roleFont('body'), color: skin.ink, margin: 0 };
 const primaryStyle: CSSProperties = { flex: '0 0 auto', minWidth: 160 };
 /** In one column the confirming action takes the footer's remaining width instead. */
@@ -48,34 +48,17 @@ export function LandmarkRepairWindow() {
   const [choice, setChoice] = useState<Choice>('auto');
   const titleId = useId();
   const [columns, bodyRef] = useWindowColumns();
-  const refs = useRef<Record<Choice, HTMLDivElement | null>>({ auto: null, hand: null });
   const previews = useMemo(() => (report && state ? repairPreviews(state, report) : null), [report, state]);
-  const moved = report ? report.plan.moves.filter((m) => m.proposal.kind !== 'no-place').length : 0;
-  const removed = report ? report.plan.moves.length - moved : 0;
+  const { moved, removed } = report ? automaticRepairCounts(report) : NO_MOVES;
   const objects = (report?.objects.length ?? 0) > 0;
   const autoBadge = removed > 0
-    ? { text: t('repair.auto_remove', quantityParams(locale, { n: removed })), swatch: LOSS_COLOR }
+    ? { text: t('repair.auto_remove', quantityParams(locale, { n: removed })), loss: true }
     : { text: t('repair.auto_badge', quantityParams(locale, { n: moved })) };
-  const keys = (value: Choice) => (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChoice(value); return; }
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-    e.preventDefault();
-    const other = ORDER[(ORDER.indexOf(value) + 1) % ORDER.length]!;
-    setChoice(other);
-    refs.current[other]?.focus();
-  };
-  const option = (value: Choice) => ({
-    checked: choice === value,
-    onSelect: () => setChoice(value),
-    onKeyDown: keys(value),
-    optionRef: (el: HTMLDivElement | null) => { refs.current[value] = el; },
-  });
-  const go = () => { if (choice === 'auto' || !objects) repairAutomatically(); else repairByHand(); };
+  const go = () => pressCommand('repair.apply', { how: choice === 'auto' || !objects ? 'automatic' : 'by_hand' });
   const format = unrepairedFormat(session);
   const notice = useExportNotice(open, null, state, format);
-  const exportFirst = async () => { if (await notice.request()) exportUnrepaired(); };
-  // An edition that reads no save files offers no save file to keep.
-  const canExport = format === 'image' || SUPPORTS_JSON_FILES;
+  const exportFirst = () => exportUnrepaired({ confirmNotice: () => notice.request() });
+  const canExport = canExportUnrepaired(session);
 
   return (
     <ModalShell helpTarget={{ page: 'save' }} open={open && !!report && !!previews} onClose={cancelRepair} size="panel" width={900}
@@ -86,18 +69,22 @@ export function LandmarkRepairWindow() {
           <WindowBody contentStyle={choiceStyle}>
             <p style={leadStyle}>{t('repair.lead')}{objects && <><br />{t('repair.choose')}</>}</p>
             {objects ? (
-              <div role="radiogroup" aria-labelledby={titleId} data-columns={columns} style={optionsStyle(columns)}>
-                <PictureOption {...option('auto')} testId="repair-auto-option" label={t('repair.auto')} badge={autoBadge}>
-                  {(onTap) => (
+              <PictureChoices<Choice> value={choice} onChange={setChoice} labelledBy={titleId} columns={columns} choices={[
+                {
+                  value: 'auto', testId: 'repair-auto-option', label: t('repair.auto'), badge: autoBadge,
+                  picture: (onTap) => (
                     <PlanetPreview template={state.template} state={previews.auto} flagged={previews.autoFlagged} dropped={previews.ground}
                       fit={previews.fit} onTap={onTap} />
-                  )}
-                </PictureOption>
-                <PictureOption {...option('hand')} testId="repair-hand-option" label={t('repair.hand')}
-                  badge={{ text: t('repair.hand_badge', quantityParams(locale, { n: report.objects.length })), swatch: LOSS_COLOR }}>
-                  {(onTap) => <PlanetPreview template={state.template} state={previews.hand} flagged={previews.handFlagged} fit={previews.fit} onTap={onTap} />}
-                </PictureOption>
-              </div>
+                  ),
+                },
+                {
+                  value: 'hand', testId: 'repair-hand-option', label: t('repair.hand'),
+                  badge: { text: t('repair.hand_badge', quantityParams(locale, { n: report.objects.length })), loss: true },
+                  picture: (onTap) => (
+                    <PlanetPreview template={state.template} state={previews.hand} flagged={previews.handFlagged} fit={previews.fit} onTap={onTap} />
+                  ),
+                },
+              ]} />
             ) : (
               <div data-testid="repair-ground" style={pictureStage}>
                 <PlanetPreview template={state.template} state={previews.auto} dropped={previews.ground} fit={previews.fit} />

@@ -23,6 +23,7 @@ import { cellCornerWorld } from '../geometry/coords';
 import { densify, drapeHeights, labelPlaneHeight, ribbonStrips, worldPt } from '../geometry/ink-path';
 import { paintChipLabel, paintDimensionLabel, paintZoneCaption, rasterNoteLabel, type LabelPainter } from '../draw/note-label-raster';
 import { cellDecals, DECAL_LIFT } from '../geometry/overlay-decals';
+import { toPlainGeometry } from '../draw/mesh-upload';
 import { surfaceHeightAt } from '../geometry/pick';
 import { gridSize } from '../../../core/grid/grid-convert';
 import {
@@ -364,10 +365,7 @@ export class AnnotationLayer3D {
       if (set.has(cellKey(c.x, c.y + 1))) step(x, y + side, 1, 0);
     }
     if (decal.positions.length > 0) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(decal.positions, 3));
-      geo.setIndex(decal.index);
-      const wash = new THREE.Mesh(geo, this.washMat(zone.color));
+      const wash = new THREE.Mesh(toPlainGeometry(decal), this.washMat(zone.color));
       wash.renderOrder = ORDER.wash;
       this.add(wash);
     }
@@ -402,13 +400,11 @@ export class AnnotationLayer3D {
     const ang = Math.atan2(tip[2] - back[2], tip[0] - back[0]);
     if (!Number.isFinite(ang)) return;
     const head = (size: number, y: number, mat: THREE.Material, order: number): void => {
-      const tri = new THREE.BufferGeometry();
-      tri.setAttribute('position', new THREE.Float32BufferAttribute([
+      const tri = toPlainGeometry({ positions: [
         tip[0] + Math.cos(ang) * size * 0.9, y, tip[2] + Math.sin(ang) * size * 0.9,
         tip[0] + Math.cos(ang + 2.5) * size, y, tip[2] + Math.sin(ang + 2.5) * size,
         tip[0] + Math.cos(ang - 2.5) * size, y, tip[2] + Math.sin(ang - 2.5) * size,
-      ], 3));
-      tri.setIndex([0, 1, 2]);
+      ], index: [0, 1, 2] });
       const m = new THREE.Mesh(tri, mat);
       m.renderOrder = order;
       this.add(m);
@@ -430,7 +426,6 @@ export class AnnotationLayer3D {
   /** A flat fan disc on the ground — the 3D spelling of a drawn dot. */
   private disc(centre: { x: number; y: number; z: number }, r: number, mat: THREE.Material, order: number): void {
     const { x, y, z } = centre;
-    const geo = new THREE.BufferGeometry();
     const positions: number[] = [x, y, z];
     const index: number[] = [];
     for (let i = 0; i <= 12; i++) {
@@ -438,8 +433,7 @@ export class AnnotationLayer3D {
       positions.push(x + Math.cos(a) * r, y, z + Math.sin(a) * r);
       if (i > 0) index.push(0, i, i + 1);
     }
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setIndex(index);
+    const geo = toPlainGeometry({ positions, index });
     const m = new THREE.Mesh(geo, mat);
     m.renderOrder = order;
     this.add(m);
@@ -614,9 +608,5 @@ function ribbonGeometry(
   width: number,
 ): THREE.BufferGeometry | null {
   const strips = ribbonStrips(paths, width);
-  if (!strips) return null;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(strips.positions, 3));
-  geo.setIndex(strips.index);
-  return geo;
+  return strips && toPlainGeometry(strips);
 }

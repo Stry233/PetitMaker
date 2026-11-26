@@ -129,3 +129,20 @@ describe('the frame and flags of a detached capture', () => {
     expect((await captured(state, { flagged })).shapes - plain.shapes).toBe(2 * flagged.length);
   });
 });
+
+describe('the size of a detached capture', () => {
+  it('stays within the GPU render-target ceiling however large a picture is asked for', async () => {
+    renderer = new MapRenderer(new EventBus<EditorEvents>(), document.createElement('div'), 64, 64);
+    const raster = renderer.app.renderer as unknown as Record<string, unknown>;
+    raster.gl = { MAX_TEXTURE_SIZE: 1, MAX_RENDERBUFFER_SIZE: 2, getParameter: (p: number) => (p === 1 ? 1024 : 2048) };
+    let longSide = 0;
+    raster.generateTexture = (_world: PIXI.Container, opts: { region: PIXI.Rectangle; resolution: number }) => {
+      longSide = Math.max(opts.region.width, opts.region.height) * opts.resolution;
+      return { destroy: () => {} };
+    };
+    raster.extract = { canvas: () => document.createElement('canvas') };
+    await renderer.captureState(makeState(169, 140), { maxPx: 4096 });
+    expect(longSide).toBeGreaterThan(0);
+    expect(longSide).toBeLessThanOrEqual(1024 + 1e-6);
+  });
+});

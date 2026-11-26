@@ -1,16 +1,23 @@
 /*
  * Offers the last saved session from the generation shelf. The card restores immediately; the visible
  * countdown (under the card on the wide shelf, round the resume pill upright, where the picture spans
- * the panel) pauses while covered, leaving or focused through either action. Upright the offer never
+ * the panel) is the editor's clock (`editor/session/restore.ts`), which this surface holds while it is
+ * covered, leaving, hovered or focused through either action. Its answers are commands; a picture of
+ * it answers nothing and runs no clock. Upright the offer never
  * scrolls: its picture is the part that yields to the bar's room, down to a generation candidate's
  * height, and what still stands taller covers the column (`useBarSurface`'s `overColumn`).
  */
 import { ActionButton } from '../../../primitives/ActionButton';
 import { mapEdgeAttr } from '../../../primitives/map-edge';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { useT } from '../../../../i18n/context';
+import { pressCommand } from '../../../../editor/commands/run';
+import {
+  RESTORE_AFTER_MS, holdRestoreDeadline, restoreDeadline, showRestoreDeadline, stopRestoreDeadline, subscribeRestoreDeadline,
+} from '../../../../editor/session/restore';
+import { useUiPreview } from '../../../design/preview';
 import { timedHint } from '../../../chrome/timed-hint';
 import type { GridState } from '../../../../core/model/types';
 import { helpTargetAttr } from '../../../session/help-targets';
@@ -20,7 +27,8 @@ import { useFrameZoom } from '../../use-frame-zoom';
 import { ScaleProvider } from '../../../design/scale';
 import { btnReset, cursors, radii } from '../../../design/styles';
 import { ACTIVE, ON_DARK, PLATE, PLATE_INK, rgbaOf } from '../../../design/tokens';
-import { EDGE, SHELF_SCALE, SHELF_TABS, TEXT, UPRIGHT_SPACE } from '../../units';
+import { roleSize } from '../../../design/text-weight';
+import { EDGE, SHELF_SCALE, SHELF_TABS, UPRIGHT_SPACE } from '../../units';
 import { MOTIONS } from '../../../design/motion/registry';
 import { useBeat, useTransition, useMotionAllowed } from '../../../design/motion/use-motion';
 import { BarText } from '../bar-atoms';
@@ -60,16 +68,14 @@ const CARD_RISE = MOTIONS['restore.card.arrive'].amplitude;
 const WORDS_RISE = MOTIONS['restore.words.arrive'].amplitude;
 const LEAVE_DROP = MOTIONS['restore.offer.leave'].amplitude;
 
-/** Visible decision time before the saved session restores automatically, in seconds. */
-const RESTORE_AFTER_S = 12;
+/** The wait before the saved session restores by itself, in seconds, as the hint says it. */
+const RESTORE_AFTER_S = RESTORE_AFTER_MS / 1000;
 
 interface RestoreShelfProps {
   /** The saved map, for its photograph. */
   state: GridState;
-  /** Whether the boot splash covers the offer and pauses its countdown. */
+  /** Whether the boot splash covers the offer and holds its countdown. */
   splashActive?: boolean;
-  onRestore: () => void;
-  onDismiss: () => void;
 }
 
 export function RestoreShelf(props: RestoreShelfProps) {
@@ -80,12 +86,25 @@ export function RestoreShelf(props: RestoreShelfProps) {
   );
 }
 
-function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }: RestoreShelfProps) {
+function RestoreShelfBody({ state, splashActive = false }: RestoreShelfProps) {
   const t = useT();
   const present = useIsPresent();
+  // A picture of the offer answers nothing and leaves the page's clock alone.
+  const live = !useUiPreview();
   const [shot, setShot] = useState<string | null | undefined>(undefined);
-  /** Pauses the countdown while an answer is hovered or focused, or upright the picture is hovered. */
+  /** Holds the countdown while an answer or the picture is hovered, or an answer is focused. */
   const [overAnswer, setOverAnswer] = useState(false);
+  const deadline = useSyncExternalStore(subscribeRestoreDeadline, restoreDeadline);
+  const resting = !present || overAnswer || splashActive;
+  const restingNow = useRef(resting);
+  restingNow.current = resting;
+  // Each showing starts the clock whole, held from its first frame by whatever holds it then.
+  useEffect(() => (live ? showRestoreDeadline(restingNow.current) : undefined), [live]);
+  useEffect(() => { if (live) holdRestoreDeadline(resting); }, [live, resting]);
+  const onRestore = () => { if (live) pressCommand('session.restore'); };
+  const onDismiss = () => { if (live) pressCommand('session.decline_restore'); };
+  // Keyboard focus on the control that carries the clock declines its self-press.
+  const stopClock = () => { if (live) stopRestoreDeadline(); };
   const arriving = useMotionAllowed('restore.offer.arrive');
   const plinth = useBeat('restore.offer', 'plinth');
   const cardBeat = useBeat('restore.offer', 'card');
@@ -142,8 +161,12 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
   const clock = {
     after: RESTORE_AFTER_S,
     hint: timedHint(t, RESTORE_AFTER_S),
-    paused: !present || overAnswer || splashActive,
+    // The glide runs only while the clock does; held, the ring stands at what is spent.
+    external: live
+      ? { fraction: deadline.spentMs / RESTORE_AFTER_MS, stopped: deadline.stopped, ...(deadline.running ? { spanMs: RESTORE_AFTER_MS } : {}) }
+      : { fraction: 0 },
     onPress: onRestore,
+    onStop: stopClock,
     ring: ACTIVE,
     'aria-label': offerName,
   };
@@ -162,6 +185,8 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
       transition={cardBeat}
       // Flex layout avoids inline descender space below the card.
       style={{ display: 'flex', flex: '0 0 auto' }}
+      // On the wide shelf the card carries the clock, which a pointer resting on it holds.
+      {...(bare ? {} : { onPointerEnter: () => setOverAnswer(true), onPointerLeave: () => setOverAnswer(false) })}
     >
       {bare ? (
         // The picture duplicates the fully labelled resume pill and is removed from keyboard and a11y order.
@@ -188,15 +213,15 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
         gap: SHELF_TABS.underlineGap,
       }}
     >
-      <BarText size={TEXT.shelfTab} onMap align="left" weight={900}>
+      <BarText role="title" onMap align="left" weight={900}>
         {t('restore.title')}
       </BarText>
       {/* Sentence copy opts out of BarText's single-line control-label default. */}
       <BarText
-        size={TEXT.head}
+        role="note"
         onMap
         align="left"
-        style={{ whiteSpace: 'normal', maxWidth: upright ? undefined : TEXT.head * BODY_MEASURE }}
+        style={{ whiteSpace: 'normal', maxWidth: upright ? undefined : roleSize('note') * BODY_MEASURE }}
       >
         {t('restore.body')}
       </BarText>
@@ -216,13 +241,13 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
     >
       {bare ? (
         <TimedButton {...clock} clock="ring" data-testid="restore-resume" style={{ ...resumeStyle, ...answerFill }}>
-          <BarText size={TEXT.head} color={PLATE_INK} weight={900}>{t('restore.resume')}</BarText>
+          <BarText role="action" color={PLATE_INK} weight={900}>{t('restore.resume')}</BarText>
           <TouchReach zoom={zoom} />
         </TimedButton>
       ) : (
         // The visible resume pill duplicates the fully labelled card and is removed from keyboard and a11y order.
         <ActionButton interaction="action" aria-hidden tabIndex={-1} data-testid="restore-resume" onClick={onRestore} style={{ ...resumeStyle, ...answerFill }}>
-          <BarText size={TEXT.head} color={PLATE_INK} weight={900}>{t('restore.resume')}</BarText>
+          <BarText role="action" color={PLATE_INK} weight={900}>{t('restore.resume')}</BarText>
           <TouchReach zoom={zoom} />
         </ActionButton>
       )}
@@ -235,7 +260,7 @@ function RestoreShelfBody({ state, splashActive = false, onRestore, onDismiss }:
           height: ANSWER.h, padding: `0 ${ANSWER.padX}px`, background: PLATE, ...answerFill,
         }}
       >
-        <BarText size={TEXT.head} color={PLATE_INK} weight={900}>{t('restore.fresh')}</BarText>
+        <BarText role="action" color={PLATE_INK} weight={900}>{t('restore.fresh')}</BarText>
         <TouchReach zoom={zoom} />
       </ActionButton>
     </motion.div>

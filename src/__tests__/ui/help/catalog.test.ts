@@ -12,22 +12,22 @@ vi.mock('../../../platform/build/build-info', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../platform/build/build-info')>();
   return { ...actual, IS_DEV_BUILD: true };
 });
-import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../ui/help/catalog';
-import { START_PAGES } from '../../../ui/help/pages/start';
-import { BUILD_PAGES } from '../../../ui/help/pages/build';
-import { GENERATE_PAGES } from '../../../ui/help/pages/generate';
-import { PLAN_PAGES } from '../../../ui/help/pages/plan';
-import { SHARE_PAGES } from '../../../ui/help/pages/share';
-import { AGENT_PAGES } from '../../../ui/help/pages/agent';
-import { MISC_PAGES } from '../../../ui/help/pages/misc';
+import { HELP_GROUPS, HELP_PAGES, HELP_PAGE_ORDER } from '../../../editor/help/catalog';
+import { START_PAGES } from '../../../editor/help/pages/start';
+import { BUILD_PAGES } from '../../../editor/help/pages/build';
+import { BLUEPRINT_PAGES } from '../../../editor/help/pages/blueprint';
+import { GENERATE_PAGES } from '../../../editor/help/pages/generate';
+import { PLAN_PAGES } from '../../../editor/help/pages/plan';
+import { SHARE_PAGES } from '../../../editor/help/pages/share';
+import { AGENT_PAGES } from '../../../editor/help/pages/agent';
+import { MISC_PAGES } from '../../../editor/help/pages/misc';
 import { HELP_SCENES, type DemoView, type HelpScene, type SceneStep } from '../../../ui/help/figures/scenes';
 import { SandboxWorld } from '../../../editor/sandbox/demo-world';
 import { HELP_SURFACES } from '../../../ui/help/figures/surfaces';
-import type { HelpPage, HelpPageId } from '../../../ui/help/page-schema';
-import { pageForEditState } from '../../../ui/session/help-targets';
-import type { BuildMode } from '../../../state/editing/edit-mode';
+import { HELP_FIGURES, pageFigure, sectionFigure, type HelpFigure } from '../../../ui/help/page-figures';
+import type { HelpPage, HelpPageId } from '../../../editor/help/page-schema';
 import { HELP_TABLES, translations } from '../../_support/locale-tables';
-import { helpFacts } from '../../../ui/help/facts';
+import { readerFacts } from '../../../ui/help/facts';
 import { PROVIDER_IDS, PROVIDER_META, providerBaseUrls } from '../../../agent/providers/defaults';
 import { STYLIZE_PROVIDERS } from '../../../pipelines/stylize/providers';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
@@ -43,6 +43,7 @@ import { readingKey } from '../../../i18n/terms/device-readings';
 const ALL_IDS: readonly HelpPageId[] = [
   'welcome', 'frame', 'camera', 'touch', 'tour',
   'terrain', 'trim', 'objects', 'search', 'select', 'copy', 'smart',
+  'blueprint', 'blueprint-save', 'blueprint-place', 'blueprint-groups', 'blueprint-library', 'blueprint-files',
   'generate', 'gen-island', 'maze', 'gen-letter', 'gen-picture', 'candidates', 'region',
   'notes', 'layers', 'load', 'undo',
   'save', 'share', 'json', 'checklist', 'planet',
@@ -55,7 +56,7 @@ const ALL_IDS: readonly HelpPageId[] = [
 const sceneSteps = new Map<string, SceneStep[]>();
 const NO_VIEW: DemoView = {
   clearGhost: () => {}, groupGhost: () => {},
-  paintGhost: () => {}, region: () => {}, route: () => {},
+  region: () => {}, route: () => {},
   marks: () => {}, loadMeter: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
   spin: () => {}, groupSpin: () => {},
 };
@@ -77,7 +78,7 @@ function sceneKeyOf(scene: HelpScene): string {
   return Object.entries(HELP_SCENES).find(([, s]) => s === scene)?.[0] ?? 'unknown';
 }
 
-function figureKeys(fig: NonNullable<HelpPage['figure']>): TextKey[] {
+function figureKeys(fig: HelpFigure): TextKey[] {
   if (fig.kind === 'reel') return fig.fallback ? figureKeys(fig.fallback) : [];
   if (fig.kind === 'surface') return [fig.captionKey];
   if (fig.kind === 'demos') return fig.scenes.map((s) => s.labelKey);
@@ -98,14 +99,16 @@ function liteVariantKeys(value: unknown, inLite = false): string[] {
 function keysOf(page: HelpPage): string[] {
   const keys = [page.titleKey, page.ledeKey, page.entryKey];
   if (page.navKey) keys.push(page.navKey);
-  if (page.figure) keys.push(...figureKeys(page.figure));
+  const top = pageFigure(page.id);
+  if (top) keys.push(...figureKeys(top));
   if (page.action) keys.push(page.action.labelKey);
   for (const s of page.sections) {
     if (s.kind === 'callout') { keys.push(s.bodyKey); continue; }
     keys.push(s.titleKey);
     if (s.kind === 'prose') {
       keys.push(...s.bodyKeys);
-      if (s.figure) keys.push(...figureKeys(s.figure));
+      const figure = sectionFigure(page.id, s.anchor);
+      if (figure) keys.push(...figureKeys(figure));
     } else if (s.kind === 'list') {
       keys.push(...(s.bodyKeys ?? []), ...s.items.map((item) => item.key));
     } else if (s.kind === 'steps') {
@@ -145,9 +148,18 @@ describe('the help catalog', () => {
     }
   });
 
+  it('gives a figure only to a page and a prose section the catalog holds', () => {
+    for (const [id, figures] of Object.entries(HELP_FIGURES)) {
+      const page = HELP_PAGES[id as HelpPageId];
+      expect(page, id).toBeDefined();
+      const prose = page.sections.flatMap((s) => (s.kind === 'prose' ? [s.anchor] : []));
+      for (const anchor of Object.keys(figures.sections ?? {})) expect(prose, `${id} → ${anchor}`).toContain(anchor);
+    }
+  });
+
   it('names only scenes and mocks that exist', () => {
     for (const id of HELP_PAGE_ORDER) {
-      const named = HELP_PAGES[id]!.figure;
+      const named = pageFigure(id);
       if (!named) continue;
       // A reel names its tips card; what the catalog must hold is the figure standing in for it.
       if (named.kind === 'reel') expect(TOUR_KINDS, `${id} → ${named.reel}`).toContain(named.reel);
@@ -195,7 +207,7 @@ describe('the help tables and the facts they quote', () => {
   it('leaves no orphan: every en key is read by a descriptor, a scene or a mock', () => {
     const used = new Set<string>();
     for (const id of HELP_PAGE_ORDER) for (const key of keysOf(HELP_PAGES[id]!)) used.add(key);
-    const written = [...START_PAGES, ...BUILD_PAGES, ...GENERATE_PAGES, ...PLAN_PAGES, ...SHARE_PAGES, ...AGENT_PAGES, ...MISC_PAGES];
+    const written = [...START_PAGES, ...BUILD_PAGES, ...BLUEPRINT_PAGES, ...GENERATE_PAGES, ...PLAN_PAGES, ...SHARE_PAGES, ...AGENT_PAGES, ...MISC_PAGES];
     for (const key of liteVariantKeys(written)) used.add(key);
     for (const scene of Object.values(HELP_SCENES)) {
       for (const step of stepsOf(scene)) {
@@ -207,7 +219,7 @@ describe('the help tables and the facts they quote', () => {
     // scenes resolve at draw time (textKey) are referenced from components rather than descriptors.
     const componentRead = (key: string) => key.startsWith('help.group.')
       || ['help.fig.plan_job', 'help.fig.plan_s1', 'help.fig.plan_s2', 'help.fig.plan_s3', 'help.fig.undo_job', 'help.fig.undo_job2', 'help.fig.steer_job', 'help.fig.steer_note', 'help.fig.trail_job', 'help.fig.pic_title', 'help.fig.pic_desc',
-        'help.camera.fig_orbit', 'help.camera.fig_tilt', 'help.camera.fig_dolly', 'help.camera.fig_hturn', 'help.camera.fig_pan'].includes(key)
+        'help.bpgroups.fig_name', 'help.camera.fig_orbit', 'help.camera.fig_tilt', 'help.camera.fig_dolly', 'help.camera.fig_hturn', 'help.camera.fig_pan'].includes(key)
       || key === 'help.summary_label' || key === 'help.notes.entry_layer'
       || key === 'help.qa_title' || key === 'help.see_also' || key === 'help.search_placeholder' || key === 'help.back_to_pages'
       || key.startsWith('help.steps.')
@@ -223,7 +235,7 @@ describe('the help tables and the facts they quote', () => {
 
   it('derives autosave timing and agent limits and interpolates them in every locale', () => {
     for (const locale of LOCALES) {
-      const facts = helpFacts(locale);
+      const facts = readerFacts(locale);
       expect(facts.autosaveSeconds).toBe(AUTOSAVE_DEBOUNCE_MS / 1000);
       expect(facts.agentMaxTurns).toBe(MAX_TURNS_DEFAULT);
       expect(facts.agentChildTurns).toBe(SUBAGENT_MAX_TURNS);
@@ -236,7 +248,7 @@ describe('the help tables and the facts they quote', () => {
   });
 
   it('uses the dimensions shared by every offered ramp for the general placement guide', () => {
-    const facts = helpFacts('en');
+    const facts = readerFacts('en');
     for (const item of getPlaceableByCategory(ItemCategory.Ramp)) {
       expect(item.height).toBe(facts.rampRun);
       expect(item.traits.find(trait => trait.type === 'heightDrop')).toMatchObject({ layers: facts.rampDrop });
@@ -245,7 +257,7 @@ describe('the help tables and the facts they quote', () => {
   });
 
   it('derives provider rosters and counts from their runtime registries', () => {
-    const facts = helpFacts('en');
+    const facts = readerFacts('en');
     const agentIds = PROVIDER_IDS.filter((id) => id !== 'custom');
     expect(facts.agentProviderCount).toBe(agentIds.length);
     for (const id of agentIds) expect(String(facts.agentProviders)).toContain(PROVIDER_META[id].name);
@@ -263,31 +275,18 @@ describe('the help tables and the facts they quote', () => {
       for (const token of ['{supportFreeLayer}', '{supportFromLayer}', '{supportWindow}×{supportWindow}', '{supportReach}', '{supportBaseLayer}', '{supportHighLayer}']) {
         expect(line, `${locale} ${token}`).toContain(token);
       }
-      const resolved = line.replace(/\{(\w+)\}/g, (_, name: string) => String(helpFacts(locale)[name as keyof ReturnType<typeof helpFacts>] ?? ''));
+      const resolved = line.replace(/\{(\w+)\}/g, (_, name: string) => String(readerFacts(locale)[name as keyof ReturnType<typeof readerFacts>] ?? ''));
       expect(resolved, `${locale} counts the window's cells`).not.toMatch(new RegExp(`(^|\\D)${BASE_SUPPORT.window ** 2}(\\D|$)`));
     }
   });
 
   it('uses the shared title and description limits in every help locale', () => {
     for (const locale of LOCALES) {
-      const facts = helpFacts(locale);
+      const facts = readerFacts(locale);
       expect(facts.titleLimit).toBe(NOTE_LIMITS.title);
       expect(facts.descriptionLimit).toBe(NOTE_LIMITS.description);
       expect(HELP_TABLES[locale]['help.sharelook.header_b1']).toContain('{titleLimit}');
       expect(HELP_TABLES[locale]['help.sharelook.header_b1']).toContain('{descriptionLimit}');
-    }
-  });
-});
-
-describe('the pick-mode fallback', () => {
-  it('answers every edit state with a real page', () => {
-    const modes: BuildMode[] = [null, 'object', 'road', 'mountain', 'water', 'generate', 'annotate'];
-    const tools = ['brush', 'erase', 'trim', 'shape', 'smart', 'none'];
-    for (const mode of modes) {
-      for (const tool of tools) {
-        const page = pageForEditState({ mode, tool });
-        expect(HELP_PAGES[page], `${mode}/${tool} → ${page}`).toBeTruthy();
-      }
     }
   });
 });

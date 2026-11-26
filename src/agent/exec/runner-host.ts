@@ -6,8 +6,10 @@
  * catalog, the provider's SDK adapter and the vision probe.
  */
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
-import { setLiveJobStop, type ArmedConnection } from '../connection/store';
+import { isConnected, setLiveJobStop, useAgentConnection, type ArmedConnection } from '../connection/store';
+import type { KeyStanding } from '../core/repair-policy';
 import { preloadAdapter } from '../providers/connect';
+import { PROVIDER_SIGN_INS } from '../providers/sign-in';
 import { catalogVersion, ensureModelCatalog, subscribeCatalog } from '../providers/model-catalog';
 import {
   ensureVisionVerdict, readsImages, subscribeVisionVerdicts, visionKey, visionVerdictsVersion,
@@ -47,11 +49,21 @@ function refreshRunnerConfig(cfg: RunnerConfig, armed: ArmedConnection, live: Li
   cfg.uiLocale = live.uiLocale;
 }
 
+/** How the armed key stands: whether one is held, and when it came from the provider's sign-in. */
+function keyStanding(): KeyStanding {
+  const state = useAgentConnection.getState();
+  const at = PROVIDER_SIGN_INS[state.provider] ? state.signedIn[state.provider] : undefined;
+  return { connected: isConnected(state), ...(at !== undefined ? { signedInAt: at } : {}) };
+}
+
 /** The config object the runner is built with, assembled through the same fold that keeps it
  *  current, so a field can never be seeded one way and refreshed another. The runner reads the
  *  page's session through its port. */
 function newRunnerConfig(armed: ArmedConnection, live: Live): RunnerConfig {
-  const cfg = { ...armed, registry: live.registry, makeToolDeps: live.makeToolDeps, session: agentSessionPort };
+  const cfg = {
+    ...armed, registry: live.registry, makeToolDeps: live.makeToolDeps, session: agentSessionPort,
+    keyStanding,
+  };
   refreshRunnerConfig(cfg, armed, live);
   return cfg;
 }

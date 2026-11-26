@@ -1,13 +1,14 @@
-import { helpAttributes, inheritedHelpTarget } from './help-target';
+import { helpAttributes, inheritedHelpTarget, type HelpTarget } from './help-target';
 import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Away } from './away';
 import { useUiPreview } from '../design/preview';
 import { routeSurfaceKeyDown, SurfaceOwner, useSurfaceScope } from './surface-scope';
 import { useFloatingPosition } from './use-floating-position';
-import { useDenseScript, useDevicePixelRatio } from '../design/scale';
-import { cursors, font, radii, shadows, UNAVAILABLE, z } from '../design/styles';
-import { ACTIVE, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, MUTED } from '../design/tokens';
+import { TOUCH_TARGET, useDenseScript, useDevicePixelRatio } from '../design/scale';
+import { concentricRadius, cursors, entryCorners, font, radii, shadows, UNAVAILABLE, z } from '../design/styles';
+import { ACTIVE, DANGER_INK, INK, INSET, LINE, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK, MUTED } from '../design/tokens';
 import { roleFont, weightVars } from '../design/text-weight';
 import { framerMotion } from '../design/motion';
 import { ChevronIcon } from './line-glyphs';
@@ -15,13 +16,23 @@ import { ActionButton } from './ActionButton';
 import { ScrollArea } from './ScrollArea';
 import { Spinner } from './Spinner';
 import { CONTROL_CLEARANCE } from './use-scroll-row';
-import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../design/focus-source';
+import { TextField } from './TextField';
+import { isComposingKey } from '../../platform/input/text-entry';
 
 const ANCHOR_GAP = 6;
 const MAX_HEIGHT = 320;
 const CARD_PADDING = 6;
 /** The corner of a box inside the card, concentric with the card's own. */
-const CONTENT_RADIUS = radii.lg - PANEL_EDGE_WIDTH - CARD_PADDING;
+const CONTENT_RADIUS = concentricRadius(radii.lg - PANEL_EDGE_WIDTH, CARD_PADDING, radii.md);
+
+/** Which end of the card's list an entry stands at; `first` and `last` are false in the middle. */
+interface MenuEdge { first: boolean; last: boolean }
+
+/** The edge of entry `index` of `count` in a card whose list starts at its top corner unless a cap
+ *  (`header`) stands over it. */
+function menuEdge(index: number, count: number, capped = false): MenuEdge {
+  return { first: index === 0 && !capped, last: index === count - 1 };
+}
 
 export interface FloatMenuItem {
   id: string;
@@ -35,6 +46,10 @@ export interface FloatMenuItem {
   attrs?: Record<string, string>;
   /** What a search matches the row by besides its id, where its label is not plain text. */
   text?: string;
+  /** The row's mark, before its label. */
+  icon?: ReactNode;
+  /** Removal, in the danger ink. */
+  danger?: boolean;
 }
 
 /** A field over the list that narrows its rows to what is typed. Every string is already translated. */
@@ -100,6 +115,24 @@ interface FloatMenuProps {
    * wears its edge and no shadow.
    */
   trigger?: { ref: RefObject<HTMLElement>; align?: 'start' | 'center' | 'end'; gap?: number; minWidth?: number; onMap?: boolean };
+  /**
+   * A point on the screen in visual px to open at, in place of the closed row: the map's menu at the
+   * press that opened it. Its rows are actions, the card takes its widest row and draws at `zoom`, and
+   * `overlap` stands it whole over the point where neither side holds it. A row acts only on a press
+   * that began on the card, or on a key, so the release ending a long press under the finger chooses
+   * nothing, and a pick leaves the card standing for the host to close, as a turn that keeps it does.
+   */
+  point?: { x: number; y: number; zoom: number; overlap?: boolean; minWidth?: number; onMap?: boolean };
+  /** Raises each row to a fingertip. */
+  touch?: boolean;
+  /** The card's own help destination, where it does not inherit its row's. */
+  helpTarget?: HelpTarget;
+  /** The back-stack entry of the state the card shows, whose place it takes (`useSurfaceScope`). */
+  backId?: string;
+  /** The card's z rung, where it is not the popover's. */
+  layer?: number;
+  /** The card has finished leaving. */
+  onExitComplete?: () => void;
 }
 
 /**
@@ -111,11 +144,14 @@ interface FloatMenuProps {
 export function FloatMenu({
   row, items = [], body, open, onOpen, onClose, onPick, activeId, header, search, loading = false, note,
   anchor, width, keepFocus = false, highlightId,
-  'aria-label': ariaLabel, 'data-testid': testId, trigger,
+  'aria-label': ariaLabel, 'data-testid': testId, trigger, point, touch = false, helpTarget, backId, layer, onExitComplete,
 }: FloatMenuProps) {
   const ownRow = useRef<HTMLButtonElement>(null);
   const rowRef = trigger?.ref ?? anchor ?? ownRow;
-  const across = trigger?.align === 'end' ? 'right' : trigger?.align === 'start' ? 'left' : 'center';
+  const across = trigger?.align === 'end' ? 'right' : trigger?.align === 'start' || point ? 'left' : 'center';
+  const hang = trigger ?? point;
+  const pressedHere = useRef(false);
+  useEffect(() => { pressedHere.current = false; }, [open, point?.x, point?.y]);
   const pictured = useUiPreview();
   const menuId = useId();
   const [query, setQuery] = useState('');
@@ -128,8 +164,9 @@ export function FloatMenu({
   // The card draws at the zoom its row stands under (a window's touch lift, the frame's, the chrome's),
   // read off the row as it is placed.
   const { ref: cardRef, piece, placement, rung, style, zoom } = useFloatingPosition({
-    open: open && !pictured, anchor: rowRef, zoom: 'anchor', maxHeight: MAX_HEIGHT,
-    ...(trigger ? { align: trigger.align ?? 'start', gap: trigger.gap ?? ANCHOR_GAP } : { width: width ?? ('anchor' as const), gap: ANCHOR_GAP }),
+    open: open && !pictured,
+    ...(point ? { anchor: { x: point.x, y: point.y }, zoom: point.zoom, overlap: !!point.overlap } : { anchor: rowRef, zoom: 'anchor' as const, maxHeight: MAX_HEIGHT }),
+    ...(trigger ? { align: trigger.align ?? 'start', gap: trigger.gap ?? ANCHOR_GAP } : point ? {} : { width: width ?? ('anchor' as const), gap: ANCHOR_GAP }),
   });
   const weights = weightVars(zoom, useDevicePixelRatio(), useDenseScript());
   // The row the caller's keys reach stays in view in a list longer than the card.
@@ -138,7 +175,10 @@ export function FloatMenu({
     const rows = cardRef.current?.querySelectorAll<HTMLElement>('[data-item-id]') ?? [];
     Array.from(rows).find((row) => row.dataset.itemId === highlightId)?.scrollIntoView?.({ block: 'nearest' });
   }, [open, highlightId, cardRef]);
-  const scope = useSurfaceScope({ open: open && !pictured && !!placement, root: cardRef, trigger: rowRef, onClose, focus: keepFocus ? 'none' : cardBody ? 'contain' : 'menu', outside: true });
+  const scope = useSurfaceScope({
+    open: open && !pictured && !!placement, root: cardRef, ...(point ? {} : { trigger: rowRef }), onClose,
+    focus: keepFocus ? 'none' : cardBody ? 'contain' : 'menu', outside: true, ...(backId ? { backId } : {}),
+  });
 
   const card = (box: CSSProperties, origin: string) => (
     <motion.div
@@ -146,22 +186,29 @@ export function FloatMenu({
       {...piece}
       id={menuId}
       tabIndex={-1}
-      {...helpAttributes(inheritedHelpTarget(rowRef.current))}
+      {...helpAttributes(helpTarget ?? inheritedHelpTarget(rowRef.current))}
       role={cardBody ? 'group' : 'menu'}
       aria-label={ariaLabel}
       onKeyDown={pictured ? undefined : routeSurfaceKeyDown}
+      {...(point ? { onPointerDownCapture: () => { pressedHere.current = true; } } : {})}
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.94, transition: framerMotion('surface.leave') }}
       transition={framerMotion('surface.arrive')}
-      style={{ ...cardStyle, ...(trigger?.minWidth ? { minWidth: trigger.minWidth } : {}), ...(trigger?.onMap ? { boxShadow: 'none' } : {}), ...box, transformOrigin: origin }}
+      style={{ ...cardStyle, ...(hang?.minWidth ? { minWidth: hang.minWidth } : {}), ...(hang?.onMap ? { boxShadow: 'none' } : {}), ...box, transformOrigin: origin }}
     >
       {header ? <div style={headStyle}>{header}</div> : null}
       <SurfaceOwner.Provider value={scope}>{cardBody}</SurfaceOwner.Provider>
-      {searchBody ? null : items.map((item) => (
+      {searchBody ? null : items.map((item, index) => (
         <Fragment key={item.id}>
           {item.separated ? <div style={dividerStyle} /> : null}
-          <MenuRow item={item} active={item.id === activeId} highlighted={item.id === highlightId} action={!!trigger}
-            keepFocus={keepFocus} onPick={() => { onPick?.(item.id); onClose(); }} />
+          <MenuRow item={item} active={item.id === activeId} highlighted={item.id === highlightId} action={!!hang} touch={touch}
+            edge={cardBody ? undefined : menuEdge(index, items.length, !!header)}
+            keepFocus={keepFocus} onPick={(e) => {
+              if (point && e.detail !== 0 && !pressedHere.current) return;
+              onPick?.(item.id);
+              if (!point) onClose();
+            }} />
         </Fragment>
       ))}
     </motion.div>
@@ -169,9 +216,9 @@ export function FloatMenu({
 
   return (
     <>
-      {trigger || anchor ? null : <button
+      {trigger || anchor || point ? null : <ActionButton
         ref={ownRow}
-        type="button"
+        interaction="row"
         data-testid={testId}
         aria-haspopup={cardBody ? true : 'menu'}
         aria-expanded={open}
@@ -183,36 +230,45 @@ export function FloatMenu({
       >
         <span style={rowValue}>{row}</span>
         <Chevron open={open} />
-      </button>}
-      {open && pictured ? (
-        <div style={{ position: 'relative', marginTop: ANCHOR_GAP }}>
-          {card({ position: 'static', maxHeight: MAX_HEIGHT }, `top ${across}`)}
-        </div>
+      </ActionButton>}
+      {/* Pictured, the card still leaves through a presence of its own, so `onExitComplete` fires and a
+          host holding the menu's presence (a Help page turning) is not held open by it. */}
+      {pictured ? (
+        <AnimatePresence {...(onExitComplete ? { onExitComplete } : {})}>
+          {open ? (
+            <div key="card" style={{ position: 'relative', marginTop: point ? 0 : ANCHOR_GAP }}>
+              {card({ position: 'static', ...(point ? {} : { maxHeight: MAX_HEIGHT }) }, `top ${across}`)}
+            </div>
+          ) : null}
+        </AnimatePresence>
       ) : null}
-      {open && !pictured ? createPortal(
-        <>
-          <div style={{ ...layerStyle, zIndex: layerRung(rung), zoom, ...weights }}>
-            {card(style, `${placement?.above ? 'bottom' : 'top'} ${across}`)}
-          </div>
-        </>,
+      {pictured ? null : createPortal(
+        <AnimatePresence {...(onExitComplete ? { onExitComplete } : {})}>
+          {open ? (
+            <Away key="card" style={{ ...layerStyle, zIndex: layer ?? layerRung(rung), zoom, ...weights }}>
+              {card(style, `${placement?.above ? 'bottom' : 'top'} ${across}`)}
+            </Away>
+          ) : null}
+        </AnimatePresence>,
         document.body,
-      ) : null}
+      )}
     </>
   );
 }
 
 /** One row of the list: a choice (`menuitemradio`), or with `action` a command (`menuitem`). */
-function MenuRow({ item, active, highlighted = false, action = false, keepFocus = false, wraps = false, onPick }: {
-  item: FloatMenuItem; active: boolean; highlighted?: boolean; action?: boolean; keepFocus?: boolean;
+function MenuRow({ item, active, highlighted = false, action = false, keepFocus = false, wraps = false, touch = false, edge, onPick }: {
+  edge?: MenuEdge; item: FloatMenuItem; active: boolean; highlighted?: boolean; action?: boolean; keepFocus?: boolean;
   /** Breaks a long unspaced label (a model id) rather than overflowing the card. */
   wraps?: boolean;
-  onPick: () => void;
+  touch?: boolean;
+  onPick: (event: React.MouseEvent) => void;
 }) {
   return (
     <ActionButton
       {...item.attrs}
       data-item-id={item.id}
-      {...(action ? { role: 'menuitem' } : { role: 'menuitemradio', 'aria-checked': active })}
+      {...(action ? { role: 'menuitem', 'aria-current': active || undefined } : { role: 'menuitemradio', 'aria-checked': active })}
       interaction="row"
       disabled={item.disabled}
       dim="caller"
@@ -221,8 +277,12 @@ function MenuRow({ item, active, highlighted = false, action = false, keepFocus 
       fill={highlighted && !active ? floatMenuHoverFill(false) : floatMenuItemFill(active)}
       {...(item.disabled ? {} : { hoverFill: floatMenuHoverFill(active) })}
       fillTransition={framerMotion('surface.arrive')}
-      style={{ ...floatMenuItemStyle(active, item.disabled), flexShrink: 0, ...(wraps ? { overflowWrap: 'anywhere' } : null) }}
+      style={{
+        ...floatMenuItemStyle(active, item.disabled, edge), flexShrink: 0, ...(wraps ? { overflowWrap: 'anywhere' } : null),
+        ...(item.danger ? { color: DANGER_INK } : null), ...(touch ? { minHeight: TOUCH_TARGET, gap: 12 } : null),
+      }}
     >
+      {item.icon}
       <span style={{ minWidth: 0 }}>{item.label}</span>
       {item.sub != null ? <span style={subStyle}>{item.sub}</span> : null}
     </ActionButton>
@@ -243,7 +303,7 @@ function SearchList({ search, items, activeId, loading, note, ariaLabel, query, 
   const manual = search.manual && typed !== '' && !items.some(({ id }) => id === typed) ? { id: typed, label: search.manual(typed) } : null;
   const choices = manual ? [...matches, manual] : matches;
   const navigate = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (isComposingKey(event.nativeEvent)) return;
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     if (event.target instanceof HTMLInputElement && ['Home', 'End'].includes(event.key)) return;
     const controls = Array.from(box.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') ?? []);
@@ -255,31 +315,14 @@ function SearchList({ search, items, activeId, loading, note, ariaLabel, query, 
   };
   return (
     <div ref={box} onKeyDown={navigate} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}>
-      <label className={FIELD_WRAP_CLASS} style={searchFieldStyle}>
-        <input
-          type="search"
-          data-testid={search['data-testid']}
-          className={FIELD_INPUT_CLASS}
-          aria-label={search.label}
-          placeholder={search.label}
-          spellCheck={false}
-          autoComplete="off"
-          autoCapitalize="none"
-          autoCorrect="off"
-          enterKeyHint="done"
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229) return;
-            event.preventDefault();
-            const exact = items.find(({ id }) => id === typed);
-            const id = exact?.id ?? manual?.id ?? (matches.length === 1 ? matches[0]?.id : undefined);
-            if (id) onPick(id);
-          }}
-          style={searchInputStyle}
-        />
-        {loading && <Spinner size={13} />}
-      </label>
+      <TextField type="search" data-testid={search['data-testid']} label={search.label} placeholder={search.label}
+        spellCheck={false} autoComplete="off" autoCapitalize="none" autoCorrect="off" enterKeyHint="done"
+        value={query} onChange={onQuery} style={searchFieldStyle} trailing={loading ? <Spinner size={13} /> : null}
+        onEnter={() => {
+          const exact = items.find(({ id }) => id === typed);
+          const id = exact?.id ?? manual?.id ?? (matches.length === 1 ? matches[0]?.id : undefined);
+          if (id) onPick(id);
+        }} />
       {note ? <p style={{ ...noteStyle, padding: '0 8px' }}>{note}</p> : null}
       <ScrollArea role="menu" aria-label={ariaLabel} gutter="stable" fade="both" style={{ flex: '1 1 auto' }}
         contentStyle={{ display: 'flex', flexDirection: 'column', gap: 2, padding: CONTROL_CLEARANCE }}>
@@ -310,7 +353,7 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-export function floatMenuItemStyle(active: boolean, disabled = false): CSSProperties {
+function floatMenuItemStyle(active: boolean, disabled = false, edge?: MenuEdge): CSSProperties {
   return {
     display: 'flex',
     alignItems: 'center',
@@ -318,7 +361,7 @@ export function floatMenuItemStyle(active: boolean, disabled = false): CSSProper
     width: '100%',
     textAlign: 'left',
     border: 'none',
-    borderRadius: radii.md,
+    ...entryCorners(edge ?? { first: false, last: false }, radii.lg - PANEL_EDGE_WIDTH, CARD_PADDING, radii.md),
     padding: '8px 14px',
     fontFamily: font.family,
     ...roleFont('menu'),
@@ -330,13 +373,13 @@ export function floatMenuItemStyle(active: boolean, disabled = false): CSSProper
 
 /** A row's resting fill, Framer's to draw (`hover-fill.ts`). An inactive row matches the card rather
  *  than being transparent, so a hover tints from a colour instead of flashing in. */
-export function floatMenuItemFill(active: boolean): string {
+function floatMenuItemFill(active: boolean): string {
   return active ? ACTIVE : PLATE;
 }
 
 /** What a row's hover tints to: one step down the cream ramp from the plate it stands on, so the
  *  row under the pointer comes forward. The current row has no hover state to move to. */
-export function floatMenuHoverFill(active: boolean): string {
+function floatMenuHoverFill(active: boolean): string {
   return active ? ACTIVE : INSET;
 }
 
@@ -393,18 +436,8 @@ const cardStyle: CSSProperties = {
   overflowY: 'auto',
 };
 
-/** The search field: an inset box the list's rows line up with, its corner following the card's. */
-const searchFieldStyle: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-  background: INSET, borderRadius: CONTENT_RADIUS, padding: '10px 12px',
-  borderWidth: 1, borderStyle: 'solid', borderColor: 'transparent',
-};
-
-const searchInputStyle: CSSProperties = {
-  flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none',
-  ...roleFont('field'), fontFamily: font.family, color: PLATE_INK, letterSpacing: 0,
-  cursor: cursors.text,
-};
+/** The search field's place in the card: its corner follows the card's, so the list's rows line up with it. */
+const searchFieldStyle: CSSProperties = { flexShrink: 0, borderRadius: CONTENT_RADIUS };
 
 const noteStyle: CSSProperties = {
   ...roleFont('note'), fontFamily: font.family, color: MUTED, lineHeight: 1.45, margin: 0,

@@ -11,15 +11,15 @@
  * district the streets already outlined. Pure and deterministic per (seed, template, composition,
  * streets, richness), with no browser API, so it runs in the worker pool.
  */
-import { DIR_OFFSETS, OPPOSITE_DIR } from '../../../../core/grid/directions';
-import { flatIndex, inflateRect, rectContains, rectsOverlap } from '../../../../core/grid/rect';
+import { DIRECTIONS, DIR_OFFSETS, OPPOSITE_DIR } from '../../../../core/grid/directions';
+import { flatIndex, rectContains, rectsTouch } from '../../../../core/grid/rect';
 import { clamp01, lerpClamped } from '../../../../core/base/math';
 import { fnv1a32 } from '../../../../core/base/hash';
 import { makeRng, type Rng, mix } from '../../../../core/base/rng';
 import type { MapTemplate } from '../../../../core/model/types';
 import type { Rect } from '../../../../core/grid/rect';
-import type { CompositionPlan } from '../composition/composition';
-import { cellTiers, levelWindows, hubRect } from '../planet';
+import { compositionPeak, type CompositionPlan } from '../composition/composition';
+import { hubRect, type PlanetReading } from '../planet';
 
 import type { MovementLine, MovementStop } from '../composition/movement-line';
 import { planRegionList } from './region-list';
@@ -59,6 +59,10 @@ const PLACE_MIN = { side: 4, cells: 24 } as const;
 const PLACE_GAP = 1;
 /** How far a place looks for pavement before it takes the plaza's direction as its look-out. */
 const ENTRY_REACH = 14;
+/** The sides an anchor's lot is tried entered from, south first, the side an unturned building's door
+ *  faces (`ROTATION_FACING[0]`). The order decides which lot each anchor takes, and north first leaves
+ *  anchors the rules refuse, so it is not the compass order of `DIRECTIONS`. */
+const ENTRY_ORDER: readonly Direction[] = ['south', 'north', 'east', 'west'];
 /** Depth of the strip at a place's far end that the sculptor may back with height. */
 const BACKING_DEPTH = 3;
 /** The fewest cells a district must hold before it is worth a treatment of its own. */
@@ -101,11 +105,11 @@ export interface DistrictPlan {
 /** Hands every district a treatment and cuts it into places, meeting the walk's stops first. The
  *  anchor regions cover the live catalog's placeable Buildings and Facilities. */
 export function planDistricts(
-  { seed, template, composition, streets, richness, line }:
-    DesignInput & { composition: CompositionPlan; streets: StreetPlan; line: MovementLine },
+  { seed, template, composition, streets, richness, line, planet }:
+    DesignInput & { composition: CompositionPlan; streets: StreetPlan; line: MovementLine; planet: PlanetReading },
 ): DistrictPlan {
   const r = clamp01(richness);
-  const stage = openStage(seed, template, composition, streets);
+  const stage = openStage(seed, template, planet, streets);
 
   const specs = planRegionList(seed, r);
   // Biggest lot first. The shop's complex and the museum's forecourt are the roomiest anchors on the
@@ -124,7 +128,8 @@ export function planDistricts(
     design: {
       seedInfo: { seed, richness: r, templateId: template.id },
       hubArea: stage.hub,
-      backingBand: highGround(composition),
+      // The landmark asks a plan for its high ground; the composition decided where the mass sits.
+      backingBand: compositionPeak(composition).rect,
       regions: stage.regions,
       unplaced,
     },
@@ -151,7 +156,7 @@ interface DistrictStage {
 }
 
 function openStage(
-  seed: number, template: MapTemplate, composition: CompositionPlan, streets: StreetPlan,
+  seed: number, template: MapTemplate, planet: PlanetReading, streets: StreetPlan,
 ): DistrictStage {
   const rng = makeRng(mix(seed, 0x1d15721c));
   const W = template.width, H = template.height;
@@ -159,10 +164,7 @@ function openStage(
   const centre = { x: hub.x + hub.w / 2, y: hub.y + hub.h / 2 };
   const paved = new Uint8Array(W * H);
   for (const c of streets.cells) paved[flatIndex(c.x, c.y, W)] = 1;
-  // One tier field for the stage: `cellTiers` walks a distance field over the whole map, and the
-  // pavable mask and the last-resort lot both need it.
-  const tiers = cellTiers(template, composition);
-  const pavable = levelWindows(template, tiers);
+  const { tiers, level: pavable } = planet;
   return { rng, W, H, hub, centre, paved, tiers, pavable, taken: new Set(), regions: [], assignments: [] };
 }
 
@@ -396,7 +398,7 @@ function frontedLot(stage: DistrictStage, block: Block, spec: RegionSpec): { rec
       const size = w * 4096 + h;
       if (tried.has(size)) continue;
       tried.add(size);
-      for (const entry of ['south', 'north', 'east', 'west'] as const) {
+      for (const entry of ENTRY_ORDER) {
         const found = lotAgainstPavement(stage, block, { w, h, entry, need }, free);
         if (found) return { rect: found, entry };
       }
@@ -518,7 +520,7 @@ function hubLot(
     const x = start % W, y = (start / W) | 0;
     const lot = { x, y, w: floor.w, h: floor.h };
     if (x + lot.w + 1 >= W || y + lot.h + 1 >= H) continue;
-    if (rectContains(hubArea, x, y) || rectsMeet(hubArea, lot)) continue;
+    if (rectContains(hubArea, x, y) || rectsTouch(hubArea, lot, 1)) continue;
     // The lot plus its dual-grid margin, all on the plate at one tier and unclaimed.
     let ok = true;
     const level = tiers[start]!;
@@ -530,7 +532,7 @@ function hubLot(
     }
     if (!ok) continue;
     // The doorstep: a cell a road may be laid on, so the pipeline's approach can reach the door.
-    for (const entry of ['south', 'north', 'east', 'west'] as const) {
+    for (const entry of ENTRY_ORDER) {
       const step = DIR_OFFSETS[entry];
       const door = edgeCells(lot, entry)
         .map((c) => ({ x: c.x + step.dx, y: c.y + step.dy }))
@@ -540,8 +542,6 @@ function hubLot(
   }
   return null;
 }
-
-const rectsMeet = (a: Rect, b: Rect): boolean => rectsOverlap(inflateRect(a, 1), b);
 
 /**
  * The block's own unclaimed ground, as a summed-area table over its box plus the dual-grid margin.
@@ -633,8 +633,7 @@ function shrinkToFit(
   };
   for (let guard = 0; guard < box.w + box.h; guard++) {
     if (rect.w < PLACE_MIN.side || rect.h < PLACE_MIN.side) return null;
-    const sides: { side: Direction; miss: number }[] = (['north', 'south', 'west', 'east'] as const)
-      .map((side) => ({ side, miss: missingOn(side) }));
+    const sides = DIRECTIONS.map((side) => ({ side, miss: missingOn(side) }));
     const worst = sides.reduce((a, b) => (b.miss > a.miss ? b : a));
     if (worst.miss === 0) break;
     if (worst.side === 'north') { rect.y++; rect.h--; }
@@ -741,7 +740,7 @@ function lookOut(
 ): Direction {
   const cx = lot.x + lot.w / 2, cy = lot.y + lot.h / 2;
   let best: { dir: Direction; d: number } | null = null;
-  for (const dir of ['north', 'south', 'east', 'west'] as const) {
+  for (const dir of DIRECTIONS) {
     const step = DIR_OFFSETS[dir];
     for (let k = 1; k <= ENTRY_REACH; k++) {
       const x = Math.round(cx + step.dx * (k + (dir === 'east' || dir === 'west' ? lot.w / 2 : 0)));
@@ -754,24 +753,6 @@ function lookOut(
   }
   if (best) return best.dir;
   return directionOf(centre.x - cx, centre.y - cy)!;
-}
-
-// --- the high ground --------------------------------------------------------------------------
-
-/** The bounding rect of the composition's own high ground: the plates standing within one tier of its
- *  peak. The landmark asks a plan for one, and the composition is what decides where the mass sits, so
- *  this reports the mass rather than dictating it. A planet with no relief reports an empty rect. */
-function highGround(composition: CompositionPlan): Rect {
-  const peak = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
-  if (peak <= 0) return { x: 0, y: 0, w: 0, h: 0 };
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const plate of composition.plates) {
-    if (plate.tier < peak) continue;
-    x0 = Math.min(x0, plate.rect.x); y0 = Math.min(y0, plate.rect.y);
-    x1 = Math.max(x1, plate.rect.x + plate.rect.w); y1 = Math.max(y1, plate.rect.y + plate.rect.h);
-  }
-  if (!Number.isFinite(x0)) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 // --- arithmetic --------------------------------------------------------------------------------

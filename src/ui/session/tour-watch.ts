@@ -1,8 +1,8 @@
 /**
  * What a Show me step watches while the visitor tries it on the live editor: the store's arming,
- * view, layer and windows, the map's undo depth and any edit still landing, and the camera of the
- * view showing, and when the visitor's own hand acts. Read here, beside the other map and store
- * signals ui listens to.
+ * view, layer and windows, Blueprint's armed blueprint, step and selected placement, the map's undo
+ * depth and any edit still landing, and the camera of the view showing, and when the visitor's own
+ * hand acts. Read here, beside the other map and store signals ui listens to.
  */
 import { useEffect, useRef } from 'react';
 import { host } from '../../editor/host/host';
@@ -10,6 +10,9 @@ import { onMapEdited } from '../../core/commands/map-edits';
 import { anyKeyHeld, onHeldKeysChange } from '../../platform/input/held-keys';
 import { editsInFlight, onEditsInFlightChange } from '../../state/edits-in-flight';
 import type { Arming, BuildMode } from '../../state/editing/edit-mode';
+import type { PlacedGroup } from '../../core/model/placed-group';
+import { selectedGroup } from '../../state/placed-groups';
+import { explorerUnfolded, type BlueprintStep } from '../../state/slices/blueprint';
 import type { ViewMode } from '../../state/slices/prefs';
 import type { CameraAngle, View2dCamera } from '../../state/view-camera';
 import { useEditorStore } from '../../state/store';
@@ -22,6 +25,14 @@ export interface TourWatch {
   arming: Arming['kind'];
   layer: number;
   share: boolean;
+  /** The armed blueprint's id, or null. */
+  blueprint: string | null;
+  /** The step Blueprint mode stands at, and whether its explorer stands unfolded. */
+  blueprintStep: BlueprintStep['at'];
+  explorer: boolean;
+  /** The placement the selection holds whole: its frame's centre in object-grid cells, and how its
+   *  members lie about their own corner, which a turn changes and a move keeps; null otherwise. */
+  group: { cx: number; cy: number; lie: string } | null;
   /** The map's undo depth: an edit that stands raises it, an undo lowers it. */
   edits: number;
   /** An edit is still landing over several frames (a Generate card's replay). */
@@ -34,6 +45,27 @@ export interface TourWatch {
   camera3d: CameraAngle | null;
 }
 
+/** How `group`'s objects and cells lie, each set measured from its own least corner, so a move
+ *  reads the same and a quarter turn does not. */
+function lieOf(group: PlacedGroup): string {
+  const sorted = <T>(list: readonly T[], at: (item: T) => [number, number], tail: (item: T) => string): string => {
+    const x0 = Math.min(...list.map((item) => at(item)[0])), y0 = Math.min(...list.map((item) => at(item)[1]));
+    return list.map((item) => `${at(item)[0] - x0},${at(item)[1] - y0}${tail(item)}`).sort().join(' ');
+  };
+  return `${sorted(group.objects, (o) => [o.position.x, o.position.y], (o) => `:${o.catalogId}:${o.rotation}`)}|${sorted(group.cells, (c) => [c.x, c.y], () => '')}`;
+}
+
+/** The last group read and its reading: a store update that leaves the selected group as it was reads it once. */
+let lastGroup: { group: PlacedGroup; read: NonNullable<TourWatch['group']> } | null = null;
+function groupReading(group: PlacedGroup | null): TourWatch['group'] {
+  if (!group) return null;
+  if (lastGroup?.group !== group) {
+    const { x, y, w, h } = group.frame;
+    lastGroup = { group, read: { cx: x + w / 2, cy: y + h / 2, lie: lieOf(group) } };
+  }
+  return lastGroup.read;
+}
+
 export function readTourWatch(): TourWatch {
   const s = useEditorStore.getState();
   const view = s.viewMode;
@@ -41,8 +73,12 @@ export function readTourWatch(): TourWatch {
     view,
     mode: s.editMode.mode,
     arming: s.editMode.arming.kind,
-    layer: s.activeLayer,
+    layer: s.displayLayer ?? 0,
     share: s.modals.share,
+    blueprint: s.blueprint.armed,
+    blueprintStep: s.blueprintStep.at,
+    explorer: explorerUnfolded(s.blueprintStep),
+    group: groupReading(selectedGroup(s)),
     edits: s.commandExecutor?.historyDepth() ?? 0,
     building: editsInFlight(),
     camera2d: view === '2d' ? host.camera.get2d() ?? null : null,

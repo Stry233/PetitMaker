@@ -23,7 +23,7 @@ function installMap(size = 40): { state: GridState; exec: CommandExecutor } {
 }
 
 function ctxFor(state: GridState, exec: CommandExecutor): HostedToolContext {
-  return makeToolCtx(state, exec, undefined, undefined, {
+  return makeToolCtx(state, exec, undefined, {
     armedMacro: 'patch-tree',
     overlay: { showGhost: vi.fn(), clearGhost: vi.fn() } as unknown as HostedToolContext['overlay'],
   });

@@ -1,6 +1,7 @@
 /*
- * Copy, cut and paste of objects on the live editor (EDIT-53 to EDIT-63): the store's copy, the
- * system clipboard and the other tabs of this browser, and the toasts each verb raises.
+ * Copy, cut and paste of objects, and of a placed blueprint selected whole with its terrain, on the
+ * live editor (EDIT-53 to EDIT-63, BLUE-07): the store's copy, the system clipboard and the other tabs
+ * of this browser, and the toasts each verb raises.
  *
  * Three places hold a copy. The store's `clipboard` is the page's own and works with no clipboard
  * permission at all. The system clipboard gets the copy as text (`io/clipboard/payload.ts`) on the
@@ -10,6 +11,7 @@
  * on a broadcast channel, so their menus offer Paste at once.
  */
 import { useEditorStore } from '../../state/store';
+import { regionOnScreen } from '../../state/editing/region';
 import { selectedObjectIds } from '../../state/selection';
 import { copyAllowed, pasteOffered, type Arrangement } from '../../state/clipboard';
 import { activeToolOf, armedItemOf, armedMacroOf, holdsSelection } from '../../state/editing/edit-mode';
@@ -17,17 +19,21 @@ import { cellAtPoint } from '../../core/grid/pointer';
 import { PLACEMENT_GRID } from '../../core/game/profile';
 import type { MacroCoord } from '../../core/model/types';
 import { copyArrangement, pasteAt as pasteArrangementAt, pasteKeyAim, type PasteAim, type PasteDoor } from '../../tools/objects';
+import { copyGroup } from '../../tools/blueprint';
+import { selectedGroup } from '../../state/placed-groups';
 import { decodeArrangement, encodeArrangement } from '../../io/clipboard/payload';
 import { getActiveView } from '../../view/active-view';
 import { translate } from '../../i18n/context';
 import { copyNotices, pasteNotices, type CopyNotice } from '../../i18n/terms/copy-notices';
 import { showToast } from '../../platform/channels/toast-bus';
 import { SUPPORTS_CLIPBOARD } from '../../platform/build/edition';
+import { copyText } from '../../platform/device/clipboard';
 import { isTextEntry } from '../../platform/input/text-entry';
 import { anyOverlayOpen } from '../../platform/channels/overlay-state';
 import { host } from '../host/host';
 import { currentEditor } from '../session/context';
 import { deleteSelection } from './group-edit';
+import { pasteGroupCopy, selectPlacement } from './blueprint';
 
 const store = () => useEditorStore.getState();
 const say = (notices: readonly CopyNotice[]): void => { for (const n of notices) showToast(n.text, n.tone); };
@@ -50,45 +56,48 @@ function textSelected(): boolean {
 }
 
 /** Hands `text` to the system clipboard: through the key's own `copy` event when `fromKey`, else
- *  through the asynchronous clipboard, whose refusal leaves the page's copy standing. */
+ *  through the asynchronous clipboard, whose refusal leaves the page's copy standing. An edition
+ *  without clipboard support installs no bridge, so it has no channel, and `copyText` writes nothing. */
 function writeSystem(text: string, fromKey: boolean): void {
-  if (!SUPPORTS_CLIPBOARD) return;
   channel?.postMessage(text);
-  const write = (): void => { void navigator.clipboard?.writeText(text).catch(() => {}); };
+  const write = (): void => { void copyText(text); };
   if (!fromKey) { write(); return; }
   owedText = text;
   setTimeout(() => { if (owedText === text) { owedText = null; write(); } }, 0);
 }
 
 /**
- * Copies `ids` (the selection when omitted) into the page's copy and the system clipboard and says
- * what it took. Returns whether anything was copied. `fromKey` names a copy key, whose own `copy`
- * event carries the text.
+ * Copies the selection into the page's copy and the system clipboard and says what it took: a
+ * placed blueprint selected whole with its terrain (BLUE-07), else the selected objects. Returns
+ * whether anything was copied. `fromKey` names a copy key, whose own `copy` event carries the text.
  */
-export function copyObjects(ids?: readonly string[], fromKey = false): boolean {
+export function copySelection(fromKey = false): boolean {
   const s = store();
   if (!s.gridState || !copyAllowed(s)) return false;
-  const taken = copyArrangement(s.gridState, ids ?? selectedObjectIds(s.selection));
+  const group = selectedGroup(s);
+  const taken = group ? { arrangement: copyGroup(s.gridState, group), leftOut: 0 } : copyArrangement(s.gridState, selectedObjectIds(s.selection));
   if (taken.arrangement === null && taken.leftOut === 0) return false;
   if (taken.arrangement) {
     s.setClipboard(taken.arrangement);
     writeSystem(encodeArrangement(taken.arrangement), fromKey);
   }
-  say(copyNotices(translate, { copied: taken.arrangement?.members.length ?? 0, leftOut: taken.leftOut }));
+  say(copyNotices(translate, { copied: taken.arrangement?.members.length ?? 0, leftOut: taken.leftOut, blueprint: !!group }));
   return taken.arrangement !== null;
 }
 
-/** The copy key: objects, unless the page holds selected text, which the browser copies. */
+/** The copy key: the selection, unless the page holds selected text, which the browser copies. */
 export function copyKey(): void {
   if (textSelected()) return;
-  copyObjects(undefined, true);
+  copySelection(true);
 }
 
-/** The cut key: copies the selection, then deletes it as Delete does, locked members kept (EDIT-61). */
+/** The cut key: copies the selection, then deletes it as Delete does, locked members kept (EDIT-61);
+ *  a placed blueprint selected whole is taken back whole. */
 export function cutKey(): void {
   if (textSelected()) return;
-  const ids = selectedObjectIds(store().selection);
-  if (ids.length === 0 || !copyObjects(ids, true)) return;
+  const s = store();
+  const ids = selectedObjectIds(s.selection);
+  if ((ids.length === 0 && !selectedGroup(s)) || !copySelection(true)) return;
   deleteSelection(translate, ids);
 }
 
@@ -108,7 +117,7 @@ export function cellAtScreen(x: number, y: number): MacroCoord | null {
 function keyAim(a: Arrangement): PasteAim | null {
   const s = store();
   const template = s.gridState?.template;
-  return template ? pasteKeyAim(a, { pickedCell: s.pickedCell, region: s.region, template }) : null;
+  return template ? pasteKeyAim(a, { pickedCell: s.pickedCell, region: regionOnScreen(s), template }) : null;
 }
 
 /** The paste key's body: one copy where `keyAim` aims, or a word that nothing is copied. */
@@ -127,24 +136,33 @@ export function pasteAtCell(cell: MacroCoord): void {
 
 /**
  * Places one copy where `aim` asks or nearby (EDIT-57), says what it came to, and selects what it
- * placed, so the copy can be moved, turned, deleted or copied on at once. An armed item or planting
- * is put down, as a Ctrl selection puts it down, and a brush gives way to the Hand tool.
+ * placed, so the copy can be moved, turned, deleted or copied on at once; a placed blueprint copied
+ * whole lands as a placement of its blueprint (`blueprint/groups.ts:pasteGroupCopy`). An armed item
+ * or planting is put down, as a Ctrl selection puts it down, and a brush gives way to the Hand tool.
  */
 function pasteAt(aim: PasteAim): void {
   const ed = currentEditor();
   const s = store();
   if (!ed || !s.clipboard || !pasteOffered(s)) return;
-  const { executor } = ed;
-  const door: PasteDoor = {
-    state: ed.state, registry: executor.getRegistry(),
-    execute: (cmd) => executor.execute(cmd), beginStroke: () => executor.beginStroke(),
-  };
-  const outcome = pasteArrangementAt(door, s.clipboard, aim, (obj) => host.feedback.plop(obj.id));
-  say(pasteNotices(translate, outcome));
-  if (outcome.placed.length === 0) return;
+  let select: () => void;
+  if (s.clipboard.group) {
+    const laid = pasteGroupCopy(s.clipboard, aim);
+    if (!laid?.group) return;
+    select = () => selectPlacement(laid);
+  } else {
+    const { executor } = ed;
+    const door: PasteDoor = {
+      state: ed.state, registry: executor.getRegistry(),
+      execute: (cmd) => executor.execute(cmd), beginStroke: () => executor.beginStroke(),
+    };
+    const outcome = pasteArrangementAt(door, s.clipboard, aim, (obj) => host.feedback.plop(obj.id));
+    say(pasteNotices(translate, outcome));
+    if (outcome.placed.length === 0) return;
+    select = () => store().setSelection(outcome.placed.map((id) => ({ kind: 'object', id }) as const), { record: false });
+  }
   const now = store();
   if (armedItemOf(now) || armedMacroOf(now) || !holdsSelection(activeToolOf(now))) now.setEditMode({ arm: { kind: 'none' } });
-  store().setSelection(outcome.placed.map((id) => ({ kind: 'object', id }) as const), { record: false });
+  select();
 }
 
 /** Takes a copy another tab or the system clipboard brought in as the page's own, saying, when

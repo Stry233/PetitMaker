@@ -11,6 +11,7 @@ import { getCatalogItem, itemRole } from '../../state/catalog';
 import { isBuildableZone } from '../../core/game/zones';
 import { NEIGHBORS4 } from '../../core/grid/directions';
 import { components } from '../../core/grid/cell-sets';
+import { indexBounds } from '../../core/grid/rect';
 import { line4 } from '../../core/grid/shapes';
 import { wholeCellsOf } from '../../core/grid/footprint';
 import { objectRect } from '../../state/object-geometry';
@@ -121,9 +122,8 @@ export function parcelEdges(cellsOf: readonly Set<number>[], isPath: readonly bo
 }
 
 const bboxOf = (cells: Iterable<number>, W: number) => {
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const i of cells) { const x = i % W, y = (i - x) / W; x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }
-  return { x1, y1, x2, y2 };
+  const r = indexBounds(cells, W);
+  return { x1: r.x, y1: r.y, x2: r.x + r.w - 1, y2: r.y + r.h - 1 };
 };
 
 /** The whole cells `zone` touches, as flat indices on a map `W` by `H`. */

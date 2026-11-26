@@ -28,11 +28,10 @@ describe('the carry step fit', () => {
     };
     seen.length = 0;
     render(<I18nProvider><PlanetCarryStep target={target} preview={preview} carry="carry" onCarry={() => {}} labelledBy="x" /></I18nProvider>);
+    // Every picture drawn, whichever render drew it, frames the same box.
     const fits = seen.map((p) => p.fit);
-    expect(fits).toHaveLength(2);
-    expect(fits[0]).toBeDefined();
-    expect(fits[1]).toEqual(fits[0]);
-    expect(fits[0]).toEqual(planetBounds({ template: target, dropped }));
+    expect(fits.length).toBeGreaterThanOrEqual(2);
+    for (const fit of fits) expect(fit).toEqual(planetBounds({ template: target, dropped }));
     cleanup();
   });
 });

@@ -33,10 +33,11 @@ const fadeAt = (): number => FADE;
 /**
  * A strip's room past a control's edge, as CSS: the control's hovered growth about its centre,
  * `half` px from that edge, carrying whatever stands `reach` px past the edge (a grown plate, a
- * badge) or the focus envelope, whichever reaches farther, plus a pixel of rounding.
+ * badge) or the focus envelope, whichever reaches farther, plus a pixel of rounding. `grow` is the
+ * hover's scale, a tile's unless the control wears another profile.
  */
-export function hoverBleed(half: number, reach = 0): string {
-  return `calc((${half}px + max(${reach}px, ${CONTROL_CLEARANCE})) * ${pressable.whileHover.scale} - ${half}px + 1px)`;
+export function hoverBleed(half: number, reach = 0, grow: number = pressable.whileHover.scale): string {
+  return `calc((${half}px + max(${reach}px, ${CONTROL_CLEARANCE})) * ${grow} - ${half}px + 1px)`;
 }
 /** Shared scrolling and hover clearance for road and annotation swatches; `bleed` is the room the
  *  strip's controls need past its edges, the road swatches' own by default. */

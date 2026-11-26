@@ -21,7 +21,7 @@ import { ACTIVE, DARK_PLATE, FOCUS_HALO, FOCUS_RING, INK, INSET, PLATE } from '.
 /** The attribute `animations.css` selects the ring by, on the document element. */
 const FOCUS_SOURCE_ATTR = 'data-focus-source';
 
-const mountShell = () => render(<I18nProvider><Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell></I18nProvider>);
+const mountShell = () => render(<I18nProvider><Shell><div data-testid="map-views" /></Shell></I18nProvider>);
 
 /** The literal the stylesheet falls back to, and the one it must keep carrying. */
 const RING_FALLBACK = '#fb923c';
@@ -44,7 +44,7 @@ const css = readFileSync('src/ui/design/animations.css', 'utf8');
 
 beforeEach(() => {
   useEditorStore.setState({
-    locale: 'en', eventBus: new EventBus<EditorEvents>(), gridState: null, activeLayer: 4,
+    locale: 'en', eventBus: new EventBus<EditorEvents>(), gridState: null, 
     displayLayer: null,
   });
 });

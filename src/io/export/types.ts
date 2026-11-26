@@ -19,6 +19,10 @@ export interface ExportOptions {
   resolution: ResolutionKey; // "Size"
 }
 
+/** A picture's choices without the map's own words: what a caller hands an export or a preview,
+ *  which read the title and description from the map, and what the window remembers. */
+export type PictureChoices = Omit<ExportOptions, 'title' | 'description'>;
+
 /** Whether the export carries the PetitGlyph band, which only the share preset draws. */
 export function isImportable(o: Pick<ExportOptions, 'preset'>): boolean {
   return o.preset === 'share';

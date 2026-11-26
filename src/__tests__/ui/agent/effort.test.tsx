@@ -22,19 +22,20 @@ it('shows the exact supported levels, updates the request setting and keeps anot
   render(<I18nProvider><EffortControl onChange={changed} /></I18nProvider>);
   expect(screen.queryByRole('slider')).toBeNull();
   await act(async () => { await ensureModelCatalog(true); });
-  const slider = screen.getByRole('slider');
-  expect(slider.getAttribute('max')).toBe('3');
+  const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+  expect(slider.getAttribute('aria-valuemax')).toBe('3');
   expect(slider.getAttribute('aria-valuetext')).toBe('Default');
-  fireEvent.change(slider, { target: { value: '2' } });
+  fireEvent.keyDown(slider, { key: 'ArrowRight' });
+  fireEvent.keyDown(slider, { key: 'ArrowRight' });
   expect(slider.getAttribute('aria-valuetext')).toBe('High');
   expect(runnerSettings(useAgentConnection.getState()).effort).toBe('high');
-  expect(changed).toHaveBeenCalledTimes(1);
+  expect(changed).toHaveBeenCalledTimes(2);
   act(() => { useAgentConnection.getState().setModel('another-model'); });
   expect(screen.queryByRole('slider')).toBeNull();
   expect(runnerSettings(useAgentConnection.getState()).effort).toBeUndefined();
   act(() => { useAgentConnection.getState().setModel('current-model'); });
   expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('High');
-  fireEvent.change(screen.getByRole('slider'), { target: { value: '0' } });
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'Home' });
   expect(runnerSettings(useAgentConnection.getState()).effort).toBe('auto');
 });
 

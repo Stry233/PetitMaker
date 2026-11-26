@@ -6,6 +6,6 @@
     "target": "ES2022",
     "tsBuildInfoFile": "../.tsbuild/scripts.tsbuildinfo"
   },
-  "include": ["*.mts", "internal/publish/*.mts", "*.d.ts", "../src/vite-env.d.ts", "../security/*.ts", "../vite.config.ts"],
+  "include": ["*.mts", "internal/publish/*.mts", "*.d.ts", "../src/vite-env.d.ts", "../security/*.ts", "../edge/*.d.ts", "../vite.config.ts"],
   "exclude": []
 }

@@ -1,5 +1,5 @@
 /* Elapsed-time readings shared by the desk card, the tickets and the folded hero chip. */
-import type { PanelView } from '../../../agent/panel';
+import type { JobView, PanelView } from '../../../agent/panel';
 import { PHASE } from './phase';
 import type { I18nKey } from '../../../i18n/keys';
 
@@ -19,4 +19,9 @@ export function heroChipFace(view: PanelView, now: number): HeroChipFace | null 
   const clock = fmtClock((now - view.current.orderAt) / 1000);
   if (clock === null) return null;
   return { wordKey: PHASE[view.phase].word, clock };
+}
+
+/** Duration from the job's order to the session's final recorded event. */
+export function clockOf(view: PanelView, job: JobView): string | null {
+  return fmtClock((view.lastEventAt - job.orderAt) / 1000);
 }

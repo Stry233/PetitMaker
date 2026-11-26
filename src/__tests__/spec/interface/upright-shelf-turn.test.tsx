@@ -18,9 +18,9 @@ import { InputModeProvider } from '../../../ui/design/input-mode';
 import { Shell } from '../../../ui/shell/Shell';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { __resetUprightGrid } from '../../../ui/shell/bars/objects/UprightObjectPanel';
-import { MORPH_ANIMATION, MORPH_PIECE_ATTR, MORPHING_ATTR } from '../../../ui/primitives/morph';
+import { MORPH_ANIMATION, MORPH_PIECE_ATTR, MORPH_STAND_IN_ATTR, MORPHING_ATTR } from '../../../ui/primitives/morph';
 import { UPRIGHT_GRID } from '../../../ui/shell/bars/objects/object-shelf';
-import { TEXT } from '../../../ui/shell/units';
+import { roleSize } from '../../../ui/design/text-weight';
 import { BAR_LINE_HEIGHT } from '../../../ui/shell/bars/bar-atoms';
 import { SEAM_HANDLE } from '../../../ui/primitives/SeamHandle';
 import { TOUCH_TARGET } from '../../../ui/design/scale';
@@ -139,7 +139,7 @@ function mount(reduced: boolean) {
   render(
     <Profiler id="shell" onRender={() => { commits.n++; }}>
       <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
-        <InputModeProvider inputMode="touch" shape="portrait"><I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider></InputModeProvider>
+        <InputModeProvider inputMode="touch" shape="portrait"><I18nProvider><Shell><div /></Shell></I18nProvider></InputModeProvider>
       </MotionConfig>
     </Profiler>,
   );
@@ -160,7 +160,7 @@ const step = async (key: 'ArrowUp' | 'ArrowDown', until: 'row' | 'grid') => {
 /** The grid's turning height's slack either way, in frame px (`UprightObjectPanel.tsx:TURN_SLACK`). */
 const SLACK = 4;
 /** A card's name line and the gap over it, in frame px: the next row's names may stand out of view. */
-const NAME_LINE = UPRIGHT_GRID.gap / 2 + TEXT.small * BAR_LINE_HEIGHT;
+const NAME_LINE = UPRIGHT_GRID.gap / 2 + roleSize('small') * BAR_LINE_HEIGHT;
 /** The commits one turn of the cards takes: the turn, and the scroll fade and panel claim it re-reads. */
 const TURN_COMMITS = 4;
 
@@ -239,7 +239,10 @@ describe('the upright object panel turning its cards', () => {
     mount(false);
     await frames();
     await step('ArrowDown', 'row');
-    expect(cellsOf(grid()).some((cell) => morphsOn(cell).length > 0)).toBe(true);
+    // A card travels as itself or, lifted over the grid's scrolling edges, as a copy standing in for it.
+    const travels = (el: Element) => morphsOn(el).some((a) => a.keyframes.some((k) => k.transform !== undefined));
+    const copies = [...document.querySelectorAll(`[${MORPH_STAND_IN_ATTR}]`)];
+    expect(cellsOf(grid()).some(travels) || copies.some(travels)).toBe(true);
     cleanup();
     __resetUprightGrid();
     env.animations.length = 0;

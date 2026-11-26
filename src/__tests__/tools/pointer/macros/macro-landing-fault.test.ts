@@ -104,7 +104,7 @@ describe('a macro landing that throws', () => {
     const { state, executor } = makeMap();
     live = { state, executor };
     const faults = { left: 1 };
-    const ctx = makeToolCtx(state, executor, 1, 1, {
+    const ctx = makeToolCtx(state, executor, 1, {
       armedMacro: 'raise', notify,
       macroContext: { state, executor: faulty(executor, faults), registry: executor.getRegistry(), offThread },
     });
@@ -131,7 +131,7 @@ describe('a macro landing that throws', () => {
     const { state, executor } = makeMap();
     live = { state, executor };
     const faults = { left: 1 };
-    const ctx = makeToolCtx(state, executor, 1, 1, {
+    const ctx = makeToolCtx(state, executor, 1, {
       armedMacro: 'patch-tree', notify,
       macroContext: { state, executor: faulty(executor, faults), registry: executor.getRegistry(), offThread },
     });
@@ -160,7 +160,7 @@ describe('a macro landing that throws', () => {
     const { state, executor } = makeMap();
     live = { state, executor };
     const faults = { left: 1 };
-    const ctx = makeToolCtx(state, executor, 1, 1, {
+    const ctx = makeToolCtx(state, executor, 1, {
       armedMacro: 'road-link', notify,
       macroContext: { state, executor: faulty(executor, faults), registry: executor.getRegistry(), offThread },
     });

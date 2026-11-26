@@ -2,9 +2,8 @@
  * Plants the banks: the alternating runs along the water's edge, read off the finished map's water.
  */
 import { flatIndex } from '../../../../core/grid/rect';
-import { TerrainType } from '../../../../core/model/types';
 import { getCatalogItem } from '../../../../state/catalog';
-import type { PlaceCtx } from '../../../placement/object';
+import { refusesOwnNeighbour } from '../../../../core/model/traits';
 import { familyOf, speciesOf } from './palette';
 import type { KitCanvas, PlantMark } from './types';
 
@@ -54,11 +53,9 @@ export function bankMarks(canvas: KitCanvas, water: Uint8Array, W: number, H: nu
     }
     return null;
   };
-  // A row is a row of one species, so the species has to be one that may stand beside itself: an
-  // item carrying `exclusionRadius` refuses its own neighbour, and a run of it is a run of refusals
-  // the composed mirror then reads as holes.
-  const rowable = (id: string): boolean =>
-    !getCatalogItem(id)?.traits?.some((t) => t.type === 'exclusionRadius');
+  // A row is a row of one species, so the species has to be one that may stand beside itself: a run
+  // of refusals is one the composed mirror then reads as holes.
+  const rowable = (id: string): boolean => !refusesOwnNeighbour(getCatalogItem(id));
   const pick = (...ids: string[]): string | null => ids.find(rowable) ?? null;
   const species = pick(canvas.palette.species('mass'), canvas.palette.species('edge'));
   const edge = pick(canvas.palette.species('edge'), canvas.palette.species('mass'));
@@ -110,19 +107,6 @@ function alternation(canvas: KitCanvas, first: string): [string, string] | null 
   if (canvas.rng.float() >= BANK_ALTERNATE) return null;
   const family = familyOf(first);
   const second = speciesOf('groundcover', family)
-    .find((id) => id !== first && !getCatalogItem(id)?.traits?.some((t) => t.type === 'exclusionRadius'));
+    .find((id) => id !== first && !refusesOwnNeighbour(getCatalogItem(id)));
   return second ? [first, second] : null;
-}
-
-/** Water on the finished map, as a mask the bank rows are drawn against. */
-export function waterMask(state: PlaceCtx['state']): Uint8Array {
-  const W = state.template.width, H = state.template.height;
-  const out = new Uint8Array(W * H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const t = state.cells[y]![x]!.terrain;
-      if (t && t.type === TerrainType.Water) out[flatIndex(x, y, W)] = 1;
-    }
-  }
-  return out;
 }

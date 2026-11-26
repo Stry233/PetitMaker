@@ -43,9 +43,7 @@ export class OverlayFlagged {
       wash.drawRect(px.x, px.y, px.w, px.h);
       edge.drawRect(px.x, px.y, px.w, px.h);
       const sprite = new PIXI.Sprite();
-      const { catalogId, position: { x, y }, rotation, spanLength } = o;
-      const at = { catalogId, x, y, rotation, ...(spanLength === undefined ? {} : { spanLength }) };
-      if (paintItemSprite(sprite, at, true, this.repaint)) {
+      if (paintItemSprite(sprite, o, true, this.repaint)) {
         this.spriteSlot.addChild(sprite);
       } else {
         sprite.destroy();

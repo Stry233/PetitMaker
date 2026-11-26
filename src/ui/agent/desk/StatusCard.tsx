@@ -14,7 +14,7 @@ import { Pill } from '../../primitives/Pill';
 import { TimedButton } from '../../primitives/TimedButton';
 import { Icon } from '../parts/sprite';
 import { splitOnToken, type DeskSeat, type Face } from '../derive/desk-face';
-import type { RepairAct } from '../derive/repair';
+import type { RepairAct } from '../../../agent/panel';
 import { IconButton } from '../parts/IconButton';
 import { metaInk, recede, statePaper } from '../panel-skin';
 import { timedHint } from '../../chrome/timed-hint';

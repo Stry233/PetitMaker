@@ -9,7 +9,7 @@ import { amplitude, cssMotion, framerMotion } from '../../design/motion';
 import { Icon } from '../parts/sprite';
 import { iconForTool } from '../parts/tool-meta';
 import { CountPill, ResultChip, Stamp, TickDot } from '../parts/panel-parts';
-import { Lane, laneRollup, type LaneView } from './Lane';
+import { Lane, laneRollup, type LaneView, type LaneViews } from './Lane';
 import { cursors, font, radii } from '../../design/styles';
 import { INK, INSET, MUTED, PLATE_INK, rgbaOf } from '../../design/tokens';
 import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
@@ -20,21 +20,6 @@ import { skillTitle } from '../parts/skill-title';
 
 /** The tool whose work runs in a helper lane rather than on this row. */
 const DELEGATE = PROTOCOL.delegate;
-
-/** A loop-authored note standing where a tool's own answer would be (`project-messages.ts`'s
- *  `(system) …` convention: a nudge, a budget warning, the reissue demand). */
-function isSystemNote(text: string): boolean {
-  return text.startsWith('(system)');
-}
-
-/** The rule text a person can act on, out of the line the model was sent: the bracketed rule id
- *  leads it and a model-facing `Hint:` follows it, and neither means anything here. */
-function ruleText(summary: string): string {
-  return summary
-    .replace(/^\[[^\]]*\]\s*/, '')
-    .replace(/\s*Hint:.*$/, '')
-    .trim();
-}
 
 /** The refusal's own rule, said in the reader's language, or nothing where the result carried none
  *  (an older log, a refusal that is not a rule violation at all). */
@@ -63,7 +48,6 @@ const OPENS_ON_ARRIVAL: ReadonlySet<OpRowData['status']> = new Set<OpRowData['st
  * add (which is also what makes the row unclickable).
  */
 function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
-  const text = ruleText(op.summary);
   // Structured rule feedback is translated without exposing model-facing diagnostics.
   const rule = localizedRule(op, t);
   if (op.status === 'blocked') return t('agent.op_detail_region');
@@ -77,7 +61,7 @@ function detailFor(op: OpRowData, t: Translate): ReactNode | undefined {
   }
   if (op.status === 'error') {
     if (rule !== undefined) return withFragment(t('agent.op_detail_sent_back'), rule);
-    if (isSystemNote(text)) return t('agent.op_detail_unreadable');
+    if (op.detail?.loopNote) return t('agent.op_detail_unreadable');
     return t('agent.op_detail_failed');
   }
   return undefined;
@@ -108,7 +92,7 @@ function chipFor(
   if (op.status === 'revert') return { text: t(op.detail?.partialRevert ? 'agent.op_chip_partial' : 'agent.op_chip_put_back'), tone: 'warn' };
   if (op.status === 'skipped') return { text: t('agent.op_chip_declined') };
   if (op.status === 'words') return { text: t('agent.op_chip_words') };
-  if (op.status === 'error' && isSystemNote(ruleText(op.summary))) {
+  if (op.status === 'error' && op.detail?.loopNote) {
     return { text: t('agent.op_chip_unreadable'), tone: 'bad' };
   }
   return undefined;
@@ -285,7 +269,7 @@ const TAIL = 3;
 
 interface OpsListProps {
   ops: readonly OpRowData[];
-  lane?: LaneView;
+  lane?: LaneViews;
   /**
    * What else stands in the list, by the index of the op row it files above (`ops.length` for what
    * files after the last one). The per-turn thought marks are the one caller: their open state is
@@ -318,7 +302,7 @@ export function OpsList({ ops, lane, marks }: OpsListProps) {
             <Disclosure key={op.callId}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {marks?.(first + i)}
-                <OpRow op={op} {...(lane ? { lane } : {})} />
+                <OpRow op={op} {...(lane?.[op.callId] ? { lane: lane[op.callId] } : {})} />
               </div>
             </Disclosure>
           ))}

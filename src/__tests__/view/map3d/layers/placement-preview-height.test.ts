@@ -12,7 +12,8 @@ import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { DECAL_LIFT } from '../../../../view/map3d/geometry/overlay-decals';
 import { surfaceHeightAt } from '../../../../view/map3d/geometry/pick';
 import { ObjectPlacerTool } from '../../../../tools/pointer/objects/object-placer';
-import { washColor } from '../../../../view/shared/overlay/preview-cell';
+import { GHOST_LOSS } from '../../../../view/shared/viewport/view-constants';
+import { surfaceY } from '../../../../view/map3d/geometry/coords';
 import { TerrainType, type GridState, type MacroCoord, type PlacedObject } from '../../../../core/model/types';
 import { __setCatalogItem } from '../../../../state/catalog';
 import { getPlacedObjectSize } from '../../../../state/object-geometry';
@@ -41,7 +42,8 @@ function terraced(high: (x: number, y: number) => boolean): GridState {
 interface OverlayParts {
   ghosts: {
     placementGhost: { mesh: THREE.Mesh } | null;
-    ghost: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } | null;
+    refusedWash: THREE.Mesh | null;
+    outline: THREE.Mesh[];
   };
   boxes: { hover: { mesh: THREE.Mesh } | null };
 }
@@ -50,7 +52,7 @@ interface OverlayParts {
 function preview(state: GridState, item: string, at: MacroCoord) {
   const executor = makeExecutor(state);
   const overlay = new OverlayLayer3D({ state: () => state, requestRender: () => {} });
-  const ctx = makeToolCtx(state, executor, 1, 1, { armedItem: item });
+  const ctx = makeToolCtx(state, executor, 1, { armedItem: item });
   ctx.overlay = overlay;
   ctx.point = mapPoint(at);
   const tool = new ObjectPlacerTool();
@@ -59,7 +61,8 @@ function preview(state: GridState, item: string, at: MacroCoord) {
   overlay.flush();
   const inner = overlay as unknown as OverlayParts;
   const parts = {
-    get ghost() { return inner.ghosts.ghost; }, get placementGhost() { return inner.ghosts.placementGhost; },
+    get refusedWash() { return inner.ghosts.refusedWash; }, get placementGhost() { return inner.ghosts.placementGhost; },
+    get outline() { return inner.ghosts.outline; },
     get hover() { return inner.boxes.hover; },
   };
   return { overlay, parts, place: () => tool.onPointerDown(c, ctx.point!, ctx) };
@@ -87,6 +90,21 @@ function expectWashOnTerrain(state: GridState, mesh: THREE.Mesh, lift = DECAL_LI
   expect(new Set(heights.map((h) => h.y.toFixed(4))).size).toBeGreaterThan(1);
 }
 
+/** The footprint outline lies on the surface of each tier the footprint covers. */
+function expectOutlineOnTerrain(outline: readonly THREE.Mesh[]): void {
+  expect(outline.length).toBeGreaterThan(0);
+  const tops = new Set<string>();
+  for (const mesh of outline) {
+    const pos = mesh.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) - 2 * DECAL_LIFT;
+      expect([surfaceY(0), surfaceY(1)].some((t) => Math.abs(t - y) < 1e-5), `${y}`).toBe(true);
+      tops.add(y.toFixed(4));
+    }
+  }
+  expect(tops.size).toBe(2);
+}
+
 /** The wash's tint as the overlay stores it (linear colour from an sRGB hex). */
 const tinted = (hex: number): number => new THREE.Color().setHex(hex).convertSRGBToLinear().getHex();
 
@@ -95,11 +113,11 @@ function placedBodyY(state: GridState, obj: PlacedObject): number {
 }
 
 describe('the 3D placement preview over a step', () => {
-  it('a bridge previews at the deck height it is placed at, its wash on the banks and in the gap', () => {
+  it('a bridge previews at the deck height it is placed at, its outline on both banks', () => {
     const state = terraced((x) => x <= 6 || x >= 11);
     const { parts, place } = preview(state, 'bridge-iron', { x: 8.6, y: 10.3 });
-    expect(parts.ghost!.mat.color.getHex()).toBe(tinted(washColor({ wash: 'placement', valid: true })));
-    expectWashOnTerrain(state, parts.ghost!.mesh);
+    expect(parts.refusedWash, 'a valid placement keeps its own colours, unwashed').toBeNull();
+    expectOutlineOnTerrain(parts.outline);
     const ghostY = parts.placementGhost!.mesh.position.y;
     place();
     const [bridge] = objectsByCatalog(state, 'bridge-iron');
@@ -107,10 +125,10 @@ describe('the 3D placement preview over a step', () => {
     expect(ghostY).toBeCloseTo(placedBodyY(state, bridge), 6);
   });
 
-  it('a ramp previews at the height it is placed at, its wash on both tiers it straddles', () => {
+  it('a ramp previews at the height it is placed at, its outline on both tiers it straddles', () => {
     const state = terraced((x) => x >= 10);
     const { overlay, parts, place } = preview(state, 'ramp-grassy', { x: 9.6, y: 10.2 });
-    expectWashOnTerrain(state, parts.ghost!.mesh);
+    expectOutlineOnTerrain(parts.outline);
     const ghostY = parts.placementGhost!.mesh.position.y;
     place();
     const [ramp] = objectsByCatalog(state, 'ramp-grassy');
@@ -122,10 +140,10 @@ describe('the 3D placement preview over a step', () => {
     expectWashOnTerrain(state, parts.hover!.mesh, 2 * DECAL_LIFT);
   });
 
-  it('a large object previews at the height it is placed at, its wash on both tiers', () => {
+  it('a large object previews at the height it is placed at, its outline on both tiers', () => {
     const state = terraced((x) => x >= 10);
     const { parts, place } = preview(state, 'preview-height-pad', { x: 8.3, y: 8.3 });
-    expectWashOnTerrain(state, parts.ghost!.mesh);
+    expectOutlineOnTerrain(parts.outline);
     const ghostY = parts.placementGhost!.mesh.position.y;
     place();
     const [pad] = objectsByCatalog(state, 'preview-height-pad');
@@ -136,8 +154,8 @@ describe('the 3D placement preview over a step', () => {
   it('a refused large building keeps its refusal tint and its wash lies on the terrain', () => {
     const state = terraced((x) => x >= 10);
     const { parts, place } = preview(state, 'building-bamboo-cabin', { x: 7.3, y: 8.3 });
-    expect(parts.ghost!.mat.color.getHex()).toBe(tinted(washColor({ wash: 'placement', valid: false })));
-    expectWashOnTerrain(state, parts.ghost!.mesh);
+    expect((parts.refusedWash!.material as THREE.MeshBasicMaterial).color.getHex()).toBe(tinted(GHOST_LOSS));
+    expectWashOnTerrain(state, parts.refusedWash!);
     place();
     expect(objectsByCatalog(state, 'building-bamboo-cabin')).toHaveLength(0);
   });

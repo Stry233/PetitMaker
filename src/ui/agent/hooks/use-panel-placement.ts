@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type RefObject } from 'react';
 import { showToast } from '../../../platform/channels/toast-bus';
 import type { Translate } from '../../../i18n/keys';
+import { pressCommand } from '../../../editor/commands/run';
 import { useEditorStore } from '../../../state/store';
 import { cssMotion } from '../../design/motion';
 import { z } from '../../design/styles';
@@ -29,12 +30,10 @@ export function usePanelPlacement({ t, veiled, planGateStanding }: {
   const mode = useEditorStore((s) => s.editMode.mode);
   const pinRoom = usePinRoom();
   const pinIntent = useEditorStore((s) => s.assistantPinned);
-  const setPinned = useEditorStore((s) => s.setAssistantPinned);
-  const setSide = useEditorStore((s) => s.setAssistantDockSide);
-  const togglePin = useCallback(() => { setPinned(!useEditorStore.getState().assistantPinned); }, [setPinned]);
+  const togglePin = useCallback(() => pressCommand('assistant.pinned', { on: !useEditorStore.getState().assistantPinned }), []);
   const switchSide = useCallback(() => {
-    setSide(useEditorStore.getState().assistantDockSide === 'left' ? 'right' : 'left');
-  }, [setSide]);
+    pressCommand('assistant.dock_side', { value: useEditorStore.getState().assistantDockSide === 'left' ? 'right' : 'left' });
+  }, []);
   const { place, edge, aside } = useDockStage();
   const axis = axisOf(edge);
   const depth = useDockDepth();
@@ -83,7 +82,7 @@ export function usePanelPlacement({ t, veiled, planGateStanding }: {
     zIndex: pinned ? z.ground : planGateStanding ? z.column : z.panel,
     // Discrete visibility removes the veiled panel from hit testing and the accessibility tree.
     opacity: veiled ? 0 : 1,
-    visibility: veiled ? 'hidden' : 'visible',
+    visibility: veiled ? 'hidden' : undefined,
     transition: cssMotion(veiled ? 'frame.veil' : 'frame.unveil', ['opacity', 'visibility']),
     ...(pinned && drift !== '' ? { transform: drift } : null),
   } as CSSProperties), [pinned, edge, maxHeight, left, top, drift, planGateStanding, veiled, away]);

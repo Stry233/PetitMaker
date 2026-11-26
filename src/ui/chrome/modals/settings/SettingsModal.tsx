@@ -11,17 +11,18 @@ import { LOCALES } from '../../../../core/model/locale';
 import { LOCALE_INFO } from '../../../../i18n/locale-info';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { useOpenCount } from '../../../primitives/use-open-count';
-import { resetLocalData } from '../../../../editor/session/local-reset';
-import { switchLocale } from '../../../../editor/session/locale';
+import { pressCommand } from '../../../../editor/commands/run';
 import { ConfirmationModal } from '../../../primitives/ConfirmationModal';
 import { useEditorStore } from '../../../../state/store';
+import { tourOpenable } from '../../../../state/slices/shell';
 import { useWindow, type WindowProps } from '../use-window';
-import { startTour } from '../../tour/use-tour';
 import { KeymapMiniature } from '../keyboard/KeymapMiniature';
 import { useFullscreen } from '../../../primitives/use-fullscreen';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { DANGER_INK, DANGER_SURFACE, WASH } from '../../../design/tokens';
-import { QUALITIES_3D, type GridMode } from '../../../../platform/storage/prefs';
+import { ChevronRightIcon } from '../../../primitives/line-glyphs';
+import { QUALITIES_3D, nextGridMode } from '../../../../platform/storage/facts';
+import type { GridMode } from '../../../../platform/storage/prefs';
 import type { I18nKey } from '../../../../i18n/keys';
 import { QualityShot, picStyle, tileStyle, capStyle, MapTile, GridOverlay, ChunkOverlay, stepStyle, stepName, MotionPref, MotionDemo, choiceStyle, SYSTEM_ARROW, PAINTED_ARROW_URL } from './settings-pictures';
 import { UiScaleSlider } from './UiScaleSlider';
@@ -169,7 +170,7 @@ export function SettingsModal(props: WindowProps) {
         title={t('modal.settings_reset_title')} message={t('modal.settings_reset_warn')}
         cancelLabel={t('delete.cancel')} confirmLabel={t('modal.settings_reset_confirm')}
         onCancel={() => setAskedIn(null)} busy={resetting}
-        onConfirm={() => { setResetting(true); void resetLocalData(); }} />
+        onConfirm={() => { setResetting(true); pressCommand('app.reset_local_data'); }} />
     </>
   );
 }
@@ -179,22 +180,15 @@ const motionOptions: MotionPref[] = ['reduced', 'system', 'full'];
 function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () => void }) {
   const t = useT();
   const fullscreen = useFullscreen();
-  const setModal = useEditorStore((s) => s.setModal);
   const locale = useLocale();
   const gridMode = useEditorStore((s) => s.gridMode);
   const lastGridMode = useEditorStore((s) => s.lastGridMode);
-  const onCycleGrid = useEditorStore((s) => s.cycleGridMode);
   const showChunks = useEditorStore((s) => s.showChunkBounds);
-  const onShowChunksChange = useEditorStore((s) => s.setShowChunkBounds);
   const motionPref = useEditorStore((s) => s.motionPref);
-  const onMotionPrefChange = useEditorStore((s) => s.setMotionPref);
   const systemCursors = useEditorStore((s) => s.systemCursors);
-  const onSystemCursorsChange = useEditorStore((s) => s.setSystemCursors);
   const quality3d = useEditorStore((s) => s.quality3d);
-  const onQuality3dChange = useEditorStore((s) => s.setQuality3d);
-  const onAbout = () => setModal('about', true);
-  // The tour walks the map's interface, which a planet session has set aside.
-  const inSession = useEditorStore((s) => s.planetSession !== null);
+  const onAbout = () => pressCommand('window.open', { window: 'about' });
+  const tourShut = !useEditorStore(tourOpenable);
   // The cursor and the keyboard are a mouse's and a keyboard's settings.
   const touch = useTouchMode();
   // Shown in PC mode only, so a switch fades them out or in within the window.
@@ -218,7 +212,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
               role="radio"
               aria-checked={locale === code}
               style={langPill(locale === code)}
-              onClick={() => switchLocale(code)}
+              onClick={() => pressCommand('settings.language', { value: code })}
            >
               {LOCALE_INFO[code].label}
             </ActionButton>
@@ -230,11 +224,11 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
           <div {...helpTargetAttr('settings', 'settings-map')} style={groupStyle}>
             <div style={rowOfTiles}>
               {/* Each press moves to the next grid mode. */}
-              <MapTile on={gridMode !== 'off'} onPress={onCycleGrid} announce
+              <MapTile on={gridMode !== 'off'} onPress={() => pressCommand('overlay.grid', { value: nextGridMode(gridMode) })} announce
                 name={t('modal.settings_grid')} state={t(GRID_MODE_LABELS[gridMode])}>
                 <GridOverlay mode={gridMode} shown={gridMode === 'off' ? lastGridMode : gridMode} />
               </MapTile>
-              <MapTile on={showChunks} asSwitch onPress={() => onShowChunksChange(!showChunks)}
+              <MapTile on={showChunks} asSwitch onPress={() => pressCommand('overlay.chunks')}
                 name={t('modal.settings_chunks')} state={t(showChunks ? 'modal.settings_chunks_shown' : 'modal.settings_chunks_hidden')}>
                 <ChunkOverlay on={showChunks} />
               </MapTile>
@@ -251,7 +245,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
                   role="radio"
                   aria-checked={quality3d === q}
                   style={{ ...tileStyle, minWidth: 0 }}
-                  onClick={() => onQuality3dChange(q)}
+                  onClick={() => pressCommand('settings.quality_3d', { value: q })}
                >
                   <span style={{ ...picStyle(quality3d === q), position: 'relative' }} aria-hidden>
                     <QualityShot q={q} />
@@ -275,7 +269,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
                   role="radio"
                   aria-checked={motionPref === p}
                   style={stepStyle(motionPref === p)}
-                  onClick={() => onMotionPrefChange(p)}
+                  onClick={() => pressCommand('settings.motion', { value: p })}
                >
                   <MotionDemo pref={p} />
                   <span style={stepName}>{t(`modal.settings_motion_${p}`)}</span>
@@ -291,7 +285,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
                 role="radio"
                 aria-checked={!systemCursors}
                 style={choiceStyle(!systemCursors)}
-                onClick={() => onSystemCursorsChange(false)}
+                onClick={() => pressCommand('settings.system_cursors', { on: false })}
              >
                 {PAINTED_ARROW_URL ? <img src={PAINTED_ARROW_URL} alt="" width={24} height={24} /> : null}
                 {t('modal.settings_cursor_painted')}
@@ -301,7 +295,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
                 role="radio"
                 aria-checked={systemCursors}
                 style={choiceStyle(systemCursors)}
-                onClick={() => onSystemCursorsChange(true)}
+                onClick={() => pressCommand('settings.system_cursors', { on: true })}
              >
                 {SYSTEM_ARROW}
                 {t('modal.settings_cursor_system')}
@@ -320,7 +314,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
           {...helpTargetAttr('shortcuts')}
           {...keyboardOnly}
           style={keyboardRowStyle}
-          onClick={() => { onClose(); setModal('keyboard', true); }}
+          onClick={() => { onClose(); pressCommand('window.open', { window: 'keyboard' }); }}
        >
           <KeymapMiniature />
           <span style={keyboardFootStyle}>
@@ -334,12 +328,12 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
           <ActionButton interaction="row" {...helpTargetAttr('settings', 'settings-about')} type="button" style={readoutStyle} onClick={onAbout}   aria-label={t('modal.settings_about')}>
             <span style={{ ...roleFont('label'), fontFamily: font.family, color: skin.ink }}><BrandName /></span>
             <span style={{ ...roleFont('chip'), fontFamily: font.family, color: skin.muted }}>{t('about.build_number', { build: BUILD_NUMBER })}</span>
-            <span style={{ marginLeft: 'auto', color: skin.muted, ...roleFont('chip'), fontFamily: font.family }}>{'›'}</span>
+            <span aria-hidden style={{ marginLeft: 'auto', display: 'flex', color: skin.muted }}><ChevronRightIcon size={16} /></span>
           </ActionButton>
 
           <div style={columns === 1 ? stackedPillsStyle : metaPillsStyle}>
             {fullscreen.available && (
-              <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={fullscreen.toggle}>
+              <ActionButton interaction="pill" {...helpTargetAttr('settings', 'settings-immersive')} type="button" style={metaPillStyle} onClick={() => pressCommand('view.fullscreen')}>
                 {t(fullscreen.active ? 'modal.settings_immersive_exit' : 'modal.settings_immersive')}
               </ActionButton>
             )}
@@ -347,7 +341,7 @@ function SettingsBody({ onClose, onReset }: { onClose: () => void; onReset: () =
             {/* Replay the first-launch tour. A button, not a toggle: it performs an action rather
                 than holding a setting. Closes Settings before starting the tour so the modal does
                 not sit on top of the overlay it just launched. */}
-            <ActionButton interaction="pill" {...helpTargetAttr('tour')} type="button" style={metaPillStyle} disabled={inSession} onClick={() => { onClose(); startTour(); }}>
+            <ActionButton interaction="pill" {...helpTargetAttr('tour')} type="button" style={metaPillStyle} disabled={tourShut} onClick={() => { onClose(); pressCommand('tour.start'); }}>
               {t('modal.settings_tour')}
             </ActionButton>
 

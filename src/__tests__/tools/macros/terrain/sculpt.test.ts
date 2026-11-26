@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeState } from '../../../_support/map-state';
 import { sculptTerrace, sculptWall, sinkPoolCourt, wallRectAtEdge } from '../../../../tools/macros/terrain/sculpt';
-import { figureCells, figureRing } from '../../../../tools/macros/terrain/figures';
 import { cellKey } from '../../../../core/grid/rect';
 import { BASE_SUPPORT } from '../../../../core/game/profile';
 import { CommandType, TerrainType, type PaintTerrainCommand } from '../../../../core/model/types';
@@ -57,22 +56,12 @@ describe('sinkPoolCourt', () => {
     const court = sinkPoolCourt({ x1: 1, y1: 1, x2: 11, y2: 11 }, 1, true, null)!;
     const water = keys(court.water);
     expect(water.has(cellKey(1, 5))).toBe(false);
-    expect(water.has(cellKey(3, 3))).toBe(false);
-    expect(water.has(cellKey(4, 4))).toBe(true);
-    expect(court.islets).toBe(9);
-  });
-});
-
-describe('figures', () => {
-  it('draws a mirror-symmetric heart and a ring around it', () => {
-    const heart = figureCells('heart', 20, 20, 16);
-    const set = keys(heart);
-    for (const c of heart) expect(set.has(cellKey(40 - c.x, c.y))).toBe(true);
-    const ring = keys(figureRing(heart, 'heart', 20, 3.2));
-    for (const k of ring) {
-      const [x, y] = k.split(',').map(Number) as [number, number];
-      expect(ring.has(cellKey(40 - x, y))).toBe(true);
-      expect(set.has(k)).toBe(false);
-    }
+    // Each islet is two cells a side, with water between it and the next and around the lattice.
+    expect(court.islets).toEqual([
+      { x1: 3, y1: 3, x2: 4, y2: 4 }, { x1: 7, y1: 3, x2: 8, y2: 4 },
+      { x1: 3, y1: 7, x2: 4, y2: 8 }, { x1: 7, y1: 7, x2: 8, y2: 8 },
+    ]);
+    for (const [x, y] of [[3, 3], [4, 4], [8, 7]] as const) expect(water.has(cellKey(x, y))).toBe(false);
+    for (const [x, y] of [[2, 2], [5, 3], [6, 6], [9, 9], [10, 4]] as const) expect(water.has(cellKey(x, y))).toBe(true);
   });
 });

@@ -7,13 +7,14 @@
  */
 import { ShelfSearchField } from './ShelfSearchField';
 import { mapEdgeAttr } from '../../../primitives/map-edge';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import { useScrollRow } from '../../../primitives/use-scroll-row';
-import { useSwapClip } from '../../../primitives/use-swap-clip';
+import { useSwapReel } from '../../../primitives/use-swap-clip';
 import { ScaleProvider, usePx } from '../../../design/scale';
-import { SHELF_SCALE, SHELF_TABS, TEXT } from '../../units';
+import { roleSize } from '../../../design/text-weight';
+import { SHELF_SCALE, SHELF_TABS } from '../../units';
 import { CardNameBubble, type CardNameReach } from '../CardNameBubble';
 import { useTouchMode } from '../../../design/input-mode';
 import { ShelfBand } from '../ShelfBand';
@@ -31,25 +32,14 @@ import { useFrameZoom } from '../../use-frame-zoom';
 import { useFrameLayout, usePlanGlide, useRailClearance } from '../../frame-layout';
 import { LANDSCAPE_BAR } from '../../frame-plan';
 import { cssMotion, seconds } from '../../../design/motion';
-import { ShelfScrollbar } from './ShelfScrollbar';
+import { ShelfScrollbar, useShelfScrollbar } from '../ShelfScrollbar';
 import { TAB_ROW, namesIndent } from '../ShelfTabs';
 import { helpTargetAttr } from '../../../session/help-targets';
-import { MOTIONS } from '../../../design/motion/registry';
-import { useTransition } from '../../../design/motion/use-motion';
 import { useObservedSize } from '../../../primitives/use-observed-size';
 import { useMorph, useMorphGroup } from '../../../primitives/morph';
 
-/** How far a fresh row of cards comes in from, in css px: the registry's own amplitude, since a
- *  distance typed at an element is the same unfindable decision a duration typed there is. */
-const CARD_ARRIVE_X = MOTIONS['shelf.category.swap'].amplitude;
-
-/** What the row's own box says about how far it scrolls. Both come from the element itself, never
- *  from a design width: the row is as wide as the window leaves it. */
-interface Reach {
-  /** Design px, which is what `ShelfScrollbar` reads and what `px()` converts back from. */
-  viewportW: number;
-  contentW: number;
-}
+/** The card row's id, which its scrollbar names as what it scrolls. */
+const ROW_ID = 'shell-shelf-row';
 
 /** The shelf under its own scale; the body reads `usePx` for its own measurements, so the scale wraps it. */
 export function ObjectShelf(props: ObjectShelfProps = {}) {
@@ -70,7 +60,6 @@ function ObjectShelfBody(props: ObjectShelfProps) {
 /** The shelf on a wide window: the names and the field over one scrolling row of cards. */
 function ObjectRow({ model }: { model: ObjectShelfModel }) {
   const { px, scale } = usePx();
-  const swapMotion = useTransition('shelf.category.swap');
   const t = useT();
   const { pick, items, counts, searching, sourced, query, revealing, revealed } = model;
   const [reached, setReached] = useState<CardNameReach | null>(null);
@@ -81,43 +70,24 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
   const [carrying, setCarrying] = useState(false);
   const carried = touch && carrying;
   const out: CSSProperties | null = carried ? { visibility: 'hidden' } : null;
-  const [scrollLeft, setScrollLeft] = useState(0);
-  const [reach, setReach] = useState<Reach>({ viewportW: 0, contentW: 0 });
   const zoom = useFrameZoom();
   const layout = useFrameLayout();
   const bar = layout?.bar ?? LANDSCAPE_BAR;
-  const clearance = useRailClearance(SHELF_BOX.bottom, bar.tabsTop + TEXT.shelfTab - SHELF_BOX.bottom);
+  const clearance = useRailClearance(SHELF_BOX.bottom, bar.tabsTop + roleSize('title') - SHELF_BOX.bottom);
   const right = layout ? layout.edgeRight + clearance : SHELF_BOX.right;
-  const rootRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotionConfig() ?? false;
 
-  /**
-   * Moves the row: a glide for a press on the scrollbar, at once for what must stay under the pointer and
-   * under reduced motion; the wheel glides itself (`primitives/scroll-input.ts:wheelGlider`).
-   */
-  const scrollRowTo = useCallback((left: number, smooth: boolean): void => {
-    const row = rowRef.current;
-    if (!row) return;
-    const to = Math.max(0, Math.min(row.scrollWidth - row.clientWidth, left));
-    if (smooth && !reduced && typeof row.scrollTo === 'function') {
-      row.scrollTo({ left: to, behavior: 'smooth' });
-      return;
-    }
-    row.scrollLeft = to;
-  }, [reduced]);
-
   const rowFade = useScrollRow(rowRef, { zoom, pointerEvents: 'auto' });
   const reelKey = searching ? 'search' : model.category;
-  const swap = useSwapClip(reelKey);
+  const swap = useSwapReel(reelKey);
 
   // A narrower result can leave the row scrolled past its end, and the hovered name's card is gone.
-  useEffect(() => {
-    if (rowRef.current) rowRef.current.scrollLeft = 0;
-    setScrollLeft(0);
-    setReached(null);
-  }, [model.category, query]);
+  // The wheel glides the row itself (`primitives/scroll-input.ts:wheelGlider`).
+  const scroll = useShelfScrollbar(rowRef, { id: ROW_ID, content: [items.length, model.category], reset: `${model.category}|${query}` });
+  const { scrollLeft } = scroll;
+  useEffect(() => setReached(null), [model.category, query]);
 
   useEffect(() => {
     const row = rowRef.current;
@@ -133,20 +103,7 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
     const card = touch ? rowRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]') : null;
     const next = card ? { name: card.getAttribute('aria-label') ?? '', centre: card.offsetLeft + card.offsetWidth / 2 } : null;
     setSelectedName((was) => (was?.name === next?.name && was?.centre === next?.centre ? was : next));
-  }, [touch, model.selectedItemId, model.armedMacro, pick, items, reach]);
-
-  useObservedSize(() => rootRef.current, () => {
-    const row = rowRef.current;
-    if (!row) return;
-    // The row's own box, never a client rect: width, scroll width and offset are one coordinate space.
-    const next: Reach = {
-      viewportW: row.clientWidth / scale,
-      contentW: row.scrollWidth / scale,
-    };
-    setReach((was) => (
-      was.viewportW === next.viewportW && was.contentW === next.contentW ? was : next
-    ));
-  }, [items.length, model.category, scale]);
+  }, [touch, model.selectedItemId, model.armedMacro, pick, items, scroll.bar.viewportW, scroll.bar.contentW]);
 
   // Where the names start past the character the row is shortest, and a tab's gap of air keeps their
   // fade clear of the group.
@@ -195,7 +152,6 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
 
   return (
     <div
-      ref={rootRef}
       {...group}
       {...helpTargetAttr('objects')}
       {...mapEdgeAttr('bottom')}
@@ -274,10 +230,9 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
         }}
       >
         <div
-          id="shell-shelf-row"
+          {...scroll.row}
           ref={rowRef}
           className="pw-noscroll"
-          onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft / scale)}
           style={{
             // Positioned, so a card's `offsetLeft` is measured from the row's own content box and
             // the name above it needs nothing but the scroll offset to follow it.
@@ -296,10 +251,7 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
           <div style={{ display: 'flex', flex: 'none', ...swap.clip }}>
             <motion.div
               key={reelKey}
-              initial={{ opacity: 0, x: CARD_ARRIVE_X }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={swapMotion}
-              onAnimationComplete={swap.settle}
+              {...swap.reel}
               style={{ display: 'flex', alignItems: 'center', gap: px(ROW.gap), flex: 'none' }}
             >
               {/* The planting card stands first, only in the categories it plants and never in a search. */}
@@ -342,12 +294,7 @@ function ObjectRow({ model }: { model: ObjectShelfModel }) {
         {...trackPiece}
         style={{ position: 'relative', height: px(SCROLL.thumb.h), pointerEvents: 'none', ...out }}
       >
-        <ShelfScrollbar
-          scrollLeft={scrollLeft}
-          viewportW={reach.viewportW}
-          contentW={reach.contentW}
-          onScrollTo={(left, smooth) => scrollRowTo(left * scale, smooth)}
-        />
+        <ShelfScrollbar {...scroll.bar} />
       </div>
     </div>
   );

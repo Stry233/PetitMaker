@@ -357,11 +357,6 @@ export function roadBandLayout(region: RoadRegion, spec: RoadMaterialSpec, size 
   return layout;
 }
 
-/** Disjoint bands avoid coplanar overdraw and share exactly the same contours in both views. */
-export function roadMaterialPatches(region: RoadRegion, spec: RoadMaterialSpec): RoadMaterialPatch[] {
-  return roadBandLayout(region, spec).windows.flatMap((window) => window.patches());
-}
-
 /** Test hook: forgets every computed window, so the next request computes from scratch. */
 export function __resetRoadMaterialCache(): void {
   shared.clear();

@@ -3,19 +3,6 @@ import { APP_FONT_FAMILY as FONT_FAMILY } from '../../assets/fonts/family';
 import { DOM_CURSORS } from '../../assets/cursors/cursor-spec';
 import { roleFont } from './text-weight';
 import { FOCUS_RING, OVERLAY_DIM, inkTint, rgbaOf } from './tokens';
-import { hexChannels } from '../../core/base/color';
-import type { InputMode } from '../../platform/device/input-mode';
-
-/* ── Colours ─────────────────────────────────────────────── */
-
-/** Two 6-digit hex colours blended in sRGB, `share` of the first over the rest of the second. This
- *  is what `color-mix(in srgb, a share, b)` computes, as a plain colour every engine can paint. */
-export function mixHex(a: string, b: string, share: number): string {
-  const [ar, ag, ab] = hexChannels(a);
-  const [br, bg, bb] = hexChannels(b);
-  const blend = (x: number, y: number) => Math.round(x * share + y * (1 - share)).toString(16).padStart(2, '0');
-  return `#${blend(ar, br)}${blend(ag, bg)}${blend(ab, bb)}`;
-}
 
 /* ── Cursors ─────────────────────────────────────────────────
  * The DOM cursors, as the custom properties `ui/design/cursors/cursor-vars` writes onto <html>;
@@ -75,6 +62,24 @@ export const radii = {
   panel: 28, // cozy modal/panel corner
   pill: 99,
 } as const;
+
+/** The corner of an entry whose highlight sits `inset` px inside a panel corner of radius `outer`,
+ *  concentric with it; never tighter than the entry's own `base` corner. */
+export function concentricRadius(outer: number, inset: number, base: number): number {
+  return Math.max(base, outer - inset);
+}
+
+/** The corners of one entry in a list on a rounded panel: the corners facing the panel's outer corners
+ *  (the top two of the first entry, the bottom two of the last, all four of a sole entry) are
+ *  concentric with it, the rest keep `base`. Separators are not entries. */
+export function entryCorners(
+  edge: { first: boolean; last: boolean }, outer: number, inset: number, base: number,
+): Pick<CSSProperties, 'borderTopLeftRadius' | 'borderTopRightRadius' | 'borderBottomRightRadius' | 'borderBottomLeftRadius'> {
+  const rim = concentricRadius(outer, inset, base);
+  const top = edge.first ? rim : base;
+  const bottom = edge.last ? rim : base;
+  return { borderTopLeftRadius: top, borderTopRightRadius: top, borderBottomRightRadius: bottom, borderBottomLeftRadius: bottom };
+}
 
 /* ── Spacing ─────────────────────────────────────────────── */
 
@@ -145,6 +150,11 @@ export const z = {
                      // map and over a dark shelf both, or a panel hides it without covering it.
 } as const;
 
+/** The ladder inside one row or grid of cards, which stacks apart from the page's (a positioned card
+ *  slot with a z-index makes its own context): the chosen card stands over the neighbours its plate
+ *  bleeds into, and what is drawn over the cards (a card's own control, a selection box) over it. */
+export const zCards = { chosen: 1, over: 2 } as const;
+
 /* ── Shadows (espresso-tinted, no pure black) ────────────── */
 
 export const shadows = {
@@ -198,107 +208,8 @@ export const font = {
   } satisfies CSSProperties,
 } as const;
 
-/* ── Easing Tokens (Spring Physics) ──────────────────────── */
-
-export const easing = {
-  springBouncy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-  springStiff: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-  /** `springs.gentle` (damping ratio 0.71, a 4% overshoot) over its 0.5 s settle, within 2% of the spring. */
-  springGentle: 'cubic-bezier(0.29, 0.32, 0.12, 1.27)',
-  punchy: 'cubic-bezier(0.2, 0, 0, 1)',
-  /** Still gaining speed when it goes: for something leaving, which has no mark to settle on. */
-  accel: 'cubic-bezier(0.4, 0, 1, 1)',
-  /** Comes to rest at both ends, for the last segment of a motion whose overshoot is already in its
-   *  keyframes (a second deceleration over the top of one reads as a second bounce). */
-  settle: 'cubic-bezier(0.3, 0, 0.55, 1)',
-  expand: 'cubic-bezier(0.65, 0, 0.35, 1)',
-  breathing: 'cubic-bezier(0.45, 0, 0.55, 1)',
-  roll: 'cubic-bezier(0.16, 1, 0.3, 1)',
-  fade: 'cubic-bezier(0.4, 0, 0.2, 1)',
-  /** A body falling under gravity: leaves its height at rest and is fastest as it lands. */
-  gravity: 'cubic-bezier(0.55, 0, 1, 0.45)',
-  /** A body thrown upward: leaves fastest and comes to rest at the top of its arc. */
-  toss: 'cubic-bezier(0, 0.55, 0.45, 1)',
-} as const;
-
-/** The same four control points as an `easing` entry, for a Framer keyframe `ease` array. Derived
- *  from the CSS spelling rather than restated, so the two cannot drift. */
-export function bezierOf(id: keyof typeof easing): [number, number, number, number] {
-  const parts = easing[id].slice('cubic-bezier('.length, -1).split(',').map((n) => Number(n));
-  return [parts[0]!, parts[1]!, parts[2]!, parts[3]!];
-}
-
-/* ── Framer Motion spring configs ───────────────────────── */
-
-export const springs = {
-  bouncy: { type: 'spring' as const, stiffness: 400, damping: 15, mass: 0.8 },
-  stiff: { type: 'spring' as const, stiffness: 600, damping: 30, mass: 0.5 },
-  gentle: { type: 'spring' as const, stiffness: 200, damping: 20, mass: 1 },
-} as const;
-
-/**
- * Rest thresholds for a spring driving `scale`. Spread over a spring alongside it:
- * `transition={{ ...springs.bouncy, ...scaleRest }}`.
- *
- * The defaults are tuned for values measured in pixels — a spring is finished once it is within
- * `restDelta` (0.01) of its target, at which point framer writes the target exactly. On a scale,
- * 0.01 is a whole percent of the element: an underdamped entrance is declared done while still
- * ~0.0017 away and snaps, which on a 300px card is half a pixel appearing in one frame at the very
- * end of the animation. Measured on the tour's welcome card, where the hard edges of the logo make
- * it plainly visible. These thresholds are a hundredth of that, so the final approach is continuous
- * and the last movement is well under a tenth of a pixel.
- */
-export const scaleRest = { restDelta: 0.0002, restSpeed: 0.02 } as const;
-
-/* Shared button press feedback (Framer Motion props) so every interactive control reacts the same
- * way, read for the live input mode through `input-mode.tsx:useInteractionProfiles` and spread onto a
- * motion element. The element must be positioned by layout (flex / left+top), not a CSS `transform`:
- * Framer Motion owns `transform` for the scale and would clobber a centering translate. */
-const PC_PROFILES = {
-  tile: { whileHover: { scale: 1.08 }, whileTap: { scale: 0.9 }, transition: springs.stiff },
-  action: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
-  choice: { whileHover: { scale: 1.05 }, whileTap: { scale: 0.95 }, transition: springs.stiff },
-  toggle: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.97 }, transition: springs.stiff },
-  pill: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.96 }, transition: springs.stiff },
-  row: { whileHover: { scale: 1.01 }, whileTap: { scale: 0.985 }, transition: springs.stiff },
-  tap: { whileTap: { scale: 0.9 }, transition: springs.stiff },
-  actionTap: { whileTap: { scale: 0.95 }, transition: springs.stiff },
-  pillTap: { whileTap: { scale: 0.96 }, transition: springs.stiff },
-  toggleTap: { whileTap: { scale: 0.97 }, transition: springs.stiff },
-  curveVertex: { whileHover: { scale: 1.12 }, transition: springs.stiff },
-  keyboardKey: { whileHover: { y: -2 }, whileTap: { scale: 0.93 }, transition: springs.stiff },
-  thumbnailAdd: { whileTap: { scale: 0.94 }, transition: springs.gentle },
-  quietLink: { whileHover: { opacity: 1 }, whileTap: { opacity: 0.7 }, transition: springs.stiff },
-  curveHandle: { whileHover: { scale: 1.15 }, transition: springs.stiff },
-  /** A small badge that carries its control's action, such as a tag's removal cross. */
-  badge: { whileHover: { scale: 1.18 }, whileTap: { scale: 0.9 }, transition: springs.stiff },
-  /** A control whose feedback is drawn by a part of it (a removal badge) rather than by its own scale. */
-  still: { transition: springs.stiff },
-} as const;
-
-export type InteractionProfile = keyof typeof PC_PROFILES;
-
-/** One profile in either mode: a hover entry exists only in PC mode. */
-export type InteractionProfiles = {
-  readonly [K in InteractionProfile]: Omit<(typeof PC_PROFILES)[K], 'whileHover'>
-    & { readonly whileHover?: (typeof PC_PROFILES)[K] extends { whileHover: infer H } ? H : never };
-};
-
-/** A finger gets press feedback on contact and nothing for a hover it cannot make. */
-const TOUCH_PROFILES = Object.fromEntries(Object.entries(PC_PROFILES).map(([id, profile]) => {
-  const { whileHover: _hover, ...press } = profile as { whileHover?: unknown };
-  return [id, press];
-})) as unknown as InteractionProfiles;
-
-/** The interaction profiles for an input mode. */
-export function interactionProfilesFor(mode: 'pc'): typeof PC_PROFILES;
-export function interactionProfilesFor(mode: InputMode): InteractionProfiles;
-export function interactionProfilesFor(mode: InputMode): InteractionProfiles {
-  return mode === 'touch' ? TOUCH_PROFILES : PC_PROFILES;
-}
-
-/** The tile's PC profile: how far a hover grows a control, for the room a layout keeps around it. */
-export const pressable = PC_PROFILES.tile;
+/* Pointer feedback lives with the rest of motion; re-exported for the controls that style from here. */
+export { interactionProfilesFor, pressable, type InteractionProfile, type InteractionProfiles } from './motion/press';
 
 /** Inline style that also carries the `--pw-*` custom properties `animations.css` reads. */
 export type PwStyle = CSSProperties & Record<`--pw-${string}`, string>;

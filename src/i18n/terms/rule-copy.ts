@@ -9,12 +9,10 @@ import { quantityParams } from '../context';
 import { RULE_MESSAGES } from '../../rules/messages';
 
 /** Refusals a tool raises itself rather than through a rule, with the category a toast leads with:
- *  a group turn a spanning member cannot make, water laid off the one layer a stroke allows, and a
- *  copy whose ground breaks its height differences. */
+ *  a group turn a spanning member cannot make, and a copy whose ground breaks its height differences. */
 const TOOL_REFUSALS = {
   'error.span_no_group_rotate': 'rule.category.rotation',
   'error.paste_ground': 'rule.category.placement',
-  'error.water_only_layer': 'rule.category.water',
 } as const satisfies Readonly<Partial<Record<I18nKey & `error.${string}`, I18nKey & `rule.category.${string}`>>>;
 
 const CATEGORY: Readonly<Partial<Record<TextKey, I18nKey>>> = { ...RULE_MESSAGES, ...TOOL_REFUSALS };

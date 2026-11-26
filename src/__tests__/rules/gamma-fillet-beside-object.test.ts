@@ -168,7 +168,7 @@ describe('EdgeCutTool — the notch beside a tree', () => {
     addTree(state, 10, 4);
     const exec = makeExecutor(state);
     let paint: unknown = null;
-    const ctx = makeToolCtx(state, exec, 1, 1, {
+    const ctx = makeToolCtx(state, exec, 1, {
       overlay: { showGhost: (_c: unknown, p: unknown) => { paint = p; }, clearGhost() {} } as never,
     });
     const tool = new EdgeCutTool();

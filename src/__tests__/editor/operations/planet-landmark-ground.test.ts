@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEditorStore } from '../../../state/store';
 import { newMap } from '../../../editor/operations/map';
 import { editorPort } from '../../../editor/session/context';
-import { enterPlanetSession, leavePlanetSession, rotateSessionLandmark, sessionPlanet } from '../../../editor/operations/planet-session';
+import { sessionCut } from '../../_support/planet-session';
+import { enterPlanetSession, leavePlanetSession, rotateSessionLandmark } from '../../../editor/operations/planet-session';
 import { placeSessionLandmark, removeSessionLandmark } from '../../_support/session-landmarks';
 import { host } from '../../../editor/host/host';
 import { LANDMARKS } from '../../../core/game/profile';
@@ -107,7 +108,7 @@ describe('landmarks in the planet session', () => {
   it('save half-cell landmarks that load, share and round-trip where they were placed', () => {
     expect(placeSessionLandmark({ x: 50.5, y: 45.5 }, 0).success).toBe(true);
     expect(placeSessionLandmark({ x: 60.5, y: 101.5 }, 0, STATION.id).success).toBe(true);
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     expect(isTrustedPlanet(t)).toBe(true);
     const plaza = templateAnchor(t)!;
     const station = t.landmarks.find((l) => l.id === STATION.id)!;

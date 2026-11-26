@@ -20,6 +20,11 @@ describe('providers/detect: detectProviderFromKey', () => {
     expect(detectProviderFromKey('sk-None-abc123')).toBe('openai');
   });
 
+  it('recognizes a ModelScope access token and the token a sign-in returns', () => {
+    expect(detectProviderFromKey('ms-0f1e2d3c-4b5a-6978-8695-a4b3c2d1e0f9')).toBe('modelscope');
+    expect(detectProviderFromKey(`ms_oauth_${'a'.repeat(40)}`)).toBe('modelscope');
+  });
+
   it('recognizes Google API keys', () => {
     expect(detectProviderFromKey('AIzaSyD-abcdefghijklmnopqrst')).toBe('gemini');
   });

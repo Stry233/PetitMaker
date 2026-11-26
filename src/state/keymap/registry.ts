@@ -6,9 +6,10 @@
  */
 import { forEdition, type EditionVariant } from '../../platform/build/edition';
 import type { I18nKey } from '../../i18n/keys';
+import type { SurfaceTool } from '../editing/edit-mode';
 
 export type CommandCategory =
-  | 'surface' | 'tool' | 'brush' | 'layer' | 'selection' | 'camera' | 'view' | 'history' | 'app' | 'overlay';
+  | 'surface' | 'tool' | 'brush' | 'selection' | 'camera' | 'view' | 'history' | 'app' | 'overlay';
 
 interface CommandRowShape {
   id: string;
@@ -20,12 +21,19 @@ interface CommandRowShape {
    *  page, but the discrete engine (useEditorShortcuts) skips it — the held rAF loop in
    *  view/interaction/use-view-shortcuts reads its effective key instead. */
   continuous?: boolean;
-  /** Answered by an always-live listener that keeps working behind an open modal, so it has no
-   *  Run body and the discrete engine leaves its combo alone. */
+  /** Its key is heard by an always-live listener that keeps working behind an open modal and runs
+   *  the command's body, so the discrete engine leaves its combo alone. */
   listener?: boolean;
   /** The browser's own clipboard event still follows the key: the engine runs the body without
    *  taking the key's default, so the `copy`, `cut` or `paste` event can carry the clipboard. */
   native?: boolean;
+  /** A cycle through a group of options: Shift with its key steps the group backwards, where no other
+   *  command holds that combo (`resolve.ts:reverseCombos`). */
+  reversible?: boolean;
+  /** The keymap revision the command joined in, absent for those a keymap first saved knew; a new
+   *  command takes the next revision, so a keymap saved earlier is given its style's key for it
+   *  (`store.ts:withLaterCommands`). */
+  since?: number;
 }
 
 /** A registry row: `lite: false` keeps the command out of the offline edition. */
@@ -48,7 +56,7 @@ const ALL_COMMAND_META = [
   { id: 'tool.trim',    category: 'tool', labelKey: 'design.edge_cut',     defaultCombo: null },
   { id: 'tool.smart',   category: 'tool', labelKey: 'smart.build',         defaultCombo: null },
   { id: 'tool.measure', category: 'tool', labelKey: 'annot.measure', defaultCombo: null },
-  { id: 'tool.shape_cycle', category: 'tool', labelKey: 'terrain.shapes', defaultCombo: null },
+  { id: 'tool.shape_cycle', category: 'tool', labelKey: 'terrain.shapes', defaultCombo: null, reversible: true },
   { id: 'tool.free',    category: 'tool', labelKey: 'terrain.shape.free',  defaultCombo: null },
   { id: 'tool.line',    category: 'tool', labelKey: 'eraser.line',         defaultCombo: null },
   { id: 'tool.curve',   category: 'tool', labelKey: 'eraser.curve',        defaultCombo: null },
@@ -56,7 +64,9 @@ const ALL_COMMAND_META = [
   { id: 'tool.circle',  category: 'tool', labelKey: 'eraser.circle',       defaultCombo: null },
   // The toolbar's last option group: auto edge cut on a terrain surface; what it steps elsewhere is
   // `state/keymap/toolbar.ts:CONTEXT_KEYS`.
-  { id: 'tool.option_cycle', category: 'tool', labelKey: 'edgecut.auto', defaultCombo: null },
+  { id: 'tool.option_cycle', category: 'tool', labelKey: 'edgecut.auto', defaultCombo: null, reversible: true },
+  // The mountain brush's and eraser's thickness; L for layers, a key no toolbar and no preset binds.
+  { id: 'tool.thickness_cycle', category: 'tool', labelKey: 'terrain.thickness', defaultCombo: 'l', since: 1, reversible: true },
 
   // Shape-drag constrain (held): snaps line/rect/circle drags to straight/square/round. Default
   // Shift, rebindable. Continuous: the shape tools read it through `held.ts:isCommandHeld`.
@@ -66,15 +76,14 @@ const ALL_COMMAND_META = [
   // it; held, the two sides turn apart. Continuous: CurveHandles reads it through `held.ts`.
   { id: 'tool.break_handle', category: 'tool', labelKey: 'shortcut.break_handle', defaultCombo: 'alt', continuous: true },
 
-  // Brush size + active layer
+  // Brush size
   { id: 'brush.bigger',  category: 'brush', labelKey: 'a11y.brush_increase', defaultCombo: null },
   { id: 'brush.smaller', category: 'brush', labelKey: 'a11y.brush_decrease', defaultCombo: null },
-  { id: 'layer.up',      category: 'layer', labelKey: 'shortcut.layer_up',   defaultCombo: null },
-  { id: 'layer.down',    category: 'layer', labelKey: 'shortcut.layer_down', defaultCombo: null },
 
   // Selection
   { id: 'selection.rotate_cw',  category: 'selection', labelKey: 'shortcut.rotate_cw',  defaultCombo: 'e' },
   { id: 'selection.rotate_ccw', category: 'selection', labelKey: 'shortcut.rotate_ccw', defaultCombo: null },
+  { id: 'selection.flip',       category: 'selection', labelKey: 'shortcut.flip',       defaultCombo: 'f', since: 1 },
   { id: 'selection.delete',     category: 'selection', labelKey: 'shortcut.delete',     defaultCombo: 'r' },
   { id: 'selection.deselect',   category: 'selection', labelKey: 'shortcut.deselect',   defaultCombo: 'escape' },
 
@@ -124,7 +133,7 @@ const ALL_COMMAND_META = [
   { id: 'app.help', category: 'app', labelKey: 'menu.help', defaultCombo: null },
   { id: 'app.menu',  category: 'app', labelKey: 'shortcut.toggle_menu', defaultCombo: null },
 
-  // UI scale (the chrome, not the map). Carried out by the always-live listener
+  // UI scale (the chrome, not the map). Their keys are heard by the always-live listener
   // (ui/app/use-ui-zoom-shortcut.ts:useUiZoomShortcut), which reads these two effective
   // combos and so follows a rebind.
   { id: 'app.ui_zoom_in',  category: 'app', labelKey: 'shortcut.ui_zoom_in',  defaultCombo: 'ctrl+=', listener: true },
@@ -138,8 +147,8 @@ const ALL_COMMAND_META = [
 
 type Row = typeof ALL_COMMAND_META[number];
 export type CommandId = Row['id'];
-/** The commands the discrete engine runs: neither held nor answered by a listener. */
-export type RunCommandId = Exclude<CommandId, Extract<Row, { continuous: true } | { listener: true }>['id']>;
+/** The commands with a body: every one but the held ones. A listener row's body is run by its listener. */
+export type RunCommandId = Exclude<CommandId, Extract<Row, { continuous: true }>['id']>;
 
 export interface CommandMeta extends CommandRowShape {
   id: CommandId;
@@ -148,6 +157,9 @@ export interface CommandMeta extends CommandRowShape {
 export const COMMAND_META: readonly CommandMeta[] = forEdition<CommandMeta>(ALL_COMMAND_META);
 
 export const META_BY_ID: ReadonlyMap<string, CommandMeta> = new Map(COMMAND_META.map((c) => [c.id, c]));
+
+/** The revision a keymap is saved at: the newest command's. */
+export const KEYMAP_REVISION = Math.max(0, ...COMMAND_META.map((c) => c.since ?? 0));
 
 /** Fixed secondary bindings — a command has one registry combo, but the engine also wires these
  *  aliases so conventional alternates work. Not shown as separate rows / not user-editable. */
@@ -162,6 +174,19 @@ export const ALIASES: { combo: string; commandId: CommandId }[] = [
   { combo: 'arrowleft',  commandId: 'camera.pan_left' },
   { combo: 'arrowright', commandId: 'camera.pan_right' },
 ];
+
+/** The keys no command can sit on, alone or under modifiers, by the token a combo ends with: the
+ *  browser or the system answers them before the page (Help, Find, Reload, the address bar, full
+ *  screen, the developer tools, focus travel, a focused control's press, the screenshot and the two
+ *  locks), and taking their default is unreliable. The keypad's Enter (`numenter`) is its own key. */
+export const UNBINDABLE_KEYS: ReadonlySet<string> = new Set([
+  'f1', 'f3', 'f5', 'f6', 'f11', 'f12', 'tab', 'capslock', 'enter', 'printscreen', 'numlock',
+]);
+
+/** Whether a normalized combo ends on a key a command can sit on. */
+export function comboBindable(combo: string): boolean {
+  return !UNBINDABLE_KEYS.has(combo.split('+').pop() ?? '');
+}
 
 /** The ids commands were stored under before they were renamed. */
 const RENAMED: Readonly<Record<string, CommandId>> = {
@@ -182,26 +207,28 @@ export function withCurrentIds<T>(binds: Readonly<Record<string, T>>): Record<st
   return out;
 }
 
-/** The commands a planet session answers. Every other binding still takes its key there, so no
- *  browser default fires in its place. */
-export const PLANET_SESSION_COMMANDS: ReadonlySet<string> = new Set([
-  'history.undo', 'history.redo',
-  'camera.zoom_in', 'camera.zoom_out', 'camera.fit', 'app.ui_zoom_in', 'app.ui_zoom_out', 'overlay.chunks',
-  'surface.mountain', 'surface.river',
-  'tool.brush', 'tool.erase', 'tool.shape_cycle', 'tool.free', 'tool.line', 'tool.curve', 'tool.rect', 'tool.circle',
-  'brush.bigger', 'brush.smaller',
-  'selection.rotate_cw', 'selection.rotate_ccw', 'selection.delete', 'selection.deselect',
-  'app.menu', 'app.help',
-] satisfies CommandId[]);
+/** The command that takes up each tool of a surface's row. */
+export const SURFACE_TOOL_COMMANDS = {
+  brush: 'tool.brush', erase: 'tool.erase', trim: 'tool.trim', smart: 'tool.smart',
+} as const satisfies Record<SurfaceTool, CommandId>;
 
-/** The commands a hand repair answers: history, the camera, deleting and deselecting its objects,
- *  the menu and Help. */
-export const REPAIR_SESSION_COMMANDS: ReadonlySet<string> = new Set([
-  'history.undo', 'history.redo',
-  'camera.zoom_in', 'camera.zoom_out', 'camera.fit', 'app.ui_zoom_in', 'app.ui_zoom_out',
-  'selection.delete', 'selection.deselect',
-  'app.menu', 'app.help',
-] satisfies CommandId[]);
+/** The commands that change the map, its history or its selection, which none of them reaches while
+ *  a stand-in is shown in its place (`map-stand-in.ts:standInShown`); a new such command joins them. */
+export const MAP_EDIT_COMMANDS: ReadonlySet<string> = new Set<string>([
+  ...([
+    'history.undo', 'history.redo',
+    'selection.rotate_cw', 'selection.rotate_ccw', 'selection.flip', 'selection.delete', 'selection.all', 'selection.cut', 'selection.paste',
+    'tool.smart',
+  ] satisfies CommandId[]),
+  // No key runs these, so the keymap has no row for them.
+  'generate.land', 'generate.clear',
+  'selection.face', 'selection.pick', 'selection.save_blueprint', 'selection.narrow', 'notes.merge', 'notes.flip', 'terrain.peel',
+  'selection.clear',
+]);
+
+/** The command whose key backs out of the newest state that stands (`platform/input/back-stack.ts`),
+ *  heard by the back stack's own listener rather than the shortcut engine. */
+export const BACK_COMMAND = 'selection.deselect' satisfies CommandId;
 
 /** The two commands the always-live UI-zoom listener carries out. */
 export const UI_ZOOM_IDS: readonly string[] = ['app.ui_zoom_in', 'app.ui_zoom_out'] satisfies readonly CommandId[];
@@ -212,7 +239,7 @@ export const UI_ZOOM_IDS: readonly string[] = ['app.ui_zoom_in', 'app.ui_zoom_ou
  * user overrides so the effective keymap matches it. `detectPreset` names the current keymap (or
  * 'custom' once hand-edited). */
 
-export interface KeymapPreset {
+interface KeymapPreset {
   id: string;
   labelKey: I18nKey;
   /** Combos that differ from the shipped defaults (id → combo, null = unbound). Others inherit. */
@@ -227,8 +254,8 @@ const PRO: Record<string, string | null> = {
   'tool.move': 'v', 'tool.brush': 'b', 'tool.erase': 'e', 'tool.trim': 'x',
   'tool.free': null, 'tool.measure': null, 'tool.shape_cycle': null, 'tool.option_cycle': null,
   'tool.line': 'f', 'tool.curve': 'g', 'tool.rect': 'r', 'tool.circle': 'c', 'tool.smart': 't',
-  'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
-  'selection.rotate_cw': '.', 'selection.rotate_ccw': ',', 'selection.delete': 'delete',
+  'brush.bigger': ']', 'brush.smaller': '[', 'tool.thickness_cycle': 'l',
+  'selection.rotate_cw': '.', 'selection.rotate_ccw': ',', 'selection.flip': '/', 'selection.delete': 'delete',
   'camera.zoom_in': '=', 'camera.zoom_out': '-',
   'app.help': 'shift+?', 'app.menu': 'm',
   'overlay.grid': 'shift+g', 'overlay.numbers': 'shift+n', 'overlay.chunks': 'shift+c',
@@ -243,7 +270,6 @@ const NUMERIC: Record<string, string | null> = {
   'tool.option_cycle': 'q',
   'camera.pan_up': 'arrowup', 'camera.pan_down': 'arrowdown',
   'camera.pan_left': 'arrowleft', 'camera.pan_right': 'arrowright',
-  'layer.up': 'pageup', 'layer.down': 'pagedown',
 };
 
 export const PRESETS: KeymapPreset[] = [

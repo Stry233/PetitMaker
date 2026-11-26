@@ -2,10 +2,11 @@ import type { MacroCoord } from '../types';
 import { cellsBounds, snapHalf } from '../../grid/rect';
 import { gridSize } from '../../grid/grid-convert';
 import type { GridId } from '../../grid/grids';
-import { PLACEMENT_GRID } from '../../game/profile';
+import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../game/profile';
+import { wholeCellsInRegion } from '../../grid/footprint';
 
 /** A box by its edge coordinates in cell units, cell (x, y) spanning [x, x + 1). */
-interface CellEdges { left: number; top: number; right: number; bottom: number }
+export interface CellEdges { left: number; top: number; right: number; bottom: number }
 export interface DimensionDrawing {
   guides: [MacroCoord, MacroCoord][];
   lines: [MacroCoord, MacroCoord][];
@@ -39,6 +40,18 @@ export function cellEdges(cells: readonly MacroCoord[], grid: GridId = PLACEMENT
   const box = cellsBounds(cells);
   const s = gridSize(grid);
   return box && { left: box.x * s, top: box.y * s, right: (box.x + box.w) * s, bottom: (box.y + box.h) * s };
+}
+
+/** The edges, in map cells, a region of terrain cells is measured by: the cells drawn, or with
+ *  `wholeCells` the whole object-grid cells inside them (`wholeCellsInRegion`). */
+export function regionEdges(cells: readonly MacroCoord[], wholeCells: boolean): CellEdges | null {
+  if (wholeCells) {
+    const r = wholeCellsInRegion(cells);
+    return r && { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
+  }
+  const drawn = cellEdges(cells, TERRAIN_GRID);
+  const { offset } = GRIDS[TERRAIN_GRID];
+  return drawn && { left: drawn.left + offset.x, top: drawn.top + offset.y, right: drawn.right + offset.x, bottom: drawn.bottom + offset.y };
 }
 
 /** CAD-style dimensions in cell units, shared by drawing, selection and both projections. */

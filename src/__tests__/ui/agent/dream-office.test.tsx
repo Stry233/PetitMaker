@@ -5,16 +5,20 @@
  * The reserved height is the tallest window of three consecutive orders in the cycle.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, fireEvent, render, within } from '@testing-library/react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { I18nProvider } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { DreamOffice, DREAMS } from '../../../ui/agent/desk/DreamOffice';
 import { translations } from '../../_support/locale-tables';
+import { connectionReady, runnerSettings, useAgentConnection } from '../../../agent/connection/store';
+import { PROVIDER_IDS } from '../../../agent/providers/defaults';
+import { __setSignInRound } from '../../../agent/connection/sign-in-round';
 
 /** Mounted inside `act`, because the board's own rAF loop commits a beat on the first frame. */
-function mount(pinned = false): { container: HTMLElement } {
+function mount(pinned: boolean | { onConnect: () => void } = false): { container: HTMLElement } {
   let out!: { container: HTMLElement };
-  act(() => { out = render(<I18nProvider><DreamOffice onConnect={() => {}} pinned={pinned} /></I18nProvider>); });
+  const onConnect = typeof pinned === 'object' ? pinned.onConnect : () => {};
+  act(() => { out = render(<I18nProvider><DreamOffice onConnect={onConnect} pinned={pinned === true} /></I18nProvider>); });
   return out;
 }
 
@@ -70,11 +74,77 @@ describe('the dreaming board reserves one height', () => {
 });
 
 describe('the keyless office points at Help', () => {
-  it('opens the setup page at its key steps from Learn more', () => {
+  it('opens the setup page at its sign-in section from Learn more', () => {
     useEditorStore.getState().setHelpTarget(null);
     const { container } = mount();
     fireEvent.click(within(container).getByRole('button', { name: translations.en['agent.learn_more'] }));
-    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'agent-setup', anchor: 'agsetup-keys' });
+    expect(useEditorStore.getState().helpTarget).toEqual({ page: 'agent-setup', anchor: 'agsetup-signin' });
     expect(useEditorStore.getState().modals.help).toBe(true);
+  });
+});
+
+describe('the two ways to connect', () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    for (const id of PROVIDER_IDS) useAgentConnection.getState().forgetKey(id);
+    useAgentConnection.setState({ provider: 'claude', providerPinned: false, customBaseUrl: '' });
+    await useAgentConnection.getState().hydrate();
+  });
+  afterEach(() => { __setSignInRound(null); });
+
+  const worded = (key: string) => translations.en[key]!.replace('{name}', translations.en['provider.name_openrouter']!);
+  const within$ = (container: HTMLElement, id: string) => container.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+
+  it('offers signing in with the deployment provider first, then an API key, and says whose account pays', () => {
+    const { container } = mount();
+    expect(within$(container, 'dream-sign-in')!.textContent).toBe(worded('agent.setup_sign_in'));
+    expect(within$(container, 'dream-connect')!.textContent).toBe(translations.en['agent.dream_use_key']);
+    expect(within$(container, 'dream-note')!.textContent).toContain(worded('agent.setup_sign_in_note'));
+  });
+
+  it('says so when the browser opens no window', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const { container } = mount();
+    await act(async () => { fireEvent.click(within$(container, 'dream-sign-in')!); });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(within$(container, 'dream-note')!.textContent).toBe(translations.en['agent.setup_sign_in_blocked']);
+    open.mockRestore();
+  });
+
+  it('waits on the provider window with a way to cancel in the API key button place', async () => {
+    const opened = { location: { href: 'about:blank' }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(opened as unknown as Window);
+    const { container } = mount();
+    await act(async () => { fireEvent.click(within$(container, 'dream-sign-in')!); });
+    expect(within$(container, 'dream-note')!.textContent).toBe(worded('agent.setup_sign_in_waiting'));
+    expect(within$(container, 'dream-sign-in')!.getAttribute('aria-busy')).toBe('true');
+    expect(within$(container, 'dream-connect')).toBeNull();
+    await act(async () => { fireEvent.click(within$(container, 'dream-sign-in-cancel')!); });
+    expect(within$(container, 'dream-note')!.textContent).toContain(worded('agent.setup_sign_in_note'));
+    expect(within$(container, 'dream-connect')).not.toBeNull();
+    open.mockRestore();
+  });
+  it('connects with the returned key and does not send the user to the key screen', async () => {
+    // A provider whose model is already chosen: the connection is whole the moment the key lands.
+    useAgentConnection.setState({ model: { ...useAgentConnection.getState().model, openrouter: 'some/model' } });
+    const opened = { location: { href: 'about:blank' }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(opened as unknown as Window);
+    const exchange = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ key: 'sk-or-v1-returned-key' }), { status: 200 }));
+    const onConnect = vi.fn();
+    const { container } = mount({ onConnect });
+    await act(async () => { fireEvent.click(within$(container, 'dream-sign-in')!); });
+    await waitFor(() => expect(opened.location.href).toContain('openrouter.ai/auth'));
+    const answer = new BroadcastChannel('petit-sign-in');
+    await act(async () => {
+      answer.postMessage({ state: new URL(opened.location.href).searchParams.get('state'), code: 'the-code' });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    answer.close();
+    await waitFor(() => expect(connectionReady(useAgentConnection.getState())).toBe(true));
+    expect(runnerSettings(useAgentConnection.getState()).apiKey).toBe('sk-or-v1-returned-key');
+    expect(useAgentConnection.getState().providerPinned).toBe(false);
+    expect(onConnect).not.toHaveBeenCalled();
+    open.mockRestore();
+    exchange.mockRestore();
   });
 });

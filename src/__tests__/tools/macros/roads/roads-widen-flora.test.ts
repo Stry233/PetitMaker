@@ -134,7 +134,7 @@ describe('a necked road says so', () => {
     place(floraId, BESIDE_THE_LINE.x, BESIDE_THE_LINE.y);
     // Brush size 3 is the road width the drag passes (`drag-tool.ts`).
     const said: string[] = [];
-    const toolCtx = makeToolCtx(state, ctx.executor as CommandExecutor, 3, 1, { armedMacro: 'road-link', notify: (text) => { said.push(text); } });
+    const toolCtx = makeToolCtx(state, ctx.executor as CommandExecutor, 3, { armedMacro: 'road-link', notify: (text) => { said.push(text); } });
     try {
       const tool = new MacroTool();
       tool.onActivate();

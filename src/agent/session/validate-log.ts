@@ -9,7 +9,7 @@ type EventField<K extends SessionEvent['kind'], F extends string> = Extract<Sess
 
 const ERROR_CLASSES: Record<ErrorClass, true> = {
   auth: true, quota: true, 'rate-limit': true, overloaded: true, network: true, cors: true,
-  overflow: true, abort: true, config: true, model: true, unknown: true,
+  overflow: true, abort: true, config: true, model: true, account: true, unknown: true,
 };
 const errorClass = member(ERROR_CLASSES);
 const skillKind = member<SkillKind>({ method: true, style: true });
@@ -28,7 +28,7 @@ const stage = shape({ label: string, checkpoint: optional(boolean) });
 const detailFields: { [K in keyof ToolResultDetail]-?: Check } = {
   cells: optional(index), objects: optional(index), reverted: optional(boolean), regionBlocked: optional(boolean),
   partialRevert: optional((v) => v === true), banner: optional((v) => v === true), skill: optional(skill),
-  damper: optional((v) => v === true), repeatRefused: optional((v) => v === true),
+  damper: optional((v) => v === true), repeatRefused: optional((v) => v === true), loopNote: optional((v) => v === true),
   childOps: optional(list(shape({ name: string, status: childStatus, skill: optional(skill) }))),
   childError: optional(errorClass),
   violations: optional(list(shape({
@@ -83,7 +83,7 @@ const EVENT_FIELDS: Record<SessionEvent['kind'], Fields> = {
     orderSeq: index, reply: string,
     usage: optional(shape({ input: number, output: number, cacheRead: optional(number), cacheWrite: optional(number) })),
   },
-  jobEnd: { outcome: jobOutcome, summary: optional(string), question: optional(boolean), undoIndex: optional(index) },
+  jobEnd: { outcome: jobOutcome, summary: optional(string), question: optional(boolean), undoIndex: optional(index), stoppedBy: optional((v) => v === 'map-left') },
 };
 
 export function validStoredEvents(events: unknown): events is SessionEvent[] {

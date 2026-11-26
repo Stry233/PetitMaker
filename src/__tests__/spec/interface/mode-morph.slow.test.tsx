@@ -49,7 +49,7 @@ async function mountAt(w: number, h: number, mode: Mode, motion: 'full' | 'reduc
     s.setMotionPref(motion);
     s.setEditMode({ mode: 'object' });
   });
-  render(<EditorRoot dockRef={NO_DOCK} onRestoreSession={() => {}}><div /></EditorRoot>);
+  render(<EditorRoot dockRef={NO_DOCK}><div /></EditorRoot>);
   await wait(1500);
   return useEditorStore;
 }

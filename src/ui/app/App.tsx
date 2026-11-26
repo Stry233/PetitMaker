@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditorStore } from '../../state/store';
-import { PixiCanvas } from '../../view/map2d/PixiCanvas';
-import { Editor3DCanvas } from '../../view/map3d/Editor3DCanvas';
 import { onAfterPaint } from '../../platform/async/after-paint';
 import { startWarm } from '../shell/warm/schedule';
 
 import { useDockRefValue } from '../shell/use-dock';
 import { Splash } from '../shell/splash/Splash';
-import { cacheWarmAtBoot, cacheWarmAtBootAnswer } from '../shell/splash/preload';
-import { shouldShowSplash } from '../../io/storage/splash-facts';
-import { cssMotion, fadeVisibilityCss } from '../design/motion';
+import { cacheWarmAtBoot, splashOwedNow } from '../../editor/session/boot-assets';
 import { ArrivalToast } from '../chrome/floating/ArrivalToast';
 import { UnsupportedBrowserNotice } from '../chrome/guards/UnsupportedBrowserNotice';
 import { MenuBubbles } from '../chrome/floating/MenuBubbles';
@@ -18,19 +14,14 @@ import { DevBuildNotice } from '../chrome/guards/DevBuildNotice';
 import { LegalBar } from '../chrome/LegalBar';
 import { useRestoreFade } from './use-restore-fade';
 import { usePlanetSessionFade } from '../shell/planet/use-planet-session-fade';
-import { useEditorSession } from './use-editor-session';
 import { EditorRoot } from './EditorRoot';
-
-import { announceArrival } from '../session/arrival-bus';
+import { MapViews } from './MapViews';
 
 // The panel's settings store pulls provider metadata (defaults.ts) and the key vault only, never
 // the SDKs, so it costs the main bundle nothing.
-import { hydrateAssistantConnection, hydrateAssistantSession } from '../../agent/boot';
+import { hydrateAssistantConnection } from '../../agent/boot';
+import { whenRestoreBegins } from '../../editor/session/restore';
 import { isTextEntry } from '../../platform/input/text-entry';
-
-// The 2D↔3D crossfade and the restore fade share one motion: "the map view changes underneath you".
-const VIEW_FADE = 'map.view.crossfade';
-const viewFade = (visible: boolean): string => fadeVisibilityCss(VIEW_FADE, visible);
 
 export default function App() {
   // Covers the restore's discontinuity (a new map, then a new camera, then the first frame that
@@ -40,10 +31,10 @@ export default function App() {
   // Entering and leaving a planet session swap the map and its camera the same way a restore does.
   usePlanetSessionFade(restoreFade.begin);
 
-  // The boot splash: shown until this build's assets have been fetched once (see splash/preload).
-  // The flag can lie warm (a hard reload or cache eviction empties the cache and keeps the flag), so
-  // the boot's cache answer decides; the web entry renders once it is known.
-  const [splashActive, setSplashActive] = useState(() => shouldShowSplash() || cacheWarmAtBootAnswer() === false);
+  // The boot splash: shown until this build's assets have been fetched once
+  // (`editor/session/boot-assets.ts`). The flag can lie warm (a hard reload or cache eviction empties
+  // the cache and keeps the flag), so the boot's cache answer decides; the web entry renders once it is known.
+  const [splashActive, setSplashActive] = useState(splashOwedNow);
   const [splashLeaving, setSplashLeaving] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -52,27 +43,13 @@ export default function App() {
     });
     return () => { cancelled = true; };
   }, []);
-  const viewMode = useEditorStore((s) => s.viewMode);
   const gridState = useEditorStore((s) => s.gridState);
-  const afterRestore = useCallback(() => {
-    hydrateAssistantSession();
-    announceArrival({ kind: 'restored' });
-  }, []);
-  const restoreSession = useEditorSession({
-    beforeRestore: restoreFade.begin,
-    afterRestore,
-    settleRestore: restoreFade.settle,
-  });
-
-  /* Announce the first map mounted by the app. The new-project window owns template changes, while
-     file imports do not announce an arrival. The restore offer and notice resolve through the same
-     restore-offer channel. */
-  const arrivalAnnounced = useRef(false);
-  useEffect(() => {
-    if (!gridState || arrivalAnnounced.current) return;
-    arrivalAnnounced.current = true;
-    announceArrival({ kind: 'boot' });
-  }, [gridState]);
+  // A restore, whoever asks for it (`editor/session/restore.ts:acceptRestoreOffer`), lands between
+  // the fade's hide and its release; what follows the map in is the editor's and the assistant's.
+  const { begin: beginFade, settle: settleFade } = restoreFade;
+  useEffect(() => whenRestoreBegins(beginFade), [beginFade]);
+  // Parent effects run after the views have drawn the new map and taken its parked camera.
+  useEffect(() => { if (gridState) settleFade(gridState); }, [gridState, settleFade]);
 
   // A visit without the splash warms every lazy chunk and first-use file after its first paint; the
   // cold splash runs the same schedule itself. Sessions that open in 3D start the scene at the entry.
@@ -101,35 +78,6 @@ export default function App() {
     return () => document.removeEventListener('contextmenu', suppress);
   }, []);
 
-  /* ── Render ───────────────────────────────────────────── */
-
-  // Both map views stay mounted; viewMode picks the visible one with a soft crossfade
-  // (visibility flips after the fade so the hidden canvas stops taking pointer events). The
-  // hidden 2D view remains the capture/export engine.
-  // The outer wrapper is the restore fade: it fades whichever view is visible, since the other
-  // is already at opacity 0. The hide itself carries no transition — it has to land in the same
-  // frame as the restore it covers; the release, once the restored map is painted, is what
-  // animates (the gate lives in useRestoreFade).
-  const mapViews = (
-    <div
-      style={{
-        opacity: restoreFade.hidden ? 0 : 1,
-        transition: restoreFade.hidden ? 'none' : cssMotion(VIEW_FADE, ['opacity']),
-      }}
-    >
-      <div
-        style={{
-          opacity: viewMode === '3d' ? 0 : 1,
-          visibility: viewMode === '3d' ? 'hidden' : 'visible',
-          transition: viewFade(viewMode !== '3d'),
-        }}
-      >
-        <PixiCanvas />
-      </div>
-      <Editor3DCanvas fade={viewFade} />
-    </div>
-  );
-
   // The assistant's dock is a fact about the window, so it is published from the top: while the sheet
   // of interface is slid aside the docked panel owns a strip of the viewport, and the frame and the
   // chrome both fit into what is left at one factor (`ui/design/scale.tsx:frameFit`'s `refWiden`). A
@@ -140,7 +88,6 @@ export default function App() {
   return (
     <EditorRoot
       dockRef={dockRef}
-      onRestoreSession={restoreSession}
       splashActive={splashActive}
       plane={{ handoff: !splashActive ? 'none' : splashLeaving ? 'leaving' : 'covered' }}
       // The arrival greeting shares the toast rung, so it paints first: a refusal answers something
@@ -158,7 +105,7 @@ export default function App() {
       )}
       after={splashActive ? <Splash onHandoff={() => setSplashLeaving(true)} onDone={() => setSplashActive(false)} /> : null}
     >
-      {mapViews}
+      <MapViews hidden={restoreFade.hidden} />
     </EditorRoot>
   );
 }

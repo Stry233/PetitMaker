@@ -3,7 +3,8 @@ import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
 import type { WindowSurface } from '../../design/window-skin';
 import { Pill } from '../../primitives/Pill';
-import { PanelConfirm } from './PanelConfirm';
+import { ControlConfirm } from '../../primitives/ControlConfirm';
+import { PANEL_CONFIRM_W } from '../panel-skin';
 
 /** A destructive pill that asks before it acts; the question unrolls from the pill, which stays as it is. */
 export function ConfirmPill({
@@ -32,10 +33,12 @@ export function ConfirmPill({
       </Pill>
       <AnimatePresence>
         {asking && !disabled && (
-          <PanelConfirm
+          <ControlConfirm
             key="ask"
             anchor={ref}
-            help={help}
+            floor={false}
+            width={PANEL_CONFIRM_W}
+            helpTarget={{ page: help }}
             testId={`${testId}-ask`}
             title={title}
             {...(message !== undefined ? { message } : {})}

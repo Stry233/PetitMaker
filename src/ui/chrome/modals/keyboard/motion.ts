@@ -1,11 +1,13 @@
 import type { Variants } from 'framer-motion';
-import { framerMotion } from '../../../design/motion';
+import { amplitude, framerMotion, staggerDelay } from '../../../design/motion';
 
-export const BOARD_IN: Variants = { hidden: {}, show: { transition: { delayChildren: 0.05, staggerChildren: 0.045 } } };
-export const CLUSTER_IN: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.028 } } };
+/** The board's groups, then each group's rows, rise one stagger apart (`keyboard.row.arrive`). */
+const STEP = staggerDelay('keyboard.row.arrive', 1);
+export const BOARD_IN: Variants = { hidden: {}, show: { transition: { delayChildren: STEP, staggerChildren: STEP } } };
+export const CLUSTER_IN: Variants = { hidden: {}, show: { transition: { staggerChildren: STEP } } };
 export const ROW_IN: Variants = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 520, damping: 34, mass: 0.6 } },
+  hidden: { opacity: 0, y: amplitude('keyboard.row.arrive') },
+  show: { opacity: 1, y: 0, transition: framerMotion('keyboard.row.arrive') },
 };
 /** Reduced motion keeps the cascade's order but drops the travel, so nothing slides. */
 export const ROW_IN_REDUCED: Variants = {

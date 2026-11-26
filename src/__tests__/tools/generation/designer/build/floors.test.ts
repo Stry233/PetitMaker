@@ -6,7 +6,7 @@ import { objectRect } from '../../../../../state/object-geometry';
 import { isCoatingItem } from '../../../../../core/model/traits';
 import { TerrainType, type GridState, type PlacedObject } from '../../../../../core/model/types';
 import { makeCtx, tryPlace, type PlaceCtx } from '../../../../../tools/placement/object';
-import { makeScope } from '../../../../../tools/generation/designer/build/scope';
+import { makeScope } from '../../../../../tools/generation/terrain-plan/scope';
 import { paveFloors } from '../../../../../tools/generation/designer/build/floors';
 import { pavableMask, readMap } from '../../../../../tools/reading';
 

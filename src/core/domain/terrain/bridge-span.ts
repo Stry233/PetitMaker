@@ -24,6 +24,12 @@ interface BridgeSpan {
   cells: MacroCoord[];   // full footprint (for the ghost preview)
 }
 
+/** A bridge's rotation once the ground under it turns a quarter: its span runs along x at 0 and
+ *  along y at 90, so a quarter turn swaps them. */
+export function turnBridgeRotation(rotation: number): 0 | 90 {
+  return rotation === 0 || rotation === 180 ? 90 : 0;
+}
+
 const DIRS = [
   { dx: 1, dy: 0, px: 0, py: 1, rot: 0 as const },
   { dx: 0, dy: 1, px: 1, py: 0, rot: 90 as const },

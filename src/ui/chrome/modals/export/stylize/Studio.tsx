@@ -5,13 +5,15 @@ import { useT } from '../../../../../i18n/context';
 import { host } from '../../../../../editor/host/host';
 import type { GridState } from '../../../../../core/model/types';
 import { renderThumbnail } from '../../../../../view/map2d/capture/thumbnail';
-import { CUSTOM_DIRECTION_ID, STYLE_PACKS, isProcPackId, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
+import { CUSTOM_DIRECTION_ID, isProcPackId, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
 import {
-  StylizeStudioJobs, loadProcRenderer, retainNeuralRuntime, runEngine, storedStylizeInputs,
+  StylizeStudioJobs, loadProcRenderer, originalCaptureEdge, retainNeuralRuntime, runEngine, storedStylizeInputs,
   type DialectConfig, type RunStylize, type StylizeDialect, type TakeOutcome,
 } from '../../../../../editor/export/stylize';
-import { versionStore, versionSrc } from '../../../../../state/stylize-versions';
-import { packSampleUrl, packSwatchUrl } from './sample-assets';
+import { versionSrc } from '../../../../../state/stylize-versions';
+import { pressCommand } from '../../../../../editor/commands/run';
+import { useEditorStore } from '../../../../../state/store';
+import { FALLBACK_MAP_ASPECT, mapPictureAspect } from '../../../../../io/export/facts';
 import { useStylizeVersions } from './use-stylize-versions';
 import { GearGlyph, GhostVerb, IconVerb, PrimaryVerb, StatusSlot, WindowFoot, type SlotStatus } from './stylize-parts';
 import { DirectionBooklet, directionRow } from './DirectionBooklet';
@@ -67,7 +69,7 @@ export function Studio({
   const abortRef = useRef<AbortController | null>(null);
 
   // Capture the original once so comparison stays fixed throughout this studio session.
-  const maxPx = dialect?.maxEdge ?? 2048;
+  const maxPx = originalCaptureEdge(dialect);
   const capture = captureOriginal ?? (() => (subject ? null : host.capture2dImage({ maxPx, annotations: false })));
   const [originalSrc, setOriginalSrc] = useState(capture);
   // A map that is not the live one is drawn off the stage by the live renderer, without its notes.
@@ -78,6 +80,12 @@ export function Studio({
     void subjectShot.then((png) => { if (live) setOriginalSrc(png); });
     return () => { live = false; };
   }, [subjectShot]);
+
+  // Every picture of the map in this window is boxed at the map's own ratio, so none is cropped.
+  const aspect = useEditorStore((s) => {
+    const pictured = subject ?? s.gridState;
+    return pictured ? mapPictureAspect(pictured.template) : FALLBACK_MAP_ASPECT;
+  });
 
   // Closing the window cancels its active generation.
   useEffect(retainNeuralRuntime, []);
@@ -99,7 +107,7 @@ export function Studio({
 
   /** Selecting a custom take restores the prompt that produced it. */
   const pick = (id: string | null) => {
-    versionStore.select(id);
+    pressCommand('export.illustration', { version: id ?? 'original' });
     setSwapped(false);
     const version = id ? state.versions.find((v) => v.id === id) : null;
     if (version?.direction === CUSTOM_DIRECTION_ID && version.prompt !== undefined) {
@@ -127,14 +135,11 @@ export function Studio({
       onSettings();
       return;
     }
-    const pack = STYLE_PACKS.find((p) => p.id === dir) ?? null;
     setStatus(null);
     const abort = new AbortController();
     abortRef.current = abort;
     try {
-      settle(await jobs.generateModel({
-        direction: dir, text, dialect, cfg, run, packAnchor: pack ? packSampleUrl(pack.id) ?? packSwatchUrl(pack.id) : null,
-      }, abort.signal));
+      settle(await jobs.generateModel({ direction: dir, text, dialect, cfg, run }, abort.signal));
     } finally {
       abortRef.current = null;
     }
@@ -148,8 +153,9 @@ export function Studio({
   );
   const picture = (
     <div key="picture" style={columns === 2 ? { display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 } : stackedPicture}>
-      <StudioCanvas main={main} corner={corner} onSwap={() => setSwapped((s) => !s)} enterIndex={2} />
+      <StudioCanvas aspect={aspect} main={main} corner={corner} onSwap={() => setSwapped((s) => !s)} enterIndex={2} />
       <VersionShelf
+        aspect={aspect}
         versions={state.versions}
         selectedId={state.selectedId}
         running={state.running}
@@ -157,7 +163,7 @@ export function Studio({
         originalSrc={originalSrc}
         onTry={setTried}
         onPick={pick}
-        onRetire={(id) => { versionStore.retire(id); setSwapped(false); }}
+        onRetire={(id) => { pressCommand('export.illustration_retire', { version: id }); setSwapped(false); }}
         enterIndex={3}
       />
     </div>

@@ -1,20 +1,23 @@
 import { framerMotion } from '../../../design/motion';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { useNameReveal } from '../../../primitives/use-name-reveal';
-import { font, radii, cursors } from '../../../design/styles';
+import { radii, cursors } from '../../../design/styles';
 import { inkTint } from '../../../design/tokens';
 // The export's 3D shots: a row of 1 to 5 thumbnail blocks sharing the row's width, plus an Add tile.
 // A block opens Preview3D in edit mode and its corner cross deletes it (one always remains). Where an
 // equal share is narrower than a full card frame, the hovered tile grows to that frame and the others
 // give way; width and margin are the only animated properties, so adds, deletes and hovers share one motion.
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence, type HTMLMotionProps } from 'framer-motion';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
+import { FitIcon, PlusIcon } from '../../../primitives/line-glyphs';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { Spinner } from '../../../primitives/Spinner';
-import { seedShots, addShot, deleteShot, MAX_SHOTS, MIN_SHOTS } from '../../../../view/map3d/capture/shot-list';
+import { MAX_SHOTS, MIN_SHOTS, shotsOf } from '../../../../state/shot-list';
+import { editExportShot } from '../../../../editor/export/shots';
+import { pressCommand } from '../../../../editor/commands/run';
 import type { CameraAngle } from '../../../../state/view-camera';
 import { CARD_3D_CELL_ASPECT } from '../../../../io/export/facts';
 import { useShot3dThumbs } from './use-shot-thumbs';
@@ -43,11 +46,8 @@ export function Shot3dStrip({ open }: { open: boolean }) {
   const profiles = useInteractionProfiles();
   const chrome = useSurfaceZoom();
   const gridState = useEditorStore((s) => s.gridState);
-  const shots = useEditorStore((s) => s.export3dShots);
-  const setShots = useEditorStore((s) => s.setExport3dShots);
-  const setEdit = useEditorStore((s) => s.setPreview3DEdit);
-  const setModal = useEditorStore((s) => s.setModal);
-  const setPreviewOpen = (open: boolean) => setModal('preview3d', open);
+  const stored = useEditorStore((s) => s.export3dShots);
+  const shots = open && gridState ? shotsOf(stored, gridState) : stored;
   // A key per shot angle object, so add and delete keep sibling keys: a delete keeps the same
   // objects, an add or replace mints new ones.
   const shotKey = useObjectKey<CameraAngle>();
@@ -63,11 +63,6 @@ export function Shot3dStrip({ open }: { open: boolean }) {
   // A hold only widens, so the press still lands.
   const stripReach = useReveal({ keepsClick: true, onChange: (shown) => { if (!shown) setHovered(null); } }).bind;
   const addReach = useReveal({ keepsClick: true, onChange: (shown) => { if (shown && n < MAX_SHOTS) setHovered(n); } }).bind;
-
-  // Seed the shot set the first time the 3D toggle is enabled (or after a reset left it empty).
-  useEffect(() => {
-    if (open && gridState && shots.length === 0) setShots(seedShots(gridState));
-  }, [open, gridState, shots.length, setShots]);
 
   // Measure the row so each block can take an equal share of the width (fills the row).
   useObservedSize(() => wrapRef.current, ([el]) => setAvailW(el!.clientWidth), [open], { layout: false });
@@ -101,13 +96,6 @@ export function Shot3dStrip({ open }: { open: boolean }) {
     }
   }
 
-  const editShot = (i: number) => {
-    const angle = shots[i];
-    if (!angle) return;
-    setEdit({ index: i, angle });
-    setPreviewOpen(true);
-  };
-
   // ✕ only on a full-ish block (always when roomy; when cramped only on the expanded/hovered one),
   // so tiny cropped tiles stay clean, except in touch mode, where no block expands.
   const showDel = (i: number) => n > MIN_SHOTS && (touch || !cramped || reached === i);
@@ -122,12 +110,12 @@ export function Shot3dStrip({ open }: { open: boolean }) {
           return (
             <ShotBlock key={shotKey(s)} width={blockWs[i]!} gap={gapAfter(i)} onReach={() => setHovered(i)}>
               <NamedShotButton
-                label={t('export.shot_edit_hint')} onClick={() => editShot(i)}
+                label={t('export.shot_edit_hint')} onClick={() => editExportShot(i)}
                 whileTap={profiles.pillTap.whileTap} transition={framerMotion('control.settle')}
                 style={{ position: 'absolute', inset: 0, border: 'none', padding: 0, cursor: cursors.clickable, background: 'transparent', WebkitTapHighlightColor: 'transparent' }}
              >
                 <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: skin.muted }}>
-                  {loading ? <Spinner size={16} /> : <span aria-hidden style={{ opacity: 0.6, fontSize: 18 }}>◱</span>}
+                  {loading ? <Spinner size={16} /> : <span aria-hidden style={{ display: 'flex', opacity: 0.6 }}><FitIcon size={18} /></span>}
                 </span>
                 {url && (
                   // object-fit: cover fills the block at any width (rounded corners hug it); the
@@ -137,7 +125,7 @@ export function Shot3dStrip({ open }: { open: boolean }) {
               </NamedShotButton>
               {showDel(i) && (
                 <DeleteBadge label={t('export.shot_delete')} zoom={chrome}
-                  onClick={(e) => { e.stopPropagation(); setShots(deleteShot(shots, i)); }} />
+                  onClick={(e) => { e.stopPropagation(); pressCommand('export.shot_remove', { index: i }); }} />
               )}
             </ShotBlock>
           );
@@ -152,11 +140,11 @@ export function Shot3dStrip({ open }: { open: boolean }) {
           initial={false} animate={{ width: addVisible ? addW : 0, opacity: addVisible ? 1 : 0 }}
           transition={framerMotion('export.shot.resize')} whileTap={addVisible ? profiles.thumbnailAdd.whileTap : undefined}
           {...addReach}
-          onClick={() => { if (addVisible && gridState) setShots(addShot(shots, gridState)); }}
-          style={{ height: H, flex: 'none', borderRadius: RADIUS, border: addVisible ? `1.5px dashed ${skin.line}` : 'none', background: 'transparent', color: skin.muted, fontFamily: font.family, fontWeight: 800, fontSize: 22, lineHeight: 1, overflow: 'hidden', pointerEvents: addVisible ? 'auto' : 'none', WebkitTapHighlightColor: 'transparent' }}
+          onClick={() => { if (addVisible) pressCommand('export.shot_add'); }}
+          style={{ height: H, flex: 'none', borderRadius: RADIUS, border: addVisible ? `1.5px dashed ${skin.line}` : 'none', background: 'transparent', color: skin.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, overflow: 'hidden', pointerEvents: addVisible ? 'auto' : 'none', WebkitTapHighlightColor: 'transparent' }}
         >
           {/* In touch mode the name rides the tile's face, since the tile's own pointer handlers are the strip's reach. */}
-          {touch ? <span {...(addVisible ? addName.bind : {})} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>+</span> : '+'}
+          {touch ? <span {...(addVisible ? addName.bind : {})} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}><PlusIcon /></span> : <PlusIcon />}
           {addName.bubble}
         </motion.button>
       </AnimatePresence>

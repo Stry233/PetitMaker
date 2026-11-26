@@ -5,6 +5,8 @@
  * different fingerprint names a change that reached the scene without a request. Development
  * servers only; a production view rests until something asks it to draw.
  */
+import { FNV_BASIS, fnv1aStep } from '../../../core/base/hash';
+
 /** How long a scene rests before the check redraws it, in ms. */
 const REST_MS = 1000;
 
@@ -40,9 +42,9 @@ export function viewFrameReader(
 
 function fingerprint(pixels: FramePixels): number {
   // FNV-1a over every byte: a one-pixel change moves it.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < pixels.length; i++) h = Math.imul(h ^ pixels[i]!, 0x01000193);
-  return h >>> 0;
+  let h = FNV_BASIS;
+  for (let i = 0; i < pixels.length; i++) h = fnv1aStep(h, pixels[i]!);
+  return h;
 }
 
 export class MissedRenderCheck {

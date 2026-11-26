@@ -10,7 +10,7 @@ import { cell, point } from '../../../_support/grid';
 
 function setup(id = 'stream') {
   const state = makeState(48, 48), executor = makeExecutor(state);
-  const ctx = makeToolCtx(state, executor, 2, 4, { armedMacro: id, armingEpoch: 1, layerPinned: true });
+  const ctx = makeToolCtx(state, executor, 2, { armedMacro: id, armingEpoch: 1 });
   const tool = new MacroTool();
   const down = (x: number, y: number) => tool.onPointerDown(cell({ x, y }), point({ x: x * 2, y: y * 2 }), ctx);
   const move = (x: number, y: number) => tool.onPointerMove(cell({ x, y }), point({ x: x * 2, y: y * 2 }), ctx);

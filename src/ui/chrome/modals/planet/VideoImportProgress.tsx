@@ -131,7 +131,7 @@ export function VideoImportProgress({ progress, finished = null, stacked = false
           return (
             <div key={stage} data-testid={`scan-stage-${stage}`} data-state={state} style={rowStyle}>
               <span aria-hidden style={markStyle}>
-                {state === 'done' ? <CheckIcon size={MARK} /> : state === 'active' && share === null ? <Spinner size={18} /> : <span style={state === 'active' ? { ...pendingDot, background: skin.active } : pendingDot} />}
+                {state === 'done' ? <CheckIcon size={MARK} /> : state === 'active' && share === null ? <Spinner size={MARK} /> : <span style={state === 'active' ? { ...pendingDot, background: skin.active } : pendingDot} />}
               </span>
               <span style={{ ...roleFont(state === 'active' ? 'head' : 'label'), color: state === 'pending' ? skin.muted : skin.ink }}>{t(copyOf(stage, progress))}</span>
               {state === 'active' && share !== null && (

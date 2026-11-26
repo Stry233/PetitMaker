@@ -28,9 +28,11 @@ describe('layers', () => {
     plateau(w, at, 5, 5, ELEVATION_MAX - 6);
     plateau(w, shift(at, 1, 1), 3, 3, ELEVATION_MAX - 3);
     const top = shift(at, 2, 2);
-    const p = brush(w, { floor: ELEVATION_MAX });
-    p.click(top);
-    expect(w.terrainAt(top)?.elevation).toBe(ELEVATION_MAX);
+    const p = brush(w);
+    for (let e = ELEVATION_MAX - 2; e <= ELEVATION_MAX; e++) {
+      p.click(top);
+      expect(w.terrainAt(top)?.elevation).toBe(e);
+    }
     p.click(top);
     expect(w.terrainAt(top)?.elevation, 'a further dab stacks nothing').toBe(ELEVATION_MAX);
 
@@ -80,8 +82,12 @@ describe('layers', () => {
     const at = w.openGround(6, 3);
     plateau(w, at, 3, 3, 2);
     plateau(w, shift(at, 3, 0), 3, 3, 1);
+    const before = w.fingerprint();
     const e = eraser(w, { eraserShape: 'rect', layerVisibility: { 2: false } });
     e.drag(at, shift(at, 5, 2));
+    expect(e.toasts).toEqual([]);
+    expect(w.fingerprint(), 'pressed on the hidden layer, nothing changes').toBe(before);
+    e.drag(shift(at, 5, 2), at);
     expect(e.toasts).toEqual([]);
     expect(w.terrainAt(shift(at, 1, 1)), 'the hidden block stays').toEqual({ type: TerrainType.Mountain, elevation: 2 });
     expect(w.terrainAt(shift(at, 4, 1)), 'the visible one is lowered').toBeNull();

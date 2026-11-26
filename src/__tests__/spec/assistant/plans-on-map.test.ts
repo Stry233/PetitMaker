@@ -27,7 +27,7 @@ const toolTurn = (calls: { callId: string; name: string; args: Record<string, un
 
 beforeEach(() => {
   s().initMap(makeTemplate(30, 30), createDefaultRegistry());
-  s().setRegion([]);
+  s().setRegion([], 'agent');
   deps = makeToolDeps({ vision: false, session: agentSessionPort });
 });
 
@@ -113,7 +113,7 @@ describe('plans on the map', () => {
   spec('ASST-25', "the area tools given a zone's number keep what they build inside that zone", async () => {
     userZone(1, 'forest', [3, 3, 12, 12]);
     userZone(2, 'garden', [16, 3, 26, 12]);
-    expect((await run('plant_forest', { zone: 1, density: 1 })).isError).toBe(false);
+    expect((await run('scatter_objects', { catalogIds: ['tree-peach'], count: 12, zone: 1 })).isError).toBe(false);
     expect(s().gridState!.objects.size).toBeGreaterThan(1);
     expect(insideZone(3, 3, 12, 12)).toBe(true);
     expect((await run('scatter_objects', { catalogIds: ['flower-rose'], count: 30, x1: 0, y1: 0, x2: 29, y2: 29, zone: 2 })).isError).toBe(false);
@@ -128,7 +128,7 @@ describe('plans on the map', () => {
     userZone(2, 'garden', [16, 3, 26, 12]);
     const before = (await run('get_annotations')).content;
     expect(before).not.toMatch(/; holds|holding nothing/);
-    await run('plant_forest', { zone: 1, density: 1 });
+    await run('scatter_objects', { catalogIds: ['tree-peach'], count: 12, zone: 1 });
     const after = (await run('get_annotations')).content;
     expect(after).toMatch(/#1 forest .*; holds \d+ tree/);
     expect(after).toMatch(/Built: zones holding nothing #2\./);

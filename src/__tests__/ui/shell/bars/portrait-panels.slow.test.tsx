@@ -4,13 +4,16 @@
  * the terrain tools stack inside the cream one, and the object panel folds to the item it arms.
  * jsdom has no layout, so every panel reports one height; how it looks is checked in a browser.
  */
-import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { spec } from '../../../_support/spec';
 import { setStoreState } from '../../../_support/store';
 import { I18nProvider, translate } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { armedItemOf } from '../../../../state/editing/edit-mode';
+import { armedItemOf, armedMacroOf } from '../../../../state/editing/edit-mode';
+import { OBJECT_SHELF_TABS } from '../../../../state/object-shelf-view';
+import { macroForShelfCategory } from '../../../../tools/macros';
+import { runCommand } from '../../../../editor/commands/run';
 import { InputModeProvider } from '../../../../ui/design/input-mode';
 import { Shell } from '../../../../ui/shell/Shell';
 import { __resetUprightGrid } from '../../../../ui/shell/bars/objects/UprightObjectPanel';
@@ -34,7 +37,7 @@ function sizeWindow(w: number, h: number): void {
 function mount() {
   return render(
     <InputModeProvider inputMode="touch" shape="portrait">
-      <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+      <I18nProvider><Shell><div /></Shell></I18nProvider>
     </InputModeProvider>,
   );
 }
@@ -139,6 +142,19 @@ describe('the upright bar raises the open mode panel', () => {
     fireEvent.click(armed);
     expect(grid()).not.toBeNull();
     expect(armedItemOf(useEditorStore.getState())).toBe(id);
+  });
+
+  it('the Smart Build key puts down the planting the folded panel shows, as it does over the wide shelf', async () => {
+    mount();
+    fireEvent.click(tile('mode.object'));
+    const planted = OBJECT_SHELF_TABS.find((tab) => macroForShelfCategory(tab.category) !== null)!;
+    fireEvent.click(screen.getByRole('tab', { name: translate(planted.labelKey) }));
+    fireEvent.click(within(grid()!).getByRole('button', { name: translate('smart.patch') }));
+    expect(armedMacroOf(useEditorStore.getState())).toBe(macroForShelfCategory(planted.category));
+    expect(grid()).toBeNull();
+    await act(() => runCommand('tool.smart'));
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+    expect(grid()).not.toBeNull();
   });
 
   spec('UI-29', 'the selected card shows its name and the others show none', () => {

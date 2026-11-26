@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEditorStore } from '../../../state/store';
 import { newMap } from '../../../editor/operations/map';
 import { editorPort } from '../../../editor/session/context';
-import { enterPlanetSession, leavePlanetSession, sessionPlanet, turnsInSession } from '../../../editor/operations/planet-session';
+import { sessionCut } from '../../_support/planet-session';
+import { enterPlanetSession, leavePlanetSession, turnsInSession } from '../../../editor/operations/planet-session';
 import { placeSessionLandmark, removeSessionLandmark } from '../../_support/session-landmarks';
 import { host } from '../../../editor/host/host';
 import { LANDMARKS } from '../../../core/game/profile';
@@ -71,7 +72,7 @@ describe('the station in the planet session', () => {
 
   it('travels with the planet: saved, in a planet file and in a share code', () => {
     expect(placeSessionLandmark({ x: 50.5, y: 82 }, 0, STATION.id).success).toBe(true);
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     expect(validatePlanetTemplate(t)).toBeNull();
     const station = t.landmarks.find((l) => l.id === STATION.id)!;
     expect(station).toMatchObject({ width: STATION.width, height: STATION.height });

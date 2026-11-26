@@ -1,0 +1,33 @@
+{
+  "id": "ramp-fluorite-steps",
+  "category": "ramp",
+  "name": {
+    "en": "Azure Fluorite Steps",
+    "zh": "蔚蓝萤石阶",
+    "ja": "碧蛍石の階段",
+    "ru": "Ступени из лазурного флюорита",
+    "th": "บันไดฟลูออไรต์ฟ้าคราม",
+    "id": "Tangga Fluorit Biru Langit",
+    "fr": "Marches en Fluorite d'Azur"
+  },
+  "aliases": [
+    "蓝",
+    "blue"
+  ],
+  "width": 2,
+  "height": 2,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "heightDrop",
+      "layers": 1
+    },
+    {
+      "type": "halfStep"
+    }
+  ],
+  "icon": "ramp-fluorite-steps",
+  "footprintColor": "#8fc8dc"
+}

@@ -11,7 +11,6 @@ import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import { usePanZoom } from '../../../../primitives/use-pan-zoom';
 import { PanZoomResetHint } from '../../../../primitives/pan-zoom-stage';
-import { MAP_ASPECT } from './sample-art';
 import { entering } from './stylize-parts';
 import { amplitude, framerMotion } from '../../../../design/motion';
 import { useHover } from '../../../../design/input-mode';
@@ -24,7 +23,9 @@ export interface Picture {
   label: string;
 }
 
-export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
+export function StudioCanvas({ aspect, main, corner, onSwap, enterIndex = 0 }: {
+  /** The pictured map's own ratio, which both boxes are drawn at. */
+  aspect: number;
   main: Picture;
   corner: Picture | null;
   onSwap: () => void;
@@ -45,7 +46,7 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
         data-picture={main.key}
         {...pz.stageProps}
         style={{
-          height: '100%', aspectRatio: String(MAP_ASPECT), position: 'relative',
+          height: '100%', aspectRatio: String(aspect), position: 'relative',
           borderRadius: radii.field, overflow: 'hidden', background: skin.inset,
           boxShadow: shadows.s2,
           ...pz.stageProps.style,
@@ -94,7 +95,7 @@ export function StudioCanvas({ main, corner, onSwap, enterIndex = 0 }: {
           <span
             data-picture={corner.key}
             style={{
-              display: 'block', width: '100%', aspectRatio: String(MAP_ASPECT),
+              display: 'block', width: '100%', aspectRatio: String(aspect),
               ...(corner.src ? { backgroundImage: `url(${corner.src})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
             }}
           />

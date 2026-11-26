@@ -12,7 +12,7 @@ These terms apply to the {app} web application and its accompanying pages. “We
 
 “User content” includes maps, designs, planning annotations, titles, descriptions, author credits, footers, reference images, AI instructions and generated results that you enter, import, draw, modify or select. “Exported content” includes map saves, images and the recoverable map data they contain.
 
-The source code and third-party components have their own open-source licenses. Asset usage is described in [Asset Licenses](/asset-licenses). These terms preserve rights already granted by those licenses. Your use of an AI service or publishing platform is also subject to your applicable agreement with that service.
+The source code is available under the Functional Source License (FSL-1.1-ALv2; see [License](/license)), and third-party components have their own licenses. Asset usage is described in [Asset Licenses](/asset-licenses). These terms preserve rights already granted by those licenses. Your use of an AI service or publishing platform is also subject to your applicable agreement with that service.
 
 ## 2. Reading and Acceptance
 

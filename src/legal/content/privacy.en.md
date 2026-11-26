@@ -28,6 +28,7 @@ Where applicable law requires a processing basis, we rely on what is necessary t
 | --- | --- |
 | Maps and recovery data | Saves the current map and necessary recovery state after edits; may include planning annotations, map notes, provenance, camera position and some undo history |
 | Saved planets | Keeps the planets you save or import under My planets, and planets that arrive with a map you open, including their names and shapes |
+| Blueprints | Keeps the blueprints you save or import, with their names, authors, folders and pictures, in this browser only, until you delete them or use Clear and restart in Settings |
 | Interface and editing preferences | Remembers language, scale, display, hints, shortcuts and other settings when the relevant options change |
 | Export settings | Remembers the preset, size, display options and footer template, including custom text in that template. Image titles and descriptions are not stored as export preferences; JSON notes may be saved with the map |
 | Own-image recognition | Stores content digests of recent successful image exports to recognize your own work when you import it again in this browser. These records stay in local storage and are not added to shared files; no browser fingerprint or personal identifier is collected for this purpose |
@@ -115,11 +116,17 @@ Connection setup and model management retrieve public model-capability informati
 
 How a provider retains request content, reviews it or uses it for product improvement or model training depends on the service, paid tier, account settings and your agreement with that provider. The tool cannot establish these conditions from a key alone or guarantee deletion or confidentiality on the provider's behalf. Review the relevant policy before use, and contact the actual recipient to access or delete content already sent.
 
+### 6.6 Sign-In with a Provider
+
+Where the assistant offers sign-in, a window opens on the provider's own page. After you consent there, the provider returns a one-time code to this site, and the application exchanges it for a key or token of your own account with that provider; usage is charged to that account. The provider learns that the sign-in came from this site.
+
+With OpenRouter the exchange goes directly from your browser to OpenRouter. ModelScope requires a secret that a web page cannot hold, so on the mainland China site the code, and later a renewal token, pass through an edge function the project operates. The function adds the secret, forwards the request to ModelScope and returns the token to your browser. It does not store or record the code or the token, and requests to models still go directly from your browser to the provider.
+
 ## 7. API-Key Storage and Protection
 
 An Agent key is stored locally after a successful connection. When the browser key vault is available, the application uses local encryption. If the vault is unavailable, the Agent may store a lightly obfuscated key, which is not encryption.
 
-The illustration studio saves encrypted keys only when the vault is available; otherwise it keeps them in the current session's memory. Keys are used to authenticate connection checks and service requests. They are excluded from map and image exports and do not pass through a project-operated server.
+The illustration studio saves encrypted keys only when the vault is available; otherwise it keeps them in the current session's memory. Keys are used to authenticate connection checks and service requests. They are excluded from map and image exports and do not pass through a project-operated server, apart from the ModelScope sign-in exchange described in Section 6.6.
 
 You can remove keys in connection settings or clear application storage with Clear and restart. If a key may have leaked, also revoke it with the issuing provider; deleting a local copy does not invalidate it.
 

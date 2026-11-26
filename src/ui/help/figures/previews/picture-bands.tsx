@@ -7,20 +7,17 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInView } from '../use-in-view';
-import type { GridState } from '../../../../core/model/types';
 import type { Locale } from '../../../../core/model/locale';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
-import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { useLocale, useT } from '../../../../i18n/context';
 import { DEFAULT_EXPORT_OPTIONS as DEFAULT_OPTIONS } from '../../../../io/export/facts';
-import type { ExportOptions } from '../../../../io/export/facts';
+import type { PictureChoices } from '../../../../io/export/facts';
 import { useShareCode } from '../../../chrome/modals/export/use-share-code';
-import {
-  captureCard3dAngles, loadBrandLockup, paintPreviewLayout, type PaintedPreview,
-} from '../../../../editor/export/preview';
+import type { PaintedPreview } from '../../../../editor/export/preview';
+import { paintPicture, paintedPicture } from '../../../../editor/sandbox/picture-shots';
+import { finishedMap } from '../../../../editor/sandbox/shots';
 import { LEGAL } from '../../../../legal/config';
 import { PreviewFrame } from './PreviewFrame';
-import { fullIslandState } from './share';
 
 /** The subject map is procedurally generated (the session's designed build), and the posed
  *  summary says exactly that, so the header wears the real Procedural badge. */
@@ -35,41 +32,24 @@ const POSED_SUMMARY: MapProvenanceSummary = {
 /** One creation stamp for the whole pose, so every figure's code band is the same band. */
 const POSED_CREATED_AT = new Date(0).toISOString();
 
-/** The 3D card's stills, captured once per map: every band figure shares the one set. */
-let anglesCache: { island: GridState; promise: Promise<HTMLImageElement[]> } | null = null;
-function cardAngles(island: GridState): Promise<HTMLImageElement[]> {
-  if (anglesCache?.island !== island) {
-    anglesCache = { island, promise: captureCard3dAngles(island).catch(() => []) };
-  }
-  return anglesCache.promise;
-}
+const POSED_OPTIONS: PictureChoices = {
+  ...DEFAULT_OPTIONS,
+  layerPreview: true, card3d: true, footer: true, showBadge: true,
+  // The posed base map is a thumbnail render, which carries no grid lines: a legend around a
+  // gridless bitmap would label nothing.
+  grid: false, annotations: false,
+};
 
-function posedOptions(title: string, description: string): ExportOptions {
-  return {
-    ...DEFAULT_OPTIONS,
-    title, description,
-    layerPreview: true, card3d: true, footer: true, showBadge: true,
-    // The posed base map is a thumbnail render, which carries no grid lines: a legend around a
-    // gridless bitmap would label nothing.
-    grid: false, annotations: false,
-  };
-}
-
-/** One finished painting per locale, shared by all six band figures on the page. */
-const paintedByLocale = new Map<string, PaintedPreview>();
-
-/** The composed picture, painted once per (locale, code readiness) through the export pipeline.
- *  `active` holds the work until the figure nears the viewport. */
+/** The composed picture, one finished painting per locale shared by all six band figures on the
+ *  page, painted through the export pipeline once the code band has settled. `active` holds the
+ *  work until the figure nears the viewport. */
 function usePaintedPicture(active: boolean): PaintedPreview | null {
   const t = useT();
   const locale = useLocale();
-  const cached = paintedByLocale.get(locale) ?? null;
+  const cached = paintedPicture(locale);
   const run = active && !cached;
-  const island = useMemo(() => (run ? fullIslandState() : null), [run]);
-  const options = useMemo(
-    () => posedOptions(t('help.fig.pic_title'), t('help.fig.pic_desc')),
-    [t],
-  );
+  const island = useMemo(() => (run ? finishedMap() : null), [run]);
+  const words = useMemo(() => ({ title: t('help.fig.pic_title'), description: t('help.fig.pic_desc') }), [t]);
   const code = useShareCode(run, island, { summary: POSED_SUMMARY, importable: true, resolution: 'standard', createdAt: POSED_CREATED_AT });
   const [painted, setPainted] = useState<PaintedPreview | null>(cached);
   const codeCanvas = code.asset?.canvas ?? null;
@@ -78,23 +58,11 @@ function usePaintedPicture(active: boolean): PaintedPreview | null {
     if (cached) { setPainted(cached); return undefined; }
     if (!run || !island || !codeSettled) return undefined;
     let live = true;
-    void (async () => {
-      const [shotUrl, angles, lockup] = await Promise.all([
-        renderThumbnail(island, 1200), cardAngles(island), loadBrandLockup(locale as Locale),
-      ]);
-      if (!live || !shotUrl) return;
-      const baseMap = new Image();
-      baseMap.src = shotUrl;
-      await baseMap.decode().catch(() => {});
-      if (!live || !baseMap.width) return;
-      const next = paintPreviewLayout({
-        options, summary: POSED_SUMMARY, state: island, locale: locale as Locale,
-        baseMap, card3dAngles: angles, codeImg: codeCanvas, brandLockup: lockup, site: LEGAL.canonicalOrigin,
-      });
-      if (live && next) { paintedByLocale.set(locale, next); setPainted(next); }
-    })();
+    void paintPicture(locale, {
+      options: POSED_OPTIONS, words, summary: POSED_SUMMARY, state: island, locale: locale as Locale, codeImg: codeCanvas, site: LEGAL.canonicalOrigin,
+    }, () => live).then((next) => { if (live && next) setPainted(next); });
     return () => { live = false; };
-  }, [run, cached, island, options, locale, codeCanvas, codeSettled]);
+  }, [run, cached, island, words, locale, codeCanvas, codeSettled]);
   return painted;
 }
 

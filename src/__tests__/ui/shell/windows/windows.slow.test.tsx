@@ -23,7 +23,7 @@ async function mountShell() {
   act(() => { useEditorStore.setState({ locale: 'en' }); });
   const view = render(
     <I18nProvider>
-      <Shell onRestoreSession={() => {}}><div /></Shell>
+      <Shell><div /></Shell>
     </I18nProvider>,
   );
   return { view, useEditorStore };
@@ -83,7 +83,8 @@ describe('the menu', () => {
     expect(useEditorStore.getState().modals[modal]).toBe(true);
     // Choosing from the sheet puts it away.
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
-    expect((await screen.findAllByRole('dialog', { name: label })).length).toBeGreaterThan(0);
+    // Help mounts its whole page tree on open, which a loaded machine takes more than a second to do.
+    expect((await screen.findAllByRole('dialog', { name: label }, { timeout: 5000 })).length).toBeGreaterThan(0);
   });
 
   it('closes on Escape without opening anything', async () => {

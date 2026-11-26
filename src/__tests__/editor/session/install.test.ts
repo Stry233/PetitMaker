@@ -5,11 +5,12 @@ import { act } from '@testing-library/react';
 import { useEditorStore } from '../../../state/store';
 import { makeState } from '../../_support/map-state';
 import { installEditorSession } from '../../../editor/session/install';
-import { readRestoreOffer, restoreSession } from '../../../editor/session/restore';
+import { restoreSession } from '../../../editor/session/restore';
 import { autosave } from '../../../editor/session/autosave';
 import { editorPort } from '../../../editor/session/context';
 import { loadMap, newMap } from '../../../editor/operations';
-import { createAutosave, readAutosave } from '../../../io/storage/autosave';
+import { createAutosave, readRestorableAutosave } from '../../../io/storage/autosave';
+import { decodeRecord } from '../../../io/storage/record-codec';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { listPlanets } from '../../../io/storage/planet-library';
 import { PREFS } from '../../../platform/storage/prefs';
@@ -58,7 +59,9 @@ describe('installEditorSession autosave triggers', () => {
     act(() => newMap(editorPort, 'tafa'));
     settle();
     expect(stored()).not.toBe(session);
-    expect(readAutosave()?.state.template.id).toBe('tafa');
+    // The empty replacement is stored over the session and offers nothing back.
+    expect((JSON.parse(decodeRecord(stored()!)) as { templateId?: string }).templateId).toBe('tafa');
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   it('[FILE-17] treats the first map installed after none as the starting map', () => {
@@ -73,12 +76,12 @@ describe('installEditorSession autosave triggers', () => {
   it('[FILE-16] saves a new title and new annotations on the same map', () => {
     newMap(editorPort, 'hexia');
     install();
-    act(() => store().setMapNotes({ title: 'Garden' }));
-    settle();
-    expect(readAutosave()?.state.notes?.title).toBe('Garden');
     act(() => store().addAnnotation({ kind: 'zone', id: 'zone-1', cells: [{ x: 30, y: 30 }], color: '#FF8A7A', tag: null, num: 1, size: 'm' }));
     settle();
-    expect(readAutosave()?.state.annotations?.items.map((a) => a.id)).toEqual(['zone-1']);
+    expect(readRestorableAutosave()?.state.annotations?.items.map((a) => a.id)).toEqual(['zone-1']);
+    act(() => store().setMapNotes({ title: 'Garden' }));
+    settle();
+    expect(readRestorableAutosave()?.state.notes?.title).toBe('Garden');
   });
 
   it('keeps the stored session through a planet session\'s map and edits', () => {
@@ -108,13 +111,31 @@ describe('installEditorSession stylize takes', () => {
   });
 });
 
+describe('installEditorSession the assistant\'s region brush', () => {
+  it('puts the brush down as the panel closes, with no panel mounted, and leaves another surface\'s brush alone', () => {
+    newMap(editorPort, 'hexia');
+    install();
+    store().setAssistantOpen(true);
+    store().setSelectingRegion(true, 'agent');
+    expect(store().selectingRegion).toBe(true);
+    store().setAssistantOpen(false);
+    expect(store().selectingRegion).toBe(false);
+
+    store().setSelectingRegion(true, 'generator');
+    store().setAssistantOpen(true);
+    store().setAssistantOpen(false);
+    expect(store().selectingRegion, 'Generate\'s scope is not the panel\'s to end').toBe(true);
+    store().setSelectingRegion(false);
+  });
+});
+
 describe('restoreSession', () => {
   it('[FILE-17] parks the saved cameras on the restored map, where each view takes its own', () => {
     const camera = { view2d: { zoom: 2, x: 40, y: 30 }, view3d: { az: 30, el: 25, dist: 0.6, tx: 2, tz: -3 } };
     waitingSession(camera);
     newMap(editorPort, 'hexia');
     const startup = store().gridState;
-    restoreSession(readRestoreOffer()!);
+    restoreSession(readRestorableAutosave()!);
     const restored = store().gridState!;
     expect(restored).not.toBe(startup);
     expect(takeParkedCamera(restored, 'view2d')).toEqual(camera.view2d);

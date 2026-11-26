@@ -57,37 +57,37 @@ describe('unrestricted stencil compatibility', () => {
         [
           "image",
           7,
-          "d17609f1",
+          "5722a228",
         ],
         [
           "image",
           16,
-          "16f1c2d6",
+          "7a42d792",
         ],
         [
           "image",
           24,
-          "991cf8d9",
+          "cbcf9cba",
         ],
         [
           "mixed",
           7,
-          "35636e37",
+          "1ef1dce5",
         ],
         [
           "mixed",
           16,
-          "548d8f81",
+          "df4b82fb",
         ],
         [
           "mixed",
           24,
-          "aa6d3f66",
+          "5b3c28e6",
         ],
         [
           "terrain",
           7,
-          "8fd0dedb",
+          "e3fdd1ce",
         ],
         [
           "terrain",

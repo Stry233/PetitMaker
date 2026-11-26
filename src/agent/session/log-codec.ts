@@ -1,9 +1,11 @@
 /**
  * The stored session envelope: a versioned copy of the log without provider raw blocks or result
- * images, reasoning kept as bounded digests and rule messages read under their current keys.
+ * images, reasoning kept as bounded digests, rule messages read under their current keys and a
+ * loop-authored note marked as one.
  */
 import { BASE_SUPPORT } from '../../core/game/profile';
 import { deepFreeze, eventsOf, type SessionLog } from '../core/log';
+import { NOTE_MARK } from '../core/nudges';
 import { REASONING_EXCERPT_CHARS, type Part, type SessionEvent } from '../core/types';
 import { validStoredEvents } from './validate-log';
 
@@ -40,11 +42,15 @@ function renameViolation(v: Violation): Violation {
   return { ruleId: v.ruleId, message: renamed.message, ...(params ? { params } : {}) };
 }
 
-/** A stored event with its rule messages under their current keys. */
+/** A stored event with its rule messages under their current keys, and a failed result that was a
+ *  loop-authored note carrying `detail.loopNote`, which results stored before that field lack. */
 function upgradeStored(e: SessionEvent): SessionEvent {
-  const violations = e.kind === 'toolResult' ? e.detail?.violations : undefined;
-  if (e.kind !== 'toolResult' || !e.detail || !violations?.some((v) => v.message in RENAMED_RULE_MESSAGES)) return e;
-  return { ...e, detail: { ...e.detail, violations: violations.map(renameViolation) } };
+  if (e.kind !== 'toolResult') return e;
+  const violations = e.detail?.violations;
+  const renamed = e.detail && violations?.some((v) => v.message in RENAMED_RULE_MESSAGES)
+    ? { ...e, detail: { ...e.detail, violations: violations.map(renameViolation) } } : e;
+  if (!renamed.isError || renamed.detail?.loopNote || !renamed.content.trimStart().startsWith(NOTE_MARK)) return renamed;
+  return { ...renamed, detail: { ...renamed.detail, loopNote: true } };
 }
 
 function stripForStorage(e: SessionEvent): SessionEvent {

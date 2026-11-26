@@ -1,6 +1,7 @@
 /*
- * Renders model-authored Markdown through the same constrained parser used by legal documents. Raw
- * HTML is unsupported and model-authored links retain their text without becoming navigable.
+ * Renders model-authored Markdown through the constrained parser and emitter legal documents use, in
+ * the card's own look (`MODEL_LOOK`). Raw HTML is unsupported and model-authored links retain their
+ * text without becoming navigable.
  * `ModelProse` emits block layout for long answers and reasoning; `inlineProseRuns` preserves inline
  * emphasis and line breaks for clamped status text. App-authored labels and user input remain plain.
  */
@@ -9,15 +10,16 @@ import { displayAgentText } from '../../../agent/panel';
 import { translate, useT } from '../../../i18n/context';
 import { inlineText, parseLegalMarkdown, type Inline, type MdNode } from '../../../legal/markdown';
 import { radii } from '../../design/styles';
-import { roleFont, roleWeight, LINE_HEIGHT } from '../../design/text-weight';
+import { roleFont, roleSize, roleWeight, LINE_HEIGHT } from '../../design/text-weight';
 import { MUTED, PLATE } from '../../design/tokens';
 import { useStreamedText } from '../hooks/use-streamed-text';
 import { recede } from '../panel-skin';
+import { markdownBlocks, markdownInline, type MarkdownLook } from '../../primitives/LegalMarkdown';
 
-/** A code span, at the one rung a chip of machine text earns beside prose. */
+/** A code span, a rung under the prose round it. */
 const CODE: CSSProperties = {
   fontFamily: 'monospace',
-  fontSize: '0.92em',
+  fontSize: roleSize('chip'),
   fontWeight: 400,
   background: PLATE,
   borderRadius: radii.sm,
@@ -27,58 +29,27 @@ const CODE: CSSProperties = {
 const EMPHASIS: CSSProperties = { fontWeight: `var(--model-emphasis-weight, ${roleWeight('label')})` };
 
 const BLOCK: CSSProperties = { margin: 0 };
-const LIST: CSSProperties = { ...BLOCK, paddingLeft: 20 };
 /** Model headings use a lead line without changing the card's surrounding hierarchy. */
 const LEAD: CSSProperties = { ...BLOCK, ...roleFont('head'), lineHeight: LINE_HEIGHT.snug, marginTop: 4 };
-const QUOTE: CSSProperties = { ...BLOCK, paddingLeft: 10, borderLeft: `2px solid ${MUTED}`, opacity: recede.near };
-const RULE: CSSProperties = { border: 'none', borderTop: `1px solid ${MUTED}`, opacity: recede.rule, margin: 0 };
-const ROW: CSSProperties = { display: 'flex', gap: 8 };
-const CELL: CSSProperties = { flex: 1, minWidth: 0 };
+/** A table's cells keep their row, which is the whole of what a table says: the header leads and
+ *  each row's cells share the width, nothing joined into a sentence it was never written as. */
+const CELL: CSSProperties = { padding: '0 8px 4px 0', textAlign: 'left', verticalAlign: 'top' };
 
-/** One inline run. Link nodes keep their visible text but not their href. */
-function inlineNode(node: Inline, key: string | number): ReactNode {
-  if (node.t === 'strong') return <strong key={key} style={{ ...EMPHASIS }}>{node.text}</strong>;
-  if (node.t === 'em') return <em key={key}>{node.text}</em>;
-  if (node.t === 'code') return <code key={key} style={CODE}>{node.text}</code>;
-  return <Fragment key={key}>{node.text}</Fragment>;
-}
-
-function inlineRun(children: Inline[], keyPrefix = ''): ReactNode[] {
-  return children.map((child, i) => inlineNode(child, `${keyPrefix}${i}`));
-}
-
-function blockNode(node: MdNode, key: number): ReactNode {
-  switch (node.t) {
-    case 'h':
-      return <h3 key={key} style={LEAD}>{inlineRun(node.children)}</h3>;
-    case 'ul':
-      return <ul key={key} style={LIST}>{node.items.map((item, i) => <li key={i}>{inlineRun(item)}</li>)}</ul>;
-    case 'ol':
-      return <ol key={key} style={LIST}>{node.items.map((item, i) => <li key={i}>{inlineRun(item)}</li>)}</ol>;
-    case 'blockquote':
-      return (
-        <div key={key} style={QUOTE}>
-          {node.children.map((line, i) => <p key={i} style={BLOCK}>{inlineRun(line)}</p>)}
-        </div>
-      );
-    case 'hr':
-      return <hr key={key} style={RULE} />;
-    // A table's cells keep their row, which is the whole of what a table says: the header leads and
-    // each row's cells share the width. Nothing is joined into a sentence with punctuation it was
-    // never written with.
-    case 'table':
-      return (
-        <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={ROW}>{node.header.map((cell, i) => <span key={i} style={{ ...CELL, ...EMPHASIS }}>{inlineRun(cell)}</span>)}</div>
-          {node.rows.map((row, i) => (
-            <div key={i} style={ROW}>{row.map((cell, j) => <span key={j} style={CELL}>{inlineRun(cell)}</span>)}</div>
-          ))}
-        </div>
-      );
-    default:
-      return <p key={key} style={BLOCK}>{inlineRun(node.children)}</p>;
-  }
-}
+/** The model's prose in the card's own rung: links keep their visible text but not their href. */
+const MODEL_LOOK: MarkdownLook = {
+  heading: () => ({ tag: 'h3', style: LEAD }),
+  p: BLOCK,
+  list: { ...BLOCK, paddingLeft: 20 },
+  blockquote: { ...BLOCK, paddingLeft: 10, borderLeft: `2px solid ${MUTED}`, opacity: recede.near },
+  hr: { border: 'none', borderTop: `1px solid ${MUTED}`, opacity: recede.rule, margin: 0 },
+  tableWrap: BLOCK,
+  table: { borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' },
+  th: { ...CELL, ...EMPHASIS },
+  td: CELL,
+  code: CODE,
+  strong: EMPHASIS,
+  link: (node, key) => <Fragment key={key}>{node.text}</Fragment>,
+};
 
 function textRuns(node: MdNode): Inline[][] {
   switch (node.t) {
@@ -134,7 +105,7 @@ export function ModelProse({ text, style, testId, streaming = false }: {
       // or id has no space for the line breaker, and without this it walks out of the card.
       style={{ ...roleFont('body'), display: 'flex', flexDirection: 'column', gap: 8, overflowWrap: 'anywhere', ...style }}
     >
-      {revealed.map((node, i) => blockNode(node, i))}
+      {markdownBlocks(revealed, MODEL_LOOK)}
     </div>
   );
 }
@@ -167,14 +138,14 @@ function runsOf(node: MdNode): ReactNode[] {
     case 'ol':
       return node.items.flatMap((item, j) => [
         <Fragment key={`li-${j}`}>{`${j > 0 ? '\n' : ''}${node.t === 'ol' ? `${j + 1}. ` : '- '}`}</Fragment>,
-        ...inlineRun(item, `li-${j}-`),
+        ...markdownInline(item, MODEL_LOOK, `li-${j}-`),
       ]);
     case 'blockquote':
-      return node.children.flatMap((line, i) => inlineRun(line, `quote-${i}-`));
+      return node.children.flatMap((line, i) => markdownInline(line, MODEL_LOOK, `quote-${i}-`));
     case 'table':
-      return [...node.header, ...node.rows.flat()].flatMap((cell, i) => inlineRun(cell, `cell-${i}-`));
+      return [...node.header, ...node.rows.flat()].flatMap((cell, i) => markdownInline(cell, MODEL_LOOK, `cell-${i}-`));
     default:
-      return inlineRun(node.children);
+      return markdownInline(node.children, MODEL_LOOK);
   }
 }
 

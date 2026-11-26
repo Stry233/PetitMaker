@@ -1,7 +1,7 @@
 /** What a picture kind's plan is built from on a map: the box it fills, the cells it may write, and
  *  the material and knobs its plan reads. */
 import { isBuildableZone } from '../../../core/game/zones';
-import type { GridState, MacroCoord } from '../../../core/model/types';
+import type { GridState, MacroCoord, Rotation } from '../../../core/model/types';
 import type { StencilKind } from '../kinds';
 import { letterRecipe, pictureRecipe, type StencilFillKind } from './fill-recipes';
 import type { PlanInputs } from './stencil-plan';
@@ -28,11 +28,13 @@ export interface PlanKnobs {
   /** The picture's contrast as the engine's factor, 1 leaving the image alone. */
   contrast: number;
   allow?: ReadonlySet<number> | undefined;
+  /** The map direction the picture's top points, clockwise from north; absent is north. */
+  facing?: Rotation;
 }
 
 /** A stencil kind's plan inputs: a letter's fill, and for a picture its tile palette, decoration and
  *  water role. */
-export function planInputsFor(input: StencilKind, box: StencilBox, { fill, item, contrast, allow }: PlanKnobs): PlanInputs {
+export function planInputsFor(input: StencilKind, box: StencilBox, { fill, item, contrast, allow, facing }: PlanKnobs): PlanInputs {
   const picture = input === 'image' ? pictureRecipe(fill) : null;
   return {
     box, fill: letterRecipe(fill, item), contrast,
@@ -40,5 +42,6 @@ export function planInputsFor(input: StencilKind, box: StencilBox, { fill, item,
     ...(picture?.tiles ? { material: picture.tiles } : {}),
     ...(picture?.decor ? { decor: { species: picture.decor } } : {}),
     ...(allow ? { allow } : {}),
+    ...(facing ? { facing } : {}),
   };
 }

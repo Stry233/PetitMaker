@@ -1,9 +1,9 @@
 /**
  * An installed app enters immersive mode (page fullscreen) on its own: a browser grants fullscreen only
  * to a user gesture, so it enters on the first tap or key after it opens or returns to the screen,
- * unless the user turned it off with the Settings button (`prefs.ts:PREFS.installedImmersive`).
+ * unless the user turned it off with the Settings button (`fullscreen.ts:setImmersive` records it).
  */
-import { readPref, writePref } from '../storage/prefs';
+import { readPref } from '../storage/prefs';
 import { enterFullscreen, fullscreenAvailable, isFullscreen, isInstalledApp } from './fullscreen';
 
 /** The events a browser counts as a user activation. */
@@ -36,10 +36,4 @@ export function installInstalledImmersive(): () => void {
 /** Whether this page enters immersive mode on its own (`installInstalledImmersive`). */
 export function entersImmersiveItself(): boolean {
   return fullscreenAvailable() && isInstalledApp() && readPref('installedImmersive');
-}
-
-/** Records the choice the Settings button makes in an installed app: entering keeps the entry on,
- *  leaving turns it off. A tab records nothing. */
-export function rememberImmersiveChoice(entering: boolean): void {
-  if (isInstalledApp()) writePref('installedImmersive', entering);
 }

@@ -1,17 +1,17 @@
 import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { radii, cursors, shadows } from '../../../../design/styles';
-import { skin } from '../../../../design/window-skin';
+import { pickedRing, skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
-import { useEditorStore } from '../../../../../state/store';
 import { PROC_PACK_META, STYLE_PACKS, type StylizeDirection } from '../../../../../pipelines/stylize/facts';
-import { packSampleUrl } from './sample-assets';
+import { STYLE_SAMPLE_ASPECT, packSampleUrl } from '../../../../../assets/style-sample-urls';
 import { useStylizeVersions } from './use-stylize-versions';
 import { amplitude, framerMotion } from '../../../../design/motion';
-import { MAP_ASPECT } from './sample-art';
 import type { I18nKey } from '../../../../../i18n/keys';
 import { useHover, useInteractionProfiles } from '../../../../design/input-mode';
+import { ChevronRightIcon } from '../../../../primitives/line-glyphs';
+import { pressCommand } from '../../../../../editor/commands/run';
 
 const capStyle: CSSProperties = { ...roleFont('subhead'), color: skin.muted };
 
@@ -22,7 +22,7 @@ function directionNameKey(direction: StylizeDirection): I18nKey {
     ?? 'stylize.dir_custom';
 }
 
-/** Resting and hover poses for the three fanned map-ratio cards. */
+/** Resting and hover poses for the three fanned sample cards. */
 const FAN_TRAVEL = amplitude('stylize.entry.fan');
 const FAN_POSES = [
   { left: 0, top: 6, rest: -7, spreadRotate: -13, dx: -FAN_TRAVEL, dy: 1 },
@@ -30,7 +30,7 @@ const FAN_POSES = [
   { left: 16, top: 7, rest: 9, spreadRotate: 15, dx: FAN_TRAVEL, dy: 1 },
 ] as const;
 
-/** Three fanned cards previewing the style packs at the map's own ratio: the real sample once the
+/** Three fanned cards previewing the style packs at the samples' ratio: the real sample once the
  *  tuning rig commits it, the pack's own palette otherwise — so the entry stands before any asset
  *  exists. Purely decorative; the label beside it carries the words. */
 function FannedCards() {
@@ -48,7 +48,7 @@ function FannedCards() {
             }}
             transition={framerMotion('stylize.entry.fan')}
             style={{
-              position: 'absolute', left: pose.left, top: pose.top, width: 40, aspectRatio: MAP_ASPECT,
+              position: 'absolute', left: pose.left, top: pose.top, width: 40, aspectRatio: STYLE_SAMPLE_ASPECT,
               borderRadius: radii.chip, boxShadow: shadows.knob, zIndex: i, display: 'block',
               background: url ? `${skin.plate} url(${url}) center / cover no-repeat` : pack.palette[0],
             }}
@@ -65,7 +65,6 @@ export function StylizeEntry() {
   const t = useT();
   const profiles = useInteractionProfiles();
   const spread = useHover('spread');
-  const setModal = useEditorStore((s) => s.setModal);
   const { selected } = useStylizeVersions();
 
   return (
@@ -73,15 +72,16 @@ export function StylizeEntry() {
       <div style={capStyle}>{t('stylize.entry')}</div>
       <motion.button
         type="button"
-        onClick={() => setModal('stylize', true)}
+        data-testid="stylize-entry"
+        onClick={() => pressCommand('window.open', { window: 'stylize' })}
         initial="rest"
         animate="rest"
         whileHover={spread}
-        // A full-width row uses a restrained hover scale instead of the compact-button growth.
-        variants={{ rest: { scale: 1 }, spread: { scale: 1.02 } }}
-        whileTap={profiles.tile.whileTap}
-        transition={framerMotion('stylize.entry.fan')}
-        style={{ ...entryBtn, ...(selected ? appliedRing : null) }}
+        // A full-width row presses as rows do; the hover's variant label also fans the cards.
+        variants={{ rest: { scale: 1 }, spread: profiles.row.whileHover ?? {} }}
+        whileTap={profiles.row.whileTap}
+        transition={profiles.row.transition}
+        style={{ ...entryBtn, boxShadow: pickedRing(!!selected) }}
       >
         <FannedCards />
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, minWidth: 0, flex: 1 }}>
@@ -92,7 +92,7 @@ export function StylizeEntry() {
               : t('stylize.entry_default')}
           </span>
         </span>
-        <span style={chevStyle}>▸</span>
+        <span aria-hidden style={chevStyle}><ChevronRightIcon size={16} /></span>
       </motion.button>
     </div>
   );
@@ -103,11 +103,9 @@ const entryBtn: CSSProperties = {
   background: skin.inset, border: 'none', borderRadius: radii.lg,
   padding: '10px 12px', cursor: cursors.clickable, width: '100%', boxSizing: 'border-box',
 };
-/** Active-color ring for the style currently applied to the export. */
-const appliedRing: CSSProperties = { boxShadow: `0 0 0 2px ${skin.active}` };
 const labelStyle: CSSProperties = { ...roleFont('label'), color: skin.ink };
 const subStyle: CSSProperties = {
   ...roleFont('caption'), color: skin.muted, maxWidth: '100%',
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 };
-const chevStyle: CSSProperties = { ...roleFont('label'), color: skin.muted, flex: 'none' };
+const chevStyle: CSSProperties = { display: 'flex', color: skin.muted, flex: 'none' };

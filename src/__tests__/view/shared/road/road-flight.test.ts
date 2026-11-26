@@ -18,11 +18,12 @@ import { makeState } from '../../../_support/map-state';
 import { getCatalogItem } from '../../../../state/catalog';
 import { roadLookup } from '../../../../state/object-index';
 import { buildRoadRegions } from '../../../../view/shared/road/region';
-import { roadMaterialPatches, roadMaterialSettled } from '../../../../view/shared/road/material';
+import { roadBandLayout, roadMaterialSettled } from '../../../../view/shared/road/material';
 import { carriedRoadSurfaces, standingRoadSurfaces } from '../../../../view/shared/road/flight';
 import { buildRoadTrimMeshes } from '../../../../view/map3d/geometry/road-mesh';
 import { hexToRgb01 } from '../../../../view/map3d/draw/palette';
 import { hexStringToNumber } from '../../../../core/base/color';
+import { beatClock } from '../../../_support/beat-clock';
 import { ObjectLayer } from '../../../../view/map2d/layers/object-layer';
 
 const ID = 'path-urban-asphalt';
@@ -82,7 +83,7 @@ describe('a partly carried road surface', () => {
       ...carried.flatMap((id) => carriedRoadSurfaces(state.objects.get(id)!, roads)),
     ];
     const expected = new Map<string, number>();
-    for (const patch of surfaces.flatMap((s) => roadMaterialPatches(s, spec))) {
+    for (const patch of surfaces.flatMap((s) => roadBandLayout(s, spec).windows.flatMap((window) => window.patches()))) {
       const color = hexToRgb01(patch.color).map((v) => v.toFixed(4)).join(',');
       expected.set(color, (expected.get(color) ?? 0) + patch.polygons.reduce((sum, p) => sum + area(p), 0));
     }
@@ -93,7 +94,8 @@ describe('a partly carried road surface', () => {
 
   it('draws the same surfaces in 2D, banded, with the carried tiles in their wrappers', () => {
     const { state, carried } = block();
-    const layer = new ObjectLayer({ state: () => state, requestRender: () => {} });
+    // A loop that has not drawn the turn's first frame: the tiles are in flight.
+    const layer = new ObjectLayer({ state: () => state, requestRender: () => {}, play: beatClock().play });
     layer.addObjects([...state.objects.values()]);
     layer.flushRoadRegions();
     const roads = roadLookup(state);

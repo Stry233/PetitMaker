@@ -11,7 +11,8 @@
 import { CATALOG_MODELS } from '../../../../config/catalog/models';
 import { contentRandom } from '../noise';
 import { fnv1a32 } from '../../../../core/base/hash';
-import { hexToLch, mixHex, reColor, rgba } from '../oklab';
+import { hexToLch, mixHex, reColor } from '../oklab';
+import { rgbaOf } from '../../../../core/base/color';
 import { applySubstrate, sheetView } from '../draw';
 import type { ProcFields, ProcObject } from '../fields';
 import type { ProcView } from '../draw';
@@ -96,7 +97,7 @@ export function drawBase(ctx: CanvasRenderingContext2D, F: ProcFields, view: Pro
       : (srcC < 0.06 ? mixHex(src0, '#B9A171', 0.5) : src0);
     ctx.fillStyle = c;
     ctx.fillRect(sx, sy, o.w * px, o.h * px);
-    ctx.strokeStyle = rgba(reColor(c, { dL: -0.14 }), 0.8);
+    ctx.strokeStyle = rgbaOf(reColor(c, { dL: -0.14 }), 0.8);
     ctx.lineWidth = Math.max(0.8, px * 0.08);
     ctx.strokeRect(sx, sy, o.w * px, o.h * px);
   }

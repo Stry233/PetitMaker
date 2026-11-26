@@ -6,7 +6,8 @@ import { groupByGrid } from '../../../../core/grid/cell-spans';
 import { type CellSet, type GridId } from '../../../../core/grid/grids';
 import { animConfig } from '../../../shared/motion/anim-config';
 import type { OverlayHost3D } from './host';
-import { makeMat, toGeo } from './paint';
+import { makeMat } from './paint';
+import { toPlainGeometry } from '../../draw/mesh-upload';
 
 interface Flash { kind: FlashKind; mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial; bornMs: number; lifeMs: number; peak: number }
 
@@ -75,7 +76,7 @@ export class OverlayFlashes3D {
       ? rectDecals(state, shapes, grid)
       : cellDecals(state, shapes, grid);
     if (!data.positions.length) return;
-    const geo = toGeo(data);
+    const geo = toPlainGeometry(data);
     const mat = makeMat(color, peak);
     const mesh = new THREE.Mesh(geo, mat);
     this.host.group.add(mesh);

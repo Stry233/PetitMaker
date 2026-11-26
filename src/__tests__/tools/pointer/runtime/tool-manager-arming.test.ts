@@ -9,9 +9,9 @@ import { makeTestToolManager } from '../../../_support/tool-manager';
 beforeEach(resetStore);
 
 describe('a tool manager built for a map that arrives mid-session', () => {
-  it('draws with the shape, content, layer and size the shell already shows', () => {
+  it('draws with the shape, content and size the shell already shows', () => {
     useEditorStore.getState().setEditMode({ mode: 'water', arm: { kind: 'shape', shape: 'line' } });
-    setStoreState({ activeLayer: 2, drawingBrushSize: 3 });
+    setStoreState({ drawingBrushSize: 3 });
 
     const tm = makeTestToolManager();
     tm.syncArming();
@@ -22,7 +22,6 @@ describe('a tool manager built for a map that arrives mid-session', () => {
     const { arming } = tm.getContext();
     expect(arming.shape).toBe('line');
     expect(arming.contentType).toBe('water');
-    expect(arming.floor).toBe(2);
     expect(arming.brushSize).toBe(3);
   });
 

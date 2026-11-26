@@ -12,7 +12,7 @@
  */
 import { isLaidLandmark, landmarkCells, templateLandmark } from '../../../../core/model/landmarks';
 import { footprintCells } from '../../../../core/grid/footprint';
-import { floodFrom, stepDistance } from '../../../../core/grid/cell-sets';
+import { components, floodFrom, stepDistance } from '../../../../core/grid/cell-sets';
 import { flatIndex } from '../../../../core/grid/rect';
 import { NEIGHBORS4 } from '../../../../core/grid/directions';
 import { type GridState, type MacroCoord } from '../../../../core/model/types';
@@ -21,7 +21,7 @@ import { objectRect } from '../../../../state/object-geometry';
 import { entriesNear, getObjectIndex } from '../../../../state/object-index';
 import { tryPlace, type PlaceCtx } from '../../../placement/object';
 import type { AnchorLane } from '../places/anchors';
-import type { Scope } from './scope';
+import type { Scope } from '../../terrain-plan/scope';
 import { isCrossing } from '../../../../core/model/traits';
 
 /** How far a course may run by default: the reach a bridge's bare bank is given to find the
@@ -231,7 +231,7 @@ export function paveBand(
   const toNetwork = stepDistance([...network], W, H, true);
   const near = (c: MacroCoord): number => toNetwork[flatIndex(c.x, c.y, W)]!;
   let laid = 0;
-  for (const arc of arcsOf(band, W)) {
+  for (const arc of arcsOf(band, W, H)) {
     if (arc.length < arcMin) continue;
     const joined = arc.some((c) => touches(network, c, W, H));
     let path: MacroCoord[] | null = null;
@@ -255,30 +255,13 @@ export function paveBand(
 /** How many cells of one arc a course is tried from, nearest the network first. */
 const BAND_TRIES = 4;
 
-/** The 4-connected pieces of a set of cells, largest first. */
-function arcsOf(cells: readonly MacroCoord[], W: number): MacroCoord[][] {
-  const own = new Map(cells.map((c) => [flatIndex(c.x, c.y, W), c] as const));
-  const seen = new Set<number>();
-  const out: MacroCoord[][] = [];
-  for (const [start, at] of own) {
-    if (seen.has(start)) continue;
-    const piece: MacroCoord[] = [];
-    const stack = [{ i: start, c: at }];
-    seen.add(start);
-    while (stack.length) {
-      const { c } = stack.pop()!;
-      piece.push(c);
-      for (const [dx, dy] of NEIGHBORS4) {
-        const j = flatIndex(c.x + dx, c.y + dy, W);
-        const next = own.get(j);
-        if (!next || seen.has(j)) continue;
-        seen.add(j);
-        stack.push({ i: j, c: next });
-      }
-    }
-    out.push(piece);
+/** The 4-connected pieces of a set of cells on the `W` by `H` map, largest first. */
+function arcsOf(cells: readonly MacroCoord[], W: number, H: number): MacroCoord[][] {
+  const pieces: MacroCoord[][] = [];
+  for (const [i, id] of components(new Set(cells.map((c) => flatIndex(c.x, c.y, W))), W, H)) {
+    (pieces[id] ??= []).push({ x: i % W, y: (i / W) | 0 });
   }
-  return out.sort((a, b) => b.length - a.length);
+  return pieces.sort((a, b) => b.length - a.length);
 }
 
 /**

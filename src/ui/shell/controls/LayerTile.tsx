@@ -1,12 +1,11 @@
 /** One floor of the layer panel: its name, how full it is, and its eye and lock. */
 import { chipShift, tileOf, Row } from './layer-plate';
-import { LayerRowPlate } from './LayerRowPlate';
+import { LayerRowFill } from './LayerRowPlate';
 import { ActionButton } from '../../primitives/ActionButton';
 import { type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { ELEVATION_COLORS } from '../../../core/model/palette';
 import { useT } from '../../../i18n/context';
-import { useEditorStore } from '../../../state/store';
 import { iconUrl } from '../../../assets/icon-urls';
 import { btnReset, cursors, radii } from '../../design/styles';
 import { type LayerMode } from '../frame';
@@ -14,10 +13,12 @@ import { useTransition } from '../../design/motion/use-motion';
 import { cssMotion } from '../../design/motion';
 import { frameZoomAttr } from '../../design/motion/zoom-corrected-radius';
 import { ERROR, INK, PLATE_INK, TRACK } from '../../design/tokens';
-import { TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { useTouchMode } from '../../design/input-mode';
 import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
+import { useRunCommand } from '../use-shell-commands';
+import { layerNumber } from '../../../core/game/profile';
 
 /** How strongly a locked tile is tinted while its paints are being refused. */
 const LOCK_TINT = 0.42;
@@ -57,8 +58,8 @@ export function TileToggle({ icon, label, testId, size, onPress }: {
   );
 }
 /**
- * A floor: what stands on it, how much of the map that is, and its eye and lock. The plate behind the
- * content selects it, so the toggles sit inside a press target without nesting. It travels between the
+ * A floor: what stands on it, how much of the map that is, and its eye and lock, filled while a stroke
+ * works on it; only the toggles take a press. It travels between the
  * two sizes (`layout`, re-measured on the size alone); boxes whose shape changes take `layout` and the
  * words and toggles in them `layout="position"`, so nothing stretches.
  */
@@ -75,9 +76,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
   const zoomed = useZoomedLayoutTransform();
   const zoom = useFrameZoom();
   const fw = useFrameReadableWeight();
-  const selectLayer = useEditorStore((s) => s.selectLayer);
-  const setLayerVisibility = useEditorStore((s) => s.setLayerVisibility);
-  const setLayerLocked = useEditorStore((s) => s.setLayerLocked);
+  const run = useRunCommand();
   const band = ELEVATION_COLORS[row.elevation] ?? ELEVATION_COLORS[0]!;
   const ink = active ? INK : PLATE_INK;
   const tile = tileOf(mode, useTouchMode());
@@ -107,7 +106,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
       {/* The one part of a tile that gives way where its column is narrow (`layer-plate.ts:tileLeastWidth`). */}
       <span
         title={row.name}
-        style={{ fontSize: TEXT.tab, fontWeight: fw(800, TEXT.tab), color: ink, minWidth: 0, textOverflow: 'ellipsis',
+        style={{ fontSize: roleSize('label'), fontWeight: fw(800, roleSize('label')), color: ink, minWidth: 0, textOverflow: 'ellipsis',
           // Clipped across only: the line is one em tall, and marks above or below it stay drawn.
           overflowX: 'clip', overflowY: 'visible' }}
       >
@@ -123,7 +122,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
         minWidth: tile.count,
         // The square gives the name the slack; the file reads the figure off its right edge against the toggles.
         ...(stacked ? { flex: 1 } : { textAlign: 'right' as const }),
-        fontSize: TEXT.small, fontWeight: fw(800, TEXT.small), color: ink, fontVariantNumeric: 'tabular-nums',
+        fontSize: roleSize('small'), fontWeight: fw(800, roleSize('small')), color: ink, fontVariantNumeric: 'tabular-nums',
       }}
     >
       {row.count}
@@ -138,14 +137,14 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
         label={t('a11y.toggle_visibility')}
         testId={`shell-layer-eye-${row.elevation}`}
         size={tile.icon}
-        onPress={() => setLayerVisibility(row.elevation, !visible)}
+        onPress={() => run('view.layer_visible', { layer: layerNumber(row.elevation), visible: !visible })}
       />
       <TileToggle
         icon={`${locked ? 'lock' : 'unlock'}-selected`}
         label={t('a11y.toggle_lock')}
         testId={`shell-layer-lock-${row.elevation}`}
         size={tile.icon}
-        onPress={() => setLayerLocked(row.elevation, !locked)}
+        onPress={() => run('view.layer_locked', { layer: layerNumber(row.elevation), locked: !locked })}
       />
     </motion.div>
   );
@@ -156,18 +155,12 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
   return (
     <motion.div
       {...shape}
+      aria-label={row.name}
+      aria-current={active ? 'true' : undefined}
+      data-testid={`shell-layer-row-${row.elevation}`}
       style={{ position: 'relative', padding: `${tile.padY}px ${tile.padX}px` }}
     >
-      <LayerRowPlate
-        {...shape}
-        selected={active}
-        aria-label={row.name}
-        data-testid={`shell-layer-row-${row.elevation}`}
-        // Pressing the pinned floor again unpins it, so the water brush follows the ground again.
-        // Choosing a floor stands annotate down, or the panel would show two selected rows at once.
-        onClick={() => selectLayer(row.elevation)}
-        style={{ borderRadius: tile.radius }}
-      />
+      <LayerRowFill {...shape} selected={active} style={{ borderRadius: tile.radius }} />
       {locked ? (
         <motion.span
           {...shape}
@@ -184,7 +177,7 @@ export function LayerTile({ row, mode, active, visible, locked, refused }: {
         {...shape}
         style={{
           position: 'relative', display: 'flex', flexDirection: 'column', gap: tile.line,
-          // The plate behind takes the press; only the two toggles take it back.
+          // Only the two toggles take a press.
           pointerEvents: 'none', userSelect: 'none',
         }}
       >

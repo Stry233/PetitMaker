@@ -6,7 +6,7 @@
  */
 import { templateAnchor } from '../../../core/model/landmarks';
 import { stepDistance } from '../../../core/grid/cell-sets';
-import { flatIndex, rectContains, type Rect } from '../../../core/grid/rect';
+import { boundsWhere, flatIndex, rectContains, type Rect } from '../../../core/grid/rect';
 import { footprintTerrain, wholeCellsOf } from '../../../core/grid/footprint';
 import { isBuildableZone } from '../../../core/game/zones';
 import { bleedsOffBuildable } from '../../../rules/zone-restriction';
@@ -105,9 +105,10 @@ export function paintableMask(template: MapTemplate): Uint8Array {
  * the field is legal by construction. Every stage reads this field rather than a plate's nominal
  * tier, or it would plan pavement onto ground that comes out a tier lower.
  */
-export function cellTiers(template: MapTemplate, plan: CompositionPlan): Int8Array {
+export function cellTiers(
+  template: MapTemplate, plan: CompositionPlan, paintable: Uint8Array = paintableMask(template),
+): Int8Array {
   const W = template.width, H = template.height;
-  const paintable = paintableMask(template);
   const seeds: number[] = [];
   for (let i = 0; i < paintable.length; i++) if (!paintable[i]) seeds.push(i);
   const inland = stepDistance(seeds, W, H, true);
@@ -134,7 +135,7 @@ export function cellTiers(template: MapTemplate, plan: CompositionPlan): Int8Arr
  * flush. Read as off the planet, a landmark on whole cells would leave no tile against its west and
  * north faces while its east and south faces kept theirs.
  */
-export function levelWindows(template: MapTemplate, tiers: Int8Array): Uint8Array {
+function levelWindows(template: MapTemplate, tiers: Int8Array): Uint8Array {
   const W = template.width, H = template.height;
   const hubArea = hubRect(template);
   const ground = (x: number, y: number): boolean =>
@@ -168,6 +169,27 @@ export function landMask(template: MapTemplate): Uint8Array {
   return land;
 }
 
+/** The planet as every stage after the composition reads it, taken once per design: the buildable
+ *  land (`landMask`), where terrain may be painted (`paintableMask`), each cell's realized tier
+ *  (`cellTiers`) and the level road windows (`levelWindows`). The composition never changes after it
+ *  is planned, so no stage rebuilds these, and none writes them: a stage that edits one copies it. */
+export interface PlanetReading {
+  land: Uint8Array;
+  paintable: Uint8Array;
+  tiers: Int8Array;
+  level: Uint8Array;
+}
+
+/** The planet reading for `composition` on `template`; `land` is the composition's own land mask
+ *  when the caller already holds it. */
+export function readPlanet(
+  template: MapTemplate, composition: CompositionPlan, land: Uint8Array = landMask(template),
+): PlanetReading {
+  const paintable = paintableMask(template);
+  const tiers = cellTiers(template, composition, paintable);
+  return { land, paintable, tiers, level: levelWindows(template, tiers) };
+}
+
 /** Chebyshev distance from the nearest unbuildable cell: how much support the ground can offer,
  *  three tiers per cell, exactly as the sculptor reads it. */
 export function coastDistance(land: Uint8Array, W: number, H: number): Int16Array {
@@ -186,18 +208,9 @@ export function landCentroid(land: Uint8Array, W: number): { x: number; y: numbe
   return n ? { x: sx / n, y: sy / n } : { x: 0, y: 0 };
 }
 
+/** The planet's bounding box; a planet with no land answers a zero rect. */
 export function landBox(land: Uint8Array, W: number, H: number): Rect {
-  let x0 = W, y0 = H, x1 = -1, y1 = -1;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (!land[flatIndex(x, y, W)]) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-  }
-  return x1 < 0 ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  return boundsWhere(W, H, (x, y) => !!land[flatIndex(x, y, W)]) ?? { x: 0, y: 0, w: 0, h: 0 };
 }
 
 /** The plaza's centre in macro cells: the hub every distance here is measured from. */

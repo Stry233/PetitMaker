@@ -2,7 +2,7 @@
  * The selection ring follows the store and the active view, in one place, so every path that
  * changes a selection (click, marquee, Ctrl+A, the delete popover, an agent tool, undo) draws the
  * same ring. Signals:
- *  - the selection or the picked block changing repaints the active view (an empty list with no
+ *  - the selection, the picked block or the held blueprint placement changing repaints the active view (an empty list with no
  *    pick clears);
  *  - the layer-number toggle, since a single selection labels its elevation only while the global
  *    numbers are off;
@@ -18,13 +18,14 @@ import { useEditorStore } from '../../../state/store';
 import { layerNumbersShown } from '../../../state/layer-utils';
 import { selectedObjectIds } from '../../../state/selection';
 import { paintSelection } from './selection-paint';
+import { selectedGroupFrame } from '../../../state/placed-groups';
 
 /** Draw the current selection into the active view. */
 function repaint(): void {
   const view = getActiveView();
   const store = useEditorStore.getState();
   if (!view || !store.gridState) return;
-  paintSelection(view.overlay, store.gridState, store.selection, layerNumbersShown(store), store.pickedCell);
+  paintSelection(view.overlay, store.gridState, store.selection, layerNumbersShown(store), { picked: store.pickedCell, outline: selectedGroupFrame(store) });
 }
 
 /** The active-view signal's handler. */
@@ -47,7 +48,7 @@ export function installSelectionViewSync(): () => void {
   const bus = useEditorStore.getState().eventBus;
   bus.on('objects-changed', repaintObjects);
   const offStore = useEditorStore.subscribe((state, prev) => {
-    if (state.selection !== prev.selection || state.pickedCell !== prev.pickedCell
+    if (state.selection !== prev.selection || state.pickedCell !== prev.pickedCell || state.editMode !== prev.editMode
       || layerNumbersShown(state) !== layerNumbersShown(prev)) repaint();
   });
   return () => { offView(); offStore(); bus.off('objects-changed', repaintObjects); };

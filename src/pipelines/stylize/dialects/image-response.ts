@@ -13,13 +13,6 @@ export function sniffImageType(bytes: Uint8Array): 'image/png' | 'image/jpeg' | 
   return null;
 }
 
-/** Base64 data URL for image bytes, read straight off the `ArrayBuffer` a fetch reply carries. */
-export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-  return `data:${mime};base64,${btoa(binary)}`;
-}
-
 /** The engine accepts raster bytes only, never a model-authored URL, document or executable image. */
 export function assertRasterDataUrl(value: string): void {
   if (value.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 32) throw new StylizeError('bad_response');

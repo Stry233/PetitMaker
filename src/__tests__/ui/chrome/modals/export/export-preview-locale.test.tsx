@@ -30,7 +30,7 @@ afterEach(() => { cleanup(); capture.mockClear(); });
 describe('the export preview capture', () => {
   it('captures again with the AI tag in the new language', () => {
     act(() => { useEditorStore.setState({ gridState: createGridState(getMapTemplate('hexia')), locale: 'en' }); });
-    render(<I18nProvider><ExportPreview open options={opts} summary={null} /></I18nProvider>);
+    render(<I18nProvider><ExportPreview open options={opts} words={null} summary={null} /></I18nProvider>);
     expect(capture.mock.calls.at(-1)?.[3]).toBe(translateFor('en', 'export.ai_tag'));
     act(() => { useEditorStore.setState({ locale: 'zh' }); });
     expect(capture.mock.calls.at(-1)?.[3]).toBe(translateFor('zh', 'export.ai_tag'));

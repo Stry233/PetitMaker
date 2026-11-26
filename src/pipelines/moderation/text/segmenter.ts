@@ -1,3 +1,5 @@
+import { base64ToBytes } from '../../../core/base/bytes';
+
 export type LexiconIndex = { version: number; logTotal: number; groups: Record<string, { words: string; weights: string }> };
 /** One byte holds ln(frequency) × 16; the largest source frequency needs about 190. */
 export const LEXICON_SCALE = 16;
@@ -39,7 +41,7 @@ export function __setLexicon(index: LexiconIndex): void {
 export function* lexiconEntries(index: LexiconIndex): Generator<[string, number]> {
   for (const [lengthKey, group] of Object.entries(index.groups)) {
     const length = Number(lengthKey);
-    const bytes = Uint8Array.from(atob(group.weights), c => c.charCodeAt(0));
+    const bytes = base64ToBytes(group.weights);
     const chars = [...group.words];
     for (let i = 0; i < bytes.length; i++) yield [chars.slice(i * length, (i + 1) * length).join(''), bytes[i]! / LEXICON_SCALE];
   }

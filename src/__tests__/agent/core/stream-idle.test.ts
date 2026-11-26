@@ -4,7 +4,7 @@ import { isRetryable } from '../../../agent/core/errors';
 import { append, createLog, eventsOf, type SessionLog } from '../../../agent/core/log';
 import { runJob, type LoopDeps, type ToolExecutor } from '../../../agent/core/loop';
 import {
-  BETWEEN_EVENT_IDLE_MS, FIRST_EVENT_IDLE_MS, withIdleTimeout,
+  BETWEEN_EVENT_IDLE_MS, FIRST_EVENT_IDLE_MS, STALL_NOTICE_MS, withIdleTimeout,
 } from '../../../agent/core/stream-idle';
 import type { StreamEvent } from '../../../agent/core/types';
 import { createScriptedAdapter } from '../../_support/agent/scripted-adapter';
@@ -169,6 +169,14 @@ describe('withIdleTimeout', () => {
     await wrapped.return(undefined);
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('the stall notice', () => {
+  /** Past an idle bound the turn has timed out, so a later notice would never be read. */
+  it('comes before either idle bound ends the turn', () => {
+    expect(STALL_NOTICE_MS).toBeLessThan(BETWEEN_EVENT_IDLE_MS);
+    expect(STALL_NOTICE_MS).toBeLessThan(FIRST_EVENT_IDLE_MS);
   });
 });
 

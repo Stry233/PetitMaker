@@ -82,7 +82,7 @@ describe('the origin is a place the canvas can be moved to', () => {
     // The same cell is drawn 400px further right: the camera did not move, the canvas did.
     expect(vp.cellToScreen(6, 6).x).toBeCloseTo(before.x + 400, 6);
     expect(vp.cellToScreen(6, 6).y).toBeCloseTo(before.y, 6);
-    expect(vp.getView()).toEqual({ zoom: vp.getZoom(), offsetX: vp.getOffset().x, offsetY: vp.getOffset().y });
+    expect(vp.getView()).toEqual({ zoom: vp.getZoom(), offsetX: vp.getOffset().x, offsetY: vp.getOffset().y, heading: 0 });
   });
 
   it('starts at the window\'s own corner, which is where a full-window canvas stands', () => {

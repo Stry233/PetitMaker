@@ -1,0 +1,36 @@
+{
+  "id": "plant-desert-rose",
+  "category": "flora",
+  "name": {
+    "en": "Desert Rose Shrub",
+    "zh": "沙漠玫瑰丛",
+    "ja": "アデニウム",
+    "ru": "Адениум",
+    "th": "ชวนชม",
+    "id": "Kamboja Jepang",
+    "fr": "Rose du désert"
+  },
+  "aliases": [
+    "绿",
+    "green"
+  ],
+  "icon": "plant-desert-rose",
+  "iconColor": "#909e73",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "plant-desert-rose",
+    "colorFamily": "green"
+  }
+}

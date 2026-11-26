@@ -19,7 +19,7 @@ import { PLACEMENT_GRID } from '../../core/game/profile';
 import { isCoatingItem } from '../../core/model/traits';
 import { getCatalogItem } from '../../state/catalog';
 import { getObjectIndex, entriesNear } from '../../state/object-index';
-import { isSelfSized, objectElevation, objectRect, snapsOwnPlacement, surfaceElevationAt } from '../../state/object-geometry';
+import { isSelfSized, laidElevation, objectElevation, objectRect, snapsOwnPlacement, surfaceElevationAt } from '../../state/object-geometry';
 import { groupBounds, groupMembers } from '../../state/selection';
 import type { Arrangement, CopiedMember } from '../../state/clipboard';
 import { coatingStripFor, strippableRefusal } from '../placement/coatings';
@@ -154,7 +154,7 @@ export function planPaste(
       room.set(item.id, left - 1);
     }
     const obj = memberAt(member, at, nextId());
-    placing.push({ member, obj: { ...obj, elevation: surfaceElevationAt(state, obj.position.x, obj.position.y) } });
+    placing.push({ member, obj: { ...obj, elevation: laidElevation(state, obj) } });
   }
   const plan = (objects: PlacedObject[], refusal: Refusal | null, level: number | null): PastePlan =>
     ({ at, objects, valid: objects.length > 0 && refusal === null, refusal, capped, level });
@@ -193,53 +193,84 @@ export function planPaste(
   return plan(objects, null, level);
 }
 
-/** Cell offsets within `reach` of the origin, nearest first, the origin itself excluded; ties go
- *  in reading order so a search always lands the same way. */
-function offsetsNearestFirst(reach: number): MacroCoord[] {
-  const out: MacroCoord[] = [];
-  for (let dy = -reach; dy <= reach; dy++) {
-    for (let dx = -reach; dx <= reach; dx++) {
-      if ((dx !== 0 || dy !== 0) && dx * dx + dy * dy <= reach * reach) out.push({ x: dx, y: dy });
-    }
-  }
-  return out.sort((p, q) => (p.x * p.x + p.y * p.y) - (q.x * q.x + q.y * q.y) || p.y - q.y || p.x - q.x);
-}
-
-/** The offsets of each reach searched so far, keyed by the reach. */
-const offsetsByReach = new Map<number, MacroCoord[]>();
-function offsetsWithin(reach: number): MacroCoord[] {
-  let out = offsetsByReach.get(reach);
-  if (!out) { out = offsetsNearestFirst(reach); offsetsByReach.set(reach, out); }
-  return out;
-}
-
-/** The reach that covers the whole of `state`'s map from any cell on it. */
-function wholeMapReach(state: GridState): number {
+/** How far a paste aimed by `aim` that does not fit there looks for room: the whole of `state`'s
+ *  map for `near`, which asks for the nearest open ground anywhere, else `PASTE_REACH`. */
+export function pasteReach(state: GridState, aim: PasteAim): number {
   const { width, height } = state.template;
-  return Math.ceil(Math.hypot(width, height));
+  return aim.kind === 'near' ? Math.ceil(Math.hypot(width, height)) : PASTE_REACH;
+}
+
+/** The largest integer whose square is at most `n` (n >= 0). */
+function isqrt(n: number): number {
+  let r = Math.floor(Math.sqrt(n));
+  while (r * r > n) r--;
+  while ((r + 1) * (r + 1) <= n) r++;
+  return r;
+}
+
+/** The top-lefts within `reach` of `at`, the nearest first with ties in reading order and `at` itself
+ *  left out, whose `w` by `h` outline stays on `state`'s map: where a paste that did not fit looks for
+ *  room, in order. Walked one ring of whole-cell distance at a time over the map's own rows, so a
+ *  search that ends early lists nothing past its ring. */
+export function* roomAround(state: GridState, at: MacroCoord, w: number, h: number, reach: number): Generator<MacroCoord> {
+  const { width, height } = state.template;
+  // Offsets whose outline stays on the map.
+  const xLo = -at.x, xHi = width - w - at.x, yLo = -at.y, yHi = height - h - at.y;
+  if (xLo > xHi || yLo > yHi) return;
+  const limit = Math.min(reach * reach, Math.max(xLo * xLo, xHi * xHi) + Math.max(yLo * yLo, yHi * yHi));
+  // Ring k holds the offsets whose squared distance lies in ((k - 1)^2, k^2].
+  for (let k = 1; (k - 1) * (k - 1) < limit; k++) {
+    const inner = (k - 1) * (k - 1), outer = Math.min(k * k, limit);
+    const ring: MacroCoord[] = [];
+    for (let dy = Math.max(yLo, -k); dy <= Math.min(yHi, k); dy++) {
+      const dy2 = dy * dy;
+      if (dy2 > outer) continue;
+      const near = inner - dy2 < 0 ? 0 : isqrt(inner - dy2) + 1, far = isqrt(outer - dy2);
+      for (let a = near; a <= far; a++) {
+        if (a !== 0 && -a >= xLo && -a <= xHi) ring.push({ x: -a, y: dy });
+        if (a >= xLo && a <= xHi) ring.push({ x: a, y: dy });
+      }
+    }
+    ring.sort((p, q) => (p.x * p.x + p.y * p.y) - (q.x * q.x + q.y * q.y) || p.y - q.y || p.x - q.x);
+    for (const d of ring) yield { x: at.x + d.x, y: at.y + d.y };
+  }
+}
+
+/** How much farther than the nearest room on another layer a paste goes on looking for room on its own. */
+const OWN_LAYER_REACH = PASTE_REACH;
+
+/**
+ * The first of `places` (`roomAround` of `from`, nearest first) where `fit` finds room on `level`,
+ * else the nearest where it finds room on another layer: room on another layer ends the search
+ * once the places run `OWN_LAYER_REACH` cells farther from `from` than it. Null when nothing fits.
+ */
+export function nearestRoom<T extends { readonly level: number | null }>(
+  places: Iterable<MacroCoord>, from: MacroCoord, level: number, fit: (place: MacroCoord) => T | null,
+): T | null {
+  let other: T | null = null, until = Infinity;
+  for (const place of places) {
+    const away = Math.hypot(place.x - from.x, place.y - from.y);
+    if (away > until) break;
+    const found = fit(place);
+    if (!found) continue;
+    if (found.level === level) return found;
+    if (!other) { other = found; until = away + OWN_LAYER_REACH; }
+  }
+  return other;
 }
 
 /**
- * The nearest place within `reach` (`PASTE_REACH` unless given) of `at` where `a` fits on ground no
- * object covers (EDIT-57): a place whose copy stands on `level` (the asked cell's height) first, any
- * layer only when no such place is in reach. A place whose outline leaves the map is never tried.
+ * The nearest place within `reach` of `at` where `a` fits on ground no object covers (EDIT-57),
+ * preferring one whose copy stands on `level` (the asked cell's height) as `nearestRoom` does.
  * Null when nothing fits.
  */
 function findOpenPaste(
-  rules: RuleDispatcher, state: GridState, a: Arrangement, at: MacroCoord,
-  { level, reach = PASTE_REACH }: { level: number; reach?: number },
+  rules: RuleDispatcher, state: GridState, a: Arrangement, at: MacroCoord, { level, reach }: { level: number; reach: number },
 ): PastePlan | null {
-  const { width, height } = state.template;
-  let other: PastePlan | null = null;
-  for (const d of offsetsWithin(reach)) {
-    const x = at.x + d.x, y = at.y + d.y;
-    if (x < 0 || y < 0 || x + a.w > width || y + a.h > height) continue;
-    const plan = planPaste(rules, state, a, { x, y }, { openGround: true });
-    if (!plan.valid) continue;
-    if (plan.level === level) return plan;
-    other ??= plan;
-  }
-  return other;
+  return nearestRoom(roomAround(state, at, a.w, a.h, reach), at, level, (place) => {
+    const plan = planPaste(rules, state, a, place, { openGround: true });
+    return plan.valid ? plan : null;
+  });
 }
 
 /** Called once per member right before its placement runs, so a view can play the landing. */
@@ -255,6 +286,10 @@ export interface PasteResult {
 export interface PasteDoor extends CommandSink {
   readonly registry: RuleDispatcher;
   beginStroke(): Stroke;
+  /** Runs `body` as one executor transaction, so everything it places and removes reaches the map's
+   *  listeners as one change of objects rather than one per command; a door without it announces
+   *  each command as it runs. */
+  hold?<T>(body: () => T): T;
 }
 
 /**
@@ -325,6 +360,9 @@ export function pasteKeyAim(
   return { kind: 'near', origin: { x: clampTo(from.x, template.width - a.w), y: clampTo(from.y, template.height - a.h) } };
 }
 
+/** `cells` in reading order: the order a paste into a region tries its cells as top-lefts. */
+export const readingOrder = (cells: readonly MacroCoord[]): MacroCoord[] => [...cells].sort((p, q) => p.y - q.y || p.x - q.x);
+
 /** Whether every member of `a` with its outline at `at` covers only cells of `inside`, keyed by
  *  `cellKey` on the placement grid, as a planting keeps to a painted region. */
 function fitsInside(a: Arrangement, at: MacroCoord, inside: ReadonlySet<string>): boolean {
@@ -341,7 +379,7 @@ function aimedPlan(rules: RuleDispatcher, state: GridState, a: Arrangement, aim:
   if (aim.kind === 'cell') return { plan: planPaste(rules, state, a, aim.cell), from: aim.cell };
   if (aim.kind === 'near') return { plan: planPaste(rules, state, a, aim.origin, { openGround: true }), from: aim.origin };
   const inside = new Set(aim.cells.map((c) => cellKey(c.x, c.y)));
-  const order = [...aim.cells].sort((p, q) => p.y - q.y || p.x - q.x);
+  const order = readingOrder(aim.cells);
   const from = order[0]!;
   for (const at of order) {
     if (!fitsInside(a, at, inside)) continue;
@@ -363,8 +401,7 @@ export function pasteAt(door: PasteDoor, a: Arrangement, aim: PasteAim, onWillPl
   if (aim.kind === 'region' && aim.cells.length === 0) return { placed: [], refusal: null, nearby: false, noRoom: true, capped: 0 };
   const { plan: here, from } = aimedPlan(registry, state, a, aim);
   if (here.objects.length === 0) return { placed: [], refusal: null, nearby: false, noRoom: false, capped: here.capped };
-  const reach = aim.kind === 'near' ? wholeMapReach(state) : PASTE_REACH;
-  const plan = here.valid ? here : findOpenPaste(registry, state, a, from, { level: surfaceElevationAt(state, from.x, from.y), reach });
+  const plan = here.valid ? here : findOpenPaste(registry, state, a, from, { level: surfaceElevationAt(state, from.x, from.y), reach: pasteReach(state, aim) });
   if (!plan) return { placed: [], refusal: here.refusal, nearby: false, noRoom: true, capped: here.capped };
   const result = pasteArrangement(door, a, plan.at, onWillPlace);
   return { ...result, nearby: plan !== here && aim.kind !== 'near', noRoom: false, capped: plan.capped };

@@ -23,7 +23,7 @@ export function translatorFor(locale: Locale): Translate {
 /** Tokens every string may use without a caller passing them, each read from its one source: `{app}`
  *  and `{glyph}` from terms/brand.ts, `{landmark}` from the anchor landmark's catalog name, empty for a game
  *  without one. A locale may leave one out, since no caller supplies it. */
-export const RESOLVED_TOKENS: Readonly<Record<string, (locale: Locale) => string>> = {
+const RESOLVED_TOKENS: Readonly<Record<string, (locale: Locale) => string>> = {
   app: brandName,
   glyph: () => GLYPH_NAME,
   landmark: (locale) => (ANCHOR_LANDMARK ? localizedName(landmarkItem().name, locale) : ''),

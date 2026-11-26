@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The view controls on the right in each input mode: a mouse gets the zoom pair and, in 3D, the two
- * turns; a finger, which pinches and twists, gets neither, and the kit is planned without their cells.
+ * The view controls on the right in each input mode: a mouse gets the zoom pair and the two turns in
+ * either view; a finger, which pinches and twists, gets neither, and the kit is planned without their
+ * cells.
  */
 import { afterEach, beforeEach, describe, expect } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
@@ -50,7 +51,7 @@ describe('the view controls in each input mode', () => {
     const { rail } = planFrame(384, 790, { open: false, plateDepth: 0, shape: 'portrait', inputMode: 'touch', panelDepth: 2000 });
     expect(rail.kitRows).toBe(0);
     render(<InputModeProvider inputMode="touch" shape="portrait"><I18nProvider>
-      <ViewKit plan={rail} right={0} hidden={false} onHide={() => {}} session={false} />
+      <ViewKit plan={rail} right={0} hidden={false} onHide={() => {}} pose="map" />
     </I18nProvider></InputModeProvider>);
     for (const key of ['a11y.toggle_view', 'a11y.hide_ui', 'a11y.fit_view'] as const) {
       expect(document.querySelector<HTMLElement>(`button[aria-label="${translate(key)}"]`)?.style.visibility, key).toBe('hidden');
@@ -62,5 +63,16 @@ describe('the view controls in each input mode', () => {
     expect(named('a11y.rotate_left')).toHaveLength(1);
     expect(named('a11y.rotate_right')).toHaveLength(1);
     expect(named('a11y.zoom_in')).toHaveLength(1);
+  });
+
+  spec('UI-67', 'with a mouse the flat view shows both turn buttons too, in the cells the 3D view gives them', () => {
+    mount('pc');
+    const rows3d = kitRows();
+    cleanup();
+    useEditorStore.setState({ viewMode: '2d' });
+    mount('pc');
+    expect(named('a11y.rotate_left')).toHaveLength(1);
+    expect(named('a11y.rotate_right')).toHaveLength(1);
+    expect(kitRows()).toEqual(rows3d);
   });
 });

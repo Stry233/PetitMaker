@@ -23,7 +23,7 @@ import { navDragVerb, wheelVerb, type CameraCaps } from './press/camera-verbs';
 
 /** The verbs a gesture drives: a camera-only surface (the export shot editor) offers these and
  *  no button glide or fit, which belong to the chrome. */
-export type GestureCamera = Omit<ViewCamera, 'zoomStepAnimated' | 'fitToMap'>;
+export type GestureCamera = Omit<ViewCamera, 'zoomStepAnimated' | 'turnStep' | 'fitToMap'>;
 
 /** One Ctrl+wheel or trackpad-pinch event as a smooth zoom about the pointer. */
 export function pinchZoom(camera: GestureCamera, e: WheelEvent): void {
@@ -100,8 +100,8 @@ export function createCameraGestures(host: CameraGestureHost): CameraGestures {
       // Still armed from the last press: its release never arrived, so that gesture was taken.
       if (navigating) host.onGestureLost?.();
       // Middle is a second right: both navigate, so a mouse without a usable right button (or a
-      // hand already on the wheel) loses nothing. A drag rotates where the view can orbit and pans
-      // where it cannot (2D).
+      // hand already on the wheel) loses nothing. A drag turns where the camera can turn and pans
+      // where it cannot (the export shot editor).
       navigating = true;
       moved = false;
       downX = clientPoint(e).x; downY = clientPoint(e).y;

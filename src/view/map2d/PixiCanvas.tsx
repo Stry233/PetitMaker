@@ -1,23 +1,27 @@
 import { viewportRect } from '../../platform/device/viewport-space';
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Transition } from 'framer-motion';
 import { useEditorStore } from '../../state/store';
 import { MapRenderer } from './scene/map-renderer';
 import { useWasdPan } from '../interaction/use-view-shortcuts';
 import { usePointerInteraction } from '../interaction/use-pointer-interaction';
 import { useCursor } from '../interaction/use-cursor';
+import { mapHostAttr } from '../interaction/map-wheel';
 import { releaseActiveView, setActiveView } from '../active-view';
 import { setMapRenderer } from './scene/renderer-registry';
 import { takeParkedCamera } from '../shared/viewport/parked-camera';
-import { animConfig } from '../shared/motion/anim-config';
+import { poseOfCamera } from './camera/viewport';
 import { useAnnotationSync, useBoxSize } from './use-renderer-sync';
-import { shownGridOf, useViewSettings } from '../shared/viewport/view-settings';
+import { chunkBoundsShown, shownGridOf, useViewSettings } from '../shared/viewport/view-settings';
+import { shownMap } from '../../state/map-stand-in';
+import type { GridState } from '../../core/model/types';
 
 /** The 2D view. A WebGL context the engine takes and never restores leaves the canvas blank, so the
  *  view is rebuilt on a fresh one; the map itself lives in the store and is untouched. */
-export function PixiCanvas() {
+/** `reveal` is the one-time fade the canvas arrives on, passed down from the interface's registry. */
+export function PixiCanvas({ reveal }: { reveal: Transition }) {
   const [generation, setGeneration] = useState(0);
-  return <Canvas2D key={generation} onUnrecoverableLoss={() => setGeneration((g) => g + 1)} />;
+  return <Canvas2D key={generation} reveal={reveal} onUnrecoverableLoss={() => setGeneration((g) => g + 1)} />;
 }
 
 /**
@@ -26,7 +30,7 @@ export function PixiCanvas() {
  * `use-renderer-sync.ts`. The effects run in declaration order, and that order is load-bearing: the
  * notes draw before the map is reset.
  */
-function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) {
+function Canvas2D({ reveal, onUnrecoverableLoss }: { reveal: Transition; onUnrecoverableLoss: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
 
@@ -42,7 +46,11 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
   const viewMode = useEditorStore((s) => s.viewMode);
   useCursor(containerRef, viewMode !== '3d');
 
-  const gridState = useEditorStore((s) => s.gridState);
+  const gridState = useEditorStore(shownMap);
+  // The live map, which the map shown stands for: itself, or the live map its stand-in stands over.
+  const over = useEditorStore((s) => s.gridState);
+  // The map this view last drew and the live map it stood for then.
+  const drew = useRef<{ map: GridState; over: GridState | null } | null>(null);
   const onLoss = useRef(onUnrecoverableLoss);
   onLoss.current = onUnrecoverableLoss;
 
@@ -82,21 +90,28 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
   useViewSettings(rendererRef);
   useAnnotationSync(rendererRef, gridState);
 
-  // Re-draw when gridState changes (new project); the view is offered to the tools once it draws a map.
+  // Re-draw when the map shown changes (new project, a stand-in); the view is offered to the tools once it draws a map.
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !gridState) return;
     // The overlays start as the settings stand; `useViewSettings` applies later changes.
     const s = useEditorStore.getState();
-    renderer.initMap(gridState, shownGridOf(s), s.showChunkBounds);
-    // A camera parked for this map (a restore, a planet session's end) replaces the fit.
+    // Asked of the renderer first: StrictMode's remount brings one that drew nothing.
+    const drawn = renderer.asEditorView().rendersState();
+    const drawnOver = drawn && drew.current?.map === drawn ? drew.current.over : drawn;
+    const kept = drawn && drawnOver === over ? renderer.viewport.getView() : null;
+    renderer.initMap(gridState, shownGridOf(s), chunkBoundsShown(s), { still: gridState !== s.gridState });
+    drew.current = { map: gridState, over };
+    // The camera of the map this one stands in for or for which it stood, else one parked for this
+    // map (a restore, a planet session's end), replaces the fit.
     const parked = takeParkedCamera(gridState, 'view2d');
-    if (parked) {
-      renderer.viewport.setView({ zoom: parked.zoom, offsetX: parked.x, offsetY: parked.y });
+    const pose = kept ?? (parked ? poseOfCamera(parked) : null);
+    if (pose) {
+      renderer.viewport.setView(pose);
       renderer.applyViewportTransform();
     }
     if (useEditorStore.getState().viewMode === '2d') setActiveView(renderer.asEditorView());
-  }, [gridState]);
+  }, [gridState, over]);
 
   useBoxSize(containerRef, rendererRef);
 
@@ -106,9 +121,10 @@ function Canvas2D({ onUnrecoverableLoss }: { onUnrecoverableLoss: () => void }) 
     // still running when the renderer was sized left the canvas 2% short of its box).
     <motion.div
       ref={containerRef}
+      {...mapHostAttr}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: animConfig.canvasReveal.durationMs / 1000, ease: animConfig.canvasReveal.ease }}
+      transition={reveal}
       style={{
         // The whole of the plane it stands in, which is the window less whatever the interface has
         // taken out of it (`ui/shell/Shell.tsx`'s map plane).

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type Ref } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, type CSSProperties, type MutableRefObject, type ReactNode, type Ref } from 'react';
 import { PresenceContext, animate, usePresence, useReducedMotionConfig, type AnimationPlaybackControls } from 'framer-motion';
 import { framerMotion } from '../design/motion';
 import type { MotionId } from '../design/motion/registry';
@@ -13,6 +13,9 @@ interface DisclosureProps {
   testId?: string;
   style?: CSSProperties;
   inline?: boolean;
+  /** Takes the body, which keeps its laid-out height however far the disclosure is folded: what a
+   *  surface placed for its opened size measures. */
+  bodyRef?: MutableRefObject<HTMLElement | null>;
 }
 
 const RowGap = createContext(0);
@@ -31,13 +34,17 @@ export function DisclosureStack({ gap, children }: { gap: number; children: Reac
  * travels between heights read with `offsetHeight`, in its own px, so it lands on its content under
  * any CSS zoom; height and opacity are written here, never by React.
  */
-export function Disclosure({ children, open, motionId = 'panel.detail.unfold', spaceBefore = 0, spaceAfter, testId, style, inline = false }: DisclosureProps) {
+export function Disclosure({ children, open, motionId = 'panel.detail.unfold', spaceBefore = 0, spaceAfter, testId, style, inline = false, bodyRef: outerBody }: DisclosureProps) {
   const gap = useContext(RowGap);
   const [present, safeToRemove] = usePresence();
   const reduced = useReducedMotionConfig() === true;
   const shown = present && open !== false;
   const frameRef = useRef<HTMLElement>(null);
-  const bodyRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLElement | null>(null);
+  const setBody = useCallback((el: HTMLElement | null) => {
+    bodyRef.current = el;
+    if (outerBody) outerBody.current = el;
+  }, [outerBody]);
   const glide = useRef<AnimationPlaybackControls | null>(null);
   const seated = useRef(false);
   // A disclosure mounted inside AnimatePresence arrives from closed, unless it mounts with the presence
@@ -100,7 +107,7 @@ export function Disclosure({ children, open, motionId = 'panel.detail.unfold', s
       style={{ display: 'block', flex: '0 0 auto', overflow: 'hidden', ...style, pointerEvents: shown ? undefined : 'none' }}
     >
       <RowGap.Provider value={0}>
-        <Body ref={bodyRef as Ref<HTMLDivElement & HTMLSpanElement>} style={{ display: 'flow-root', paddingTop: spaceBefore, paddingBottom: spaceAfter ?? gap }}>{children}</Body>
+        <Body ref={setBody as Ref<HTMLDivElement & HTMLSpanElement>} style={{ display: 'flow-root', paddingTop: spaceBefore, paddingBottom: spaceAfter ?? gap }}>{children}</Body>
       </RowGap.Provider>
     </Frame>
   );

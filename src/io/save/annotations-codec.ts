@@ -1,13 +1,13 @@
 // Decoding of a save's annotation record, shared by saves and share codes. The encoder writes the
 // annotation state as it stands.
 import { clampBrushSize } from '../../state/editing/edit-mode';
-import { CUSTOM_TAG_MAX, HALVES, ZONE_CELL_MAX, generateAnnotationId, isCustomTagId, isMeasureSpan, zoneCellsOnGrid, type AnnotationsState, type CustomTag, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
+import { CUSTOM_TAG_MAX, HALVES, ZONE_CELL_MAX, admitTagText, generateAnnotationId, isCustomTagId, isMeasureSpan, zoneCellsOnGrid, type AnnotationsState, type CustomTag, type CustomTagId, type MapAnnotation, type NoteTag } from '../../core/model/annotations';
 import { HALF_GRID } from '../../core/game/profile';
+import { ID_MAX_LENGTH } from '../../core/base/guards';
 import { ANNOTATION_COLORS } from '../../config/annotation-palette';
 import { isTagId } from '../../config/annotation-tags';
 import type { MacroCoord } from '../../core/model/types';
 import type { CurveAnchor } from '../../core/base/spline';
-import { PLANET_NAME_MAX } from './planet-codec';
 
 /* Invalid annotations are discarded; collection, text and coordinate limits bound imported data.
  * Coordinates are in map cells, except a half-grid zone's cells, which count half cells under the
@@ -26,10 +26,9 @@ export function decodeAnnotations(raw: unknown): AnnotationsState | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as { items?: unknown; customTags?: unknown; visible?: unknown; locked?: unknown };
   if (!Array.isArray(r.items)) return undefined;
-  const customTags = decodeCustomTags(r.customTags);
-  const known = new Set<string>(customTags.map((t) => t.id));
+  const { tags: customTags, alias } = decodeCustomTags(r.customTags);
   // A tag the map does not carry, preset or custom, reads as no tag.
-  const tagOf = (v: unknown): NoteTag | null => (isTagId(v) || (isCustomTagId(v) && known.has(v)) ? v : null);
+  const tagOf = (v: unknown): NoteTag | null => (isTagId(v) ? v : isCustomTagId(v) ? alias.get(v) ?? null : null);
   const items: MapAnnotation[] = [];
   for (const entry of r.items.slice(0, ANNOT_MAX_ITEMS)) {
     const note = decodeAnnotation(entry, tagOf);
@@ -39,24 +38,26 @@ export function decodeAnnotations(raw: unknown): AnnotationsState | undefined {
   return { items, ...(customTags.length ? { customTags } : {}), visible: r.visible !== false, locked: r.locked === true };
 }
 
-/** A map's custom tags, each a trimmed text of at most the planet name's length, once by id and
- *  once by text. Saves from before custom tags carry none. */
-function decodeCustomTags(raw: unknown): CustomTag[] {
-  if (!Array.isArray(raw)) return [];
+/** A map's custom tags, each text admitted by `admitTagText`, once by id and once by text, with the
+ *  tag each id now reads as: a tag whose text another holds goes, its notes wearing that one, since
+ *  earlier releases kept texts longer than they read back. Saves from before custom tags carry none. */
+function decodeCustomTags(raw: unknown): { tags: CustomTag[]; alias: Map<string, CustomTagId> } {
   const tags: CustomTag[] = [];
-  const ids = new Set<string>();
-  const texts = new Set<string>();
+  const alias = new Map<string, CustomTagId>();
+  if (!Array.isArray(raw)) return { tags, alias };
+  const byText = new Map<string, CustomTagId>();
   for (const entry of raw) {
     if (tags.length >= CUSTOM_TAG_MAX) break;
-    const { id, text } = (entry ?? {}) as { id?: unknown; text?: unknown };
-    if (!isCustomTagId(id) || id.length > 64 || typeof text !== 'string') continue;
-    const trimmed = text.slice(0, PLANET_NAME_MAX).trim();
-    if (!trimmed || ids.has(id) || texts.has(trimmed)) continue;
-    ids.add(id);
-    texts.add(trimmed);
-    tags.push({ id, text: trimmed });
+    const { id, text: typed } = (entry ?? {}) as { id?: unknown; text?: unknown };
+    const text = admitTagText(typed);
+    if (!isCustomTagId(id) || id.length > ID_MAX_LENGTH || !text || alias.has(id)) continue;
+    const same = byText.get(text);
+    alias.set(id, same ?? id);
+    if (same) continue;
+    byText.set(text, id);
+    tags.push({ id, text });
   }
-  return tags;
+  return { tags, alias };
 }
 
 function decodeAnnotation(raw: unknown, tagOf: (v: unknown) => NoteTag | null): MapAnnotation | null {

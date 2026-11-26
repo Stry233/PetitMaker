@@ -7,7 +7,9 @@ import ramp_moss_ramp from './ramp-moss-ramp.json';
 import ramp_green_steps from './ramp-green-steps.json';
 import ramp_plank from './ramp-plank.json';
 import ramp_grassy from './ramp-grassy.json';
+import ramp_fluorite_steps from './ramp-fluorite-steps.json';
 
 export const ramp: CatalogItem[] = [
   ramp_park_steps, ramp_retro_steps, ramp_light_stair, ramp_teak_stair, ramp_moss_ramp, ramp_green_steps, ramp_plank, ramp_grassy,
+  ramp_fluorite_steps,
 ] as CatalogItem[];

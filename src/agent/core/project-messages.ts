@@ -1,4 +1,6 @@
-import { compactionSummary, gateWords, noResultRecorded, orderMessage, playbookStillLoaded, skippedCallResult } from './nudges';
+import {
+  compactionSummary, earlierMapContext, earlierRead, gateWords, noResultRecorded, orderMessage, playbookStillLoaded, skippedCallResult,
+} from './nudges';
 import { languageCue } from './language-cue';
 import type { SessionLog } from './log';
 import { eventsOf } from './log';
@@ -31,20 +33,30 @@ function withLanguageCue(message: string, userWords: string): string {
   return cue === '' ? message : `${message}\n${cue}`;
 }
 
+/** An earlier order's map context or read longer than this many characters replays as a one-line stand-in. */
+const EARLIER_READ_KEPT_CHARS = 400;
+
 /** Provider message plus whether it starts an exchange group kept atomically during trimming. */
 interface Tagged { message: ProviderMessage; opensGroup: boolean }
 
 /** Projects the log into a replay-safe, compacted and budgeted provider message sequence. */
 export function deriveMessages(log: SessionLog, opts: ProjectOptions): ProviderMessage[] {
+  return projectRequest(log, opts).messages;
+}
+
+/** `deriveMessages` with what it weighed: `total` is the estimated cost of the whole replay before
+ *  the budget trims it, which is what compaction is decided on. */
+export function projectRequest(log: SessionLog, opts: ProjectOptions): { messages: ProviderMessage[]; total: number } {
   const { beforeSeq } = opts;
   const events = beforeSeq === undefined ? eventsOf(log) : eventsOf(log).filter((e) => e.kind === 'compaction' || e.seq < beforeSeq);
   const tagged = buildTagged(events);
   const groups = groupBy(tagged);
-  const windowed = applyBudget(groups, opts);
+  const { windowed, total } = applyBudget(groups, opts);
   const messages = keepLatestImageOnly(windowed);
-  return opts.appendSystemNote === undefined
-    ? messages
-    : [...messages, { role: 'user', text: opts.appendSystemNote }];
+  return {
+    messages: opts.appendSystemNote === undefined ? messages : [...messages, { role: 'user', text: opts.appendSystemNote }],
+    total,
+  };
 }
 
 /** True when every retained raw provider block identifies the requested model as its producer. */
@@ -96,9 +108,19 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
     }
   }
 
+  // Orders before the latest replay without the map they described: what the model read then is
+  // re-sent on every later call and no longer describes the map. Their words, replies, edits and
+  // loaded skills stay. The stand-ins change the prefix once per order, never within a job.
+  const latestOrderSeq = kept.reduce((seq, e) => (e.kind === 'order' ? e.seq : seq), 0);
+  const earlier = (seq: number): boolean => seq < latestOrderSeq;
+  const replayed = (r: Extract<SessionEvent, { kind: 'toolResult' }>): string => (
+    earlier(r.seq) && r.write !== true && !r.isError && r.detail?.skill === undefined && r.content.length > EARLIER_READ_KEPT_CHARS
+      ? earlierRead() : r.content);
+
   for (const e of kept) {
     if (e.kind === 'order') {
-      const text = withLanguageCue(orderMessage(e.mapContext, e.text), e.text);
+      const context = earlier(e.seq) && e.mapContext.length > EARLIER_READ_KEPT_CHARS ? earlierMapContext() : e.mapContext;
+      const text = withLanguageCue(orderMessage(context, e.text), e.text);
       tagged.push({ message: { role: 'user', text }, opensGroup: true });
     } else if (e.kind === 'steerDelivered') {
       if (recalledSteerSeqs.has(e.steerSeq)) continue;
@@ -134,8 +156,8 @@ function buildTagged(events: readonly SessionEvent[]): Tagged[] {
             return { callId: call.callId, name: call.name, content: noResultRecorded(), isError: true };
           }
           return r.image === undefined
-            ? { callId: r.callId, name: r.name, content: r.content, isError: r.isError }
-            : { callId: r.callId, name: r.name, content: r.content, isError: r.isError, image: r.image };
+            ? { callId: r.callId, name: r.name, content: replayed(r), isError: r.isError }
+            : { callId: r.callId, name: r.name, content: replayed(r), isError: r.isError, image: r.image };
         });
         tagged.push({ message: { role: 'tool', results }, opensGroup: false });
 
@@ -173,25 +195,26 @@ function groupBy(tagged: Tagged[]): ProviderMessage[][] {
   return groups;
 }
 
-export function messageText(m: ProviderMessage): string {
+function messageText(m: ProviderMessage): string {
   if (m.role === 'user') return m.text;
   if (m.role === 'assistant') return m.text + m.toolCalls.map((c) => JSON.stringify(c.args)).join('');
   return m.results.map((r) => r.content).join('');
 }
 
-function applyBudget(groups: ProviderMessage[][], opts: ProjectOptions): ProviderMessage[] {
+function applyBudget(groups: ProviderMessage[][], opts: ProjectOptions): { windowed: ProviderMessage[]; total: number } {
   const estimate = opts.estimate ?? estimateTokens;
   const groupCost = (g: ProviderMessage[]): number => g.reduce((sum, m) => sum + estimate(messageText(m)), 0);
 
   const costs = groups.map(groupCost);
-  let total = costs.reduce((sum, cost) => sum + cost, 0);
+  const total = costs.reduce((sum, cost) => sum + cost, 0);
+  let kept = total;
   let first = 0;
   // Keep the newest exchange intact; provider overflow handling owns a single oversized group.
-  while (first < groups.length - 1 && total > opts.budgetTokens) {
-    total -= costs[first]!;
+  while (first < groups.length - 1 && kept > opts.budgetTokens) {
+    kept -= costs[first]!;
     first++;
   }
-  return groups.slice(first).flat();
+  return { windowed: groups.slice(first).flat(), total };
 }
 
 function keepLatestImageOnly(messages: ProviderMessage[]): ProviderMessage[] {

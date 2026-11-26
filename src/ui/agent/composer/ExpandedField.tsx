@@ -9,18 +9,16 @@ import { FIELD_INPUT_CLASS, FIELD_WRAP_CLASS } from '../../design/focus-source';
 import { ActionButton } from '../../primitives/ActionButton';
 import { framerMotion } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
+import { subscribeViewportSize } from '../../../platform/device/viewport-space';
 import { routeSurfaceKeyDown, useSurfaceScope } from '../../primitives/surface-scope';
 import { roleFont } from '../../design/text-weight';
 import { FIELD_LINE, PILL_RADIUS } from './metrics';
 import { useNameReveal } from '../../primitives/use-name-reveal';
+import { Away } from '../../primitives/away';
+import { useComposition } from './use-composition';
 
 /** The well's box as the card reads it, in screen px. */
 export interface SeatRect { left: number; top: number; width: number; height: number }
-
-/** keyCode covers IMEs that end composition before dispatching the confirming keydown. */
-export function isCompositionKey(event: globalThis.KeyboardEvent): boolean {
-  return event.isComposing || event.keyCode === 229;
-}
 
 /**
  * Floating form of the shared composer field. It morphs from the measured well, preserves the draft
@@ -44,7 +42,7 @@ export function ExpandedField({
   const collapseName = useNameReveal(t('agent.composer_collapse'));
   const [from, setFrom] = useState<SeatRect | null>(seat?.rect ?? null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const composing = useRef(false);
+  const composition = useComposition();
 
   // Remeasure the mounted well while resize or scrolling moves the portal's target.
   useLayoutEffect(() => {
@@ -54,10 +52,10 @@ export function ExpandedField({
       const rect = anchor.current ? visualRect(anchor.current) : null;
       if (rect) setFrom({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     };
-    window.addEventListener('resize', measure);
+    const resized = subscribeViewportSize(measure);
     window.addEventListener('scroll', measure, true);
     return () => {
-      window.removeEventListener('resize', measure);
+      resized();
       window.removeEventListener('scroll', measure, true);
     };
   }, [anchor, open, seat]);
@@ -79,65 +77,61 @@ export function ExpandedField({
   return createPortal(
     <AnimatePresence>
       {open && from && morph && (
-        <motion.div
-          key="composer-card"
-          ref={cardRef}
-          onKeyDown={routeSurfaceKeyDown}
-          data-testid="composer-expanded"
-          role="group"
-          aria-label={t('agent.composer_expand')}
-          initial={reduced ? false : { ...from, borderRadius: PILL_RADIUS }}
-          animate={{ ...morph, borderRadius: radii.lg }}
-          exit={{ ...from, borderRadius: PILL_RADIUS }}
-          transition={framerMotion('panel.composer.unfold', reduced)}
-          // The focus ring follows the card's animated radius.
-          className={FIELD_WRAP_CLASS}
-          style={CARD_STYLE}
-        >
-          {/* Fade content into the landing box instead of reflowing it through the pill morph. */}
+        // Folding back, the card takes no input from its first frame.
+        <Away key="composer-card">
           <motion.div
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            ref={cardRef}
+            onKeyDown={routeSurfaceKeyDown}
+            data-testid="composer-expanded"
+            role="group"
+            aria-label={t('agent.composer_expand')}
+            initial={reduced ? false : { ...from, borderRadius: PILL_RADIUS }}
+            animate={{ ...morph, borderRadius: radii.lg }}
+            exit={{ ...from, borderRadius: PILL_RADIUS }}
             transition={framerMotion('panel.composer.unfold', reduced)}
-            style={{ ...CARD_BODY_STYLE, width: morph.width, height: morph.height }}
+            // The focus ring follows the card's animated radius.
+            className={FIELD_WRAP_CLASS}
+            style={CARD_STYLE}
           >
-            <textarea
-              ref={fieldRef}
-              data-testid="composer-expanded-input"
-              className={`pw-search-field ${FIELD_INPUT_CLASS}`}
-              spellCheck={false}
-              disabled={disabled}
-              value={value}
-              placeholder={placeholder}
-              onChange={(e) => onChange(e.target.value)}
-              onCompositionStart={() => { composing.current = true; }}
-              onCompositionEnd={() => { composing.current = false; }}
-              onKeyDown={(e) => {
-                if (composing.current || isCompositionKey(e.nativeEvent)) {
-                  e.stopPropagation();
-                  return;
-                }
-              }}
-              style={CARD_FIELD_STYLE}
-            />
-            <div style={CARD_FOOT_STYLE}>
-              <ActionButton
-                appearance="secondary"
-                data-testid="composer-expanded-done"
-                {...collapseName.bind}
-                aria-label={t('agent.composer_collapse')}
-                onClick={close}
-              >
-                <Icon id="pw-compress" size={14} />
-                {collapseName.bubble}
-              </ActionButton>
-              <ActionButton appearance="primary" data-testid="composer-expanded-send" disabled={disabled} onClick={onSend}>
-                {t('agent.action_send')}
-              </ActionButton>
-            </div>
+            {/* Fade content into the landing box instead of reflowing it through the pill morph. */}
+            <motion.div
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={framerMotion('panel.composer.unfold', reduced)}
+              style={{ ...CARD_BODY_STYLE, width: morph.width, height: morph.height }}
+            >
+              <textarea
+                ref={fieldRef}
+                data-testid="composer-expanded-input"
+                className={`pw-search-field ${FIELD_INPUT_CLASS}`}
+                spellCheck={false}
+                disabled={disabled}
+                value={value}
+                placeholder={placeholder}
+                onChange={(e) => onChange(e.target.value)}
+                {...composition.bind}
+                onKeyDown={(e) => { if (composition.owns(e)) e.stopPropagation(); }}
+                style={CARD_FIELD_STYLE}
+              />
+              <div style={CARD_FOOT_STYLE}>
+                <ActionButton
+                  appearance="secondary"
+                  data-testid="composer-expanded-done"
+                  {...collapseName.bind}
+                  aria-label={t('agent.composer_collapse')}
+                  onClick={close}
+                >
+                  <Icon id="pw-compress" size={14} />
+                  {collapseName.bubble}
+                </ActionButton>
+                <ActionButton appearance="primary" data-testid="composer-expanded-send" disabled={disabled} onClick={onSend}>
+                  {t('agent.action_send')}
+                </ActionButton>
+              </div>
+            </motion.div>
           </motion.div>
-        </motion.div>
+        </Away>
       )}
     </AnimatePresence>,
     document.body,

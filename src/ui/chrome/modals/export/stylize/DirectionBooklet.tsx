@@ -1,20 +1,20 @@
 /* Style directions grouped into local and provider-backed rows. Each row shows its sample, name,
  * AI status and relative render cost; the list scrolls independently of `DirectionPane`. */
 import { ActionButton } from '../../../../primitives/ActionButton';
-import { STYLIZE_PAPER, ACTIVE, rgbaOf } from '../../../../design/tokens';
+import { STYLIZE_PAPER } from '../../../../design/tokens';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { cursors, radii } from '../../../../design/styles';
-import { skin } from '../../../../design/window-skin';
+import { pickedRing, skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import {
-  CUSTOM_DIRECTION_ID, PROC_PACK_META, STYLE_PACKS,
+  CUSTOM_DIRECTION_ID, PROC_PACK_META, PROVIDER_TAKE_COST, STYLE_PACKS,
   type DirectionId, type ProcPackMeta, type StylePack, type StylizeDirection,
 } from '../../../../../pipelines/stylize/facts';
-import { neuralPacksUsable, neuralPacksUsableNow } from '../../../../../editor/export/stylize';
-import { packSampleUrl } from './sample-assets';
+import { neuralPacksUsable, offeredDirections } from '../../../../../editor/export/stylize';
+import { packSampleUrl } from '../../../../../assets/style-sample-urls';
 import { useScrollFade } from '../../../../primitives/scroll-fade';
 import { SampleTile, entering } from './stylize-parts';
 import { cssMotion } from '../../../../design/motion';
@@ -60,7 +60,7 @@ const DIRECTIONS: readonly DirectionRow[] = [
     id: pack.id as DirectionId,
     nameKey: pack.nameKey,
     kind: 'model',
-    cost: 5,
+    cost: pack.cost,
     pack,
     proc: null,
     art: { paper: pack.paper, palette: pack.palette },
@@ -70,7 +70,7 @@ const DIRECTIONS: readonly DirectionRow[] = [
     id: CUSTOM_DIRECTION_ID,
     nameKey: 'stylize.dir_custom',
     kind: 'model',
-    cost: 5,
+    cost: PROVIDER_TAKE_COST,
     pack: null,
     proc: null,
     art: CUSTOM_ART,
@@ -82,15 +82,13 @@ export function directionRow(id: StylizeDirection): DirectionRow {
   return DIRECTIONS.find((d) => d.id === id) ?? DIRECTIONS[0]!;
 }
 
-/**
- * Whether the model-drawn local packs belong in the list. The answer is assumed yes until the
- * engine probe says otherwise, so an engine that can run them never sees the list change.
- */
-function useNeuralOffered(): boolean {
-  const [offered, setOffered] = useState(() => neuralPacksUsableNow() ?? true);
+/** The directions on offer (`offeredDirections`), read again once the engine's probe has answered,
+ *  so an engine that can run the model-drawn local packs never sees the list change. */
+function useOfferedDirections(): readonly StylizeDirection[] {
+  const [offered, setOffered] = useState(offeredDirections);
   useEffect(() => {
     let live = true;
-    void neuralPacksUsable().then((ok) => { if (live) setOffered(ok); });
+    void neuralPacksUsable().then(() => { if (live) setOffered(offeredDirections()); });
     return () => { live = false; };
   }, []);
   return offered;
@@ -108,8 +106,8 @@ export function DirectionBooklet({ value, onPick, enterIndex = 0, scrolls = true
   const reduced = useReducedMotionConfig() === true;
   const scrollRef = useRef<HTMLDivElement>(null);
   const fade = useScrollFade(scrollRef, 'y', { on: scrolls });
-  const neuralOffered = useNeuralOffered();
-  const rows = neuralOffered ? DIRECTIONS : DIRECTIONS.filter((d) => !d.proc?.neural);
+  const offered = useOfferedDirections();
+  const rows = DIRECTIONS.filter((d) => offered.includes(d.id));
   const local = rows.filter((d) => d.kind === 'proc');
   const online = rows.filter((d) => d.kind === 'model');
 
@@ -205,7 +203,7 @@ function DirectionRowButton({ row, picked, onPick }: {
       style={{
         ...rowStyle,
         background: picked ? STYLIZE_PAPER.picked : skin.inset,
-        boxShadow: picked ? `0 0 0 2.5px ${skin.active}` : `0 0 0 0 ${TRANSPARENT_ACTIVE}`,
+        boxShadow: pickedRing(picked),
       }}
    >
       <SampleTile
@@ -223,8 +221,6 @@ function DirectionRowButton({ row, picked, onPick }: {
 }
 
 
-/** Transparent shadow keeps the selection-ring transition interpolable. */
-const TRANSPARENT_ACTIVE = rgbaOf(ACTIVE, 0);
 
 const rowStyle: CSSProperties = {
   display: 'flex',

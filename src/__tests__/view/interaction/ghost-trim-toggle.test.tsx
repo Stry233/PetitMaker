@@ -66,7 +66,7 @@ function armBrush(surface: 'mountain' | 'road'): void {
   registerToolManager(tm);
   setStoreState({
     gridState: gs, commandExecutor: executor, selection: [], selectingRegion: false,
-    contextMenu: null, autoEdgeCut: 'off', activeLayer: 1, drawingBrushSize: 3,
+    contextMenu: null, autoEdgeCut: 'off', drawingBrushSize: 3,
     ...armedEditMode({ tool: ToolType.TerrainBrush, content: surface, item: null }),
   });
   tm.setActiveTool(ToolType.TerrainBrush);

@@ -146,7 +146,7 @@ describe('a card carried onto the map', () => {
     expect(overlay.showGhost).not.toHaveBeenCalled(); // nothing to preview over the shelf
 
     c.move(overMap({ x: 12, y: 12 }));
-    expect(overlay.showGhost).toHaveBeenLastCalledWith(expect.anything(), { wash: 'placement', valid: true });
+    expect(overlay.showGhost).toHaveBeenLastCalledWith(expect.anything(), { placement: true, valid: true });
 
     c.release(overMap({ x: 12, y: 12 }));
     expect(placedAt(12, 12)).toBe(true);
@@ -168,7 +168,7 @@ describe('a card carried onto the map', () => {
 
     const c = carry();
     c.move(overMap({ x: 5, y: 5 }));
-    expect(overlay.showGhost).toHaveBeenLastCalledWith(expect.anything(), { wash: 'placement', valid: false });
+    expect(overlay.showGhost).toHaveBeenLastCalledWith(expect.anything(), { placement: true, valid: false });
     c.release(overMap({ x: 5, y: 5 }));
     bus.off('validation-failed', onFail as never);
 
@@ -281,6 +281,40 @@ describe('a carry that does not land on the map', () => {
     c.release(overList);
     expect(gs.objects.size).toBe(0);
     expect(armedItem()).toBe(OTHER);
+  });
+
+  it('[EDIT-50] clears the selection while it carries, and gives it back when released off the map or put away with Escape', () => {
+    setUp(null, tree('t1', 3, 3));
+    const sel = [{ kind: 'object', id: 't1' }] as const;
+    useEditorStore.getState().setSelection([...sel]);
+    const c = carry();
+    expect(useEditorStore.getState().selection).toEqual([]);
+    c.move(overMap({ x: 12, y: 12 }));
+    c.release(overList);
+    expect(useEditorStore.getState().selection).toEqual(sel);
+
+    const again = carry();
+    again.move(overMap({ x: 12, y: 12 }));
+    RUN['selection.deselect']({} as never);
+    expect(armedItem()).toBeNull();
+    expect(useEditorStore.getState().selection).toEqual(sel);
+  });
+
+  it('[EDIT-50] clears the selection for a carry of the card already armed too, keeps it cleared after a drop and gives it back otherwise', () => {
+    setUp(CARRIED, tree('t1', 3, 3));
+    const sel = [{ kind: 'object', id: 't1' }] as const;
+    useEditorStore.getState().setSelection([...sel]);
+    const c = carry();
+    expect(useEditorStore.getState().selection).toEqual([]);
+    c.move(overMap({ x: 12, y: 12 }));
+    c.release(overList);
+    expect(useEditorStore.getState().selection).toEqual(sel);
+
+    const landed = carry();
+    landed.move(overMap({ x: 12, y: 12 }));
+    landed.release(overMap({ x: 12, y: 12 }));
+    expect(placedAt(12, 12)).toBe(true);
+    expect(useEditorStore.getState().selection).toEqual([]);
   });
 
   it('leaves the map machine deaf to the carried pointer, so its window release runs no press', () => {

@@ -13,6 +13,8 @@ import { roleFont } from '../../design/text-weight';
 import { INSET, PANEL_EDGE, PANEL_EDGE_WIDTH, PLATE, PLATE_INK } from '../../design/tokens';
 import { TOUCH_TARGET } from '../../design/scale';
 import { TimedButton } from '../../primitives/TimedButton';
+import { ActionButton } from '../../primitives/ActionButton';
+import { CloseIcon } from '../../primitives/line-glyphs';
 import { TouchReach } from '../../primitives/TouchReach';
 import { useReveal } from '../../primitives/use-reveal';
 import { useChromeLayer, useChromeLayerZoom } from '../../primitives/chrome-layer';
@@ -26,6 +28,8 @@ const BUBBLE_GAP_SHARE = 0.45;
 const BUBBLE_SECONDS = 5;
 const TAIL = 16;
 const CLOSE = 28;
+/** The close's cross, in css px: the set's cross spans half its box. */
+const CROSS = 16;
 
 const card: CSSProperties = {
   position: 'fixed',
@@ -128,22 +132,20 @@ export function SpeechBubble({ anchor, text, onAct, onClose, prefer = 'below', a
       {...floating.piece}
       role="status"
       data-testid="speech-bubble"
-      style={{ ...layer, ...floating.style, ...card, boxSizing: 'content-box', maxHeight: 'none', overflowY: 'visible', visibility: floating.placement ? 'visible' : 'hidden' }}
+      style={{ ...layer, ...floating.style, ...card, boxSizing: 'content-box', maxHeight: 'none', overflowY: 'visible', visibility: floating.placement ? undefined : 'hidden' }}
       {...presence('surface.arrive', { opacity: 0, y: -8 }, { exit: { opacity: 0, y: -6 } })}
       {...readingBind}
     >
       <span data-testid="speech-bubble-tail" aria-hidden style={{ ...tail, ...(floating.placement?.above ? tailDown : tailUp), left: tailLeft }} />
       <TimedButton after={BUBBLE_SECONDS} hint={timedHint(t, BUBBLE_SECONDS)} paused={reading} style={close} onPress={onClose} aria-label={t('hint.close')} pressMotion={false}>
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-          <path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        <CloseIcon size={CROSS} />
         {/* The close and the line stand side by side, so each grows away from the other. */}
         <TouchReach w={CLOSE} h={CLOSE} zoom={zoom} sides={{ right: false }} />
       </TimedButton>
-      <button type="button" style={line} onClick={() => { onAct(); onClose(); }}>
+      <ActionButton interaction="row" style={line} onClick={() => { onAct(); onClose(); }}>
         {emphasize(text)}
         <TouchReach zoom={zoom} sides={{ left: false }} />
-      </button>
+      </ActionButton>
     </motion.div>
   );
 }

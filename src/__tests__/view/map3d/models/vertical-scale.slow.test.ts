@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import type { ArchetypeKey } from '../../../../view/map3d/geometry/types';
 
 afterEach(() => {
   vi.doUnmock('../../../../view/map3d/geometry/coords');
@@ -13,7 +14,9 @@ async function dimensions(layerHeight: number) {
   }));
   const { modeledIds, getSpec } = await import('../../../../view/map3d/models/registry');
   const { modelGeometry, disposeModels } = await import('../../../../view/map3d/models/build-model');
-  const { archetypeGeometry, ARCHETYPE_KEYS, disposeArchetypes } = await import('../../../../view/map3d/models/object-archetypes');
+  const { archetypeGeometry, disposeArchetypes } = await import('../../../../view/map3d/models/object-archetypes');
+  const { CATEGORIES } = await import('../../../../config/catalog/categories');
+  const ARCHETYPE_KEYS: ArchetypeKey[] = [...CATEGORIES.map((c) => c.id), 'platform'];
   const result = new Map<string, { x: number; y: number; z: number; uniform: boolean; calibrated: boolean }>();
   for (const id of modeledIds()) {
     const spec = getSpec(id)!;

@@ -9,7 +9,8 @@ import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { denseIsland } from './_fixtures';
 import { TILE_SIZE } from '../../view/map2d/geometry/world';
-import { chunkVisible, cullRect } from '../../view/map2d/geometry/chunk-cull';
+import { chunkVisible } from '../../view/map2d/geometry/chunk-cull';
+import { Viewport } from '../../view/map2d/camera/viewport';
 import { objectsInBand, type MacroRect } from '../../view/interaction/marquee';
 import { pointerTarget, selectionHoverBox } from '../../view/interaction/selection-hover';
 import { WheelClassifier, type WheelLike } from '../../view/interaction/gestures';
@@ -33,13 +34,14 @@ describe.runIf(PERF)('perf: canvas-math', () => {
       offsetX: (i * 137) % (mapPxW * 4),
       offsetY: (i * 271) % (mapPxH * 4),
       zoom: 0.4 + (i % 6) * 0.25,
-      screenW: 1280,
-      screenH: 800,
+      heading: (i % 8) * Math.PI / 4,
     }));
     await s.bench('cull/chunk-sweep', () => {
       let visible = 0;
+      const viewport = new Viewport(1280, 800);
       for (const cam of cameras) {
-        const rect = cullRect(cam.offsetX, cam.offsetY, cam.zoom, cam.screenW, cam.screenH);
+        viewport.setView(cam);
+        const rect = viewport.visibleWorldRect();
         for (let cy = 0; cy < chunksY; cy++) for (let cx = 0; cx < chunksX; cx++) if (chunkVisible(cx, cy, rect)) visible++;
       }
       return visible;

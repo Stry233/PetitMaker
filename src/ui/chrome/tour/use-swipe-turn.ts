@@ -1,12 +1,13 @@
 /**
  * A finger's horizontal swipe across a tips card turns it: the card's reel and words follow the finger
  * and, let go far or fast enough, the turn plays on from where they stand; otherwise they spring back.
- * A drag decides its direction once it has travelled `SWIPE_LOCK`, so a vertical one stays the words'
- * scroll and a tap stays a tap.
+ * A drag decides its direction once it has travelled past its pointer's drag threshold, so a vertical one
+ * stays the words' scroll and a tap stays a tap.
  */
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { animate, type AnimationPlaybackControls } from 'framer-motion';
 import { framerMotion } from '../../design/motion';
+import { timingFor, travelledPast } from '../../../platform/input/gesture-timing';
 
 /** The custom property a card's swiping parts are offset by, in card px; the reel's parts slide what
  *  their frames show by it, the words move by it. */
@@ -14,13 +15,11 @@ export const SWIPE_VAR = '--tour-swipe';
 /** Marks a part of the card shown that follows the finger. */
 export const SWIPE_PART_ATTR = 'data-tour-swipe';
 
-/** How far a press travels, in window px, before it is a drag along one axis. */
-const SWIPE_LOCK = 8;
 /** A release turns past this share of the card's width, bounded to these window px. */
 const TURN_SHARE = 0.22;
 const TURN_LEAST = 48;
 const TURN_MOST = 120;
-/** A release this fast, in window px per ms, the way of the drag turns from any distance past the lock. */
+/** A release this fast, in window px per ms, the way of the drag turns from any distance past the drag threshold. */
 const SWIPE_FLICK = 0.45;
 /** How long a release's speed is read over, in ms. */
 const FLICK_WINDOW = 90;
@@ -38,10 +37,10 @@ function stand(el: HTMLElement, px: number): void {
 }
 
 /** Whether a drag of `dx` window px, let go at `speed` px per ms, across a card `width` px wide, turns
- *  it: forward for a drag to the left, back for one to the right. */
-function swipeTurns(dx: number, speed: number, width: number): boolean {
+ *  it: forward for a drag to the left, back for one to the right; `lock` is the pointer's drag threshold. */
+function swipeTurns(dx: number, speed: number, width: number, lock: number): boolean {
   const reach = Math.min(TURN_MOST, Math.max(TURN_LEAST, width * TURN_SHARE));
-  return Math.abs(dx) >= reach || (Math.abs(dx) > SWIPE_LOCK && speed * Math.sign(dx) >= SWIPE_FLICK);
+  return Math.abs(dx) >= reach || (Math.abs(dx) > lock && speed * Math.sign(dx) >= SWIPE_FLICK);
 }
 
 type Drag = { id: number; x0: number; y0: number; state: 'pending' | 'drag' | 'off'; trail: { x: number; t: number }[] };
@@ -73,7 +72,7 @@ export function useSwipeTurn({ enabled, forward, backward, zoom, reduced, onNext
     const recent = d.trail.filter((p) => e.timeStamp - p.t <= FLICK_WINDOW);
     const from = recent[0] ?? d.trail[0]!;
     const speed = e.timeStamp > from.t ? (e.clientX - from.x) / (e.timeStamp - from.t) : 0;
-    const turns = !cancelled && swipeTurns(dx, speed, root.getBoundingClientRect().width) && (dx < 0 ? forward : backward);
+    const turns = !cancelled && swipeTurns(dx, speed, root.getBoundingClientRect().width, timingFor(e).dragThreshold) && (dx < 0 ? forward : backward);
     if (turns) {
       // The parts leave from where the finger left them; the card arriving starts from its own place.
       if (dx < 0) onNext(); else onBack();
@@ -101,7 +100,7 @@ export function useSwipeTurn({ enabled, forward, backward, zoom, reduced, onNext
       if (!d || d.id !== e.pointerId || d.state === 'off') return;
       const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
       if (d.state === 'pending') {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_LOCK) return;
+        if (!travelledPast(dx, dy, timingFor(e).dragThreshold)) return;
         if (Math.abs(dy) >= Math.abs(dx)) { d.state = 'off'; return; }
         d.state = 'drag';
         back.current?.stop();

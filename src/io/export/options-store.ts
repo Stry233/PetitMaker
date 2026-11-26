@@ -6,8 +6,8 @@
  * actually offer, so a stale or hand-edited value falls back to the default rather than into the UI.
  */
 import { jsonObject, jsonPref, writeJsonPref } from '../../platform/storage/prefs';
-import { EXPORT_PRESETS, RESOLUTION_KEYS, type ExportOptions, type ExportPreset, type ResolutionKey } from './types';
-import { DEFAULT_FOOTER } from './footer-template';
+import { EXPORT_PRESETS, RESOLUTION_KEYS, type ExportOptions, type ExportPreset, type PictureChoices, type ResolutionKey } from './types';
+import { DEFAULT_FOOTER, FOOTER_TEMPLATE_MAX } from './footer-template';
 
 /** The options a window opens with when nothing was remembered. */
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
@@ -15,16 +15,13 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   footerTemplate: DEFAULT_FOOTER, resolution: 'standard',
 };
 
-type Remembered = Omit<ExportOptions, 'title' | 'description'>;
-
 const BOOLEANS = ['showBadge', 'layerPreview', 'card3d', 'grid', 'footer', 'annotations'] as const;
-const FOOTER_TEMPLATE_MAX = 400;
 
 /** What was remembered, field by field, with anything unrecognisable left out. */
-function loadRememberedExportOptions(): Partial<Remembered> {
+function loadRememberedExportOptions(): Partial<PictureChoices> {
   const d = jsonPref('exportOptions', jsonObject);
   if (!d) return {};
-  const out: Partial<Remembered> = {};
+  const out: Partial<PictureChoices> = {};
   for (const k of BOOLEANS) if (typeof d[k] === 'boolean') out[k] = d[k] as boolean;
   if (EXPORT_PRESETS.includes(d.preset as ExportPreset)) out.preset = d.preset as ExportPreset;
   // Older records kept the share-code switch as its own `importable` field; it decided the picture.
@@ -40,7 +37,7 @@ export function openingExportOptions(): ExportOptions {
 }
 
 /** The options without the map's own words, which are never remembered. */
-function rememberedPart({ title: _title, description: _description, ...rest }: ExportOptions): Remembered {
+function rememberedPart({ title: _title, description: _description, ...rest }: ExportOptions): PictureChoices {
   return rest;
 }
 

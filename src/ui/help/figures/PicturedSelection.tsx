@@ -1,7 +1,7 @@
 /*
  * The selection's own surfaces over a Help figure's map, on the figure's world: the selection card
- * where the live editor stands it, and touch multi-select's plate and row while the world's latch is
- * on, which is when the live card gives way to them. Both are the live components, pictured.
+ * where the live editor stands it, and touch multi-select's bar while the world's latch is on, which is
+ * when the live card gives way to it. Both are the live components, pictured.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SelectionCard, type SelectionCardSource } from '../../chrome/floating/SelectionCard';
@@ -39,7 +39,7 @@ export function PicturedSelection({ map, W, H, barH, zoom }: { map: DemoMap; W: 
   return (
     <>
       <SelectionCard source={source} />
-      {latched && <PicturedMultiSelect count={selectedObjectIds(selection).length} zoom={zoom} share={fit} rowAttrs={ROW_ATTRS} />}
+      {latched && <PicturedMultiSelect count={selectedObjectIds(selection).length} zoom={zoom} rowAttrs={ROW_ATTRS} />}
     </>
   );
 }

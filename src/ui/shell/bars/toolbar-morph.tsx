@@ -11,7 +11,8 @@ import {
   type AnimationPlaybackControls, type MotionValue, type Transition,
 } from 'framer-motion';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { seconds } from '../../design/motion';
+import { useAway } from '../../primitives/away';
+import { arrangementFades } from '../../design/motion';
 import { z } from '../../design/styles';
 import { INK } from '../../design/tokens';
 import { useFrameLayout, usePlanGlide, type BarPanel } from '../frame-layout';
@@ -150,15 +151,15 @@ class SlotFlip extends Component<{
   render() { return this.props.children; }
 }
 
-function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
+function Slot({ slot }: { slot: ToolbarSlot }) {
   const registry = useContext(SlotRegistry)!;
   const present = useIsPresent();
   const outer = useRef<HTMLDivElement>(null);
   const x = useMotionValue(0), y = useMotionValue(0);
   const handle = useRef<SlotHandle | null>(null);
   handle.current ??= { outer: null, x, y, running: [], present: true, popped: false, end: !!slot.end };
-  const enter = useTransition('tool.control.enter');
-  const leave = useTransition('tool.control.leave');
+  // A control only one tool offers fades where it stands, out early and in late on the shared controls' travel.
+  const fades = arrangementFades('tool.control.morph', useReducedMotionConfig());
 
   useLayoutEffect(() => {
     const own = handle.current!;
@@ -179,17 +180,19 @@ function Slot({ slot, delay }: { slot: ToolbarSlot; delay: number }) {
 
   const fade = slot.ownMotion ? {} : {
     initial: { opacity: 0 },
-    animate: { opacity: 1, transition: { ...enter, delay } },
-    exit: { opacity: 0, transition: leave },
+    animate: { opacity: 1, transition: fades.in },
+    exit: { opacity: 0, transition: fades.out },
   };
-  return <div ref={outer} data-toolbar-slot={slot.id} aria-hidden={!present || undefined} {...(!present ? { inert: '' } : {})}
+  const away = useAway();
+  return <div ref={outer} data-toolbar-slot={slot.id} {...away}
     style={{ flex: slot.flex ?? 'none', minWidth: slot.minWidth, marginLeft: slot.end ? 'auto' : undefined }}>
     <motion.div {...fade} style={{ position: 'relative', left: x, top: y }}>{slot.node}</motion.div>
   </div>;
 }
 
-/** A row or column of slots. Departures and arrivals use the registry's leave and enter motions;
- *  under reduced motion the swap happens before paint. */
+/** A row or column of slots. Departures fade out over the start of the shared controls' travel and
+ *  arrivals in over its end, so two controls never stand in one place at once; under reduced motion the
+ *  swap happens before paint. */
 function MorphRow({ slots, column = false, gap = 0, underlay, style, attrs }: {
   slots: readonly ToolbarSlot[];
   column?: boolean;
@@ -203,12 +206,7 @@ function MorphRow({ slots, column = false, gap = 0, underlay, style, attrs }: {
   const { scale } = usePx();
   const registry = useRef(new Map<string, SlotHandle>()).current;
   const transition = useTransition('tool.control.morph') as Transition;
-  const previous = useRef<readonly string[]>(slots.map(slot => slot.id));
-  const leaving = previous.current.some(id => !slots.some(slot => slot.id === id));
-  useLayoutEffect(() => { previous.current = slots.map(slot => slot.id); });
-  // Arrivals wait for departures so two controls never stand in one place at once.
-  const delay = leaving && !reduced ? seconds('tool.control.leave') : 0;
-  const body = slots.map(slot => <Slot key={slot.id} slot={slot} delay={delay}/>);
+  const body = slots.map(slot => <Slot key={slot.id} slot={slot}/>);
   return <SlotRegistry.Provider value={registry}>
     <SlotFlip registry={registry} reduced={reduced} transition={transition} scale={scale}>
       <div {...attrs} style={{

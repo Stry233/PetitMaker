@@ -15,7 +15,7 @@ import { TerrainType, type MacroCoord, type PlacedObject } from '../../../core/m
 import { detectWaterfalls } from '../../../core/domain/terrain/waterfall-geometry';
 import { isBuildableZone } from '../../../core/game/zones';
 import { INNER_TRI, OUTER_TRI } from '../../../core/domain/edge-cut/cut-validator';
-import { CORNER_INDEX } from '../../../core/model/corners';
+import { CORNER_POS } from '../../../core/model/corners';
 import { CANONICAL_ROAD_STATES } from '../../../core/domain/edge-cut/road-cut-states';
 import { splineCells } from '../../../core/grid/shapes';
 import { type CurveAnchor } from '../../../core/base/spline';
@@ -24,9 +24,9 @@ import { measureDrawing } from '../../../core/model/annotation/dimensions';
 import { ANCHOR_LANDMARK } from '../../_support/anchor';
 import { HEADLESS_OVERLAY } from '../../../tools/pointer/runtime/host';
 import { mapChunkAt } from '../../../core/grid/map-chunks';
-import { getMapStats } from '../../../state/map-stats';
-import { chunkLoad } from '../../../ui/chrome/modals/load/map-load';
-import { selectionTarget } from '../../../editor/editing/group-edit';
+import { chunkLoad, getMapStats } from '../../../state/map-stats';
+import { selectionTarget } from '../../../editor/editing/object-menu';
+import { liveMembers, mapGroups } from '../../../core/model/placed-group';
 
 const MOUSE: SceneForm = { touch: false, upright: false };
 
@@ -48,7 +48,6 @@ function recorder(): { view: DemoView; rec: Recorded } {
   const view: DemoView = {
     clearGhost: () => {},
     groupGhost: () => {},
-    paintGhost: () => {},
     notice: (n) => { if (n) rec.notices.push({ key: n.key, ...(n.params ? { params: n.params } : {}) }); },
     region: (cells) => { if (cells) rec.region = cells; },
     route: (cells) => { if (cells) rec.routeMax = Math.max(rec.routeMax, cells.length); },
@@ -244,7 +243,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(world.state.cells[100]?.[71]?.terrain).toMatchObject({ elevation: 2 });
     expect(cornersAfter).toContain('fan');
     // The tri step must be the BR corner's own outer triangle, the same table the live tool cycles.
-    expect(cornersAfter).toContain(OUTER_TRI[CORNER_INDEX.BR]);
+    expect(cornersAfter).toContain(OUTER_TRI[CORNER_POS.indexOf('BR')]);
     expect(cornersAfter[cornersAfter.length - 1] ?? 'square').toBe('square');
   });
 
@@ -317,8 +316,8 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     for (const step of steps) {
       step.on?.(ctx);
       step.during?.(ctx, 1);
-      const a = world.state.cells[100]?.[69]?.terrain?.corners?.[CORNER_INDEX.BR] ?? 'square';
-      const b = world.state.cells[101]?.[70]?.terrain?.corners?.[CORNER_INDEX.TL] ?? 'square';
+      const a = world.state.cells[100]?.[69]?.terrain?.corners?.[CORNER_POS.indexOf('BR')] ?? 'square';
+      const b = world.state.cells[101]?.[70]?.terrain?.corners?.[CORNER_POS.indexOf('TL')] ?? 'square';
       pairs.push(`${a}/${b}`);
     }
     // Both blocks stand at the pinch, and both corners move over the run: one click is not one
@@ -331,7 +330,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     // And every shape in them is one the tool's own tables carry.
     for (const pair of landed) {
       for (const shape of pair.split('/')) {
-        expect(['square', 'fan', OUTER_TRI[CORNER_INDEX.BR], OUTER_TRI[CORNER_INDEX.TL]]).toContain(shape);
+        expect(['square', 'fan', OUTER_TRI[CORNER_POS.indexOf('BR')], OUTER_TRI[CORNER_POS.indexOf('TL')]]).toContain(shape);
       }
     }
   });
@@ -351,7 +350,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(hollow?.elevation).toBe(2);
     expect(hollow?.patchOnly).toBe(true);
     // A wrapped corner's bevel is the inner triangle, the shape the gamma path lays.
-    expect(hollow?.corners?.[CORNER_INDEX.TL]).toBe(INNER_TRI[CORNER_INDEX.TL]);
+    expect(hollow?.corners?.[CORNER_POS.indexOf('TL')]).toBe(INNER_TRI[CORNER_POS.indexOf('TL')]);
     // The L itself was not repainted: its own cells keep their square corners.
     expect(world.state.cells[99]?.[73]?.terrain?.corners).toBeUndefined();
   });
@@ -544,7 +543,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     expect(walls).toBeGreaterThan(10);
   });
 
-  it('[EDIT-07] [EDIT-21] undo: the base rule cuts the column the brush stacks, one undo clears it, and the closing rebuild stands', () => {
+  it('[EDIT-07] [EDIT-21] undo: each click adds one layer, the base rule takes back the unsupported one, one undo takes back one stroke, and the closing rebuild stands', () => {
     const scene = HELP_SCENES.undo!;
     const world = sceneWorld(scene);
     const { view } = recorder();
@@ -558,15 +557,16 @@ describe('help demo scenes are proofs: the real commands land on the real templa
       columns.push(cell?.type === TerrainType.Mountain ? cell.elevation : null);
       if (step.realToast) toasts.push(world.refusal?.message ?? null);
     }
-    // The press fills the bare cell up to layer 4 in one stroke; its release settles at 3, naming
-    // the support rule.
+    // Three clicks climb a layer each; the fourth stands while pressed and is taken back on
+    // release, naming the support rule.
     expect(toasts).toEqual(['error.need_base_support']);
-    const cut = columns.indexOf(3);
-    expect(columns.slice(0, cut)).toEqual([null, 4]);
-    // The undo takes the whole column back in one step.
-    expect(columns[cut + 1]).toBeNull();
-    // The loop ends on the short rebuilt stack, so the settled frame is never an empty map.
-    expect(columns.at(-1)).toBe(2);
+    const pressed = columns.indexOf(4);
+    expect(new Set(columns.slice(0, pressed)), 'a layer at a time').toEqual(new Set([null, 1, 2, 3]));
+    expect(columns[pressed + 1]).toBe(3);
+    // The undo takes back the last stroke that stood: one layer.
+    expect(columns[pressed + 2]).toBe(2);
+    // The loop ends on the rebuilt stack, so the settled frame is never an empty map.
+    expect(columns.at(-1)).toBe(3);
   });
 
   it('load: the live meter stands over a region the world really loads', () => {
@@ -580,9 +580,7 @@ describe('help demo scenes are proofs: the real commands land on the real templa
     const run = play(HELP_SCENES.faq!);
     for (let x = 68; x <= 70; x++) expect(terrainAt(run, x, 101)?.type).toBe(TerrainType.Water);
     expect(terrainAt(run, 72, 101)?.type ?? TerrainType.None).not.toBe(TerrainType.Water);
-    // The live toast's own rewrite: a refused water stroke that would stand at exactly one
-    // layer names that layer instead of quoting the containment rule.
-    expect(run.refusalAtRelease).toBe('error.water_only_layer');
+    expect(run.refusalAtRelease).toBe('error.water_uncapped');
   });
 
   it('notes: the zone kept with Done and the dragged route ride the state for the real annotation layer to draw', () => {
@@ -930,21 +928,20 @@ describe('help demo scenes are proofs: the real commands land on the real templa
 
   it('autotrim: the same L stands as drawn, bevels, and rounds across the three settings', () => {
     const run = play(HELP_SCENES.autotrim!);
-    const tip = (x: number) => run.world.state.cells[99]?.[x]?.terrain?.corners?.[CORNER_INDEX.TL];
+    const tip = (x: number) => run.world.state.cells[99]?.[x]?.terrain?.corners?.[CORNER_POS.indexOf('TL')];
     expect(tip(66) ?? 'square').toBe('square');
-    expect(tip(72)).toBe(OUTER_TRI[CORNER_INDEX.TL]);
+    expect(tip(72)).toBe(OUTER_TRI[CORNER_POS.indexOf('TL')]);
     expect(tip(78)).toBe('fan');
   });
 
-  it('every scene rewinds clean through the real undo stack', () => {
-    for (const [name, scene] of Object.entries(HELP_SCENES)) {
-      if (name === 'generate' || name === 'scope') continue; // one designed run each per suite is enough compute
-      const run = play(scene);
-      const placed = run.world.state.objects.size;
-      while (run.world.undo()) { /* rewinding */ }
-      const again = play(scene);
-      expect(again.world.state.objects.size, name).toBe(placed);
-    }
+  // One designed run each per suite is enough compute for generate and scope.
+  it.each(Object.keys(HELP_SCENES).filter((name) => name !== 'generate' && name !== 'scope'))('the %s scene rewinds clean through the real undo stack', (name) => {
+    const scene = HELP_SCENES[name]!;
+    const run = play(scene);
+    const placed = run.world.state.objects.size;
+    while (run.world.undo()) { /* rewinding */ }
+    const again = play(scene);
+    expect(again.world.state.objects.size).toBe(placed);
   });
 
   it('the brush, shape, curve and trim figures lay the same map for a touch reader, with no key held', () => {
@@ -1159,5 +1156,164 @@ describe('copy, paste and placing many, on the editor\'s own code', () => {
     // The world put the card down itself, and the pictured shelf shows it put down.
     expect(run.world.toolPicked).toBe(false);
     expect(run.steps.at(-2)?.strip).toBeNull();
+  });
+});
+
+describe('blueprint figures save and place through the blueprint tool', () => {
+  const TOUCH_FORM: SceneForm = { touch: true, upright: false };
+  const count = (run: Run, id: string) => laidSince(run.world, run.start).filter((o) => o.catalogId === id).length;
+  const elevationAt = (run: Run, x: number, y: number) => terrainAt(run, x, y)?.elevation ?? 0;
+
+  it.each([MOUSE, TOUCH_FORM])('[BLUE-04] [BLUE-06] bploop: the copy brings the mound, tree and flower and leaves the house across the edge (%o)', (form) => {
+    const run = play(HELP_SCENES.bploop!, form);
+    expect(count(run, 'tree-apple')).toBe(2);
+    expect(count(run, 'flower-daisy')).toBe(2);
+    expect(count(run, 'building-forest-cabin')).toBe(1);
+    // The copy's frame stands at (74, 100): its mound on terrain cells 75 to 77 and its tree on top.
+    for (const x of [75, 76, 77]) expect(elevationAt(run, x, 102), `${x}`).toBe(1);
+    expect(run.world.objectAt('tree-apple', 75, 101)?.elevation).toBe(1);
+    // The house was never captured, so nothing was skipped for it.
+    expect(run.rec.notices).toEqual([]);
+  });
+
+  it.each([MOUSE, TOUCH_FORM])('[BLUE-04] bpsavesel: Save as blueprint frames the selected tree, and the drag reframes the whole piece (%o)', (form) => {
+    const scene = HELP_SCENES.bpsavesel!;
+    const world = sceneWorld(scene);
+    const { view } = recorder();
+    const shown: Array<readonly { x: number; y: number }[]> = [];
+    const ctx: DemoCtx = { world, view: { ...view, region: (cells) => { if (cells) shown.push(cells); } } };
+    let mostSelected = 0;
+    for (const step of scene.run(ctx, (key) => key, form)) {
+      step.on?.(ctx);
+      step.during?.(ctx, 1);
+      mostSelected = Math.max(mostSelected, world.selection.length);
+    }
+    // The tree stood selected for the card's button, and the frame step put it down.
+    expect(mostSelected).toBe(1);
+    expect(world.selection).toEqual([]);
+    // First the tree's own cell with its four terrain corners, then the dragged rectangle.
+    expect(shown[0]).toHaveLength(4);
+    expect(shown.at(-1)).toHaveLength(6 * 5);
+  });
+
+  it('[BLUE-04] bpframe: the frame request draws one rectangle whose whole cells are the piece\'s frame', () => {
+    const run = play(HELP_SCENES.bpframe!);
+    const xs = run.rec.region.map((c) => c.x), ys = run.rec.region.map((c) => c.y);
+    expect([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]).toEqual([68, 99, 73, 103]);
+    expect(run.rec.region).toHaveLength(6 * 5);
+  });
+
+  it.each([MOUSE, TOUCH_FORM])('[BLUE-06] bpplace: one press lays the blueprint once and puts it down (%o)', (form) => {
+    const run = play(HELP_SCENES.bpplace!, form);
+    expect(count(run, 'tree-apple')).toBe(1);
+    expect(run.world.objectAt('tree-apple', 72, 100)?.elevation).toBe(1);
+    expect(elevationAt(run, 73, 101)).toBe(1);
+    // Put down: a second press there lays nothing more.
+    run.world.click({ x: 66.5, y: 101.5 });
+    expect(count(run, 'tree-apple')).toBe(1);
+    expect(run.world.undo()).toBe(true);
+    expect(count(run, 'tree-apple')).toBe(0);
+  });
+
+  it('[BLUE-08] bpflat and bpraised: the same blueprint stands on the surface under it', () => {
+    const flat = play(HELP_SCENES.bpflat!);
+    const raised = play(HELP_SCENES.bpraised!);
+    expect(elevationAt(flat, 73, 101)).toBe(1);
+    expect(flat.world.objectAt('tree-apple', 72, 100)?.elevation).toBe(1);
+    expect(elevationAt(raised, 73, 101)).toBe(2);
+    expect(elevationAt(raised, 70, 101)).toBe(1);
+    expect(raised.world.objectAt('tree-apple', 72, 100)?.elevation).toBe(2);
+    expect(raised.world.objectAt('flower-daisy', 75, 102)?.elevation).toBe(1);
+  });
+
+  it.each([MOUSE, TOUCH_FORM])('[BLUE-06] [BLUE-08] bpskip: what the standing tree blocks is skipped and counted (%o)', (form) => {
+    const run = play(HELP_SCENES.bpskip!, form);
+    // The tree that stood stays, the blueprint's own tree finds no room, and its flower lands.
+    expect(run.world.objectAt('tree-apple', 73, 101)).toBeTruthy();
+    expect(run.world.objectAt('tree-apple', 72, 100)).toBeFalsy();
+    expect(run.world.objectAt('flower-daisy', 75, 102)).toBeTruthy();
+    expect(run.rec.notices).toHaveLength(1);
+    expect(run.rec.notices[0]!.key).toMatch(/^blueprint\.skipped/);
+    expect(Number(run.rec.notices[0]!.params?.n)).toBeGreaterThan(0);
+  });
+
+  it.each(['bploop', 'bpframe', 'bpsavesel'])('%s: the frame step ends, so the loop rewinds the map to where it began', (name) => {
+    const run = play(HELP_SCENES[name]!);
+    while (run.world.undo()) { /* rewinding */ }
+    expect([...run.world.state.objects.keys()].sort()).toEqual([...run.start].sort());
+  });
+
+  it('[BLUE-09] bpturn: E turns the armed blueprint a quarter before the press lays it', () => {
+    const run = play(HELP_SCENES.bpturn!);
+    const tree = laidSince(run.world, run.start).find((o) => o.catalogId === 'tree-apple');
+    const flower = laidSince(run.world, run.start).find((o) => o.catalogId === 'flower-daisy');
+    // Turned clockwise the 5 by 4 frame stands 4 by 5 with its top-left at (72, 98): the tree's
+    // corner of the mound goes to the top right, the flower's corner to the bottom left.
+    expect(tree && objectRect(tree)).toMatchObject({ x: 74, y: 99 });
+    expect(flower && objectRect(flower)).toMatchObject({ x: 72, y: 102 });
+    expect(run.steps.some((s) => s.keys)).toBe(true);
+  });
+});
+
+describe('[BLUE-07] a placed blueprint\'s figures, on the editor\'s own group code', () => {
+  const TOUCH_FORM: SceneForm = { touch: true, upright: false };
+  const FORMS = [MOUSE, TOUCH_FORM];
+  const groupsOf = (run: Run) => mapGroups(run.world.state).filter((g) => {
+    const live = liveMembers(run.world.state, g);
+    return live.objects.length + live.cells.length > 0;
+  });
+  const laidTrees = (run: Run) => laidSince(run.world, run.start).filter((o) => o.catalogId === 'tree-apple');
+
+  it.each(FORMS)('bpwhole: a press on open ground in the frame selects the placement whole, its terrain included (%o)', (form) => {
+    const run = play(HELP_SCENES.bpwhole!, form);
+    const group = run.world.selectedGroup();
+    expect(group).toBeTruthy();
+    expect(run.world.selection.some((r) => r.kind === 'terrain')).toBe(true);
+    expect(run.world.selection.filter((r) => r.kind === 'object')).toHaveLength(3);
+  });
+
+  it.each(FORMS)('bpnarrow: the card narrows to the trees, and their drag moves them alone, out of the group (%o)', (form) => {
+    const run = play(HELP_SCENES.bpnarrow!, form);
+    const [group] = groupsOf(run);
+    expect(group).toBeTruthy();
+    const kept = liveMembers(run.world.state, group!);
+    expect(kept.objects.map((o) => o.catalogId)).toEqual(['flower-daisy']);
+    expect(kept.cells.length).toBeGreaterThan(0);
+    expect(run.world.objectAt('tree-apple', 74, 100)).toBeTruthy();
+    expect(run.world.objectAt('tree-apple', 76, 101)).toBeTruthy();
+  });
+
+  it.each(FORMS)('bpgroupturn: the group turns a quarter and its drag moves it whole (%o)', (form) => {
+    const run = play(HELP_SCENES.bpgroupturn!, form);
+    const [group] = groupsOf(run);
+    expect(groupsOf(run)).toHaveLength(1);
+    expect(group!.frame).toEqual({ x: 72, y: 98, w: 4, h: 6 });
+    expect(liveMembers(run.world.state, group!).objects).toHaveLength(3);
+  });
+
+  it.each(FORMS)('[BLUE-08] bpcopywhole: the copy lands with its terrace, raised on the terrace it is dropped on (%o)', (form) => {
+    const run = play(HELP_SCENES.bpcopywhole!, form);
+    expect(groupsOf(run)).toHaveLength(2);
+    const copy = groupsOf(run).find((g) => g.frame.x === 75 && g.frame.y === 101)!;
+    expect(copy).toBeTruthy();
+    expect(liveMembers(run.world.state, copy).objects).toHaveLength(3);
+    // The blueprint's terrace stands a layer over the raised ground it was dropped on.
+    expect(terrainAt(run, 79, 103)).toEqual({ type: TerrainType.Mountain, elevation: 2 });
+    expect(laidTrees(run).filter((o) => o.elevation === 2)).toHaveLength(2);
+  });
+
+  it.each(FORMS)('bpcopykind: the narrowed copy lays the trees alone, with no ground and no group (%o)', (form) => {
+    const run = play(HELP_SCENES.bpcopykind!, form);
+    expect(groupsOf(run)).toHaveLength(1);
+    const onTerrace = laidTrees(run).filter((o) => o.position.x >= 74);
+    expect(onTerrace).toHaveLength(2);
+    for (let y = 100; y <= 106; y++) for (let x = 74; x <= 81; x++) expect(terrainAt(run, x, y), `${x},${y}`).toEqual({ type: TerrainType.Mountain, elevation: 1 });
+  });
+
+  it.each(FORMS)('bpdelete: Delete takes the group back whole and leaves the terrace as it stood (%o)', (form) => {
+    const run = play(HELP_SCENES.bpdelete!, form);
+    expect(groupsOf(run)).toHaveLength(0);
+    expect(laidSince(run.world, run.start)).toHaveLength(0);
+    for (let y = 100; y <= 106; y++) for (let x = 74; x <= 81; x++) expect(terrainAt(run, x, y), `${x},${y}`).toEqual({ type: TerrainType.Mountain, elevation: 1 });
   });
 });

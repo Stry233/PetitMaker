@@ -27,7 +27,7 @@ describe('roads beneath bridges', () => {
     const state = ravine(vertical, floor);
     const executor = makeExecutor(state);
     const anchor = vertical ? { x: 11 + offset, y: 11 } : { x: 11, y: 11 + offset };
-    new ObjectPlacerTool().onPointerDown(cell(anchor), point(anchor), makeToolCtx(state, executor, 1, 1, { armedItem: catalogId }));
+    new ObjectPlacerTool().onPointerDown(cell(anchor), point(anchor), makeToolCtx(state, executor, 1, { armedItem: catalogId }));
     const [bridge] = objectsByCatalog(state, catalogId);
     expect(bridge).toBeDefined();
     expect(bridge.elevation).toBe(2);
@@ -38,7 +38,7 @@ describe('roads beneath bridges', () => {
 
     const tool = new DrawingTool();
     for (const material of ['path-overgrown-dirt', 'path-cobblestone']) {
-      const ctx = makeToolCtx(state, executor, 1, 1, { contentType: 'road', tileMaterial: material });
+      const ctx = makeToolCtx(state, executor, 1, { contentType: 'road', tileMaterial: material });
       expect(tool.canActAt(cell(under), ctx)).toBe(true);
       const start = executor.beginStroke();
       expect(placeTileCell(under, ctx, new Set())).toBe(true);
@@ -61,7 +61,7 @@ describe('roads beneath bridges', () => {
       const state = ravine(false, 0, water);
       const executor = makeExecutor(state);
       const anchor = { x: 11, y: 11 };
-      new ObjectPlacerTool().onPointerDown(cell(anchor), point(anchor), makeToolCtx(state, executor, 1, 1, { armedItem: 'bridge-plank' }));
+      new ObjectPlacerTool().onPointerDown(cell(anchor), point(anchor), makeToolCtx(state, executor, 1, { armedItem: 'bridge-plank' }));
       expect(objectsByCatalog(state, 'bridge-plank')).toHaveLength(1);
       const support = placeCmd({ ...makeObject('path-cobblestone', 9, 11), elevation: 2 });
       expect(placementOverlapRule.validate(support, state).map(e => e.ruleId)).toContain('V-PLACE-OVERLAP');

@@ -10,14 +10,17 @@
  */
 import { deleteVault } from '../../platform/storage/vault';
 import { deleteFigureCache } from '../../platform/storage/figure-cache';
+import { wipeBlueprintLibrary } from './blueprint-library';
 import type { Autosave } from './autosave';
 
 /** The wipe half, separated from the reload so it is unit-testable. The owed autosave (its debounce,
  *  an in-flight compression) is cancelled and autosave suspended first, so neither the timer nor the
- *  reload's pagehide flush writes the map back. */
+ *  reload's pagehide flush writes the map back, and the blueprint library's wipe starts before
+ *  storage is cleared, so no library write still under way lands after the clear. */
 export async function wipeLocalData(autosave: Autosave): Promise<void> {
   autosave.clear();
   autosave.setSuspended(true);
+  const library = wipeBlueprintLibrary();
   try {
     localStorage.clear();
   } catch {
@@ -30,6 +33,7 @@ export async function wipeLocalData(autosave: Autosave): Promise<void> {
   }
   await deleteVault().catch(() => {});
   await deleteFigureCache().catch(() => {});
+  await library;
 }
 
 export async function resetAllLocalData(autosave: Autosave): Promise<void> {

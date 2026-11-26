@@ -3,7 +3,8 @@
  *
  * Its resolve step snaps an item whose trait decides its own footprint (`TRAIT_RESOLVERS`: the
  * bridge's span, the ramp's cliff) onto a copy of the command. Validation then runs each trait's
- * validator from `TRAIT_VALIDATORS`, which names every trait type, against the command as it lands.
+ * validator from `TRAIT_VALIDATORS`, which names every trait type with its own description, against
+ * the command as it lands.
  */
 import {
   CommandType,
@@ -24,9 +25,10 @@ import { getPlacedObjectSize, objectRect, onItemGrid, placedFootprint } from '..
 import { entriesNear, getObjectIndex } from '../state/object-index';
 import { bridgeSpanHolds, detectBridgeSpan } from '../core/domain/terrain/bridge-span';
 import { detectRampSpan, rampSpanHolds } from '../core/domain/terrain/ramp-span';
-import { PLACEMENT_GRID, TERRAIN_GRID } from '../core/game/profile';
+import { BASE_SUPPORT, PLACEMENT_GRID, TERRAIN_GRID } from '../core/game/profile';
+import { BUILDABLE_ZONES, SAND_ZONE, zoneName } from '../core/game/zones';
 import { evidenceOn } from '../core/grid/grids';
-import { findTrait, isSelfSnappingTrait, type SelfSnappingTrait } from '../core/model/traits';
+import { findTrait, isSelfSnappingTrait, RAMP_UPPER_RUN, type SelfSnappingTrait } from '../core/model/traits';
 import type { Rect } from '../core/grid/rect';
 import type { RuleMessageKey } from './messages';
 import { definePreRule, type Fail } from './define';
@@ -145,66 +147,115 @@ function spacingMessage(a: CatalogItem, b: CatalogItem): RuleMessageKey {
 /** A marker trait read elsewhere, with no placement constraint of its own. */
 const passive = (): ValidationError[] => [];
 
-const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitValidator<K> } = {
-  flat(_trait, { cmd, state, footprint, pos, fail }) {
-    const first = footprint[0];
-    if (!first) return [];
-    const firstCell = getCell(state.cells, first.x, first.y);
-    const baseElev = surfaceElevation(firstCell?.terrain);
-    // Use the rotated footprint so the flat check covers the cells the object
-    // actually occupies (matching V-ZONE-01 / V-PLACE-OVERLAP). A raw item.width/
-    // height read tests a transposed region for a rotated non-square item, letting
-    // part of the real footprint sit off a flat surface.
-    const { w, h } = getPlacedObjectSize(cmd.object);
-    // The offenders may sit outside the footprint: the sweep reaches one cell past it.
-    const offenders = flatSweepOffenders(state, pos, w, h, baseElev);
-    if (offenders.length > 0) return [fail('error.placement_not_flat', evidenceOn(TERRAIN_GRID, offenders))];
-    return [];
+/** A trait's registration: what it means, stated for any reader in plain English with its numbers
+ *  read from the profile and its fields by name, and how a placement carrying it is judged. Every
+ *  reader of the trait derives from `description`, so it changes with the trait. */
+interface TraitEntry<K extends PlacementTrait['type']> {
+  description: string;
+  validate: TraitValidator<K>;
+}
+
+const SAND = zoneName(SAND_ZONE);
+
+const TRAIT_VALIDATORS: { [K in PlacementTrait['type']]: TraitEntry<K> } = {
+  flat: {
+    description: 'The whole footprint, and one more cell to its right and below, stands at one elevation with no water.',
+    validate(_trait, { cmd, state, footprint, pos, fail }) {
+      const first = footprint[0];
+      if (!first) return [];
+      const firstCell = getCell(state.cells, first.x, first.y);
+      const baseElev = surfaceElevation(firstCell?.terrain);
+      // Use the rotated footprint so the flat check covers the cells the object
+      // actually occupies (matching V-ZONE-01 / V-PLACE-OVERLAP). A raw item.width/
+      // height read tests a transposed region for a rotated non-square item, letting
+      // part of the real footprint sit off a flat surface.
+      const { w, h } = getPlacedObjectSize(cmd.object);
+      // The offenders may sit outside the footprint: the sweep reaches one cell past it.
+      const offenders = flatSweepOffenders(state, pos, w, h, baseElev);
+      if (offenders.length > 0) return [fail('error.placement_not_flat', evidenceOn(TERRAIN_GRID, offenders))];
+      return [];
+    },
   },
 
   // The resolve step has snapped a bridge or ramp that can stand; one that still does not stands
   // where nothing resolves it.
-  waterSpan(trait, { item, cmd, state, pos, fail }) {
-    if (bridgeSpanHolds(state, cmd.object, item.width, trait.min, trait.max)) return [];
-    return [fail('error.bridge_invalid', evidenceOn(PLACEMENT_GRID, [pos]))];
+  waterSpan: {
+    description: 'A bridge: it needs two flat ends of equal height with a gap of `min` to `max` cells (water, void or lower ground) between them. Its position, rotation, span and elevation snap to the site, found from the gap cell the placement names.',
+    validate(trait, { item, cmd, state, pos, fail }) {
+      if (bridgeSpanHolds(state, cmd.object, item.width, trait.min, trait.max)) return [];
+      return [fail('error.bridge_invalid', evidenceOn(PLACEMENT_GRID, [pos]))];
+    },
   },
 
-  heightDrop(trait, { item, cmd, state, pos, fail }) {
-    if (rampSpanHolds(state, cmd.object, item.width, item.height, trait.layers)) return [];
-    return [fail('error.ramp_wrong_height', evidenceOn(PLACEMENT_GRID, [pos]), { messageParams: { n: trait.layers } })];
+  heightDrop: {
+    description: `A ramp: it needs an adjacent cliff exactly \`layers\` layers high, and snaps onto it. Its footprint covers ${RAMP_UPPER_RUN} cell of the upper tier; the rest of its length lies on the lower tier.`,
+    validate(trait, { item, cmd, state, pos, fail }) {
+      if (rampSpanHolds(state, cmd.object, item.width, item.height, trait.layers)) return [];
+      return [fail('error.ramp_wrong_height', evidenceOn(PLACEMENT_GRID, [pos]), { messageParams: { n: trait.layers } })];
+    },
   },
 
-  surfaceCoating(_trait, { state, footprint, fail }) {
-    const offenders = footprint.filter((coord) => {
-      const cell = getCell(state.cells, coord.x, coord.y);
-      return !cell || realSurface(cell.terrain)?.type === TerrainType.Water;
-    });
-    if (offenders.length > 0) return [fail('error.road_needs_terrain', evidenceOn(TERRAIN_GRID, offenders))];
-    return [];
+  surfaceCoating: {
+    description: 'A coating laid over the ground: pavement on layer 0, the default, or a transparent surface print on a layer above it. Coatings on different layers coexist, and each cell holds one per layer. Its footprint needs terrain that is not water.',
+    validate(_trait, { state, footprint, fail }) {
+      const offenders = footprint.filter((coord) => {
+        const cell = getCell(state.cells, coord.x, coord.y);
+        return !cell || realSurface(cell.terrain)?.type === TerrainType.Water;
+      });
+      if (offenders.length > 0) return [fail('error.road_needs_terrain', evidenceOn(TERRAIN_GRID, offenders))];
+      return [];
+    },
   },
 
-  // Two items that both carry the trait keep the larger of their radii as open ground between
-  // their footprints, diagonals included. Evidence = the footprints of the objects too close.
-  exclusionRadius(_trait, { item, cmd, state, fail }) {
-    const clash = spacingClash(state, item, objectRect(cmd.object, item), cmd.object.id);
-    if (!clash) return [];
-    return [fail(clash.message, evidenceOn(PLACEMENT_GRID, clash.offenders), { messageParams: { n: clash.n } })];
-  },
-
-  // Terrain may use this footprint as a base (base-support).
-  terrainBase: passive,
   // Support markers consumed by overlap and finished-stroke validation.
-  coatingSupport: passive,
-  plantable: passive,
-  growsOnPlantable: passive,
-  // The ground zones V-ZONE-01 reads (`core/model/traits.ts:groundZonesOf`).
-  groundZones: passive,
-  // How the item turns in the planet session (editor/operations/planet-session).
-  footprintTurn: passive,
-  // Grants the item a half-cell anchor on both axes (state/object-geometry:hasHalfStep); an item
-  // without this trait is what the fractional-position guard in the rule refuses.
-  halfStep: passive,
+  coatingSupport: {
+    description: 'A structure that may stand on coatings and keeps them; a coating may also be laid beneath it where it stands.',
+    validate: passive,
+  },
+  plantable: {
+    description: 'A coating that an item with growsOnPlantable may stand on.',
+    validate: passive,
+  },
+  growsOnPlantable: {
+    description: 'A plant that may stand on a plantable coating and keeps it.',
+    validate: passive,
+  },
+
+  // Evidence = the footprints of the objects too close.
+  exclusionRadius: {
+    description: 'Keeps `radius` open cells between its footprint and that of every other item carrying the trait, diagonals included; of two such items the larger radius applies.',
+    validate(_trait, { item, cmd, state, fail }) {
+      const clash = spacingClash(state, item, objectRect(cmd.object, item), cmd.object.id);
+      if (!clash) return [];
+      return [fail(clash.message, evidenceOn(PLACEMENT_GRID, clash.offenders), { messageParams: { n: clash.n } })];
+    },
+  },
+
+  terrainBase: {
+    description: `Its footprint counts as part of the ${BASE_SUPPORT.window}x${BASE_SUPPORT.window} base a mountain needs (V-MTN-03), at the layer it stands at; it asks nothing of its own placement.`,
+    validate: passive,
+  },
+  groundZones: {
+    description: `The ground its footprint may stand on, which V-ZONE-01 judges: wholly on ${BUILDABLE_ZONES} (\`onGrass\`), wholly on ${SAND} (\`onSand\`), or across the two (\`acrossBoundary\`). An item without the trait stands wholly on ${BUILDABLE_ZONES}.`,
+    validate: passive,
+  },
+  // Read by `state/object-geometry:hasHalfStep`; an item without it is what the fractional-position
+  // guard in the rule refuses.
+  halfStep: {
+    description: 'May anchor on half cells on both axes; an item without the trait anchors on whole cells.',
+    validate: passive,
+  },
+  // Read by the planet session (editor/operations/planet-session).
+  footprintTurn: {
+    description: 'Turns as a whole footprint about its centre, width and height swapping, while the map it stands on is being shaped as a planet.',
+    validate: passive,
+  },
 };
+
+/** What each placement trait means, in its own words, in the order the traits are registered. */
+export const TRAIT_DESCRIPTIONS: ReadonlyMap<PlacementTrait['type'], string> = new Map(
+  (Object.keys(TRAIT_VALIDATORS) as PlacementTrait['type'][]).map((type) => [type, TRAIT_VALIDATORS[type].description]),
+);
 
 /**
  * The half-cell grid is a trait-granted exception (halfStep, ramps/bridges only): a fractional
@@ -219,6 +270,7 @@ function anchorOnItemGrid(item: CatalogItem, pos: MacroCoord): boolean {
 
 export const traitPlacementRule = definePreRule({
   id: 'V-PLACE-TRAIT',
+  description: 'A placed object must satisfy each placement trait its item carries.',
   appliesTo: [CommandType.PlaceObject],
 
   resolve(cmd, state) {
@@ -244,7 +296,7 @@ export const traitPlacementRule = definePreRule({
     const check: TraitCheck = { item, cmd, state, footprint: footprintCells(pos.x, pos.y, w, h), pos, fail };
     const errors: ValidationError[] = [];
     for (const trait of item.traits) {
-      const validate = TRAIT_VALIDATORS[trait.type] as (t: PlacementTrait, at: TraitCheck) => ValidationError[];
+      const validate = TRAIT_VALIDATORS[trait.type].validate as (t: PlacementTrait, at: TraitCheck) => ValidationError[];
       errors.push(...validate(trait, check));
     }
     return errors;

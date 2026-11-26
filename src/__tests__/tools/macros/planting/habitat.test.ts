@@ -10,7 +10,7 @@ import { applyMacro } from '../../../../tools/macros';
 import {
   buildAreaCommunity, buildCommunity, buildHabitatField, dominantSpecies, PATCH_SPAN,
 } from '../../../../tools/macros/planting/habitat';
-import { plantPatch } from '../../../../tools/macros';
+import { plantPatch } from '../../../../tools/macros/planting/patch';
 import type { EditContext } from '../../../../core/commands/edit-context';
 import { makeState, setTerrain, makeExecutor } from '../../../_support/map-state';
 import { ItemCategory } from '../../../../config/catalog/categories';

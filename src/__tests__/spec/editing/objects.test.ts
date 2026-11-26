@@ -13,6 +13,7 @@ import type { Corners, MacroCoord, PlacedObject } from '../../../core/model/type
 const TREE = 'tree-apple';
 const ROAD = 'path-overgrown-dirt';
 const CABIN = 'building-bamboo-cabin';
+const RAMP = 'ramp-park-steps';
 const shift = (c: MacroCoord, dx: number, dy: number): MacroCoord => ({ x: c.x + dx, y: c.y + dy });
 /** The centre of the cell an object's anchor stands in, where a press grabs it. */
 const grip = (o: PlacedObject) => pointAt(o.position.x + 0.5, o.position.y + 0.5);
@@ -50,6 +51,23 @@ describe('moving objects', () => {
     expect(where(w, [a.id, b.id])).toEqual([{ x: at.x + 6, y: at.y + 3, rotation: 0 }, { x: at.x + 9, y: at.y + 4, rotation: 0 }]);
     w.undo();
     expect(picture(w)).toBe(before);
+  });
+
+  spec('EDIT-27', 'ramps moved together onto a plateau of the same shape stay against its cliffs as they were turned', () => {
+    const w = world();
+    const at = w.openGround(26, 12);
+    const from = shift(at, 3, 3), to = shift(at, 15, 3);
+    plateau(w, from, 6, 6, 1);
+    plateau(w, to, 6, 6, 1);
+    const north = place(w, RAMP, shift(from, 3, 0));
+    const west = place(w, RAMP, shift(from, 0, 3));
+    expect([north.rotation, west.rotation]).toEqual([180, 270]);
+    const press = { x: north.position.x + 0.5, y: north.position.y + 1 };
+    expect(dragObject(w, [north.id, west.id], north.id, pointAt(press.x, press.y), pointAt(press.x + 12, press.y))).toBeNull();
+    expect(where(w, [north.id, west.id])).toEqual([
+      { x: north.position.x + 12, y: north.position.y, rotation: 180 },
+      { x: west.position.x + 12, y: west.position.y, rotation: 270 },
+    ]);
   });
 
   spec('EDIT-27', 'a group move one member cannot make leaves every member where it stood and names the rule', () => {

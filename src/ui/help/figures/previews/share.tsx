@@ -5,11 +5,12 @@
  */
 import { useReducedMotionConfig } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GridState, MacroCoord, MapNotes } from '../../../../core/model/types';
+import type { GridState, MapNotes } from '../../../../core/model/types';
 import type { Locale } from '../../../../core/model/locale';
 import { WATER_COLOR } from '../../../../core/model/palette';
 import { DEFAULT_MAP } from '../../../../config/maps';
 import { SandboxWorld } from '../../../../editor/sandbox/demo-world';
+import { finishedMap } from '../../../../editor/sandbox/shots';
 import { useInView } from '../use-in-view';
 import { useFigureReady } from '../figure-ready';
 import { FIGURE_LEAST, useFigureRoom } from '../figure-scale';
@@ -18,16 +19,16 @@ import { DEFAULT_EXPORT_OPTIONS as DEFAULT_OPTIONS, DEFAULT_FOOTER, formatFooter
 import { buildChecklist } from '../../../../state/build-checklist';
 import { useEditorStore } from '../../../../state/store';
 import { useLocale, useT } from '../../../../i18n/context';
-import { searchExamples } from '../../search-examples';
+import { searchExamples } from '../../../../editor/help/search-examples';
 import { ScaleProvider } from '../../../design/scale';
 import { SHELF_SCALE } from '../../../shell/units';
+import { StylizeEntry } from '../../../shell/edition-surfaces';
 import { RestoreShelf } from '../../../shell/bars/generate/RestoreShelf';
 import { GenerateCards } from '../../../shell/bars/generate/GenerateCards';
 import { CANDIDATES, CARD, GAP } from '../../../shell/bars/generate/generate-shelf';
 import { useGenerateRecipe } from '../../../shell/bars/generate/use-generate-recipe';
-import { useGeneratePreviews } from '../../../shell/bars/generate/use-generate-previews';
-import type { StencilSample } from '../../../shell/bars/generate/stencil-samples';
-import { batchKey } from '../../../../editor/editing/generate-batch';
+import { useGenerateBatch } from '../../../shell/bars/generate/use-generate-batch';
+import type { StencilSample } from '../../../../editor/editing/generate-batch';
 import { IMPORT_CARD_WIDTH } from '../../../chrome/modals/import/ImportDropZone';
 import { WINDOW_PADDING_X } from '../../../primitives/Window';
 import { ImportModal } from '../../../chrome/modals/import/ImportModal';
@@ -63,7 +64,7 @@ export function useShownMap(): GridState | null {
   const [island, setIsland] = useState<GridState | null>(null);
   useEffect(() => {
     if (!ready || liveHasContent) return undefined;
-    const timer = setTimeout(() => setIsland(fullIslandState()), 0);
+    const timer = setTimeout(() => setIsland(finishedMap()), 0);
     return () => clearTimeout(timer);
   }, [ready, liveHasContent]);
   return liveHasContent ? live : island;
@@ -73,9 +74,8 @@ export function SavePreview() {
   const state = useShownMap();
   return (
     <PreviewFrame height={230} style={{ background: WATER_COLOR }}>
-      {/* `splashActive` holds the offer's countdown still: without it TimedButton's timer fires a
-          programmatic click that `pointer-events: none` does not stop. */}
-      {state && <RestoreShelf state={state} splashActive onRestore={() => {}} onDismiss={() => {}} />}
+      {/* A pictured offer runs no clock and answers nothing. */}
+      {state && <RestoreShelf state={state} />}
     </PreviewFrame>
   );
 }
@@ -100,6 +100,7 @@ export function SharePreview() {
         <ExportPreview
           open
           options={SHARE_OPTIONS}
+          words={null}
           summary={null}
           codeImg={code.asset?.canvas ?? null}
           codePending={code.pending}
@@ -116,7 +117,7 @@ function ShareWindowFigure({ section, width, height, subject }: { section: Share
   return (
     <PreviewFrame width={width} height={height + 28} align="top">
       <div style={{ position: 'relative', width, height }}>
-        <ShareWindow open section={section} {...(subject ? { subject } : {})} />
+        <ShareWindow open section={section} artStyle={<StylizeEntry />} {...(subject ? { subject } : {})} />
       </div>
     </PreviewFrame>
   );
@@ -148,7 +149,7 @@ export function JsonPreview() {
  *  cannot show for an empty one. */
 export function ChecklistPreview() {
   const shown = useShownMap();
-  return <ShareWindowFigure section="game" width={620} height={760} {...(shown ? { subject: shown } : {})} />;
+  return <ShareWindowFigure section="stats" width={620} height={760} {...(shown ? { subject: shown } : {})} />;
 }
 
 /** Whether a map's checklist would list anything at all. */
@@ -157,49 +158,29 @@ function checklistHasContent(state: GridState): boolean {
   return list.groups.some((g) => g.items.length > 0) || list.roads.length > 0 || list.layers.length > 0;
 }
 
-/** A finished map, built once per session by the real designed generator, so the full-list
- *  figure shows the checklist the way a real build fills it. */
-let fullIsland: GridState | null = null;
-export function fullIslandState(): GridState {
-  if (fullIsland) return fullIsland;
-  const world = new SandboxWorld();
-  world.beginStroke();
-  world.generateDesigned({ seed: 20260830, richness: 0.9, maxElevation: 4, mode: 'mixed', region: null });
-  world.commit();
-  fullIsland = world.state;
-  return fullIsland;
-}
-
-/** The full checklist uses the real generator and checklist, once its figure is admitted. */
+/** The full checklist uses the real generator and checklist, once its figure is admitted: a
+ *  finished map shows the checklist the way a real build fills it. */
 export function FullChecklistPreview() {
   const ready = useFigureReady();
   const [subject, setSubject] = useState<GridState | null>(null);
   useEffect(() => {
     if (!ready) return undefined;
-    const timer = setTimeout(() => setSubject(fullIslandState()), 0);
+    const timer = setTimeout(() => setSubject(finishedMap()), 0);
     return () => clearTimeout(timer);
   }, [ready]);
-  return <ShareWindowFigure section="game" width={620} height={760} {...(subject ? { subject } : {})} />;
+  return <ShareWindowFigure section="stats" width={620} height={760} {...(subject ? { subject } : {})} />;
 }
 
 /** The candidates page's shelf kind: the planet's own recipe cards. */
 const CANDIDATES_KIND = 'island' as const;
 const noop = () => {};
-const pass = () => true;
 
 /** The generate shelf's real card row, dealt and built by the real batch against a sandbox of the
  *  default planet, so every card is a run of its own recipe number on that map. */
 function CandidateRow() {
   const [world] = useState(() => new SandboxWorld());
   const recipe = useGenerateRecipe(CANDIDATES_KIND, noop);
-  const { kind, base, customSeed, richness, elevation, corridorWidth } = recipe;
-  const settings = { kind, richness, maxElevation: elevation, corridorWidth, gates: null };
-  const recipeKey = batchKey({ kind, richness, maxElevation: elevation, corridorWidth, gates: null, stencil: null });
-  const previews = useGeneratePreviews({
-    gridState: world.state, region: NO_REGION, selectingRegion: false, settings, base, customSeed, hand: NO_HAND, ownSample: null,
-    fontsReady: true, ownFontsReady: true, planInputs: null, wordFits: pass, fits: true, recipeKey,
-    forgetApplied: noop, clearFailed: noop, kit: world.kit,
-  });
+  const previews = useGenerateBatch({ recipe: recipe.store, kit: world.kit });
   const cardW = Math.round(CARD.w * SHELF_SCALE);
   return (
     <GenerateCards
@@ -214,7 +195,6 @@ function CandidateRow() {
   );
 }
 
-const NO_REGION: MacroCoord[] = [];
 const NO_HAND: StencilSample[] = [];
 
 /** The air the figure keeps around the row, in the row's px. */
@@ -315,7 +295,7 @@ export function SearchPreview() {
       {/* Every step's line in one cell, so the longest holds the room and a step moves nothing (UI-62). */}
       <div style={{ display: 'grid', maxWidth: '100%' }}>
         {[...new Set(steps.map((s) => s.captionKey))].map((key) => (
-          <div key={key} style={{ gridArea: '1 / 1', justifySelf: 'center', alignSelf: 'start', textAlign: 'center', visibility: key === active.captionKey ? 'visible' : 'hidden', ...figureCaption({ role: 'lead', padding: '6px 18px', shadow: true }) }}>
+          <div key={key} style={{ gridArea: '1 / 1', justifySelf: 'center', alignSelf: 'start', textAlign: 'center', visibility: key === active.captionKey ? undefined : 'hidden', ...figureCaption({ role: 'lead', padding: '6px 18px', shadow: true }) }}>
             {t(key)}
           </div>
         ))}
@@ -343,7 +323,8 @@ export function ExportControlsPreview() {
   return (
     <PreviewFrame height={556} align="top">
       <div style={{ width: 340 }}>
-        <ExportControls options={options} setOptions={setOptions} notes={notes} setNotes={setNotes} summary={null} footerSamples={samples} />
+        <ExportControls artStyle={<StylizeEntry />} options={options} setOptions={setOptions} notes={notes} setNotes={setNotes}
+          summary={null} footerSamples={samples} />
       </div>
     </PreviewFrame>
   );
@@ -389,7 +370,8 @@ export function ExportControlsOpenPreview() {
     <PreviewFrame height={292}>
       <div style={{ height: 290, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         <div style={{ width: 340 }}>
-          <ExportControls options={options} setOptions={setOptions} notes={{}} setNotes={() => {}} summary={null} footerSamples={samples} initialOpen />
+          <ExportControls artStyle={<StylizeEntry />} options={options} setOptions={setOptions} notes={{}} setNotes={() => {}}
+            summary={null} footerSamples={samples} initialOpen />
         </div>
       </div>
     </PreviewFrame>

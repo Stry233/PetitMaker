@@ -1,10 +1,11 @@
 /** Browser font outlines and decoded images supply the stencils used by generation. */
 import type { MacroCoord } from '../../../core/model/types';
+import { boundsWhere, cellsBounds, type Rect } from '../../../core/grid/rect';
 import type { Stencil } from '../recipe';
 import { airCells, COMPACT_IMAGE_LIMIT, COVERAGE_ON } from './stencil';
 import { judgeDrawn, type GlyphVerdict } from './stencil-verdict';
 import { stencilFromPixels } from './stencil-sample';
-import { finishGlyph, glyphWeight, GLYPH_WEIGHTS } from './stencil-stroke';
+import { finishGlyph, glyphWeight, GLYPH_WEIGHTS, restoreStructure, type GlyphSource } from './stencil-stroke';
 import { analyzeTextGrid, fitTextGrid, textTopology, textStrokeEnds, type TextGridModel, type TextGridResult } from './stencil-text-grid';
 import { isEmojiGrapheme, normalizeTextPresentation } from './stencil-text-segments';
 import { graphemes } from '../../../core/base/text';
@@ -60,33 +61,19 @@ export function islandBox(
   state: { template: { width: number; height: number }; cells: { zone: number }[][] }, buildableZone: (z: number) => boolean,
 ): StencilBox | null {
   const { width, height } = state.template;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const zone = state.cells[y]?.[x]?.zone;
-      if (zone === undefined || !buildableZone(zone)) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  if (minX > maxX) return null;
-  return { origin: { x: minX, y: minY }, width: maxX - minX + 1, height: maxY - minY + 1 };
+  return stencilBoxOf(boundsWhere(width, height, (x, y) => {
+    const zone = state.cells[y]?.[x]?.zone;
+    return zone !== undefined && buildableZone(zone);
+  }));
 }
 
 /** The bounding box of a painted region, or null when nothing is painted. */
 export function regionBox(region: readonly MacroCoord[]): StencilBox | null {
-  if (region.length === 0) return null;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const c of region) {
-    if (c.x < minX) minX = c.x;
-    if (c.x > maxX) maxX = c.x;
-    if (c.y < minY) minY = c.y;
-    if (c.y > maxY) maxY = c.y;
-  }
-  return { origin: { x: minX, y: minY }, width: maxX - minX + 1, height: maxY - minY + 1 };
+  return stencilBoxOf(cellsBounds(region));
 }
+
+const stencilBoxOf = (r: Rect | null): StencilBox | null =>
+  r && { origin: { x: r.x, y: r.y }, width: r.w, height: r.h };
 
 /**
  * Read a canvas drawn at twice the cell resolution back as a stencil.
@@ -223,6 +210,15 @@ function surface(width: number, height: number): CanvasRenderingContext2D | null
 export function drawGlyph(
   text: string, box: StencilBox, weight = glyphWeight(text, box), magnify = 1, search = true,
 ): Stencil | null {
+  return drawPlacedGlyph(text, box, weight, magnify, search)?.stencil ?? null;
+}
+
+/** Where `drawGlyph` put a glyph's ink, in the 2x canvas's pixels. */
+interface GlyphPlacement { left: number; top: number; width: number; height: number }
+
+function drawPlacedGlyph(
+  text: string, box: StencilBox, weight: number, magnify: number, search: boolean,
+): { stencil: Stencil; placement: GlyphPlacement } | null {
   const { width, height } = box;
   if (width < 1 || height < 1) return null;
   const ctx = surface(width, height);
@@ -252,7 +248,7 @@ export function drawGlyph(
     ? gridFit(ctx, text, { cw, ch, inkW: w2, inkH: h2, left, top, cell, model: magnify === 1 ? textModel(text) : null })
     : [(cw - w2) / 2 + left, (ch - h2) / 2 + top];
   ctx.fillText(text, ox, oy);
-  return readBack(ctx, width, height);
+  return { stencil: readBack(ctx, width, height), placement: { left: ox - left, top: oy - top, width: w2, height: h2 } };
 }
 
 type TextReference = Pick<Stencil, 'width' | 'height' | 'coverage'> & { picture?: EmojiDrawing; ascent: number; descent: number; unitsPerPixel: number };
@@ -284,6 +280,29 @@ function textModel(text: string, detail = 0.0025, weight = 500): TextModel | nul
   return null;
 }
 
+/** Clear pixels round the reference's ink on every side. */
+const REFERENCE_PAD = 2;
+
+/**
+ * The font reference laid over the cells a native glyph was drawn into, ink box onto ink box: the
+ * joints and gaps the structure target was read from, which repair restores where the grid broke
+ * them. A glyph's own weight can part a joint the reference keeps, so the reference is the guide.
+ */
+function referenceOver(source: TextReference, box: StencilBox, placement: GlyphPlacement): GlyphSource {
+  const { width, height } = source;
+  const inkW = width - 2 * REFERENCE_PAD, inkH = height - 2 * REFERENCE_PAD;
+  const cell = new Int32Array(width * height).fill(-1);
+  for (let py = 0; py < height; py++) {
+    const cy = Math.floor((placement.top + (py + 0.5 - REFERENCE_PAD) / inkH * placement.height) / SUB);
+    if (cy < 0 || cy >= box.height) continue;
+    for (let px = 0; px < width; px++) {
+      const cx = Math.floor((placement.left + (px + 0.5 - REFERENCE_PAD) / inkW * placement.width) / SUB);
+      if (cx >= 0 && cx < box.width) cell[py * width + px] = cy * box.width + cx;
+    }
+  }
+  return { width, height, cell, on: Uint8Array.from(source.coverage, v => v >= COVERAGE_ON ? 1 : 0) };
+}
+
 /** A font outline with enough pixels to distinguish strokes before fitting them to map cells. */
 export function drawTextReference(text: string, detail = 0.0025, weight = 500): TextReference | null {
   text = normalizeTextPresentation(text);
@@ -295,11 +314,11 @@ export function drawTextReference(text: string, detail = 0.0025, weight = 500): 
   const inkH = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
   if (!(inkW > 0 && inkH > 0)) return null;
   const scale = Math.min(96 / inkH, 2044 / inkW);
-  const width = Math.ceil(inkW * scale) + 4, height = Math.ceil(inkH * scale) + 4;
+  const width = Math.ceil(inkW * scale) + 2 * REFERENCE_PAD, height = Math.ceil(inkH * scale) + 2 * REFERENCE_PAD;
   ctx.canvas.width = width; ctx.canvas.height = height;
   ctx.font = `${weight} ${100 * scale}px ${GLYPH_FONT_STACK}`;
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(text, 2 + metrics.actualBoundingBoxLeft * scale, 2 + metrics.actualBoundingBoxAscent * scale);
+  ctx.fillText(text, REFERENCE_PAD + metrics.actualBoundingBoxLeft * scale, REFERENCE_PAD + metrics.actualBoundingBoxAscent * scale);
   const rgba = ctx.getImageData(0, 0, width, height).data;
   const picture = graphemes(text).some(isEmojiGrapheme) ? emojiTextDrawing({ width, height, data: rgba }, detail) : undefined;
   const coverage = picture?.coverage ?? Uint8Array.from({ length: width * height }, (_, i) => rgba[i * 4 + 3]!);
@@ -442,24 +461,37 @@ function nativeText(text: string, box: StencilBox): Stencil | null {
   const known = nativeTexts.get(key);
   if (known) return known;
   const model = textModel(text), weight = glyphWeight(text, box);
-  let best = drawGlyph(text, box, weight);
-  if (!best) return null;
-  finishGlyph(best);
   const lossOf = (stencil: Stencil): number => {
     if (!model) return 0;
     const topology = textTopology(Uint8Array.from(stencil.coverage, v => v >= COVERAGE_ON ? 1 : 0), stencil.width, stencil.height);
     return Math.abs(topology.pieces - model.outline.pieces) + Math.abs(topology.counters - model.outline.counters);
   };
-  let loss = lossOf(best);
-  for (const lighter of [500, 400]) {
-    if (loss === 0) break;
-    if (lighter >= weight) continue;
-    const candidate = drawGlyph(text, box, lighter);
-    if (!candidate) continue;
-    finishGlyph(candidate);
-    const next = lossOf(candidate);
-    if (next < loss) { best = candidate; loss = next; }
+  // The chosen weight, then lighter outlines, as drawn; only when none keeps the font's structure is
+  // each repaired toward it where the grid broke it, the outline kept unrepaired first, so a repair
+  // never trades a glyph's weight for a heavier one.
+  const drawn: { stencil: Stencil; placement: GlyphPlacement; loss: number }[] = [];
+  for (const w of [weight, ...[500, 400].filter(lighter => lighter < weight)]) {
+    const placed = drawPlacedGlyph(text, box, w, 1, true);
+    if (!placed) continue;
+    finishGlyph(placed.stencil);
+    drawn.push({ ...placed, loss: lossOf(placed.stencil) });
+    if (drawn[drawn.length - 1]!.loss === 0) break;
   }
+  if (!drawn.length) return null;
+  // Cells finer than the reference can show counters it cannot, so only a coarser grid is repaired toward it.
+  const judged = !!model && Math.min(box.width / model.source.width, box.height / model.source.height) < 1;
+  if (model && judged && drawn.every(d => d.loss > 0)) {
+    const kept = drawn.reduce((a, b) => b.loss < a.loss ? b : a);
+    for (const d of [kept, ...drawn.filter(other => other !== kept)]) {
+      const source = referenceOver(model.source, box, d.placement);
+      const repaired = { ...d.stencil, coverage: d.stencil.coverage.slice() };
+      restoreStructure(repaired, source, model.outline);
+      const loss = lossOf(repaired);
+      if (loss < d.loss) Object.assign(d, { stencil: repaired, loss });
+      if (loss === 0) break;
+    }
+  }
+  const best = drawn.reduce((a, b) => b.loss < a.loss ? b : a).stencil;
   nativeTexts.set(key, best);
   return best;
 }

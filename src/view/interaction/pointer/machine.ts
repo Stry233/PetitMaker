@@ -20,7 +20,7 @@ import { resolveNavTap, resolvePress, type PressFacts, type PressIntent, type Pr
 import { isNavButton, PRIMARY_BUTTON } from '../press/pointer-buttons';
 import { modalityOf, pointerHovers, timingFor, travelledPast, type GestureTiming } from '../../../platform/input/gesture-timing';
 import { resolvePending, type PendingFacts } from '../press/pending';
-import { createCameraGestures } from '../camera-gestures';
+import { createCameraGestures, pinchZoom } from '../camera-gestures';
 import { releaseTextFocus } from '../pointer-focus';
 import { noteNavGestureLost } from '../nav-gesture-hint';
 import { installKeyTracking } from '../../../platform/input/held-keys';
@@ -36,6 +36,9 @@ import { watchResampleTriggers } from './resampler';
 import { dropAt, isCarried, registerCarryTarget, type CarryTarget } from './carry';
 import { clearHoldPress, runTwoFingerTap, showHoldPress } from './gesture-channel';
 import { activeToolOf, armedItemOf } from '../../../state/editing/edit-mode';
+import { placesArmed, putArmedDown } from '../../../state/editing/intent';
+import { armingOf } from '../../../state/editing/arming';
+import { toolDeclares } from '../../../tools/pointer/runtime';
 import type { ToolType } from '../../../state/editing/vocabulary';
 import type { BlockRef } from '../../../state/selection';
 
@@ -56,6 +59,8 @@ interface PressState {
   collapseToOnUp: string | null;
   /** A Ctrl press on a selected member: its tap takes the member out of the selection. */
   toggleOnUp: BlockRef | null;
+  /** A select a tap runs on its release, with the press it came from. */
+  selectOnUp: { select: PressIntent; e: PointerEvent; at: Point; f: PressFacts } | null;
   /** A touch press waiting to learn whether it is a tap, a drag or a hold. */
   pending: PendingPress | null;
   /** A touch drag or hold carries the armed item's preview: the pointer that holds it, and the
@@ -77,15 +82,16 @@ interface PressState {
 interface QuietPress { pointerId: number; from: Point; timing: GestureTiming; timer: ReturnType<typeof setTimeout> }
 
 /** The tool and armed item a press was resolved for. */
-interface PressArming { tool: ToolType; armedItemId: string | null }
+interface PressArming { tool: ToolType; armedPlacement: string | null }
 
 const armingNow = (): PressArming => {
   const store = useEditorStore.getState();
-  return { tool: activeToolOf(store), armedItemId: armedItemOf(store) };
+  const tool = activeToolOf(store);
+  return { tool, armedPlacement: armedItemOf(store) ?? toolDeclares(tool).armedPlacement(armingOf(store)) };
 };
 
 const sameArming = (a: PressArming, b: PressArming): boolean =>
-  a.tool === b.tool && a.armedItemId === b.armedItemId;
+  a.tool === b.tool && a.armedPlacement === b.armedPlacement;
 
 /** A press whose plan is `pending`, from its landing until it resolves. */
 interface PendingPress {
@@ -123,10 +129,11 @@ interface PendingPress {
 interface PointerMemory { x: number; y: number; known: boolean; pointerType: string }
 
 /**
- * A Ctrl gesture ended with something selected while an item was armed: the placement session is
- * over, so the item is dropped and the pointer lands in the ordinary select/drag mode.
+ * A Ctrl gesture ended with something selected while an item or a blueprint was armed: the placement
+ * session is over, so it is put down (`state/editing/intent.ts:putArmedDown`) and the pointer lands in
+ * the ordinary select/drag mode.
  *
- * An empty result keeps the item armed: a band that caught nothing, or a toggle that emptied the
+ * An empty result keeps it armed: a band that caught nothing, or a toggle that emptied the
  * selection, leaves nothing to edit, so an accidental Ctrl-drag over bare ground must not cost the
  * user the item they picked in the panel.
  *
@@ -135,15 +142,17 @@ interface PointerMemory { x: number; y: number; known: boolean; pointerType: str
  */
 function disarmAfterCtrlSelect(hover: HoverProbe): void {
   const store = useEditorStore.getState();
-  if (!armedItemOf(store)) return;
-  if (store.selection.length === 0) return;
-  store.setEditMode({ arm: { kind: 'none' } });
+  if (!placesArmed(store) || store.selection.length === 0) return;
+  putArmedDown(store);
   getActiveView()?.overlay.clearGhost();
   // The positional cursor facts were resolved for the armed mode, and no pointer event follows a
   // key-driven mode change: drop them so the next move re-probes this cell.
   hover.cell = null;
   setCursorPressSelects(false);
 }
+
+/** The intents that only move the camera or put a gesture away, which act on nothing on the map. */
+const VIEW_ONLY_INTENTS: ReadonlySet<PressIntent['kind']> = new Set(['pan-camera', 'zoom-in', 'cancel-pending', 'paint-region']);
 
 /** Mounts the machine on `container`; returns the teardown. */
 export function installPointerMachine(container: HTMLDivElement): () => void {
@@ -162,7 +171,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   const touch = new TouchGesture(gestures, runTwoFingerTap);
   const region = new RegionPointer();
   const press: PressState = {
-    toolDown: false, leftPanning: false, panKeyPanning: false, toggleOffOnUp: false, collapseToOnUp: null, toggleOnUp: null,
+    toolDown: false, leftPanning: false, panKeyPanning: false, toggleOffOnUp: false, collapseToOnUp: null, toggleOnUp: null, selectOnUp: null,
     pending: null, previewing: null, loupe: null, lastTap: null, quiet: null,
   };
   const pointer: PointerMemory = { x: 0, y: 0, known: false, pointerType: 'mouse' };
@@ -171,7 +180,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   let mapHold: (() => void) | null = null;
   /** Holds or lets go of the live map as the press opens or ends an edit; run after every handler. */
   const syncMapHold = (): void => {
-    const editing = press.toolDown || drag.objectId !== null || press.previewing !== null;
+    const editing = press.toolDown || drag.armed || press.previewing !== null;
     if (editing && !mapHold) mapHold = holdEditInFlight(() => abortPress(), 'hand');
     else if (!editing && mapHold) {
       const release = mapHold;
@@ -199,7 +208,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   /** The press's tap will never settle: it became a drag, or it ended. The window's release
    *  reaches this machine for presses it never saw (a panel control, the other view), so a flag
    *  left standing would act on one of those. */
-  const forgetTap = (): void => { press.toggleOffOnUp = false; press.collapseToOnUp = null; press.toggleOnUp = null; };
+  const forgetTap = (): void => { press.toggleOffOnUp = false; press.collapseToOnUp = null; press.toggleOnUp = null; press.selectOnUp = null; };
 
   /** A finger's press magnifies the map under `at`; a mouse or a pen, which shows its own hover
    *  and leaves the cells in sight, never does. */
@@ -298,8 +307,8 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   };
 
   // Wheel input over the canvas, routed by intent in `camera-gestures.ts`. Ctrl+scroll (including
-  // the synthesized ctrl+wheel of a trackpad pinch) is the active-view registry's one window
-  // listener (`active-view.ts`), so it zooms once even with both views mounted.
+  // the synthesized ctrl+wheel of a trackpad pinch) over the map is the active-view registry's one
+  // window listener (`active-view.ts`), so it zooms once even with both views mounted.
   const onWheel = (e: WheelEvent) => {
     if (!isCanvasTarget(e) || e.ctrlKey) return;
     e.preventDefault();
@@ -310,6 +319,8 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
    *  layout point. */
   const runIntent = (intent: PressIntent, e: PointerEvent, at: Point, f: PressFacts): void => {
     const store = useEditorStore.getState();
+    // Moving the camera or putting a gesture away acts on nothing on the map.
+    if (!VIEW_ONLY_INTENTS.has(intent.kind)) store.beginMapPress();
     switch (intent.kind) {
       case 'pan-camera':
         if (intent.source === 'pan-key') press.panKeyPanning = true;
@@ -333,6 +344,9 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
       case 'select':
         store.setSelection([intent.block], intent.pick ? { pick: intent.pick } : undefined);
         return;
+      case 'select-group':
+        store.setSelection([...intent.blocks]);
+        return;
       case 'pick-cell':
         store.pickCell(intent.cell);
         return;
@@ -351,8 +365,17 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
       case 'move-selection':
         drag.arm(intent.anchorId, at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold });
         return;
+      case 'move-placement':
+        drag.armPlacement(at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold });
+        return;
+      case 'select-on-release':
+        press.selectOnUp = { select: intent.select, e, at, f };
+        return;
       case 'copy-selection':
         drag.arm(intent.anchorId, at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold, copy: true });
+        return;
+      case 'copy-placement':
+        drag.armPlacement(at.x, at.y, f.macro, { dragThreshold: timingFor(e).dragThreshold, copy: true });
         return;
       case 'band-select':
         band.arm(intent.from, at.x, at.y, timingFor(e).dragThreshold);
@@ -627,7 +650,11 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   const settleTap = (): void => {
     if (drag.dragging) return;
     drag.cancel();
-    if (press.toggleOnUp) {
+    if (press.selectOnUp) {
+      const { select, e, at, f } = press.selectOnUp;
+      press.selectOnUp = null;
+      runIntent(select, e, at, f);
+    } else if (press.toggleOnUp) {
       useEditorStore.getState().toggleSelection(press.toggleOnUp);
       press.toggleOnUp = null;
     } else if (press.collapseToOnUp) {
@@ -697,7 +724,7 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
     const at = clientPoint(e);
     if (pendingRelease(e, at)) return;
     if (releaseBand(e, at) || releaseNav(e, at) || releaseRegion(e)) return;
-    if (drag.dragging && drag.objectId) {
+    if (drag.dragging && drag.armed) {
       forgetTap();
       drag.drop(at.x, at.y);
       // The move latch arms one move, which this drop was.
@@ -864,7 +891,12 @@ export function installPointerMachine(container: HTMLDivElement): () => void {
   window.addEventListener('pointercancel', onPointerCancel);
   container.addEventListener('wheel', onWheel, { passive: false });
   // Controls riding on the map forward the wheel they do not use (see map-wheel.ts).
-  const releaseWheelSink = setMapWheelSink((e) => { e.preventDefault(); gestures.wheel(e); });
+  const releaseWheelSink = setMapWheelSink((e) => {
+    e.preventDefault();
+    if (!e.ctrlKey) { gestures.wheel(e); return; }
+    const camera = view()?.camera;
+    if (camera) pinchZoom(camera, e);
+  });
   container.addEventListener('contextmenu', onContextMenu);
   container.addEventListener('auxclick', onAuxClick);
   window.addEventListener('blur', onWindowBlur);

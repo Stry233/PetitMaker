@@ -28,8 +28,28 @@ const VERDICT_RISE = amplitude('panel.gate.verdict') ?? 0;
 /** The gate card's map thumbnail, in CSS px: the slot and the capture share it. */
 export const GATE_THUMB = { width: 104, height: 74 } as const;
 
-/** Active-gate spine width in CSS pixels, shared with closing questions on answer papers. */
-export const ASK_SPINE = 5;
+/** The ask spine: a rounded bar inside a card's left padding, clear of its corners, yellow while the
+ *  card waits on the user and the hairline cream once it is settled. In CSS px. */
+const SPINE_WIDTH = 4;
+const SPINE_LEFT = 8;
+const SPINE_CLEAR = 14;
+/** A spined card's left padding: the bar, then the card's own gutter before its content. */
+export const ASK_SPINE_PAD = SPINE_LEFT + SPINE_WIDTH + 10;
+
+/** The spine itself, inside a `position: relative` card padded by `ASK_SPINE_PAD`. */
+export function AskSpine({ settled }: { settled: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="ask-spine"
+      data-settled={settled ? 'true' : 'false'}
+      style={{
+        position: 'absolute', left: SPINE_LEFT, top: SPINE_CLEAR, bottom: SPINE_CLEAR, width: SPINE_WIDTH,
+        borderRadius: radii.pill, background: settled ? LINE : ACTIVE, pointerEvents: 'none',
+      }}
+    />
+  );
+}
 
 /** The quick row's reserved height, in px. Reserved whenever the row stands, answers or not: a row
  *  that appeared as the answers arrived would shove the card's own buttons down under the pointer
@@ -61,11 +81,12 @@ export function AskCard({
       data-testid={testId}
       data-settled={settled ? 'true' : 'false'}
       style={{
+        position: 'relative',
         background: PLATE,
         border: edge,
-        borderLeft: `${ASK_SPINE}px solid ${settled ? LINE : ACTIVE}`,
         borderRadius: radii.md,
         padding: 12,
+        paddingLeft: ASK_SPINE_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -73,6 +94,7 @@ export function AskCard({
         boxShadow: 'none',
       }}
     >
+      <AskSpine settled={settled} />
       {children}
     </motion.div>
   );
@@ -286,12 +308,10 @@ export function AskActions({
 
 /* ── the tool gate ───────────────────────────────────────────────────────── */
 
-/** Which verdict a card shows, given what it offered: a `words` answer whose sentence is one of the
- *  quick pills was a quick answer, and saying "answered in words" about a tapped pill under-reports
- *  what the user actually did. Everything else is the projection's own verdict unchanged. */
-export function markFor(ask: AskRecord, quick?: readonly string[]): VerdictMark | undefined {
-  if (ask.verdict === undefined) return undefined;
-  if (ask.verdict === 'words' && ask.words !== undefined && (quick ?? []).includes(ask.words)) return 'quick';
+/** Which verdict a card shows: a `words` answer that took a quick answer reads as one, since
+ *  "answered in words" under-reports a tapped pill. Everything else is the projection's own verdict. */
+export function markFor(ask: AskRecord): VerdictMark | undefined {
+  if (ask.verdict === 'words' && ask.answeredBy === 'quick') return 'quick';
   return ask.verdict;
 }
 
@@ -322,7 +342,7 @@ export function GateBlock({
   onQuick?(answer: string): void;
 }) {
   if (!ask) return null;
-  const mark = markFor(ask, quick);
+  const mark = markFor(ask);
   const settled = mark !== undefined;
 
   return (

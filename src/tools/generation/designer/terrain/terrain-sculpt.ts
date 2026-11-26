@@ -9,8 +9,8 @@ import { flatIndex, type Rect } from '../../../../core/grid/rect';
 import type { MapTemplate } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../terrain-plan/types';
 import type { AnchorPlan } from '../places/anchors';
-import type { CompositionPlan } from '../composition/composition';
-import { cellTiers, paintableMask } from '../planet';
+import { compositionPeak, type CompositionPlan } from '../composition/composition';
+import type { PlanetReading } from '../planet';
 import type { KitGround } from '../dressing/types';
 import { carveLandmark, landmarkCells, landmarkRegion, type LandmarkPlan } from './landmark';
 import type { MovementLine } from '../composition/movement-line';
@@ -110,6 +110,8 @@ interface SculptInput {
   template: MapTemplate;
   /** Stage A: the plates and the tier each cell stands at. */
   composition: CompositionPlan;
+  /** The planet read once for the composition (`planet.ts:readPlanet`). */
+  planet: PlanetReading;
   /** Stage B: the pavement to reserve and the flights whose landings must be carved. */
   streets: StreetPlan;
   /** Stage C: the places, so a kit's ground treatment lands on its own place. */
@@ -141,9 +143,8 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
   const richness = clamp01(input.richness);
   const waterScale = Math.max(0, input.waterScale ?? 1);
 
-  const grass = paintableMask(template);
+  const { paintable: grass, tiers } = input.planet;
   const flat = flatReservation(template, plan, anchors, streets, grass);
-  const tiers = cellTiers(template, composition);
 
   const terrain: TerrainPlan = {
     width: W, height: H, tier: new Int8Array(N), water: new Int8Array(N).fill(-1),
@@ -312,16 +313,8 @@ export function sculptTerrain(input: SculptInput): TerrainSculpt {
  *  The landmark asks a plan where its high ground is, and this is the answer wherever the mass ended
  *  up — a wall on any side, a corner, or a massif. */
 function wallOf(composition: CompositionPlan): WallProfile {
-  const peak = composition.plates.reduce((m, p) => Math.max(m, p.tier), 0);
-  if (peak <= 0) return { rect: { x: 0, y: 0, w: 0, h: 0 }, peak: 0, climbRows: 0 };
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const plate of composition.plates) {
-    if (plate.tier < peak) continue;
-    x0 = Math.min(x0, plate.rect.x); y0 = Math.min(y0, plate.rect.y);
-    x1 = Math.max(x1, plate.rect.x + plate.rect.w); y1 = Math.max(y1, plate.rect.y + plate.rect.h);
-  }
-  const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-  return { rect, peak, climbRows: Math.max(1, Math.round(rect.h / 3)) };
+  const { tier: peak, rect } = compositionPeak(composition);
+  return { rect, peak, climbRows: peak > 0 ? Math.max(1, Math.round(rect.h / 3)) : 0 };
 }
 
 /** The terraces a flight steps down. Every ramp but the last lands on one, and the sculptor is the

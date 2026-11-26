@@ -85,27 +85,27 @@ const notes: HelpScene = {
 };
 
 const undo: HelpScene = {
-  // A tight crop: the subject is one cell climbing four layers, which reads only up close.
+  // A tight crop: the subject is one cell climbing layer by layer, which reads only up close.
   stage: { x1: 67, y1: 96, x2: 80, y2: 105, tile: 26 },
   run: (_ctx, _t, form = MOUSE_FORM) => {
     const hand = new Hand(form);
     return [
-      // Layer 4 picked in the layer panel: one click fills the bare cell up to it, every layer in
-      // the one stroke.
-      hand.hover(73, 101, {
-        capKey: 'help.fig.undo_1', pointer: 'mountain', dur: 500,
-        on: (c) => pickTool(c, { ...brushArming('free'), floor: 4, layerPinned: true }),
-      }),
-      hand.press({ dur: 1100 }),
+      // Each click is a stroke of its own, adding the layer above the cell's top.
+      hand.hover(73, 101, { capKey: 'help.fig.undo_1', pointer: 'mountain', dur: 500, on: (c) => pickTool(c, brushArming('free')) }),
+      hand.press({ dur: 160 }),
+      hand.release({ dur: 340 }),
+      hand.press({ dur: 160 }),
+      hand.release({ dur: 340 }),
+      hand.press({ dur: 160 }),
+      hand.release({ dur: 500 }),
+      // The fourth layer has no 3x3 base under it: shown while pressed, taken back on release.
+      hand.press({ dur: 900 }),
       hand.release({ realToast: true, capKey: 'help.fig.undo_2', dur: 1400 }),
       // A touch reader undoes with a two-finger tap (EDIT-44).
       ...undoBeat(form.touch, [73, 103.5], { toastKey: null, capKey: 'help.fig.undo_3' }, 1100),
       // A short rebuild closes the loop on a standing stack: the settled end state (the still
-      // frame, and every loop's reset beat) must not be an empty map. At the editor's own floor
-      // each click raises the cell one layer, one stroke each.
-      hand.hover(73, 101, { keys: null, capKey: null, dur: 300, on: (c) => pickTool(c, brushArming('free')) }),
-      hand.press({ dur: 160 }),
-      hand.release({ dur: 340 }),
+      // frame, and every loop's reset beat) must not be an empty map.
+      hand.hover(73, 101, { keys: null, capKey: null, dur: 300 }),
       hand.press({ dur: 160 }),
       hand.release({ dur: 700 }),
     ];

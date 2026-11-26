@@ -11,8 +11,8 @@ import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { Pill } from '../../primitives/Pill';
 import { useT } from '../../../i18n/context';
-import type { ErrorClass } from '../../../agent/panel';
-import { ACT_LABEL, REPAIR, type BannerClass, type RepairAct, type RepairRow } from '../derive/repair';
+import { noticeOffer, standingActions, type ErrorClass, type NoticeClass, type RepairAct } from '../../../agent/panel';
+import { ACT_LABEL, REPAIR, type BannerClass } from '../derive/repair';
 import type { I18nKey } from '../../../i18n/keys';
 
 export type { BannerClass } from '../derive/repair';
@@ -20,50 +20,33 @@ export type { BannerClass } from '../derive/repair';
 /** The banner's actions are the panel's one repair vocabulary. */
 export type BannerActionId = RepairAct;
 
+/** How a class's banner looks and reads; what it offers is the assistant's (`noticeOffer`). */
 interface BannerSpec {
   icon: IconId;
   paper: 'danger' | 'wait';
   sentenceKey: I18nKey;
   /** The same sentence with the fact left out, for the caller that has none to give. */
   bareSentenceKey?: I18nKey;
-  actions: readonly RepairAct[];
-  /** The pill drawn in the accent: the class's repair, where it has one. */
-  act?: RepairAct;
   /** A class that words a shared action its own way (the corrupt notice's dismiss discards). */
   labels?: Partial<Record<RepairAct, I18nKey>>;
 }
 
-/** Both put-downs leave the standing strip, so a demoted banner keeps only its repair. */
-const PUT_DOWN: ReadonlySet<RepairAct> = new Set<RepairAct>(['dismiss', 'set-aside']);
-
-/** A standing fact with nothing to press: dismissing it would only bring the same sentence back. */
-const NO_ACTIONS: readonly RepairAct[] = [];
-
-const ERROR_SPEC = Object.fromEntries(
-  (Object.entries(REPAIR) as [ErrorClass, RepairRow][]).map(([cls, row]) => [cls, {
-    icon: row.icon, paper: row.paper, sentenceKey: row.sentenceKey, actions: row.actions, act: row.act,
-    ...(row.bareSentenceKey ? { bareSentenceKey: row.bareSentenceKey } : {}),
-  }]),
-) as Record<ErrorClass, BannerSpec>;
-
-const BANNER_SPEC: Record<BannerClass, BannerSpec> = {
-  ...ERROR_SPEC,
-  // The held job's own card under this banner carries the repair, so the banner carries none.
-  'key-cleared': { icon: 'pw-key', paper: 'danger', sentenceKey: 'agent.banner_key_cleared', actions: NO_ACTIONS },
-  // The key went away under a running job whose stop has not settled yet.
-  'key-clearing': { icon: 'pw-key', paper: 'danger', sentenceKey: 'agent.banner_key_clearing', actions: NO_ACTIONS },
-  'storage-pruned': { icon: 'pw-warning', paper: 'wait', sentenceKey: 'agent.banner_storage_pruned', actions: ['dismiss'] },
-  'storage-full': { icon: 'pw-warning', paper: 'wait', sentenceKey: 'agent.banner_storage_full', actions: ['dismiss'] },
-  // The unreadable session was set aside: neither answer repairs it, so neither is lit.
+const NOTICE_SPEC: Record<NoticeClass, BannerSpec> = {
+  'key-cleared': { icon: 'pw-key', paper: 'danger', sentenceKey: 'agent.banner_key_cleared' },
+  'key-clearing': { icon: 'pw-key', paper: 'danger', sentenceKey: 'agent.banner_key_clearing' },
+  'sign-in-expired': { icon: 'pw-key', paper: 'danger', sentenceKey: 'agent.banner_sign_in_expired' },
+  'signed-in-again': { icon: 'pw-key', paper: 'wait', sentenceKey: 'agent.banner_signed_in_again' },
+  'storage-pruned': { icon: 'pw-warning', paper: 'wait', sentenceKey: 'agent.banner_storage_pruned' },
+  'storage-full': { icon: 'pw-warning', paper: 'wait', sentenceKey: 'agent.banner_storage_full' },
   'storage-corrupt': {
     icon: 'pw-warning', paper: 'wait', sentenceKey: 'agent.banner_storage_corrupt',
-    actions: ['dismiss', 'export-log'], labels: { dismiss: 'agent.banner_action_discard' },
+    labels: { dismiss: 'agent.banner_action_discard' },
   },
-  // Records built on a map that is not open read but cannot be rolled back from here.
-  'other-map': { icon: 'pw-region-frame', paper: 'wait', sentenceKey: 'agent.banner_other_map', actions: NO_ACTIONS },
-  // Records that name no map may or may not be this map's.
-  'unknown-map': { icon: 'pw-region-frame', paper: 'wait', sentenceKey: 'agent.banner_unknown_map', actions: NO_ACTIONS },
+  'other-map': { icon: 'pw-region-frame', paper: 'wait', sentenceKey: 'agent.banner_other_map' },
+  'unknown-map': { icon: 'pw-region-frame', paper: 'wait', sentenceKey: 'agent.banner_unknown_map' },
 };
+
+const BANNER_SPEC: Record<BannerClass, BannerSpec> = { ...(REPAIR satisfies Record<ErrorClass, BannerSpec>), ...NOTICE_SPEC };
 
 /** Every class the table covers, in declaration order. */
 export const BANNER_CLASSES = Object.keys(BANNER_SPEC) as BannerClass[];
@@ -89,8 +72,8 @@ export function Banner({ cls, model, standing = false, onAction }: {
   const terminal = spec.paper === 'danger' && !standing;
   const ink = standing ? MUTED : terminal ? DANGER_DEEP : INK;
   const textInk = standing ? MUTED : terminal ? DANGER_DEEP : PLATE_INK;
-  const putDown = spec.actions.filter((action) => !PUT_DOWN.has(action));
-  const shown = standing ? (putDown.length > 0 ? putDown : spec.actions) : spec.actions;
+  const offer = noticeOffer(cls);
+  const shown = standing ? standingActions(offer.actions) : offer.actions;
 
   return (
     <div
@@ -124,7 +107,7 @@ export function Banner({ cls, model, standing = false, onAction }: {
           {shown.map((action) => (
             <Pill
               key={action}
-              variant={action === spec.act ? 'active' : 'quiet'}
+              variant={action === offer.act ? 'active' : 'quiet'}
               on="inset"
               data-testid="banner-action"
               data-action={action}

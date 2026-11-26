@@ -48,6 +48,7 @@ export function armedEditMode(arming: ArmedAs): Pick<EditorStore, 'editMode'> {
     [ToolType.ObjectPlacer]: { mode: 'object', arm: arming.item ? { kind: 'item', itemId: arming.item } : { kind: 'none' } },
     [ToolType.Macro]: { mode, arm: arming.macro ? { kind: 'smart', macro: arming.macro } : { kind: 'none' } },
     [ToolType.Annotate]: { mode: 'annotate' },
+    [ToolType.Blueprint]: { mode: 'blueprint' },
   };
   return { editMode: nextEditMode(REST_INPUTS, change[arming.tool]) };
 }

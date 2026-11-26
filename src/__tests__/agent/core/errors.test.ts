@@ -23,6 +23,13 @@ describe('classify', () => {
   it('a custom-endpoint opaque failure reads as cors only with no status and a TypeError-shaped message', () => {
     expect(classify({ message: 'NetworkError when attempting to fetch resource.' }).cls).toBe('network');
   });
+  it('reads a refusal that asks for the account to be linked or verified as an account fault, not a refused key', () => {
+    expect(classify({ status: 401, message: 'Please bind your Alibaba Cloud account before use.' }).cls).toBe('account');
+    expect(classify({ status: 403, message: 'For account security, please complete your profile via email verification.' }).cls).toBe('account');
+    expect(classify({ status: 403, message: 'please make sure your associated Aliyun account is real-name verified' }).cls).toBe('account');
+    expect(classify({ status: 401, message: 'Invalid API key' }).cls).toBe('auth');
+    expect(classify({ status: 500, message: 'email verification service is down' }).cls).toBe('overloaded');
+  });
   it('a plain 403 with no billing words reads as auth, not quota', () => {
     expect(classify({ status: 403, message: 'forbidden' }).cls).toBe('auth');
   });

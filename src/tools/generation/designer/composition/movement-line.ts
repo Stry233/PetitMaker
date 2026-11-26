@@ -9,8 +9,8 @@ import { makeRng, type Rng, mix, hash01, weightedIndex } from '../../../../core/
 import { clamp01, lerpClamped } from '../../../../core/base/math';
 import type { MacroCoord } from '../../../../core/model/types';
 import type { Rect } from '../../../../core/grid/rect';
-import { cellTiers, landMask, levelWindows, hubRect } from '../planet';
-import { MASSIF_PEAK_FROM, type CompositionPlan } from './composition';
+import { hubRect, type PlanetReading } from '../planet';
+import { compositionPeak, MASSIF_PEAK_FROM, type CompositionPlan } from './composition';
 import { plateAdjacency, type Plate } from './plates';
 
 import type { DesignInput, SeedInfo } from '../types';
@@ -117,7 +117,7 @@ const STOP_ROLES: ReadonlyArray<{
  *  for. A planet with no plate to walk to comes back with an empty line, and every stage that reads
  *  one carries on exactly as it did before there was one. */
 export function planMovementLine(
-  { seed, template, composition, richness }: DesignInput & { composition: CompositionPlan },
+  { seed, template, composition, richness, planet }: DesignInput & { composition: CompositionPlan; planet: PlanetReading },
 ): MovementLine {
   const r = clamp01(richness);
   const rng = makeRng(mix(seed, 0x6d0e5f11));
@@ -128,9 +128,7 @@ export function planMovementLine(
   };
   if (composition.plates.length === 0) return empty;
 
-  const tiers = cellTiers(template, composition);
-  const land = landMask(template);
-  const level = levelWindows(template, tiers);
+  const { tiers, land, level } = planet;
   const hubArea = hubRect(template);
 
   // Where the walk can stand is decided before where it goes: a plate offering no cell a street
@@ -504,7 +502,7 @@ function assignRoles(
   anchors: readonly { plate: number; at: MacroCoord }[], tiers: Int8Array,
   composition: CompositionPlan, W: number, rng: Rng,
 ): MovementStop[] {
-  const peak = Math.max(1, composition.plates.reduce((m, p) => Math.max(m, p.tier), 0));
+  const peak = Math.max(1, compositionPeak(composition).tier);
   const last = anchors.length - 1;
   return anchors.map((anchor, index) => {
     const tier = tiers[flatIndex(anchor.at.x, anchor.at.y, W)] ?? 0;

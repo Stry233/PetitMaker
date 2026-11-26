@@ -2,9 +2,8 @@
  * The shared placement machinery's operation costs.
  *
  * Placement is the shared verb behind the designer's build stage, every smart-build press, and the
- * agent's director tools (`decorate_zone`, `plant_forest`, `build_road_network`), so its cost lands
- * in all three. Covers the one-shot map read (`analyzeTerrain`), the road router over a built
- * map, the ecology populator over bare terrain, one themed room decorator, and one smart-build
+ * agent's tools, so its cost lands in all three. Covers the one-shot map read (`analyzeTerrain`), the road router over a built
+ * map, the ecology populator over bare terrain, and one smart-build
  * press through the real (worker-free) `applyMacro` path. See `_harness.ts` for the gate and
  * methodology.
  */
@@ -20,11 +19,10 @@ import { connectRoadNetwork, nearestWalkable, type Node } from '../../tools/macr
 import { scanPortals, type Portal } from '../../tools/macros/roads/portals';
 import { placeNature } from '../../tools/macros/planting/nature';
 import { buildCommunity, buildHabitatField } from '../../tools/macros/planting/habitat';
-import { applyMacro, decorateRoom } from '../../tools/macros';
+import { applyMacro } from '../../tools/macros';
 import type { MacroContext } from '../../tools/macros';
 import { objectRect } from '../../state/object-geometry';
-import { rectsOverlap } from '../../core/grid/rect';
-import type { GridState, MacroCoord, PlacedObject } from '../../core/model/types';
+import type { GridState } from '../../core/model/types';
 
 const s = perfSuite('placement');
 
@@ -59,25 +57,6 @@ function natureFixture(island: World): { world: World; ctx: PlaceCtx; a: Placeme
   const a = analyzeTerrain(world.state);
   const ctx = makeCtx(world.state, (c) => world.executor.execute(c), world.executor.getRegistry(), 7);
   return { world, ctx, a };
-}
-
-const ZONE_RECT = { x: 40, y: 40, w: 20, h: 20 };
-
-function zoneFixture(island: World): { kit: MacroContext; world: World; cells: MacroCoord[] } {
-  const inRect = (o: PlacedObject): boolean => rectsOverlap(objectRect(o), ZONE_RECT);
-  const state: GridState = {
-    template: island.state.template,
-    cells: structuredClone(island.state.cells),
-    objects: new Map([...island.state.objects].filter(([, o]) => o.locked || !inRect(o))),
-    objectsVersion: 0, cellsVersion: 0, lockedLayers: new Set(island.state.lockedLayers),
-  };
-  const world = makeWorld(state);
-  const kit: MacroContext = { state: world.state, executor: world.executor, registry: world.executor.getRegistry() };
-  const cells: MacroCoord[] = [];
-  for (let y = ZONE_RECT.y; y < ZONE_RECT.y + ZONE_RECT.h; y++) {
-    for (let x = ZONE_RECT.x; x < ZONE_RECT.x + ZONE_RECT.w; x++) cells.push({ x, y });
-  }
-  return { kit, world, cells };
 }
 
 function macroFixture(island: World): { world: World; kit: MacroContext } {
@@ -118,20 +97,6 @@ describe.runIf(PERF)('perf: placement', () => {
     }, {
       setup: () => { f = natureFixture(island); },
       minSamples: 3, maxSamples: 8, budgetMs: 6000,
-    });
-  });
-
-  it('decorateRoom over a cleared district rect', async () => {
-    const island = denseIsland();
-    let f = zoneFixture(island);
-    await s.bench('themes/decorate-room', () => {
-      const start = f.world.executor.beginStroke();
-      decorateRoom(f.kit, f.cells, 'hamlet', 7);
-      start.commit();
-    }, {
-      setup: () => { f = zoneFixture(island); },
-      minSamples: 5, maxSamples: 30,
-      meta: { cells: ZONE_RECT.w * ZONE_RECT.h },
     });
   });
 

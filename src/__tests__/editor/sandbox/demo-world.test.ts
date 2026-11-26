@@ -36,7 +36,7 @@ function pondWorld(): SandboxWorld {
 /** What the live placer draws with `catalogId` armed and the pointer at `at`. */
 function toolHover(world: SandboxWorld, catalogId: string, at: { x: number; y: number }, rotation: Rotation): unknown[][] {
   const { overlay, calls } = recordingOverlay();
-  const ctx = makeToolCtx(world.state, world.executor, 1, 1, { armedItem: catalogId, placementRotation: rotation, overlay });
+  const ctx = makeToolCtx(world.state, world.executor, 1, { armedItem: catalogId, placementRotation: rotation, overlay });
   const p = mapPoint(at);
   ctx.point = p;
   new ObjectPlacerTool().onPointerMove(cellAtPoint(p, PLACEMENT_GRID), p, ctx);

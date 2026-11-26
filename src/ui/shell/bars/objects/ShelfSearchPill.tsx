@@ -18,7 +18,7 @@ import { useFrameZoom } from '../../use-frame-zoom';
 import { ShelfSearchField } from './ShelfSearchField';
 
 /** The search drawing's side as a share of the button's. */
-const ICON_SHARE = 20 / 44;
+export const ICON_SHARE = 20 / 44;
 
 /** What a row part the open field covers wears: out of reach and faded while the field is open. */
 export function underOpenSearch(open: boolean, reduced: boolean | null): {
@@ -31,10 +31,12 @@ export function underOpenSearch(open: boolean, reduced: boolean | null): {
 }
 
 /** `size` is the button's side in the row's px; `style` places the pill in its row (its top or foot, an
- *  edge on the map). Closing the field clears the query. */
-export function ShelfSearchPill({ size, open, onOpenChange, query, setQuery, reduced, style }: {
+ *  edge on the map), and `attrs` are what the pill wears, such as the morph piece its row's neighbours
+ *  ride. Closing the field clears the query. */
+export function ShelfSearchPill({ size, open, onOpenChange, query, setQuery, reduced, style, attrs }: {
   size: number; open: boolean; onOpenChange: (open: boolean) => void;
   query: string; setQuery: (query: string) => void; reduced: boolean | null; style?: CSSProperties;
+  attrs?: Record<string, string>;
 }) {
   const t = useT();
   const zoom = useFrameZoom();
@@ -50,6 +52,7 @@ export function ShelfSearchPill({ size, open, onOpenChange, query, setQuery, red
   }, [open]);
   return (
     <div
+      {...attrs}
       ref={ref}
       data-testid="shell-search-pill"
       style={{

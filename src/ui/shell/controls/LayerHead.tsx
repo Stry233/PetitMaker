@@ -16,10 +16,11 @@ import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useReveal } from '../../primitives/use-reveal';
 import { ChevronLeftIcon, ChevronRightIcon } from '../../primitives/line-glyphs';
 import { stepLayerMode, type LayerMode } from '../frame';
-import { TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { useFrameReadableWeight, useFrameZoom, useZoomedLayoutTransform } from '../use-frame-zoom';
 import { LEAD_X, PANEL, tileOf } from './layer-plate';
 import { TouchReach } from '../../primitives/TouchReach';
+import { useRunCommand } from '../use-shell-commands';
 
 /**
  * One step of the size ladder. The plate grows leftward into the map, so the arrow pointing left
@@ -48,12 +49,12 @@ function SizeArrow({ dir, mode, onMode }: { dir: -1 | 1; mode: LayerMode; onMode
         opacity: spent ? UNAVAILABLE : 1,
         cursor: spent ? cursors.blocked : cursors.clickable,
         // As tall as the head declares, so the plate is as deep as `plateDepth` says.
-        lineHeight: 1, height: TEXT.head, boxSizing: 'content-box',
+        lineHeight: 1, height: roleSize('head'), boxSizing: 'content-box',
       }}
     >
       {dir < 0 ? <ChevronRightIcon size={PANEL.headGlyph} /> : <ChevronLeftIcon size={PANEL.headGlyph} />}
       {/* The pair touch, so each grows away from the other. */}
-      <TouchReach h={2 * PANEL.headPadY + TEXT.head} zoom={zoom} sides={dir > 0 ? { right: false } : { left: false }} />
+      <TouchReach h={2 * PANEL.headPadY + roleSize('head')} zoom={zoom} sides={dir > 0 ? { right: false } : { left: false }} />
       {name.bubble}
     </ActionButton>
   );
@@ -66,7 +67,7 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
   const zoomed = useZoomedLayoutTransform();
   const reachName = useTransition('rail.name.reach');
   const showLayerNumbers = useEditorStore((s) => s.showLayerNumbers);
-  const setShowLayerNumbers = useEditorStore((s) => s.setShowLayerNumbers);
+  const run = useRunCommand();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
   const { shown: reached, bind: reach } = useReveal();
@@ -90,13 +91,13 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
       aria-label={t('a11y.toggle_layer_numbers')}
       aria-pressed={showLayerNumbers}
       data-testid="shell-layer-numbers"
-      onClick={() => setShowLayerNumbers(!showLayerNumbers)}
+      onClick={() => run('overlay.numbers')}
       {...reach}
       style={{
         ...btnReset, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: `${PANEL.headPadY}px ${PANEL.headPadX}px`, borderRadius: radii.pill, minWidth: PANEL.headGlyph,
-        fontSize: TEXT.small, fontWeight: fw(900, TEXT.small), color: showLayerNumbers ? INK : PLATE_INK,
-        lineHeight: 1, height: TEXT.head, boxSizing: 'content-box', transformOrigin: 'left center', cursor: cursors.clickable,
+        fontSize: roleSize('small'), fontWeight: fw(900, roleSize('small')), color: showLayerNumbers ? INK : PLATE_INK,
+        lineHeight: 1, height: roleSize('head'), boxSizing: 'content-box', transformOrigin: 'left center', cursor: cursors.clickable,
       }}
     >
       {/* The mark in flow sizes the button; the one seen rides the plate over it. */}
@@ -112,7 +113,7 @@ function NumbersToggle({ mode }: { mode: LayerMode }) {
         }}
       >
         <span style={{ width: numbers.box, flex: 'none', textAlign: 'center' }}>#</span>
-        <span ref={nameRef} style={{ flex: 'none', whiteSpace: 'nowrap', fontWeight: fw(800, TEXT.small), paddingRight: PANEL.headPadX }}>
+        <span ref={nameRef} style={{ flex: 'none', whiteSpace: 'nowrap', fontSize: roleSize('label'), fontWeight: fw(800, roleSize('label')), paddingRight: PANEL.headPadX }}>
           {t('a11y.toggle_layer_numbers')}
         </span>
       </motion.span>
@@ -135,7 +136,7 @@ export function LayerHead({ mode, onMode }: { mode: LayerMode; onMode: (mode: La
         flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: PANEL.headSplitGap,
         // The left pill stands on the leading column at both sizes; the height is declared for `plateDepth`.
         padding: `0 ${tileOf(mode).padX}px ${PANEL.headGap}px ${LEAD_X}px`,
-        height: 2 * PANEL.headPadY + TEXT.head, boxSizing: 'content-box',
+        height: 2 * PANEL.headPadY + roleSize('head'), boxSizing: 'content-box',
       }}
     >
       <NumbersToggle mode={mode} />

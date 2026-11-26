@@ -9,6 +9,7 @@ import { DASHED_CONTOUR, clipTrianglesAbove, contourTriangles, silhouetteContour
 import { bodyFloorY, flatBodyTriangles } from '../geometry/object-marks';
 import type { ArchetypeKey } from '../geometry/types';
 import { isMotionReduced } from '../../../platform/channels/motion-state';
+import { animConfig } from '../../shared/motion/anim-config';
 
 interface Outline {
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
@@ -19,7 +20,6 @@ interface Outline {
   from: number;
   since: number;
 }
-const FADE_MS = 160;
 
 /** How a set of outlines is drawn: the contour's colour, opacity, css-px width and dash (null for a
  *  solid line), the fill's colour and opacity, and the prefix each outline mesh is named by. */
@@ -55,7 +55,7 @@ const CLIP_PLANES = [
 /**
  * Screen-space outlines of placed objects' bodies: the projected triangle union traced, retaining
  * concavities but omitting interior model edges, drawn over the whole scene so a body another model
- * hides still shows. Each fades in and out over `FADE_MS`, at once under reduced motion.
+ * hides still shows. Each fades in and out over `animConfig.outlineFade`, at once under reduced motion.
  */
 export class BodyOutlines3D {
   private outlines = new Map<string, Outline>();
@@ -217,7 +217,7 @@ export class BodyOutlines3D {
     let active = false;
     const now = this.nowMs();
     for (const [id, outline] of this.outlines) {
-      const t = isMotionReduced() ? 1 : Math.min(1, (now - outline.since) / FADE_MS);
+      const t = isMotionReduced() ? 1 : Math.min(1, (now - outline.since) / animConfig.outlineFade.durationMs);
       outline.mesh.material.opacity = outline.from + (outline.target - outline.from) * (t * t * (3 - 2 * t));
       outline.fill.material.opacity = outline.mesh.material.opacity * this.look.fillOpacity / this.look.opacity;
       if (t < 1 && outline.from !== outline.target) active = true;

@@ -13,10 +13,12 @@ export interface SessionPort {
   watch(listener: () => void): () => void;
   /** Whether the order was filed out of the active job area. */
   isFiled(orderSeq: number): boolean;
+  /** Files the order's record out of the active job area. */
+  fileAway(orderSeq: number): void;
   /** Publishes the in-flight turn's parts, or clears them. */
   setLive(parts: readonly Part[] | null): void;
-  /** Publishes a delegated helper's progress, or clears it. */
-  setChildLive(progress: ChildProgress | null): void;
+  /** Publishes the progress of the helper one call started, or clears it; with no call, clears every helper's. */
+  setChildLive(callId: string | null, progress: ChildProgress | null): void;
 }
 
 /** The page's assistant session store as a port. */
@@ -24,6 +26,7 @@ export const agentSessionPort: SessionPort = {
   log: () => useAgentSession.getState().log,
   watch: (listener) => useAgentSession.subscribe(listener),
   isFiled: (orderSeq) => useAgentSession.getState().filed.has(orderSeq),
+  fileAway: (orderSeq) => useAgentSession.getState().fileAway(orderSeq),
   setLive: (parts) => useAgentSession.getState().setLive(parts),
-  setChildLive: (progress) => useAgentSession.getState().setChildLive(progress),
+  setChildLive: (callId, progress) => useAgentSession.getState().setChildLive(callId, progress),
 };

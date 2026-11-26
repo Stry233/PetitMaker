@@ -3,7 +3,8 @@
  *
  * In automatic mode, hover or `paused` suspends the timer, keyboard focus cancels it, and expiry
  * invokes the element's normal `click()` path. Reduced motion updates the indicator once per second.
- * External mode interpolates a caller-owned process countdown; it neither pauses nor auto-clicks.
+ * External mode interpolates a caller-owned process countdown; it neither pauses nor auto-clicks,
+ * and shows the caller's clock stopped for good as a cancelled one shows.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
@@ -63,8 +64,14 @@ interface TimedButtonProps {
    * caller's samples instead of stepping with them (see the header). Omitted, the ring is drawn at
    * the handed fraction and nothing interpolates — the right answer for a caller whose clock is
    * already sampled per frame.
+   *
+   * `stopped` says the caller's clock was stopped for good, as focus stops this button's own: no
+   * ring is drawn and the hint says so.
    */
-  external?: { fraction: number; spanMs?: number };
+  external?: { fraction: number; spanMs?: number; stopped?: boolean };
+  /** Keyboard focus reached the button while the clock is the caller's: focus stops this button's
+   *  own clock, so the caller hears of it to stop theirs. */
+  onStop?: () => void;
   /** Whether the press feedback moves the element. A band-sized surface must not spring under the
    *  pointer: the spring is a chip's way of saying "button", and a surface has other ways. */
   pressMotion?: boolean;
@@ -75,7 +82,7 @@ interface TimedButtonProps {
 }
 
 export function TimedButton({
-  after, hint, onPress, paused: pausedProp = false, disabled = false, ring = ACCENT, clock = 'ring', external,
+  after, hint, onPress, paused: pausedProp = false, disabled = false, ring = ACCENT, clock = 'ring', external, onStop,
   pressMotion = true, style, 'aria-label': ariaLabel, 'data-testid': testId, children,
 }: TimedButtonProps) {
   // A pictured button keeps its face and loses its clock (`ui/design/preview.tsx`). Read before the `||`:
@@ -112,6 +119,8 @@ export function TimedButton({
   const fired = lentClock && lent >= 1;
   /** How long the caller's whole clock lasts, which is what makes the handed fraction a rate. */
   const lentSpan = external?.spanMs ?? 0;
+  /** No clock runs any longer: focus cancelled this button's own, or the caller stopped theirs. */
+  const ended = external ? external.stopped === true : cancelled;
 
   // The lent fuse, gliding between the caller's samples. It walks the drawn outline on from the
   // fraction just handed in and stops at empty, re-seated at every sample: an inline style beats
@@ -183,9 +192,9 @@ export function TimedButton({
     return () => cancelAnimationFrame(raf);
   }, [running, after, reduced]);
 
-  // Focus declines an offer this button is making. It has no offer to decline while the clock is
-  // the caller's, and cancelling would only stop the drawing of something still running.
-  const stop = useCallback(() => { if (!lentClock) setCancelled(true); }, [lentClock]);
+  // Focus declines an offer this button is making. While the clock is the caller's the offer is
+  // theirs to decline, and cancelling here would only stop the drawing of something still running.
+  const stop = useCallback(() => { if (lentClock) onStop?.(); else setCancelled(true); }, [lentClock, onStop]);
 
   // The ring stands just outside the button's edge, so its corner is the button's plus that offset:
   // a rounded rect grown by `d` has a corner of `r + d`, or it pinches at the corners.
@@ -220,7 +229,7 @@ export function TimedButton({
         style={{ position: 'relative', ...style, ...(fired ? { backgroundColor: ACTIVE } : null) }}
       >
         {children}
-        {(lentClock || (after > 0 && !cancelled)) && box.w > 0 ? (
+        {(lentClock || after > 0) && !ended && box.w > 0 ? (
           clock === 'stadium' ? (
             <svg
               aria-hidden
@@ -267,7 +276,7 @@ export function TimedButton({
         // description: by the time the description is spoken it is already the wrong one. It changes
         // at most once, so it is not chatty.
         <span id={hintId} role="status" style={spoken}>
-          {cancelled ? hint.stopped : hint.running}
+          {ended ? hint.stopped : hint.running}
         </span>
       ) : null}
     </>

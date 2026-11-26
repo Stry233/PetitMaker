@@ -171,17 +171,27 @@ export function labelComponents(
   return { labels, sizes };
 }
 
-/** How many 4-connected pieces of the clear cells cannot reach the grid's border without crossing a
- *  set cell of `mask`: the holes a figure encloses within its box. */
-export function enclosedPieces(mask: Uint8Array, w: number, h: number): number {
+/** The clear cells of `mask` a 4-connected walk from the grid's border reaches without crossing a
+ *  set cell: everything outside the figure, 1 per cell. */
+export function outsideClear(mask: Uint8Array, w: number, h: number): Uint8Array {
   const clear = (i: number): boolean => !mask[i];
   const border: number[] = [];
   for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
   for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
-  const outside = floodFrom(border.filter(clear), clear, w, h);
+  return floodFrom(border.filter(clear), clear, w, h);
+}
+
+/** How many 4-connected pieces of the clear cells cannot reach the grid's border without crossing a
+ *  set cell of `mask`: the holes a figure encloses within its box, counting only pieces of at least
+ *  `minArea` cells. */
+export function enclosedPieces(mask: Uint8Array, w: number, h: number, minArea = 0): number {
+  const outside = outsideClear(mask, w, h);
   const enclosed = new Uint8Array(w * h);
-  for (let i = 0; i < enclosed.length; i++) enclosed[i] = !outside[i] && clear(i) ? 1 : 0;
-  return labelComponents(enclosed, w, h).sizes.length - 1;
+  for (let i = 0; i < enclosed.length; i++) enclosed[i] = !outside[i] && !mask[i] ? 1 : 0;
+  const { sizes } = labelComponents(enclosed, w, h);
+  let count = 0;
+  for (let k = 1; k < sizes.length; k++) if (sizes[k]! >= minArea) count++;
+  return count;
 }
 
 /** The cells of each `labelComponents` component in raster order: entry `k` holds label `k + 1`. */

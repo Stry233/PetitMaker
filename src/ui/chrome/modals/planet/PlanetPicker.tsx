@@ -4,13 +4,10 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { type MapTemplate } from '../../../../core/model/types';
-import { type Locale } from '../../../../core/model/locale';
-import { MAP_LIST } from '../../../../config/maps';
 import { isCustomTemplate } from '../../../../core/model/planet';
 import { iconUrl } from '../../../../assets/icon-urls';
 import { useT } from '../../../../i18n/context';
-import type { PlanetEntry } from '../../../../io/storage/planet-library';
-import { shownPlanetName } from '../../../../editor/session/planet-names';
+import type { PlanetChoice } from '../../../../editor/session/planet-switch';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { ImportFileIcon, PlusIcon } from '../../../primitives/line-glyphs';
 import { PlanetStill } from './PlanetStill';
@@ -22,17 +19,6 @@ import { roleFont } from '../../../design/text-weight';
 import { skin } from '../../../design/window-skin';
 import { SEA } from '../../../design/tokens';
 import { useNameReveal } from '../../../primitives/use-name-reveal';
-
-/** One planet the window can choose: a built-in by its template id, a saved one by its entry id, and an
- *  unsaved current planet by its template id with no entry. */
-export interface PlanetChoice { key: string; name: string; template: MapTemplate; entry: PlanetEntry | null }
-
-export function planetChoices(entries: readonly PlanetEntry[], locale: Locale): { builtin: PlanetChoice[]; mine: PlanetChoice[] } {
-  return {
-    builtin: MAP_LIST.map((template) => ({ key: template.id, name: shownPlanetName(template, locale), template, entry: null })),
-    mine: entries.map((entry) => ({ key: entry.entryId, name: entry.name, template: entry.template, entry })),
-  };
-}
 
 const ART = 44;
 

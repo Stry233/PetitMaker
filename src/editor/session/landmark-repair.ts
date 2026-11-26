@@ -1,6 +1,6 @@
 /**
  * The one gate every map load passes when its compatibility report changes the visitor's map
- * (`state/landmark-clearance.ts:CompatibilityReport`): the choice is asked over the map that is open,
+ * (`core/model/compatibility.ts:CompatibilityReport`): the choice is asked over the map that is open,
  * which nothing touches until the visitor chooses. Repair automatically opens the decoded map and
  * lands the report's plan as one undo step; by hand opens it with the objects where the save had them
  * and lets the visitor move or delete each until none stands against the rules. Cancel, in the
@@ -15,12 +15,14 @@ import type { GridCellRef } from '../../core/grid/grids';
 import { TERRAIN_GRID } from '../../core/game/profile';
 import { persistedCamera } from '../../io/save/camera';
 import { createDefaultRegistry } from '../../rules';
-import type { CompatibilityReport } from '../../state/landmark-clearance';
-import { applyRelocation, isLegalMap, planRelocation, unresolved, type RelocationResult } from '../../state/relocation-plan';
-import { repairRules } from '../../state/repair-rules';
+import type { CompatibilityReport } from '../../core/model/compatibility';
+import { isLegalMap, unresolved } from '../../rules/legality';
+import { repairRules } from '../../rules/repair-rules';
+import { applyRelocation, planRelocation, type RelocationResult } from '../../tools/repair';
 import type { LoadedOriginal, RepairSession } from '../../state/slices/repair-session';
 import { batchStore, useEditorStore } from '../../state/store';
 import { coalesceToFrame } from '../../platform/async/after-paint';
+import { SUPPORTS_JSON_FILES } from '../../platform/build/edition';
 import { host } from '../host/host';
 import { onActiveViewChange } from '../../view/active-view';
 import { forgetGenerationScope } from '../operations/generate';
@@ -52,7 +54,7 @@ interface RepairPreviews {
   fit: { x0: number; y0: number; x1: number; y1: number };
 }
 
-/** The objects among `ids` that `state` holds against the rules (`relocation-plan.ts:unresolved`),
+/** The objects among `ids` that `state` holds against the rules (`rules/legality.ts:unresolved`),
  *  which a hand repair flags and leaves to take presses: the one reading of what is drawn flagged,
  *  on the live map and in the repair's pictures alike. */
 function flaggedObjects(state: GridState, ids: Iterable<string>): PlacedObject[] {
@@ -143,16 +145,30 @@ function applyPlan(report: CompatibilityReport): RelocationResult | null {
   return result;
 }
 
-/** Downloads the asked map as the load brought it, before any repair, and leaves the choice open:
- *  the open map, its history and its exported mark stay as they are. Whether a file was written. */
-export function exportUnrepaired(): boolean {
-  const session = useEditorStore.getState().repairSession;
-  return session?.phase === 'choose' ? downloadOriginal(session.original) : false;
-}
-
 /** Which notice Export first reads before the download: the image's for a picture opened as it came. */
 export function unrepairedFormat(session: RepairSession | null): 'json' | 'image' {
   return session?.phase === 'choose' && session.original.kind === 'file' ? session.original.format : 'json';
+}
+
+/** Whether Export first is offered while the choice is asked: an edition that reads no save files
+ *  offers no save file to keep. */
+export function canExportUnrepaired(session: RepairSession | null): boolean {
+  return session?.phase === 'choose' && (unrepairedFormat(session) === 'image' || SUPPORTS_JSON_FILES);
+}
+
+interface UnrepairedExportHooks {
+  /** The responsibility notice; resolves whether it was confirmed. */
+  confirmNotice: () => Promise<boolean>;
+}
+
+/** Downloads the asked map as the load brought it, before any repair, once the notice was confirmed,
+ *  and leaves the choice open: the open map, its history and its exported mark stay as they are.
+ *  Whether a file was written; none is once the choice ended while the notice stood. */
+export async function exportUnrepaired(hooks: UnrepairedExportHooks): Promise<boolean> {
+  const session = useEditorStore.getState().repairSession;
+  if (session?.phase !== 'choose' || !canExportUnrepaired(session)) return false;
+  if (!await hooks.confirmNotice() || useEditorStore.getState().repairSession !== session) return false;
+  return downloadOriginal(session.original);
 }
 
 /** Opens the asked map and lands its plan as one undo step: what the choice's picture showed. */
@@ -166,16 +182,17 @@ export function repairAutomatically(): RelocationResult | null {
 
 /**
  * Puts the report's objects back where the save had them and opens the map under the repair's rules
- * (`state/repair-rules.ts`), at rest, where only those objects take presses.
+ * (`rules/repair-rules.ts`), at rest, where only those objects take presses. False, with the choice
+ * left open, when none is asked or the report moves no objects: terrain alone has no hand repair.
  */
-export function repairByHand(): void {
+export function repairByHand(): boolean {
   const session = useEditorStore.getState().repairSession;
-  if (session?.phase !== 'choose') return;
+  if (session?.phase !== 'choose' || session.report.objects.length === 0) return false;
   const cancelTo = parkLiveEditor(host.camera.get2d() ?? null, host.camera.get3d() ?? null);
   // Installed while the session still asks, so autosave holds still from here to the end.
   session.install();
   const state = useEditorStore.getState().gridState;
-  if (!state) return;
+  if (!state) return false;
   const ids = new Set(reportIds(session.report));
   putBackSaved(state, session.report);
   state.unsettled = ids;
@@ -188,6 +205,7 @@ export function repairByHand(): void {
     store.setModal('landmarkRepair', false);
   });
   refreshLeft();
+  return true;
 }
 
 /** Plans the objects a hand repair still has and lands them, as one undo step, with the automatic

@@ -1,7 +1,9 @@
 /**
  * The save file's export from the live map: which sections the choices carry, their sizes measured
- * once over the undo entries, and the file written and downloaded. The window keeps its choices,
- * the responsibility notice and the map check, and the paint before a long history is serialized.
+ * once over the undo entries, and the export's steps (the responsibility notice, the map check, the
+ * words' check, the file written and downloaded). The window keeps its choices and the state of the
+ * notice and the checks, and passes them in, and paints its busy state before a long history is
+ * serialized.
  */
 import type { GridState, MapNotes } from '../../core/model/types';
 import type { Locale } from '../../core/model/locale';
@@ -12,18 +14,21 @@ import { carrying, serializeWithSections, sectionSizeFormats, type ExportJsonOpt
 import { downloadBlob, downloadJSON, exportFileName, safeName } from '../../io/export/download';
 import { exportableState } from '../../io/export/exportable';
 import {
-  exportOptionsFor, historyDepthSteps, measuringOptions, type HistoryDepth, type JsonSectionAvailability, type JsonSections,
+  exportOptionsFor, historyDepthSteps, measuringOptions, sectionAvailability, type HistoryDepth, type JsonSections,
 } from '../../io/export/json-sections';
 import { showToast } from '../../platform/channels/toast-bus';
 import { translate } from '../../i18n/context';
 import { useEditorStore } from '../../state/store';
 import type { LoadedOriginal } from '../../state/slices/repair-session';
 import { host } from '../host/host';
+import { heldWords } from '../review/held-words';
+import type { MapReview } from '../review/map-review';
+import type { ReviewIssue, ReviewResult } from '../review/text-review';
 import { planetNaming, shownPlanetName } from '../session/planet-names';
 
 export {
-  estimatedTotal, initialSections, sectionsReducer, RECENT_HISTORY_STEPS,
-  type HistoryDepth, 
+  estimatedTotal, initialSections, notesByteLength, sectionAvailability, sectionAvailable, sectionsReducer, RECENT_HISTORY_STEPS,
+  type HistoryDepth,
 } from '../../io/export/json-sections';
 
 /** The locked layers and both views' camera poses the session section writes. */
@@ -87,11 +92,11 @@ export function downloadOriginal(original: LoadedOriginal): boolean {
 
 /** Writes and downloads the save file the choices make, raising the result's notice; whether it was
  *  written. Run after the notice was confirmed and the map check passed. */
-export function writeJsonExport(sections: JsonSections, available: JsonSectionAvailability, notes: MapNotes | null): boolean {
+function writeJsonExport(sections: JsonSections, notes: MapNotes | null): boolean {
   const { gridState: state, commandExecutor: executor, locale } = useEditorStore.getState();
   if (!state || !executor) return false;
   try {
-    const opts = exportOptionsFor(sections, available, notes, { history: () => executor.getUndoEntries(), session: liveSession });
+    const opts = exportOptionsFor(sections, sectionAvailability(state), notes, { history: () => executor.getUndoEntries(), session: liveSession });
     const json = serializeWithSections(exportableState(state, planetNaming(locale)), opts);
     downloadJSON(json, saveFileName(state, locale));
     useEditorStore.getState().markExported();
@@ -101,4 +106,56 @@ export function writeJsonExport(sections: JsonSections, available: JsonSectionAv
     showToast(translate('toast.export_failed', { detail: e instanceof Error ? e.message : translate('error.unknown') }), 'error');
     return false;
   }
+}
+
+interface JsonExportRequest {
+  sections: JsonSections;
+  /** The title and description as the file carries them. */
+  notes: MapNotes | null;
+}
+
+interface JsonExportHooks {
+  /** Aborted once the run is overtaken: the window's choices, the map or its check changed, or the window closed. */
+  signal: AbortSignal;
+  /** The map check, started at once so it runs while the notice stands. */
+  checkMap: () => Promise<MapReview>;
+  /** Stops the map check a declined notice leaves running. */
+  cancelMapCheck: () => void;
+  /** The text check of the title and description the file carries. */
+  checkText: (parts: TextPart[]) => Promise<ReviewResult>;
+  /** The responsibility notice; resolves whether it was confirmed. */
+  confirmNotice: () => Promise<boolean>;
+  /** Called once every check passed; resolves after the window painted its busy state. */
+  begin: () => Promise<void>;
+}
+
+type JsonExportOutcome =
+  /** Overtaken, declined at the notice, refused by the map check, or no map to export. */
+  | { status: 'stopped' }
+  /** The text check refused the words or could not run. */
+  | { status: 'held'; issue: ReviewIssue }
+  | { status: 'failed' }
+  | { status: 'done' };
+
+const STOPPED: JsonExportOutcome = { status: 'stopped' };
+
+/** Exports the save file the choices make from the live map, raising the result's notices. */
+export async function exportJson(request: JsonExportRequest, hooks: JsonExportHooks): Promise<JsonExportOutcome> {
+  const { signal } = hooks;
+  const mapCheck = hooks.checkMap().catch(() => null);
+  if (!await hooks.confirmNotice() || signal.aborted) {
+    hooks.cancelMapCheck();
+    return STOPPED;
+  }
+  const mapResult = await mapCheck;
+  if (!mapResult || mapResult.status === 'blocked' || signal.aborted) return STOPPED;
+  const parts = jsonReviewParts(request.notes ?? {}, request.sections.notes);
+  const issue = await heldWords(parts, hooks.checkText);
+  if (signal.aborted) return STOPPED;
+  if (issue) return { status: 'held', issue };
+  const { gridState, commandExecutor } = useEditorStore.getState();
+  if (!gridState || !commandExecutor) return STOPPED;
+  await hooks.begin();
+  if (signal.aborted) return STOPPED;
+  return writeJsonExport(request.sections, request.notes) ? { status: 'done' } : { status: 'failed' };
 }

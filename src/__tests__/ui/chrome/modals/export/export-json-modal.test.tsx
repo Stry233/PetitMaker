@@ -2,12 +2,14 @@
 import { captureImageAttribution } from '../../../../../io/save/image-attribution';
 vi.mock('../../../../../ui/chrome/modals/export/review/use-map-review', () => ({ useMapReview: () => ({ result: { status: 'clear' }, pending: false, previewReady: true, revision: '0', check: async () => ({ status: 'clear' }), retry: vi.fn(), cancel: vi.fn() }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { runCommand } from '../../../../../editor/commands/run';
+import { SECTION_LABELS } from '../../../../../io/save/facts';
 import { ShareWindow } from '../../../../../ui/chrome/modals/export/ShareWindow';
 import { useEditorStore } from '../../../../../state/store';
 import { makeState } from '../../../../_support/map-state';
 import { createDefaultRegistry } from '../../../../../rules';
-import { I18nProvider } from '../../../../../i18n/context';
+import { I18nProvider, translateFor } from '../../../../../i18n/context';
 
 vi.mock('../../../../../pipelines/moderation/text/reviewer', async (original) => ({
   ...await original<typeof import('../../../../../pipelines/moderation/text/reviewer')>(),
@@ -105,5 +107,18 @@ describe('ExportJsonModal', () => {
     expect(json.stats).toBeTruthy();
     expect(json.history).toBeUndefined();
     expect(json.manifest.appVersion).toBeTruthy();
+  });
+  it('shows section choices prepared outside the window, before it opens and while it stands open', async () => {
+    const statistics = () => screen.getByRole('switch', { name: translateFor('en', SECTION_LABELS.stats) }).getAttribute('aria-checked');
+    const annotations = () => screen.getByRole('switch', { name: translateFor('en', SECTION_LABELS.annotations) }).getAttribute('aria-checked');
+    mount();
+    useEditorStore.getState().setModal('share', false);
+    await act(() => runCommand('app.export_json', { stats: true }));
+    render(<ShareWindow />, { wrapper: W });
+    await waitFor(() => expect(statistics()).toBe('true'));
+    expect(annotations()).toBe('true');
+    await act(() => runCommand('app.export_json', { annotations: false }));
+    await waitFor(() => expect(annotations()).toBe('false'));
+    expect(statistics()).toBe('true');
   });
 });

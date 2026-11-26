@@ -4,7 +4,8 @@
  *
  * The card is a header row that grows a details body away from the selection. The header is placed
  * where the opened card also fits, so opening the details never moves the row the pointer is on:
- * above the selection, else below it, else beside it, growing toward whichever end has more room.
+ * above the selection, else below it, else beside it and level with it, growing toward whichever end
+ * has more room.
  * Where no side holds the opened card (a short map area on an upright screen), the header stands
  * above or below, whichever has more room, and the details scroll in what is left; it stands over
  * the selection only where not even the header fits there. The card draws under the frame, so it
@@ -90,18 +91,22 @@ export function placeSelectionCard(
     const left = clampX(cx - size.w / 2);
     return { visible: true, left, top, side: 'below', growUp: false, tail: { x: tailX(cx, left, size.w), y: top } };
   };
+  // Beside, the header sits level with the selection, shifted only as far as the opened card needs.
+  const besideUp = cy - minY > maxY - cy;
+  const want = cy - size.h / 2;
+  const besideTop = besideUp ? Math.min(maxY - size.h, Math.max(minY + size.body, want)) : clampY(want, full);
+  const besideTail = Math.max(besideTop + size.h / 2 - 8, Math.min(besideTop + size.h / 2 + 8, cy));
   const beside = (right: boolean): CardPlacement => {
     const left = Math.max(minX, right ? Math.min(r + gap, maxX - size.w) : l - gap - size.w);
-    const growUp = cy - minY > maxY - cy;
-    // The header sits level with the selection, shifted only as far as the opened card needs.
-    const want = cy - size.h / 2;
-    const top = growUp ? Math.min(maxY - size.h, Math.max(minY + size.body, want)) : clampY(want, full);
     return {
-      visible: true, left, top, side: right ? 'right' : 'left', growUp,
-      tail: { x: right ? left : left + size.w, y: Math.max(top + size.h / 2 - 8, Math.min(top + size.h / 2 + 8, cy)) },
+      visible: true, left, top: besideTop, side: right ? 'right' : 'left', growUp: besideUp,
+      tail: { x: right ? left : left + size.w, y: besideTail },
     };
   };
-  const rightFits = r + gap + size.w <= maxX, leftFits = l - gap - size.w >= minX;
+  // A side holds the opened card only where it fits the area with the header's pointer still on the
+  // selection; details taller than that (a placed blueprint's) would pin the header to an edge.
+  const level = full <= maxY - minY && besideTail >= t && besideTail <= b;
+  const rightFits = level && r + gap + size.w <= maxX, leftFits = level && l - gap - size.w >= minX;
 
   if (prefer === 'above' || prefer === 'below') {
     const kept = prefer === 'above' ? above() : below();
@@ -120,9 +125,9 @@ interface HeaderParts { title: number; others: number }
 /**
  * Places the card with its name fitted to the room: placed at the name's natural width, the area
  * widens to the columns level with the header row (`areaAt(rows)`), the name takes what that width
- * leaves between `titleMin` and `titleMax`, and the card is placed again at that width, keeping its
- * side. The result depends only on the natural widths, never on a fit made before, so re-reading a
- * card whose header has just been resized lands where it stands.
+ * leaves between `titleMin` and `titleMax` (nothing where `titleMin` does not fit), and the card is
+ * placed again at that width, keeping its side. The result depends only on the natural widths, never
+ * on a fit made before, so re-reading a card whose header has just been resized lands where it stands.
  */
 export function placeFittedCard(
   bounds: ScreenBounds, header: HeaderParts, size: { h: number; body: number }, viewport: ViewportSize,
@@ -136,7 +141,10 @@ export function placeFittedCard(
     const right = areaAt({ top: first.top, bottom: first.top + size.h }).right;
     if (right > area.right) area = { ...area, right };
   }
-  const titleCap = Math.max(opts.titleMin, Math.min(opts.titleMax, headerRoom(area) - header.others));
+  // Where the room holds the controls but not the shortest name, the name is left out: the card stays
+  // on screen, the thumbnail's count stands for a group, and the details button keeps the name as its label.
+  const room = headerRoom(area) - header.others;
+  const titleCap = room < opts.titleMin ? 0 : Math.min(opts.titleMax, room);
   const fitted = { ...size, w: header.others + Math.min(natural, titleCap) };
   const placement = placeSelectionCard(bounds, fitted, viewport, { area, prefer: first.visible ? first.side : opts.prefer });
   return { placement, area, titleCap, size: fitted };

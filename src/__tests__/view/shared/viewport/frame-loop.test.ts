@@ -7,7 +7,7 @@ import { DirtyFlags, FrameLoop, MOVE_WINDOW_FRAMES, listenAll } from '../../../.
 /** Advances until the window closes; returns the frames drawn. */
 function drain(loop: FrameLoop, limit = 100): number {
   let drawn = 0;
-  while (drawn < limit && loop.advance()) drawn++;
+  while (drawn < limit && loop.advance(0)) drawn++;
   return drawn;
 }
 
@@ -23,7 +23,7 @@ describe('the frame loop', () => {
     expect(wake).toHaveBeenCalledTimes(50);
     expect(drain(loop)).toBe(window);
     expect(loop.isOpen).toBe(false);
-    expect(loop.advance()).toBe(false);
+    expect(loop.advance(0)).toBe(false);
   });
 
   it('stays open while a mover moves, then closes the move window after it stops', () => {
@@ -36,7 +36,7 @@ describe('the frame loop', () => {
   it('polls every mover each frame, not only until one answers', () => {
     const second = vi.fn(() => false);
     const loop = new FrameLoop(() => {}, [() => true, second]);
-    loop.advance();
+    loop.advance(0);
     expect(second).toHaveBeenCalledOnce();
   });
 

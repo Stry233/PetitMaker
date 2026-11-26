@@ -20,6 +20,7 @@ import type { Rect } from '../../../../core/grid/rect';
 import type { GridId } from '../../../../core/grid/grids';
 import { PLAZA_RECT } from '../../../_support/planet';
 import { mixedCellSet, cellSet, evidenceOn } from '../../../../core/grid/grids';
+import { beatClock } from '../../../_support/beat-clock';
 import { overlayPart } from '../../../_support/overlay-parts';
 
 interface DrawnRect { x: number; y: number; w: number; h: number }
@@ -167,32 +168,35 @@ describe('overlay shades: cell-set shades draw one unit cell each, on the asked-
 });
 
 describe('overlay shades: the error flash', () => {
-  it('flashes evidence cells on the error\'s own grid, merged per row', async () => {
-    const overlay = new OverlayLayer(() => {});
+  it('flashes evidence cells on the error\'s own grid, merged per row', () => {
+    const loop = beatClock();
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     overlay.flashErrors([err([{ x: 3, y: 4 }, { x: 4, y: 4 }], 'terrain')]);
-    await frame();
+    loop.frame(0); // the flash's first frame, at its peak
     const rects = drawn(overlay, 'errorGraphics');
     expect(rects).toHaveLength(1); // one merged span
     expect(rects[0]).toEqual({ x: 3 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.x, y: 4 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.y, w: 2 * TILE_SIZE, h: TILE_SIZE });
   });
 
-  it('flashes the plaza body without expanding to whole-cell bounds', async () => {
-    const overlay = new OverlayLayer(() => {});
+  it('flashes the plaza body without expanding to whole-cell bounds', () => {
+    const loop = beatClock();
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     const plaza: Rect = { ...PLAZA_RECT };
     overlay.flashErrors([bodyErr([plaza], 'object')]);
-    await frame();
+    loop.frame(0); // the flash's first frame, at its peak
     const rects = drawn(overlay, 'errorGraphics');
     expect(rects).toHaveLength(1);
     expect(soleRect(rects, 'object')).toEqual(plaza);
   });
 
-  it('a body and plain cells in one refusal each keep their own shape and grid', async () => {
-    const overlay = new OverlayLayer(() => {});
+  it('a body and plain cells in one refusal each keep their own shape and grid', () => {
+    const loop = beatClock();
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     overlay.flashErrors([
       bodyErr([{ x: 10.5, y: 12.5, w: 4, h: 1 }], 'object'),
       err([{ x: 2, y: 2 }], 'terrain'),
     ]);
-    await frame();
+    loop.frame(0); // the flash's first frame, at its peak
     const rects = drawn(overlay, 'errorGraphics');
     expect(rects).toHaveLength(2);
     const cell = rects.find((r) => r.w === TILE_SIZE)!;
@@ -202,23 +206,25 @@ describe('overlay shades: the error flash', () => {
 });
 
 describe('overlay shades: the commit flash', () => {
-  it('draws each set on its own grid: a terrain cell and a body land half a cell apart', async () => {
-    const overlay = new OverlayLayer(() => {});
+  it('draws each set on its own grid: a terrain cell and a body land half a cell apart', () => {
+    const loop = beatClock();
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     overlay.flashCommit([
       cellSet('terrain', [{ x: 1, y: 1 }]),
       cellSet('object', [{ x: 5, y: 6 }, { x: 6, y: 6 }]),
     ]);
-    await frame();
+    loop.frame(0); // the flash's first frame, at its peak
     const rects = drawn(overlay, 'commitGraphics');
     expect(rects).toHaveLength(2); // the terrain cell, and the body merged into one span
     expect(macro(rects.find((r) => r.w === TILE_SIZE)!, 'terrain')).toEqual({ x: 1, y: 1, w: 1, h: 1 });
     expect(macro(rects.find((r) => r.w === 2 * TILE_SIZE)!, 'object')).toEqual({ x: 5, y: 6, w: 2, h: 1 });
   });
 
-  it('draws a placement-grid set unshifted', async () => {
-    const overlay = new OverlayLayer(() => {});
+  it('draws a placement-grid set unshifted', () => {
+    const loop = beatClock();
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     overlay.flashCommit([cellSet('object', [{ x: 3, y: 4 }])]);
-    await frame();
+    loop.frame(0); // the flash's first frame, at its peak
     expect(soleRect(drawn(overlay, 'commitGraphics'), 'object')).toEqual({ x: 3, y: 4, w: 1, h: 1 });
   });
 });
@@ -226,7 +232,7 @@ describe('overlay shades: the commit flash', () => {
 describe('overlay shades: the ghost', () => {
   it('lays the cells it is given on the grid it is given, merged per row', async () => {
     const overlay = new OverlayLayer(() => {});
-    overlay.showGhost(mixedCellSet('terrain', [{ x: 3, y: 4 }, { x: 4, y: 4 }]), { wash: 'placement', valid: true });
+    overlay.showGhost(mixedCellSet('terrain', [{ x: 3, y: 4 }, { x: 4, y: 4 }]), { placement: true, valid: false });
     await frame();
     const fill = drawn(overlay, 'ghostGraphics')[0]!;
     expect(fill).toEqual({ x: 3 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.x, y: 4 * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.y, w: 2 * TILE_SIZE, h: TILE_SIZE });
@@ -251,7 +257,7 @@ describe('overlay shades: the ghost', () => {
     // What `planPlacementGhost` hands over for a 4x1 bridge anchored at (10.5, 12.5).
     overlay.showGhost(mixedCellSet('object', [
       { x: 10.5, y: 12.5 }, { x: 11.5, y: 12.5 }, { x: 12.5, y: 12.5 }, { x: 13.5, y: 12.5 },
-    ]), { wash: 'placement', valid: true });
+    ]), { placement: true, valid: false });
     await frame();
     const fill = drawn(overlay, 'ghostGraphics')[0]!;
     expect(fill).toEqual({ x: 10.5 * TILE_SIZE, y: 12.5 * TILE_SIZE, w: 4 * TILE_SIZE, h: TILE_SIZE });

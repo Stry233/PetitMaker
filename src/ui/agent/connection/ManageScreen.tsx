@@ -8,12 +8,13 @@ import { providerName } from '../../../i18n/terms/providers';
 import { EffortControl } from './EffortControl';
 import { ModelPicker } from './ModelPicker';
 import {
-  ensureModelCatalog, IDLE_MS, OVERSIGHTS, QUIRKS, type LiveConnection, type Oversight, type ProviderId,
-  defaultListModels, fileEndpoint, forgetKeyAndRosters, type ListModels,
+  OVERSIGHTS, QUIRKS, type LiveConnection, type Oversight, type ProviderId,
+  defaultListModels, forgetKeyAndRosters, type ListModels,
 } from '../../../agent/panel';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import { useT } from '../../../i18n/context';
 import { FloatMenu, type FloatMenuItem } from '../../primitives/FloatMenu';
+import { InfoLine } from '../../primitives/InfoLine';
 import { ConfirmPill } from '../parts/ConfirmPill';
 import { SegmentedControl } from '../../primitives/SegmentedControl';
 import { Spinner } from '../../primitives/Spinner';
@@ -24,20 +25,15 @@ import { ActionButton } from '../../primitives/ActionButton';
 import { Icon } from '../parts/sprite';
 import { motion } from 'framer-motion';
 import { framerMotion } from '../../design/motion';
-import {
-  connectionGaps, isConnected, runnerSettings, useAgentConnection,
-} from '../../../agent/boot';
-import { useEndpointDraft } from '../hooks/use-endpoint-draft';
-import { useModelRoster } from '../hooks/use-model-roster';
+import { connectionGaps, useAgentConnection } from '../../../agent/boot';
+import { useEndpointReading } from './use-endpoint-reading';
 import { EndpointField } from '../parts/EndpointField';
 import { prettyModel } from './pretty-model';
 import {
   FOOT_STYLE, NOTE_STYLE, OVERSIGHT_COPY,
   PROVIDER_ROSTER, WRAP_STYLE,
 } from './setup-parts';
-import { endpointUrlLooksUsable } from '../../../platform/remote/endpoint-url';
 import { showToast } from '../../../platform/channels/toast-bus';
-import { useEffectEvent } from '../../primitives/use-effect-event';
 
 interface ManageScreenProps {
   /** How many settled records the clear verb would take. 0 disables it. */
@@ -67,7 +63,6 @@ export function ManageScreen({
   const t = useT();
   const settings = useAgentConnection();
   const [provOpen, setProvOpen] = useState(false);
-  const url = useEndpointDraft(settings.customBaseUrl);
 
   /** The running job's connection the next-job notice was given for; a later job earns its own. */
   const noted = useRef<LiveConnection | null>(null);
@@ -79,66 +74,29 @@ export function ManageScreen({
     showToast(t('agent.setup_manage_next_job'), 'info');
   }, [liveConnection, t]);
 
-  useEffect(() => { if (listModels === defaultListModels) void ensureModelCatalog(); }, [listModels]);
-
   const provider = settings.provider;
   const model = settings.model[provider] ?? '';
-  // Read the credential only for the request that needs it; never put it in component state.
-  const armedKey = runnerSettings(settings).apiKey;
   const customBaseUrl = settings.customBaseUrl;
-  const connected = isConnected(settings);
 
-  const roster = useModelRoster({
-    provider, customBaseUrl, apiKey: armedKey, region: runnerSettings(settings).region, connected, listModels,
-  });
-  const { models } = roster;
-  const listing = roster.status === 'loading';
+  const endpoint = useEndpointReading({ listModels, onFiled: noteNextJob });
+  const { models, needsEndpoint: down, allowManual } = endpoint;
+  const listing = endpoint.status === 'loading';
 
   // The rosters go with the key: what an endpoint can run is an answer about the credential that
   // asked for it, and the next key on this provider deserves to have its own asked.
   const forget = useCallback(() => forgetKeyAndRosters(provider), [provider]);
 
-  /** Files the typed address and re-asks it what it runs. The sanitizer is the one authority on
-   *  whether a string is usable (`platform/remote/endpoint-url.ts:sanitizeEndpointUrl`), so an empty answer is the
-   *  refusal and the field says so. */
-  const checkEndpoint = useCallback(() => {
-    const { stored, same } = fileEndpoint(url.value);
-    if (stored === '') { url.refuse(); return; }
-    url.settle();
-    // A changed address loads afresh through the roster's own inputs; the same one is asked again.
-    if (same) roster.refresh();
-    noteNextJob();
-  }, [url, roster, noteNextJob]);
-
-  /** A changed address is filed and checked after the idle interval; an unchanged draft arms nothing, and an unusable one is refused in place. */
-  const refuseDraft = useEffectEvent(() => url.refuse());
-  useEffect(() => {
-    if (provider !== 'custom') return undefined;
-    const draft = url.value.trim();
-    if (draft === '' || draft === customBaseUrl) return undefined;
-    const timer = setTimeout(() => {
-      if (endpointUrlLooksUsable(draft)) { checkEndpoint(); return; }
-      refuseDraft();
-    }, IDLE_MS);
-    return () => clearTimeout(timer);
-  }, [provider, url.value, customBaseUrl, checkEndpoint]);
-
   /** What the connection is still missing. The endpoint gap is the one this card can create (a check
    *  that failed outright), and Done reads the whole answer: the card is the door to idle, and idle
    *  says it can carry an order. */
   const gaps = connectionGaps(settings);
-  /** Custom model selection requires an explicit server address. */
-  const down = provider === 'custom' && customBaseUrl === '';
-  const modelItems: FloatMenuItem[] = down
-    ? []
-    : models.map((id, index) => ({
-      id,
-      label: index === 0 ? t('agent.setup_default_model_entry', { name: prettyModel(id) }) : prettyModel(id),
-    }));
-  const allowManual = !down && (models.length === 0 || provider === 'custom' || QUIRKS[provider].listsModels === false);
+  const modelItems: FloatMenuItem[] = models.map((id, index) => ({
+    id,
+    label: index === 0 ? t('agent.setup_default_model_entry', { name: prettyModel(id) }) : prettyModel(id),
+  }));
   /** The verdict under the address field; empty where the address answered. */
-  const endpointNote = url.bad ? t('agent.setup_endpoint_invalid')
-    : roster.status === 'failed' ? t('agent.setup_list_unavailable') : '';
+  const endpointNote = endpoint.endpointNote === 'invalid' ? t('agent.setup_endpoint_invalid')
+    : endpoint.endpointNote === 'unavailable' ? t('agent.setup_list_unavailable') : '';
 
   const clearQuestion = stoppable ? 'agent.setup_manage_clear_pause_q' : 'agent.setup_manage_clear_q';
   const anonymous = provider === 'custom' && settings.customAuth === 'none';
@@ -183,12 +141,12 @@ export function ManageScreen({
             <div>
             <EndpointField
               testId="manage-endpoint-input"
-              value={url.value}
-              bad={url.bad}
-              onChange={url.edit}
-              onEnter={() => { if (endpointUrlLooksUsable(url.value)) checkEndpoint(); else url.refuse(); }}
+              value={endpoint.draft}
+              bad={endpoint.bad}
+              onChange={endpoint.edit}
+              onEnter={endpoint.confirm}
               // The check's wait stands inside the field it is about.
-              trailing={listing && !url.bad ? <Spinner size={13} color={INK} /> : null}
+              trailing={listing && !endpoint.bad ? <Spinner size={13} color={INK} /> : null}
             />
             {/* The verdict line opens on the shared unfold beat rather than pushing the model row
                 down in one frame; the node stays mounted either way (the quiet is a verdict). */}
@@ -203,7 +161,7 @@ export function ManageScreen({
               style={{
                 ...NOTE_STYLE,
                 ...(endpointNote !== '' ? { marginTop: 2 } : {}),
-                ...(url.bad || roster.status === 'failed' ? { color: DANGER_INK } : {}),
+                ...(endpoint.endpointNote !== null ? { color: DANGER_INK } : {}),
               }}
             >
               {endpointNote}
@@ -215,7 +173,7 @@ export function ManageScreen({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div data-testid="manage-model-label" style={LABEL_STYLE}>{t('agent.setup_manage_model')}</div>
           <Pill on="plate" variant="quiet" data-testid="manage-refresh-models" disabled={listing}
-            onClick={() => { if (listModels === defaultListModels) void ensureModelCatalog(true); roster.refresh(); }}>
+            onClick={endpoint.refresh}>
             {t('agent.setup_refresh_models')}
           </Pill>
         </div>
@@ -232,7 +190,7 @@ export function ManageScreen({
         />
         {down && (
           <p data-testid="manage-model-blocked" style={NOTE_STYLE}>
-            {t('agent.setup_manage_model_needs_endpoint')}
+            <InfoLine>{t('agent.setup_manage_model_needs_endpoint')}</InfoLine>
           </p>
         )}
       </div>

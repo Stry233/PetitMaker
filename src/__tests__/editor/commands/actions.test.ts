@@ -65,7 +65,7 @@ describe('running a tap', () => {
 
   it('moves to rest and puts the region brush away with it', () => {
     s().setEditMode({ mode: 'mountain' });
-    s().setSelectingRegion(true);
+    s().setSelectingRegion(true, 'generator');
     tap('move');
     expect(s().editMode.mode).toBeNull();
     expect(s().selectingRegion).toBe(false);

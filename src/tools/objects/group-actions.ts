@@ -1,7 +1,7 @@
 /*
- * Group edits: move, rotate and delete a whole selection.
+ * Group edits: move, rotate, flip and delete a whole selection.
  *
- * Move and rotate are geometric, so they are all-or-nothing and name the member that refused —
+ * Move, rotate and flip are geometric, so they are all-or-nothing and name the member that refused —
  * a half-applied move leaves an arrangement nobody asked for. Delete removes what it can and
  * reports the rest, so selecting everything and pressing delete clears the map and keeps the landmarks.
  *
@@ -12,7 +12,7 @@ import { placeObjectCommand, removeObjectCommand } from '../../core/model/comman
 import { type Command, type GridState, type MacroCoord, type PlacedObject, type Refusal, type ValidationError, turnRotation } from '../../core/model/types';
 import type { CommandExecutor, Stroke } from '../../core/commands/command-executor';
 import { getFootprint } from '../../core/grid/footprint';
-import { movedObject, probeWithout } from '../placement/probe';
+import { movedObject, probeWithout, shiftedObject } from '../placement/probe';
 import { stripCoatingsFor } from '../placement/coatings';
 import { getCatalogItem } from '../../state/catalog';
 import { objectRect } from '../../state/object-geometry';
@@ -21,7 +21,9 @@ import type { GroupRotation } from './group-rotation';
 import { removeObject } from './actions';
 import { PLACEMENT_GRID } from '../../core/game/profile';
 import { evidenceOn } from '../../core/grid/grids';
-import { turnCorners } from '../../core/model/corners';
+import { orientCorners, turnCorners } from '../../core/model/corners';
+import type { FlipTurn } from '../../core/base/coords';
+import { orientedFacing } from '../blueprint/turn';
 
 interface GroupOpResult {
   /** Members re-placed. Zero on a refusal: a geometric group operation is all-or-nothing. */
@@ -109,7 +111,7 @@ export function moveGroup(
     executor,
     state,
     groupMembers(state, ids),
-    (obj) => movedObject(state, obj, obj.position.x + dx, obj.position.y + dy),
+    (obj) => shiftedObject(state, obj, dx, dy),
     onWillPlace,
   );
 }
@@ -226,6 +228,42 @@ export function rotateGroup(
   return res;
 }
 
+/**
+ * Flip the selection as one rigid body about the centre of its macro bounding box, as `flip` asks. A
+ * mirror or a half turn never changes the box's shape, so every member's footprint lands on its own
+ * mirror; its facing and corner cuts take the mirrored side as a blueprint's do
+ * (`blueprint/turn.ts:orientedFacing`), since the game never mirrors an item's art. Stale ids are
+ * skipped; ordering and the all-or-nothing contract are `applyGroupTransform`'s, so a member landing
+ * where the rules refuse it, a bridge or ramp left off its span included, refuses the whole flip.
+ */
+export function flipGroup(
+  executor: CommandExecutor, state: GridState, ids: readonly string[], flip: FlipTurn, onFlip?: GroupRotateHook,
+): GroupOpResult {
+  const members = groupMembers(state, ids);
+  if (members.length === 0) return NOTHING;
+  const { minX, minY, maxX, maxY } = groupBounds(members);
+  const half = flip.quarters === 2;
+  const res = applyGroupTransform(executor, state, members, (obj) => {
+    const { x, y, w, h } = objectRect(obj);
+    return {
+      ...movedObject(state, obj, flip.mirror !== half ? minX + maxX - x - w : x, half ? minY + maxY - y - h : y),
+      rotation: orientedFacing(obj.rotation, getCatalogItem(obj.catalogId), flip),
+      ...(obj.corners ? { corners: orientCorners(obj.corners, flip) } : null),
+    };
+  });
+  // The flip as one animation spec, as a rotation hands over its turn: `members` still holds where each stood.
+  if (res.moved > 0 && onFlip) {
+    onFlip({
+      pivot: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, sweepDeg: 0, flip: { x: flip.mirror !== half, y: half },
+      members: members.map((obj) => {
+        const r = objectRect(obj);
+        return { id: obj.id, from: { x: r.x + r.w / 2, y: r.y + r.h / 2 }, spun: false };
+      }),
+    });
+  }
+  return res;
+}
+
 export interface DeleteGroupResult {
   /** Members removed. */
   deleted: number;
@@ -289,7 +327,7 @@ export function planGroupMove(
   const members = groupMembers(state, ids);
   const rules = executor.getRegistry();
   const probe = probeWithout(state, members);
-  const cmds = members.map((obj) => placeObjectCommand(movedObject(state, obj, obj.position.x + dx, obj.position.y + dy)));
+  const cmds = members.map((obj) => placeObjectCommand(shiftedObject(state, obj, dx, dy)));
   const landed = members.map((obj, i) => {
     const cmd = cmds[i]!;
     const removal = rules.validatePreCommand(removeObjectCommand(obj), state);

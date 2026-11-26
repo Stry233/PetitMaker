@@ -1,20 +1,22 @@
 import * as PIXI from 'pixi.js-legacy';
-import type { Corners, PlacedObject, ValidationError } from '../../../core/model/types';
+import type { Corners, GridState, PlacedObject, ValidationError } from '../../../core/model/types';
 import type { Rect } from '../../../core/grid/rect';
 import type { TrimmedCell } from '../../../tools/trim';
 import type { MacroRect } from '../../interaction/marquee';
-import type { GhostCell, GhostPaint, PlacementGhost, SelectionOpts } from '../../../tools/pointer/runtime';
+import type { FlipAxes } from '../../../tools/objects';
+import type { GhostBlock, GhostCell, GhostPrior, GhostPaint, PlacementGhost, RegionGuides, SelectionOpts } from '../../../tools/pointer/runtime';
 import type { CellSet, GridId, MixedCellSet } from '../../../core/grid/grids';
 import type { RowSpan } from '../../../core/grid/cell-spans';
 import type { PlanetFrame } from '../../../core/model/planet';
 import type { MapAnnotation } from '../../../core/model/annotations';
 import { OverlayNoteGhost, type NoteGhostHost } from './overlay/note-ghost';
 import { OverlayFlashes } from './overlay/flash';
-import { OverlayGhosts } from './overlay/ghost';
+import { OverlayGhosts, ghostObject } from './overlay/ghost';
 import { OverlayMarks } from './overlay/marks';
 import { OverlayRegions } from './overlay/region';
 import { OverlayPlanetFrame } from './overlay/planet-frame';
 import { OverlayBand } from './overlay/band';
+import { settleAtOnce, type PlayBeat } from '../../shared/viewport/frame-loop';
 import { OverlayFlagged } from './overlay/flagged';
 
 /**
@@ -37,7 +39,7 @@ export class OverlayLayer implements NoteGhostHost {
   disposed = false;
 
   private readonly flashes = new OverlayFlashes(this);
-  private readonly ghosts = new OverlayGhosts(this).init();
+  private readonly ghosts: OverlayGhosts;
   private readonly noteGhost = new OverlayNoteGhost(this);
   private readonly marks = new OverlayMarks(this);
   private readonly regions = new OverlayRegions(this);
@@ -45,8 +47,15 @@ export class OverlayLayer implements NoteGhostHost {
   private readonly band = new OverlayBand(this);
   private readonly flagged = new OverlayFlagged(this);
 
-  /** Opens the owning renderer's render window. */
-  constructor(readonly requestRender: () => void) {
+  /** Opens the owning renderer's render window; `state` is the map it draws, which a road ghost lays
+   *  its tiles over; `play` runs the parts' beats on the renderer's frame loop (without one they land
+   *  on their end states at once). */
+  constructor(
+    readonly requestRender: () => void,
+    state: () => GridState | null = () => null,
+    readonly play: PlayBeat = settleAtOnce,
+  ) {
+    this.ghosts = new OverlayGhosts(this, state).init();
     this.planet.planetFrameFlash.alpha = 0;
     this.container.addChild(
       this.regions.buildableGraphics,
@@ -59,6 +68,7 @@ export class OverlayLayer implements NoteGhostHost {
       this.flagged.edgeGraphics,
       this.flashes.commitGraphics,
       this.ghosts.curveGraphics,
+      this.ghosts.laySlot,
       this.ghosts.ghostGraphics,
       this.ghosts.previewIcon,
       this.noteGhost.noteSlot,
@@ -69,12 +79,13 @@ export class OverlayLayer implements NoteGhostHost {
       this.regions.dimensionSlot,
       this.ghosts.placementSlot,
       this.ghosts.groupSlot,
+      this.ghosts.turnSlot,
       this.marks.labelSlot,
       this.flashes.errorGraphics,
     );
   }
 
-  /** Cancels every animation frame the layer holds and turns later calls into no-ops. The renderer
+  /** Cancels every beat and frame the layer holds and turns later calls into no-ops. The renderer
    *  calls it before destroying its app, so no frame outlives the Graphics it draws into. */
   dispose(): void {
     this.disposed = true;
@@ -111,26 +122,29 @@ export class OverlayLayer implements NoteGhostHost {
   showGhostSpans(spans: RowSpan[], paint: GhostPaint, grid: GridId, trim?: readonly TrimmedCell[]): void {
     this.ghosts.showGhostSpans(spans, paint, grid, trim);
   }
-  showPlacementGhost(ghost: PlacementGhost, valid: boolean): void { this.ghosts.showPlacementGhost(ghost, valid); }
-  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void { this.ghosts.showGroupPlacementGhost(members, valid); }
+  showPlacementGhost(ghost: PlacementGhost, valid: boolean): void { this.ghosts.showPlacementGhost(ghostObject(ghost), valid); }
+  /** 2D draws a body the same wherever it stands, so `onBuilt` changes nothing here. */
+  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void { this.ghosts.showGroupPlacementGhost(members.map(ghostObject), valid); }
   /** A drag's drop preview as placement ghosts: the lone sprite for one object, the group's pool
-   *  for several. The ghost sprite keeps the item's own size, the wash carries the snapped span. */
+   *  for several, each the moved object itself at its destination. */
   showObjectMove(destinations: readonly PlacedObject[], valid: boolean): void {
-    const ghosts = destinations.map(({ catalogId, position, rotation, elevation }) => ({ catalogId, x: position.x, y: position.y, rotation, elevation }));
-    if (ghosts.length === 1) this.ghosts.showPlacementGhost(ghosts[0]!, valid);
-    else this.ghosts.showGroupPlacementGhost(ghosts, valid);
+    if (destinations.length === 1) this.ghosts.showPlacementGhost(destinations[0]!, valid);
+    else this.ghosts.showGroupPlacementGhost(destinations, valid);
   }
   showNoteGhost(note: MapAnnotation, label: string): void { this.noteGhost.show(note, label); }
   clearGhost(): void { this.ghosts.clearGhost(); this.noteGhost.clear(); }
   showCurveFootprint(set: CellSet): void { this.ghosts.showCurveFootprint(set); }
   clearCurveFootprint(): void { this.ghosts.clearCurveFootprint(); }
 
+  turnBlocks(blocks: readonly GhostBlock[], prior: readonly GhostPrior[], pivot: { x: number; y: number }, sweepDeg: number, flip?: FlipAxes): void {
+    this.ghosts.turnBlocks(blocks, prior, pivot, sweepDeg, flip);
+  }
   showHover(rect: Rect, grid: GridId): void { this.marks.showHover(rect, grid); }
   clearHover(): void { this.marks.clearHover(); }
   showSelection(rect: Rect, grid: GridId, opts: SelectionOpts = {}): void { this.marks.showSelection(rect, grid, opts); }
   clearSelection(): void { this.marks.clearSelection(); }
 
-  showBuildableRegion(set: CellSet, dimensionScale?: number): void { this.regions.showBuildableRegion(set, dimensionScale); }
+  showBuildableRegion(set: CellSet, guides?: RegionGuides): void { this.regions.showBuildableRegion(set, guides); }
   clearBuildableRegion(): void { this.regions.clearBuildableRegion(); }
   pulseBuildableRegion(durationMs: number, dip: number): void { this.regions.pulseBuildableRegion(durationMs, dip); }
   showCellMarks(cells: CellSet | null, outline: Rect | null): void { this.regions.showCellMarks(cells, outline); }

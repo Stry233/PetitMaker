@@ -18,7 +18,7 @@ describe('OverlayLayer.dispose', () => {
     const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
     const layer = new OverlayLayer(() => {});
     layer.flashCommit([cellSet('terrain', [{ x: 1, y: 1 }])]);
-    layer.showGhost(cellSet('terrain', [{ x: 2, y: 2 }]), { wash: 'placement', valid: true });
+    layer.showGhost(cellSet('terrain', [{ x: 2, y: 2 }]), { placement: true, valid: true });
     layer.showBuildableRegion(cellSet('terrain', [{ x: 3, y: 3 }]));
     layer.pulseBuildableRegion(400, 0.5);
     layer.showFrame({ x0: 0, y0: 0, cols: 1, rows: 1 });

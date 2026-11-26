@@ -13,7 +13,8 @@ import { ACTIVE, PLATE } from '../../design/tokens';
 import { GlyphIcon } from '../GlyphIcon';
 import type { Glyph } from '../frame';
 import { useTransition } from '../../design/motion/use-motion';
-import { QUAD, SCALE, TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
+import { QUAD, SCALE } from '../units';
 import { BAR_LINE_HEIGHT, BarText, ShortcutBadge, useCommandTitle } from './bar-atoms';
 import { hoverBleed } from './swatch-strip';
 import { BADGE, PILL_H, PLATE_PAD, CELL_BOX, commandLabel, toolCell } from './terrain-cells';
@@ -65,7 +66,7 @@ export function ToolHighlight({ index }: { index: number }) {
 export const CAPTION_TOP = CELL_BOX.h + PLATE_PAD.y + 5;
 
 /** How far a caption reaches under its control's box. */
-export const CAPTION_HANG = CAPTION_TOP - CELL_BOX.h + TEXT.label * BAR_LINE_HEIGHT;
+export const CAPTION_HANG = CAPTION_TOP - CELL_BOX.h + roleSize('chip') * BAR_LINE_HEIGHT;
 
 /** How far a tool pill's drawing reaches above its row's box: the plate's `PLATE_PAD.y`, then past the
  *  plate its hovered growth carrying the shortcut badge or the focus ring, whichever stands farther. */
@@ -107,7 +108,7 @@ export function ToolPill({ helpTarget, tourTarget, glyph, label, commandId, acti
     {commandId && <ShortcutBadge commandId={commandId} grown/>}
     <AnimatePresence initial={false}>{active && <MapCaption data-tool-caption key={label} top={CAPTION_TOP} centre={centre}
       motionProps={presence('tool.plate.shape', { opacity: 0 }, { reduced })}>
-      <BarText onMap size={TEXT.label}>{label}</BarText>
+      <BarText onMap role="chip">{label}</BarText>
     </MapCaption>}</AnimatePresence>
   </motion.div>;
 }

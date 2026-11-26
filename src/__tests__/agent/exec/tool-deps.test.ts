@@ -2,7 +2,7 @@
  * The tool dependencies the runner gets per job over the live editor. All but the first three are
  * optional, so dropping one still type-checks; the expected set is pinned by name instead.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import type { GridState } from '../../../core/model/types';
 import { createDefaultRegistry } from '../../../rules';
@@ -16,6 +16,9 @@ import { useAgentSession } from '../../../agent/session/store';
 import { executeToolCall } from '../../../agent/tools';
 import { makeState } from '../../_support/map-state';
 import { createExecutor } from '../../../state/executor';
+import { standIn } from '../../../state/map-stand-in';
+import { setMapRenderer } from '../../../view/map2d/scene/renderer-registry';
+import type { MapRenderer } from '../../../view/map2d/scene/map-renderer';
 
 /** Every provider id mapped to no model, the shape the connection store holds. */
 function emptyModelMap(): Record<ProviderId, string> {
@@ -28,18 +31,18 @@ const depsFor = (vision: boolean) => makeToolDeps({ vision, session: agentSessio
 function installMap(): GridState {
   const gs = makeState(20, 20) as GridState;
   const executor = createExecutor(gs, createDefaultRegistry());
-  useEditorStore.setState({ gridState: gs, commandExecutor: executor, region: [{ x: 3, y: 4 }] });
+  useEditorStore.setState({ gridState: gs, commandExecutor: executor, regions: { agent: { cells: [{ x: 3, y: 4 }], map: gs } } });
   return gs;
 }
 
 afterEach(() => {
-  useEditorStore.setState({ gridState: null, commandExecutor: null, region: [] });
+  useEditorStore.setState({ gridState: null, commandExecutor: null, regions: {} });
 });
 
 describe('the tool dependencies built per job', () => {
   const EXPECTED = [
     'editAnnotations', 'getState', 'getExecutor', 'getRegion', 'getSelectedBlock', 'undoFloor',
-    'onFlash', 'getProvenanceSource', 'requestExport', 'catalogName',
+    'onFlash', 'getProvenanceSource', 'listAppActions', 'runAppAction', 'catalogName', 'interfaceLanguage', 'onMapLeft',
   ] as const;
 
   it('wires every one of them, and none as undefined', () => {
@@ -52,12 +55,49 @@ describe('the tool dependencies built per job', () => {
     expect(Object.keys(deps).sort()).toEqual([...EXPECTED].sort());
   });
 
+  it("[ASST-11] bounds a job by the region painted for the assistant alone, never Generate's scope or a frame", () => {
+    const gs = installMap();
+    for (const owner of ['generator', 'blueprint'] as const) {
+      useEditorStore.setState({ regions: { [owner]: { cells: [{ x: 3, y: 4 }], map: gs } } });
+      expect(depsFor(false).getRegion(), owner).toEqual([]);
+    }
+  });
+
   it('reads the live map, executor and painted region through the store', () => {
     const gs = installMap();
     const deps = depsFor(false);
     expect(deps.getState()).toBe(gs);
     expect(deps.getExecutor()).toBe(useEditorStore.getState().commandExecutor);
     expect(deps.getRegion()).toEqual([{ x: 3, y: 4 }]);
+  });
+
+  it('tells the job once the map it launched on is no longer the live one', () => {
+    installMap();
+    const deps = depsFor(false);
+    const left = vi.fn();
+    deps.onMapLeft!(left);
+    useEditorStore.getState().setRegion([], 'agent');
+    expect(left).not.toHaveBeenCalled();
+    useEditorStore.getState().loadMap(makeState(20, 20) as GridState, createDefaultRegistry());
+    useEditorStore.getState().loadMap(makeState(20, 20) as GridState, createDefaultRegistry());
+    expect(left).toHaveBeenCalledTimes(1);
+  });
+
+  it("pictures the job's own map, never a stand-in the views show in its place", async () => {
+    const gs = installMap();
+    const shown = makeState(20, 20) as GridState;
+    useEditorStore.getState().setMapStandIn(standIn(gs, shown));
+    const captureImage = vi.fn(() => 'data:shown');
+    const captureState = vi.fn(async (state: GridState) => ({ toDataURL: () => (state === gs ? 'data:job' : 'data:other') }));
+    setMapRenderer({ captureImage, captureState } as unknown as MapRenderer);
+    try {
+      const deps = depsFor(true);
+      expect(await deps.snapshot!()).toBe('data:job');
+      expect(await deps.snapshotRegion!({ x1: 0, y1: 0, x2: 3, y2: 3 })).toBe('data:job');
+    } finally {
+      setMapRenderer(null);
+      useEditorStore.getState().setMapStandIn(null);
+    }
   });
 
   /** Without them `view_map` degrades to the token grid. */
@@ -119,7 +159,7 @@ describe('the tool dependencies built per job', () => {
     const first = installMap();
     const deps = depsFor(false);
 
-    useEditorStore.setState({ region: [{ x: 9, y: 9 }] });
+    useEditorStore.getState().setRegion([{ x: 9, y: 9 }], 'agent');
     const second = installMap();
 
     expect(deps.getState()).toBe(first);

@@ -1,4 +1,4 @@
-export type TextField = 'title' | 'description' | 'footer' | 'planet' | 'stencil' | 'tag';
+export type TextField = 'title' | 'description' | 'footer' | 'planet' | 'stencil' | 'tag' | 'blueprint-name' | 'blueprint-author' | 'blueprint-folder';
 export type TextPart = { field: TextField; text: string; segments?: string[] };
 export type Restriction = 'content' | 'political' | 'website';
 export type ReviewResult = { allowed: true } | { allowed: false; reason: Restriction; fields: TextField[] };

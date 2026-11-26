@@ -82,7 +82,8 @@ function MorphOnArrange({ shape, inputMode, turned, still, children }: ArrangePr
       play={(arranged) => {
         // Size observers report the new arrangement after the first frame's animation callbacks, and
         // what they re-lay out commits before the next, where the pass reads the page again and sets off.
-        playMorph(arranged.first, arranged.motion, { held: waiting.current?.arranged === arranged, late: true });
+        // A turn keeps a window's foot inside its outline; a mode's re-size starts its content where it stood.
+        playMorph(arranged.first, arranged.motion, { held: waiting.current?.arranged === arranged, late: true, fitCards: arranged.motion === 'shell.shape.morph' });
       }}
       stop={stopMorph}
     >

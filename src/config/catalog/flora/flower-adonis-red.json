@@ -1,0 +1,36 @@
+{
+  "id": "flower-adonis-red",
+  "category": "flora",
+  "name": {
+    "en": "Red Winter Adonis",
+    "zh": "红冰凉花",
+    "ja": "レッドフクジュソウ",
+    "ru": "Красный адонис",
+    "th": "อะโดนิสแดง",
+    "id": "Adonis Merah",
+    "fr": "Adonis rouge"
+  },
+  "aliases": [
+    "红",
+    "red"
+  ],
+  "icon": "flower-adonis-red",
+  "iconColor": "#e66c5b",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-adonis",
+    "colorFamily": "red"
+  }
+}

@@ -5,7 +5,7 @@
  */
 import type { MacroCoord } from '../../../core/model/types';
 import { useEditorStore } from '../../../state/store';
-import { getActiveView } from '../../active-view';
+import { getActiveToolManager, getActiveView } from '../../active-view';
 import { ObjectDragSession } from '../../../tools/pointer/objects';
 import { travelledPast } from '../../../platform/input/gesture-timing';
 import { reportRefusal } from '../../../core/commands/refusal';
@@ -27,10 +27,11 @@ export class ObjectDrag {
     report: (refusal) => reportRefusal(useEditorStore.getState().eventBus, refusal),
     notify: (text, tone) => showToast(text, tone),
     t: translate,
+    placementDrag: () => getActiveToolManager()?.getContext().placementDrag ?? null,
   });
 
-  /** The object the press armed, until the release or a cancel. */
-  get objectId(): string | null { return this.session.objectId; }
+  /** Whether a press armed a move, until the release or a cancel. */
+  get armed(): boolean { return this.session.armed; }
 
   /** Arms a move of the selection anchored on `anchorId`, or with `copy` a copy of it, pressed at
    *  (x, y); `fallback` is the pressed cell, the anchor when no view can read the pointer, and
@@ -46,6 +47,17 @@ export class ObjectDrag {
     this.threshold = dragThreshold;
   }
 
+  /** Arms a move of the blueprint placement the selection is, or with `copy` a copy of it, pressed at
+   *  (x, y) on cell `fallback` inside it. */
+  armPlacement(x: number, y: number, fallback: MacroCoord, { dragThreshold, copy = false }: { dragThreshold: number; copy?: boolean }): void {
+    const grab = getActiveView()?.projection.screenToPoint(x, y) ?? null;
+    if (!this.session.beginPlacement(grab, fallback, {}, copy)) return;
+    setCursorDrag('object');
+    this.startX = x;
+    this.startY = y;
+    this.threshold = dragThreshold;
+  }
+
   /** Drops the armed drag without committing anything. */
   cancel(): void {
     this.dragging = false;
@@ -54,7 +66,7 @@ export class ObjectDrag {
 
   /** Arm past the threshold, then preview the drop. Returns whether the drag owns this move. */
   move(x: number, y: number): boolean {
-    if (this.session.objectId && !this.dragging
+    if (this.session.armed && !this.dragging
       && travelledPast(x - this.startX, y - this.startY, this.threshold)) {
       this.dragging = true;
     }

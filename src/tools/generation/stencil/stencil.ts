@@ -22,6 +22,7 @@ import { graphemes } from '../../../core/base/text';
 import { isCoating, isCrossing } from '../../../core/model/traits';
 import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
 import { labelComponents } from '../../../core/grid/cell-sets';
+import { boundsWhere } from '../../../core/grid/rect';
 
 export type { Stencil };
 
@@ -192,18 +193,9 @@ export function separationOf(
  * region, since a letter narrower than its region would otherwise read as light for being small.
  */
 export function densityOf(s: Stencil): number {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, ink = 0;
-  for (let y = 0; y < s.height; y++) {
-    for (let x = 0; x < s.width; x++) {
-      if (!covered(s, x, y)) continue;
-      ink++;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  return ink ? ink / ((maxX - minX + 1) * (maxY - minY + 1)) : 0;
+  let ink = 0;
+  const box = boundsWhere(s.width, s.height, (x, y) => covered(s, x, y) && ++ink > 0);
+  return box ? ink / (box.w * box.h) : 0;
 }
 
 /**

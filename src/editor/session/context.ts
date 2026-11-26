@@ -54,15 +54,18 @@ function currentPlanetSession(): PlanetSession | null {
   return useEditorStore.getState().planetSession;
 }
 
-/** The live editor by identity, with the cameras the caller read; null before a map is loaded. */
+/** The live editor by identity, with the cameras the caller read; null before a map is loaded. A
+ *  Show me standing over it ends first, back to its card, so the map is parked as it was lent and no
+ *  try is parked with it: a session's frame has no place for the Show me's surface. */
 export function parkLiveEditor(camera2d: ParkedEditor['camera2d'], camera3d: ParkedEditor['camera3d']): ParkedEditor | null {
+  useEditorStore.getState().leaveShowMe();
   const s = useEditorStore.getState();
   if (!s.gridState || !s.commandExecutor) return null;
   return {
     gridState: s.gridState,
     executor: s.commandExecutor,
     selection: s.selection,
-    region: s.region,
+    regions: s.regions,
     ...parkedFields(s),
     editMode: s.editMode,
     camera2d,
@@ -89,10 +92,6 @@ function installPlanetCanvas(template: MapTemplate, registry: RuleRegistry, sess
         state.objects.set(landmark.id, movable);
         bumpObjectsVersion(state, { removed: [landmark], added: [movable] });
       }
-      store.clearSelection({ record: false });
-      store.setDeletePopover(null);
-      store.setSelectingRegion(false);
-      store.setRegion([]);
       store.setPlanetSession(session);
       store.setAssistantOpen(false);
       store.setPlanetMaterial('mountain');
@@ -104,13 +103,13 @@ function installPlanetCanvas(template: MapTemplate, registry: RuleRegistry, sess
   }
 }
 
-/** Reinstates the parked map with its edit mode and view mode, and ends the session. */
+/** Reinstates the parked map with its edit mode and view mode, and ends the session. The edit mode
+ *  goes back first, since an arming puts down the selection standing when it lands. */
 export function restoreParkedMap(parked: ParkedEditor): void {
   batchStore(() => {
     const store = useEditorStore.getState();
-    store.restoreParkedEditor(parked);
     store.restoreEditMode(parked.editMode);
-    store.setRegion(parked.region);
+    store.restoreParkedEditor(parked);
     store.setViewMode(parked.viewMode);
     store.setPlanetSession(null);
   });

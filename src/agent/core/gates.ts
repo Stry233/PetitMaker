@@ -67,6 +67,33 @@ export function answerGate(log: SessionLog, gateId: string, answer: GateAnswer, 
   append(log, { kind: 'gateAnswered', gateId, answer, words });
 }
 
+/**
+ * Answers `gateId` by taking the option it offered at `index`. An option taken and a quick answer
+ * reach the model as the answer's words, so the log records the caption; `answerSource` reads it back.
+ * Throws as `answerGate` does, and for an option the gate never offered.
+ */
+export function answerWithOption(log: SessionLog, gateId: string, index: number): void {
+  const asked = eventsOf(log).find((ev) => ev.kind === 'gateAsked' && ev.gateId === gateId);
+  const option = asked?.kind === 'gateAsked' ? asked.options?.[index] : undefined;
+  if (!option) throw new Error(`answerWithOption: gateId ${gateId} offers no option ${index}`);
+  answerGate(log, gateId, 'words', option.cap);
+}
+
+/** How a `words` answer was given: an offered option taken, an offered quick answer, or the user's own sentence. */
+type AnswerSource = { by: 'option'; picked: number } | { by: 'quick' } | { by: 'typed' };
+
+/**
+ * Reads `words` against what its ask offered. Words equal to an offer read as that offer, the first
+ * option of that caption before a quick answer, since the log keeps only the sentence.
+ */
+export function answerSource(
+  offer: { options?: readonly GateOption[]; quickAnswers?: readonly string[] }, words: string,
+): AnswerSource {
+  const picked = offer.options?.findIndex((option) => option.cap === words) ?? -1;
+  if (picked >= 0) return { by: 'option', picked };
+  return offer.quickAnswers?.includes(words) ? { by: 'quick' } : { by: 'typed' };
+}
+
 /** True only for a call explicitly approved at its own gate; standing permission is not explicit approval. */
 export function callApproved(log: SessionLog, callId: string): boolean {
   const events = eventsOf(log);

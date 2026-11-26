@@ -7,16 +7,15 @@ import { useEffect, useLayoutEffect, type CSSProperties } from 'react';
 import { viewportSizeSnapshot } from '../../../platform/device/viewport-space';
 import { liveScaleNow, onLiveScale, type ScaleInputs } from '../../design/scale';
 import { font } from '../../design/styles';
-import { weightVars } from '../../design/text-weight';
+import { weightVars, roleSize } from '../../design/text-weight';
 import { useEffectEvent } from '../../primitives/use-effect-event';
 import { frameZoomAt } from '../panel-frame';
 import { dockAside, dockDepthNow, dockDrag, onDockDrag } from '../use-dock';
-import { TEXT } from '../units';
 
 /** A plane's zoom, type and weights as its render's style. */
 export function planeZoomStyle(zoom: number, windowH: number, dpr: number, dense: boolean): CSSProperties {
   return {
-    zoom, '--shell-zoom': String(zoom), '--viewport-h': `${windowH}px`, fontSize: TEXT.label, fontFamily: font.family,
+    zoom, '--shell-zoom': String(zoom), '--viewport-h': `${windowH}px`, fontSize: roleSize('chip'), fontFamily: font.family,
     ...weightVars(zoom, dpr, dense),
   } as CSSProperties;
 }

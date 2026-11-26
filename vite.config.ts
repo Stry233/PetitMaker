@@ -1,4 +1,5 @@
-import { liteAliases, webEditionBoundary } from './scripts/edition-build.mts';
+import { LITE_HOST_ALIASES, liteAliases, webEditionBoundary } from './scripts/edition-build.mts';
+import { liteBuildFolder } from './scripts/lite-package-core.mts';
 import { liteCompatibilityPlugin } from './scripts/lite-compat-build.mts';
 import { liteBuildPlugin } from './scripts/lite-build-plugin.mts';
 import { artworkBuildPlugin } from './scripts/artwork-build.mts';
@@ -18,6 +19,8 @@ import {
   withExtraConnectSrc, withExtraFontSrc,
 } from './security/headers-policy.ts';
 import { activeTarget } from './src/platform/build/deploy-targets.ts';
+import { SIGN_IN_PATH, handleSignIn } from './edge/sign-in.js';
+import { activeLiteHost } from './src/platform/build/lite-hosts.ts';
 
 // Local endpoints extend only the development CSP; production uses the canonical policy.
 function devCspExtensionPlugin(rawConnect: string | undefined, rawFont: string | undefined) {
@@ -87,6 +90,8 @@ export const SERVE_DENY = ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', `${ROO
 const { info: BUILD_INFO, stamped: BUILD_IS_STAMPED } = resolveBuildInfo({ readStamp });
 // Resolve once so generated HTML and the app receive the same deployment target.
 const TARGET = activeTarget();
+// The same for the container a Lite build is packaged for; an unknown PETIT_LITE_HOST fails here.
+const LITE_HOST = activeLiteHost();
 
 const APP_VERSION = resolveVersion({
   pkgVersion: pkgVersion(), buildNumber: BUILD_INFO.buildNumber, release: BUILD_INFO.release,
@@ -103,6 +108,48 @@ function stampWatchPlugin() {
       server.watcher.add(stamp);
       server.watcher.on('change', (file: string) => {
         if (resolve(file) === stamp) void server.restart();
+      });
+    },
+  };
+}
+
+/**
+ * Runs the mainland sign-in exchange (`edge/sign-in.js`) on the dev server, with a test application's
+ * credentials read from the git-ignored `.env.local`. A developer signs in against that application
+ * here, so no test credential or test traffic reaches a deployed function.
+ */
+function signInDevEndpoint(local: Record<string, string>): Plugin {
+  return {
+    name: 'petit-sign-in-dev',
+    apply: 'serve',
+    configureServer(server: import('vite').ViteDevServer) {
+      // The dev server answers a folder address with the app; a static host answers it with the
+      // folder's own page, which is what the sign-in return address relies on.
+      server.middlewares.use((req, res, next) => {
+        if (req.url && /^\/connect\/?(\?|$)/.test(req.url)) req.url = req.url.replace(/^\/connect\/?/, '/connect/index.html');
+        // The deployed sites send this header, and it is what cuts a sign-in window's handle.
+        res.setHeader('Cross-Origin-Opener-Policy', HEADERS_POLICY.staticHeaders['Cross-Origin-Opener-Policy'] ?? 'same-origin');
+        next();
+      });
+      server.middlewares.use(SIGN_IN_PATH, (req, res) => {
+        void (async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          const origin = `http://${req.headers.host ?? 'localhost'}`;
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(req.headers)) if (typeof value === 'string') headers.set(name, value);
+          const request = new Request(origin + SIGN_IN_PATH, {
+            method: req.method ?? 'GET', headers, ...(req.method === 'POST' ? { body: Buffer.concat(chunks) } : {}),
+          });
+          const response = await handleSignIn(request, {
+            SIGN_IN_ALLOWED_ORIGINS: origin,
+            MODELSCOPE_REDIRECT_URI: `${origin}/connect/`,
+            ...local,
+          }, fetch);
+          res.statusCode = response.status;
+          response.headers.forEach((value, name) => res.setHeader(name, value));
+          res.end(await response.text());
+        })();
       });
     },
   };
@@ -149,6 +196,7 @@ export default defineConfig(({ mode, command }) => {
     plugins: [
       ...(lite ? [liteCompatibilityPlugin()] : []),
       react(),
+      ...(!lite ? [signInDevEndpoint(loadEnv(mode, process.cwd(), ['MODELSCOPE_', 'SIGN_IN_']))] : []),
       ...(!lite ? [artworkBuildPlugin(), bundleReportPlugin(), webEditionBoundary()] : []),
       ...(webBuild ? [workerFileInjector(), moderationFingerprint(moderationFolder)] : []),
       ...(!lite ? [assetSizeManifest()] : []),
@@ -156,12 +204,12 @@ export default defineConfig(({ mode, command }) => {
         viteEnv.VITE_EXTRA_CONNECT_SRC ?? process.env.VITE_EXTRA_CONNECT_SRC,
         viteEnv.VITE_EXTRA_FONT_SRC ?? process.env.VITE_EXTRA_FONT_SRC,
       )] : []),
-      lite ? liteBuildPlugin() : indexHeadPlugin(TARGET, process.env.PETIT_BASE_PATH || '/'),
+      lite ? liteBuildPlugin(LITE_HOST) : indexHeadPlugin(TARGET, process.env.PETIT_BASE_PATH || '/'),
       stampWatchPlugin(),
       dropUnusedOrtBinariesPlugin(),
     ],
     resolve: {
-      alias: lite ? liteAliases : [],
+      alias: lite ? [...LITE_HOST_ALIASES[LITE_HOST.id], ...liteAliases] : [],
     },
     optimizeDeps: {
       entries: DEP_SCAN_ENTRIES,
@@ -186,6 +234,7 @@ export default defineConfig(({ mode, command }) => {
       ...(lite ? { 'import.meta.url': 'document.baseURI' } : {}),
       __PETIT_LITE__: JSON.stringify(lite),
       __PETIT_TARGET__: JSON.stringify(TARGET.id),
+      __PETIT_LITE_HOST__: JSON.stringify(LITE_HOST.id),
       // Deployments opt into the export footer's public URL and QR code explicitly. Keeping this
       // build-time prevents an exported image's attribution target from becoming a user setting.
       __PETIT_EXPORT_SITE_MARK__: JSON.stringify(exportSiteMark),
@@ -200,7 +249,7 @@ export default defineConfig(({ mode, command }) => {
     // builds), which Rollup cannot do inside an IIFE.
     worker: { format: 'es', plugins: () => (webBuild ? [workerFileCollector()] : []) },
     build: {
-      outDir: lite ? 'dist-lite' : 'dist',
+      outDir: lite ? liteBuildFolder(LITE_HOST.id) : 'dist',
       ...(lite ? { target: ['es2017', 'chrome61'], cssTarget: 'chrome61', cssCodeSplit: false } : {}),
       sourcemap: false,
       // No inline module-preload polyfill → no inline <script>, so the CSP can keep a strict

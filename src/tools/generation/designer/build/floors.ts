@@ -22,7 +22,7 @@ import { getCatalogItem } from '../../../../state/catalog';
 import { objectRect } from '../../../../state/object-geometry';
 import { exposedRoadAt, getObjectIndex } from '../../../../state/object-index';
 import { placeFloorTile, removePlaced, type PlaceCtx } from '../../../placement/object';
-import type { Scope } from './scope';
+import type { Scope } from '../../terrain-plan/scope';
 
 export interface FloorOutcome {
   /** Buildings whose frontage qualified them for a paved floor. */

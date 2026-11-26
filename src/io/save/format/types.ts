@@ -27,7 +27,7 @@ export interface SaveObject {
  *  wire shape of `state/view-camera.ts:ViewCameras`, restated so a written version stays fixed
  *  when the editor's own type changes. */
 export interface PersistedCamera {
-  view2d?: { x: number; y: number; zoom: number };
+  view2d?: { x: number; y: number; zoom: number; rotation?: number };
   view3d?: { az: number; el: number; dist: number; tx?: number; tz?: number };
 }
 
@@ -46,6 +46,8 @@ export interface SaveFile {
   imageAttribution?: ImageAttribution;
   /** Optional annotation data, validated and bounded by json-codec. */
   annotations?: unknown;
+  /** Placed blueprints kept as groups (`save/groups-codec.ts`), validated against the decoded map. */
+  groups?: unknown;
   generation?: unknown;
   session?: unknown;
   history?: unknown;

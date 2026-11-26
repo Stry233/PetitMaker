@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { NoticeLink } from '../../../ui/primitives/NoticeBar';
+import { MotionConfig } from 'framer-motion';
+import { NoticeAction, NoticeLink } from '../../../ui/primitives/NoticeBar';
 import { WindowFooter, WindowHeader } from '../../../ui/primitives/Window';
 import { CopiedBubble, useCopyFeedback } from '../../../ui/primitives/CopiedBubble';
 
@@ -11,6 +12,28 @@ describe('NoticeBar', () => {
   it('opens its links in a new tab', () => {
     render(<NoticeLink href="https://example.com">go</NoticeLink>);
     expect(screen.getByText('go').getAttribute('target')).toBe('_blank');
+  });
+
+  /** How the pill stands while hovered and then while pressed, settled under reduced motion. */
+  const feedback = async (el: HTMLElement) => {
+    const settle = () => act(() => new Promise((r) => setTimeout(r, 80)));
+    fireEvent.pointerEnter(el, { pointerType: 'pen' });
+    await settle();
+    const hovered = el.style.transform;
+    fireEvent.pointerLeave(el, { pointerType: 'pen' });
+    fireEvent.pointerDown(el, { pointerType: 'pen', isPrimary: true, button: 0 });
+    await settle();
+    return { hovered, pressed: el.style.transform };
+  };
+
+  it.each([
+    ['action', () => <NoticeAction>act</NoticeAction>],
+    ['link', () => <NoticeLink href="https://example.com">act</NoticeLink>],
+  ])('answers a hover and a press on its %s pill', async (_kind, pill) => {
+    render(<MotionConfig reducedMotion="always">{pill()}</MotionConfig>);
+    const { hovered, pressed } = await feedback(screen.getByText('act'));
+    expect(hovered).toMatch(/scale\(1\.03\)/);
+    expect(pressed).toMatch(/scale\(0\.95\)/);
   });
 });
 
@@ -31,13 +54,12 @@ describe('Window parts', () => {
 });
 
 describe('useCopyFeedback', () => {
-  it('names what was copied until the hold runs out, and stays quiet when the clipboard refuses', async () => {
+  it('names what was copied until the hold runs out, and stays quiet when the copy did not land', async () => {
     vi.useFakeTimers();
-    const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied'));
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const copy = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     let api: ReturnType<typeof useCopyFeedback<'build'>> | null = null;
     function Probe() {
-      api = useCopyFeedback<'build'>();
+      api = useCopyFeedback<'build'>(copy);
       return <CopiedBubble show={api.copied !== null} side="above">Copied</CopiedBubble>;
     }
     render(<Probe />);

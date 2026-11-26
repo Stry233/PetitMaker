@@ -1,9 +1,10 @@
+import { zoomedRectsAreVisual } from '../../platform/device/browser-env';
 import { toLayoutRect } from '../../platform/device/viewport-space';
 /**
  * Element rects in screen pixels under CSS `zoom`. Chromium before 128 reports a zoomed subtree's
- * rects in that subtree's own CSS pixels; standardized engines report screen pixels. One probe at
- * first use decides which reading this engine gives, an element whose rect matches its own layout
- * box under zoom overrides that verdict for itself, and legacy readings are scaled back up.
+ * rects in that subtree's own CSS pixels; standardized engines report screen pixels. The engine's
+ * probe decides which reading it gives, an element whose rect matches its own layout box under zoom
+ * overrides that verdict for itself, and legacy readings are scaled back up.
  */
 
 export interface VisualRect {
@@ -15,34 +16,6 @@ export interface VisualRect {
   bottom: number;
   width: number;
   height: number;
-}
-
-const PROBE_WIDTH = 200;
-const PROBE_ZOOM = 0.5;
-
-let rectsInScreenPx: boolean | null = null;
-
-/** A 200px box under zoom 0.5 measures 100 on a standardized engine and 200 on a legacy one; a
- *  reading with no layout (jsdom) counts as screen pixels. */
-function probe(): boolean {
-  if (typeof document === 'undefined' || !document.body) return true;
-  const box = document.createElement('div');
-  box.style.cssText = `position:fixed;left:0;top:0;width:${PROBE_WIDTH}px;height:10px;zoom:${PROBE_ZOOM};visibility:hidden;pointer-events:none`;
-  document.documentElement.appendChild(box);
-  const width = box.getBoundingClientRect().width;
-  box.remove();
-  return Math.abs(width - PROBE_WIDTH) > 1;
-}
-
-/** Whether this engine reports zoomed rects in screen pixels. */
-export function zoomedRectsAreVisual(): boolean {
-  if (rectsInScreenPx === null) rectsInScreenPx = probe();
-  return rectsInScreenPx;
-}
-
-/** Clears the cached probe so a test can pose another engine. */
-export function __resetVisualRectProbe(): void {
-  rectsInScreenPx = null;
 }
 
 /** The product of the element's own and every ancestor's computed `zoom`, and whether any of them is transformed. */

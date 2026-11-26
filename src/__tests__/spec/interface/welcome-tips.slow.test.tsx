@@ -9,7 +9,7 @@ import { I18nProvider, translateFor } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
 import { Shell } from '../../../ui/shell/Shell';
 import { tourCards } from '../../../ui/chrome/tour/deck';
-import { startTour } from '../../../ui/chrome/tour/use-tour';
+import { startTour } from '../../../editor/session/tour';
 import { tourTargetSelector } from '../../../ui/chrome/tour/steps';
 import { TerrainType } from '../../../core/model/types';
 import { paintTerrainCommand } from '../../../core/model/command-build';
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 spec('UI-47', 'Generate\'s build step waits for the build to finish landing, and leaving cancels a build still landing', async () => {
-  render(<I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>);
+  render(<I18nProvider><Shell><div /></Shell></I18nProvider>);
   const live = () => useEditorStore.getState();
   const callout = () => screen.getByTestId('tour-callout');
   const standsAt = (key: Parameters<typeof translateFor>[1]) => waitFor(() => expect(callout().textContent).toContain(en(key)));

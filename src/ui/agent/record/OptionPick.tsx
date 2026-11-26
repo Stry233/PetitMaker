@@ -1,8 +1,7 @@
 import { type AskRecord, displayAgentText, type GateOption } from '../../../agent/panel';
 /*
- * Renders a gate whose answer is one of two or three sketched options. The log stores a selection as
- * a words verdict, so `optionAskFrom` recovers the selected index by matching the answer to a caption.
- * Open options use hover fill; the selected option uses an ink ring, and other settled options are
+ * Renders a gate whose answer is one of two or three sketched options; which one was taken is the
+ * projection's `AskRecord.picked`. Open options use hover fill; the selected option uses an ink ring, and other settled options are
  * disabled and dimmed. "None of these" declines the gate without stopping the job.
  */
 import { ActionButton } from '../../primitives/ActionButton';
@@ -34,9 +33,8 @@ export interface OptionAsk {
 }
 
 /**
- * An ask's options as a pick. Tapping a card answers with its caption as words, so the pick is
- * recovered by matching the words to a caption; words matching none are the user's own answer, and
- * `skip` is a decline. `thumb` draws a card's picture from its rect.
+ * An ask's options as a pick: the card the answer took, words of the user's own as "none of these",
+ * and `skip` as a decline. `thumb` draws a card's picture from its rect.
  */
 export function optionAskFrom(
   ask: AskRecord,
@@ -54,8 +52,7 @@ export function optionAskFrom(
   };
   if (ask.verdict === undefined) return base;
   if (ask.verdict === 'words') {
-    const index = options.findIndex((option) => option.cap === ask.words);
-    return index >= 0 ? { ...base, picked: index } : { ...base, verdict: 'none-words' };
+    return ask.answeredBy === 'option' && ask.picked !== undefined ? { ...base, picked: ask.picked } : { ...base, verdict: 'none-words' };
   }
   if (ask.verdict === 'declined') return { ...base, verdict: 'none-held' };
   return { ...base, verdict: ask.verdict };

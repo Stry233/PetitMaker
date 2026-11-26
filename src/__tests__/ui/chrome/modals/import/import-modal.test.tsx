@@ -103,7 +103,7 @@ describe('ImportModal', () => {
     await waitFor(() => expect(createImageBitmapMock).toHaveBeenCalledWith(file));
     await waitFor(() => expect(getImageDataMock).toHaveBeenCalled());
     // A synthetic all-zero raster carries no real share code, so import fails honestly rather than
-    // crashing: the modal settles back to its idle state (busy → false) once decodeGlyph rejects it.
+    // crashing: the modal settles back to its idle state (busy → false) once the glyph reader rejects it.
     await waitFor(() => expect(screen.getByText('Drop a map image or .json file here, or click to choose')).toBeTruthy());
 
     getContextSpy.mockRestore();

@@ -72,7 +72,7 @@ describe('a tool switch within Notes', () => {
 });
 
 describe('a switch between toolbars', () => {
-  const mount = () => render(<I18nProvider><Shell onRestoreSession={() => {}}><div/></Shell></I18nProvider>);
+  const mount = () => render(<I18nProvider><Shell><div/></Shell></I18nProvider>);
   beforeEach(() => {
     useEditorStore.getState().setAssistantOpen(false);
     state().setEditMode({ mode: 'mountain', arm: { kind: 'brush' } });

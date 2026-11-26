@@ -1,21 +1,22 @@
 /*
  * The logo beside the app name, shared by About and the Help Center's opening page, in the readme
- * masthead's geometry (the name one fifth of the logo's width along, both on one line). The logo is
- * served from public/ through BASE_URL, so it loads under the dev site's path prefix as the favicon does.
+ * masthead's geometry (the gap one fifth of the logo's width, both on one line); the name and tagline
+ * are a window title and a label. The logo is served from public/ through BASE_URL, so it loads under
+ * the dev site's path prefix as the favicon does.
  */
 import { FRAME_INK, MUTED } from '../design/tokens';
 import type { CSSProperties } from 'react';
 import { useT } from '../../i18n/context';
 import { font, radii } from '../design/styles';
-import { useReadableWeight } from '../design/scale';
+import { roleFont } from '../design/text-weight';
 import { BrandName } from './BrandName';
-import { BRAND_LOGO_URL } from './brand-logo';
+import { BRAND_LOGO_URL } from '../../assets/brand-logo';
 
 /** 32px of gap per 172px of logo, measured off the 796x228 masthead artboard. */
 const GAP_RATIO = 32 / 172;
 
 interface BrandLockupProps {
-  /** The logo's edge length in css px. The name and gap scale from it. */
+  /** The logo's edge length in css px. The gap scales from it. */
   size: number;
   /** Show the localized tagline under the name. */
   tagline?: boolean;
@@ -27,7 +28,6 @@ interface BrandLockupProps {
 
 export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   const t = useT();
-  const weightAt = useReadableWeight();
 
   const row: CSSProperties = {
     display: 'flex',
@@ -44,8 +44,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   const names: CSSProperties = { display: 'flex', flexDirection: 'column', gap: Math.round(size * 0.04) };
   const name: CSSProperties = {
     fontFamily: font.family,
-    fontWeight: weightAt(900, Math.round(size * 0.42)),
-    fontSize: Math.round(size * 0.42),
+    ...roleFont('title'),
     color: FRAME_INK,
     lineHeight: 1.05,
   };
@@ -53,8 +52,7 @@ export function BrandLockup({ size, tagline, logoOnly }: BrandLockupProps) {
   // below the 4.5:1 AA floor (see legal/a11y.test.tsx).
   const sub: CSSProperties = {
     fontFamily: font.family,
-    fontWeight: weightAt(700, Math.round(size * 0.2)),
-    fontSize: Math.round(size * 0.2),
+    ...roleFont('label'),
     color: MUTED,
     lineHeight: 1.2,
   };

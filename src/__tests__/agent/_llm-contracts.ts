@@ -7,7 +7,7 @@
  *   1 says line      point within about 90 characters; two lines before expansion
  *   2 summary        one to four sentences in a self-sizing receipt
  *   3 stage label    about 30 authored characters; 45 measured; wraps
- *   4 delegate task  `label ?? firstLine(task)`; sliced at 96; two lines
+ *   4 delegate task  the brief's `label`; sliced at 96; two lines
  *   5 suggest_reply  hard-clipped at about 30 Latin or 15 CJK characters
  *   6 quick answers  about 20 per pill; `GateOption.cap` about 40
  *
@@ -163,9 +163,8 @@ function checkCalls(ev: Assistant, out: ContractFinding[]): void {
     }
     if (part.name === 'delegate_task') {
       const label = typeof part.input.label === 'string' ? part.input.label.trim() : '';
+      // A call recorded before briefs names its lane by the first line of its free-text `task`.
       const task = typeof part.input.task === 'string' ? part.input.task : '';
-      // The lane shows `label ?? firstLine(task)`, so an unlabelled task's first line is held to the
-      // label bound.
       const shown = label !== '' ? label : (task.split('\n')[0] ?? '');
       if (shown.trim() === '') {
         out.push({ contract: '4 delegate label', text: say(task), measured: 'the lane would have no name at all' });

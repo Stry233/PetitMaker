@@ -4,71 +4,114 @@
  * state through the adapters. Sample motions preview a motion setting and play under every
  * preference, only through `MotionSample`. Call sites use ids.
  */
-import { pressable } from '../styles';
 import { TAPE, VIGNETTE_DEPTH } from '../tokens';
 import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
+import { animConfig } from '../../../view/shared/motion/anim-config';
 import type { CurveId } from './curves';
+import { DURATIONS, FOLLOW_S, STAGGERS } from './durations';
+
+/** How far a hover grows a tile, the shared control size; `press.tile` declares it. */
+const TILE_HOVER_SCALE = 1.08;
 
 /** Shared button hover growth as a fraction of the button. */
-const HOVER_GROWTH = pressable.whileHover.scale - 1;
+const HOVER_GROWTH = TILE_HOVER_SCALE - 1;
+
+/** A control's answer to the pointer: what a hover and a press do to it, on the stiff spring. */
+const PRESS = { tier: 'inform', curve: 'stiff', says: 'this control felt the pointer arrive and the press land' } as const;
 
 
 /** Construction-tape travel per cycle; matching the stripe period prevents a seam jump. */
 const TAPE_STRIPE_PX = TAPE.stripeSize;
 
 /** Shared floating-panel and hosted-character departure time, in seconds. */
-const FORM_LEAVE_S = 0.16;
+const FORM_LEAVE_S = DURATIONS.quick;
 
-/** Hosted-character arrival time, in seconds. */
-const CHARACTER_POP_S = 0.3;
+/** Hosted-character arrival time, in seconds: the panel wipe's clock (`panel.open`). */
+const CHARACTER_POP_S = DURATIONS.long;
 
 /** Shared panel-height and setup-step transition time, in seconds. */
-const PANEL_HEIGHT_S = 0.24;
+const PANEL_HEIGHT_S = DURATIONS.base;
 
 /** The welcome tips' crossing between cards and the card's height glide, one clock, in seconds. */
-const TOUR_CROSS_S = 0.34;
+const TOUR_CROSS_S = DURATIONS.long;
+
+/** When a re-arrangement's fades run, as shares of its travel (`CHOREOGRAPHY`). */
+const FADE_SHARES = { outShare: 0.4, inAt: 0.6 } as const;
+
+/** How a re-arrangement (`primitives/morph.ts`) travels: the band, every travelling piece and every
+ *  fade on this one decelerating curve and duration, with no overshoot; what only the old arrangement
+ *  has fades out where it stands over the first `outShare` of the travel, and what only the new has
+ *  fades in where it stands after `inAt` of it, both read off the travel's own progress. */
+const CHOREOGRAPHY = { curve: 'punchy', duration: DURATIONS.base, ...FADE_SHARES } as const;
 
 /** The plain in-place crossfade a control's drawing or wording changes on. */
-const CONTROL_FADE = { tier: 'inform', curve: 'ease', duration: 0.18 } as const;
+const CONTROL_FADE = { tier: 'inform', curve: 'punchy', duration: DURATIONS.short } as const;
+
+/** A refused field shaking once: one length and travel for every refusal. */
+const SHAKE = { curve: 'swing', duration: DURATIONS.long, amplitude: 5, amplitudeUnit: 'px' } as const;
 
 interface Base {
-  curve: CurveId;
-  /** Tween duration or full loop cycle, in seconds; springs carry their own timing. */
+  /** Tween duration or full loop cycle, in seconds; springs carry their own timing. A tier of
+   *  `durations.ts:DURATIONS` unless `lengthFrom` says why not. */
   duration?: number;
+  /** Why this motion's length is off the duration scale: a loop's cycle, a sampled track, a hold
+   *  the gesture sets, a deliberately long wait. */
+  lengthFrom?: string;
   /** Repeats a tween for as long as its state remains active. */
   loop?: true;
   /** Maximum travel in CSS pixels, or a fraction for scale and opacity. Required for ambient motion. */
   amplitude?: number;
   amplitudeUnit?: 'px' | 'scale' | 'opacity';
-  /** Delay between successive members of a group, in seconds. */
+  /** Delay between successive members of a group, in seconds: a `durations.ts:STAGGERS` value, or
+   *  for a loop the phase offset of its cycle. */
   stagger?: number;
   /** How long a transient state stands from the moment it is shown before it is withdrawn, in
    *  seconds. A pause, not travel, so reduced motion keeps it. */
   hold?: number;
   /** Fraction of duration used for a flip's departure; undefined uses the full duration. */
   outShare?: number;
+  /** For a re-arrangement: the share of its travel after which what only the new arrangement has
+   *  fades in where it stands (`primitives/morph.ts`); undefined fades it in as `outShare` ends. */
+  inAt?: number;
   /** Optional departure curve when it differs from the landing curve. */
   outCurve?: CurveId;
-  /** The curve a re-arrangement's departing and arriving surfaces fade on, where it differs from the
-   *  curve its pieces travel on (`primitives/morph.ts`). */
-  fadeCurve?: CurveId;
   /** Fraction of entry time at which a flip reaches its overshoot keyframe. */
   overshootAt?: number;
   landCurve?: CurveId;
-  /** A spring that drives `scale` uses the scale rest thresholds (`styles.ts:scaleRest`). */
+  /** A spring that drives `scale` uses the scale rest thresholds (`curves.ts:scaleRest`). */
   settleScale?: true;
+  /** For a control's pointer feedback: the state a hover takes it to, and the state a press does. */
+  hover?: PressTarget;
+  press?: PressTarget;
 }
 
-interface InformMotion extends Base {
+/** A pointer-feedback state, as Framer `whileHover`/`whileTap` values. */
+interface PressTarget { scale?: number; y?: number; opacity?: number }
+
+/** A motion timed by a curve: a tween with its duration, or a spring carrying its own timing. */
+interface Curved extends Base {
+  curve: CurveId;
+  follow?: never;
+}
+
+/** A per-frame exponential follow (`design/motion:followToward`): it closes on a target that may move
+ *  every frame, so it has a time constant and no curve. */
+interface Followed extends Base {
+  follow: typeof FOLLOW_S;
+  curve?: never;
+  duration?: never;
+}
+
+type InformMotion = (Curved | Followed) & {
   tier: 'inform';
   /** Static interface fact reinforced by this motion. */
   says: string;
-}
+};
 
-interface AmbientMotion extends Base {
+type AmbientMotion = (Curved | Followed) & {
   tier: 'ambient';
   amplitude: number;
-}
+};
 
 /** One key of a sample's loop: when it falls (a fraction of the loop), how high the moving part
  *  stands (a fraction of `amplitude`), its width and height scale about its base, and the scale of
@@ -78,7 +121,7 @@ export type SampleKey = readonly [at: number, lift: number, scaleX: number, scal
 /** A preview of what a motion setting does: a map cell dropping `amplitude` px onto its ground mark,
  *  one loop per level of the setting. It plays under every preference so each option of the setting
  *  shows its own level; `MotionSample` is its only player. */
-interface SampleMotion extends Base {
+interface SampleMotion extends Curved {
   tier: 'sample';
   amplitude: number;
   /** A segment that rises takes `curve` and one that falls takes this; a level segment eases. */
@@ -119,38 +162,76 @@ const CELL_LAND: readonly SampleKey[] = [
 export type Motion = InformMotion | AmbientMotion | SampleMotion;
 
 export const MOTIONS = {
-  'loading.spinner': { tier: 'inform', curve: 'linear', duration: 0.85, loop: true, says: 'work is in progress' },
-  'meter.fill': { tier: 'inform', curve: 'ease', duration: 0.25, says: 'the map capacity changed' },
-  'modal.dim': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the window is at work and the page waits' },
-  'map.view.crossfade': { tier: 'inform', curve: 'ease', duration: 0.35, says: 'the map view changed underneath you' },
+  /* Pointer feedback, read for the live input mode through `design/motion/press.ts`. A touch press
+     gets the press state and no hover. */
+  'press.tile': { ...PRESS, hover: { scale: TILE_HOVER_SCALE }, press: { scale: 0.9 } },
+  'press.action': { ...PRESS, hover: { scale: 1.03 }, press: { scale: 0.95 } },
+  'press.choice': { ...PRESS, hover: { scale: 1.05 }, press: { scale: 0.95 } },
+  'press.toggle': { ...PRESS, hover: { scale: 1.03 }, press: { scale: 0.97 } },
+  'press.pill': { ...PRESS, hover: { scale: 1.03 }, press: { scale: 0.96 } },
+  'press.row': { ...PRESS, hover: { scale: 1.01 }, press: { scale: 0.985 } },
+  'press.tap': { ...PRESS, press: { scale: 0.9 } },
+  'press.action-tap': { ...PRESS, press: { scale: 0.95 } },
+  'press.pill-tap': { ...PRESS, press: { scale: 0.96 } },
+  'press.toggle-tap': { ...PRESS, press: { scale: 0.97 } },
+  'press.curve-vertex': { ...PRESS, hover: { scale: 1.12 }, press: { scale: 0.9 } },
+  'press.keyboard-key': { ...PRESS, hover: { y: -2 }, press: { scale: 0.93 } },
+  'press.thumbnail-add': { ...PRESS, press: { scale: 0.94 } },
+  'press.quiet-link': { ...PRESS, hover: { opacity: 1 }, press: { opacity: 0.7 } },
+  'press.curve-handle': { ...PRESS, hover: { scale: 1.15 }, press: { scale: 0.9 } },
+  /** A small badge that carries its control's action, such as a tag's removal cross. */
+  'press.badge': { ...PRESS, hover: { scale: 1.18 }, press: { scale: 0.9 } },
+  /** A control whose feedback is drawn by a part of it (a removal badge) rather than by its own scale. */
+  'press.still': { ...PRESS },
+  'loading.spinner': { tier: 'inform', curve: 'linear', duration: 0.85, lengthFrom: 'one turn of the ring at a calm working pace', loop: true, says: 'work is in progress' },
+  'meter.fill': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the map capacity changed' },
+  'modal.dim': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, says: 'the window is at work and the page waits' },
+  'map.view.crossfade': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, says: 'the map view changed underneath you' },
   /** The ring filling by a still finger over the hold time, after which the map's menu opens or
    *  the held card lifts into the hand. */
   'press.hold': {
-    tier: 'inform', curve: 'linear', duration: GESTURE_TIMING.touch.holdMs / 1000,
+    tier: 'inform', curve: 'linear', duration: GESTURE_TIMING.touch.holdMs / 1000, lengthFrom: 'the touch hold time the press has to outlast',
     says: 'keep holding here and what you hold acts: the menu opens or the card lifts',
   },
   /** The magnifier rising over a touch press. */
-  'map.loupe.arrive': { tier: 'inform', curve: 'punchy', duration: 0.16, says: 'this circle shows the cells under your finger' },
-  'character.blink.lid': { tier: 'ambient', curve: 'easeOut', duration: 0.07, amplitude: 1, amplitudeUnit: 'scale' },
-  'settings.grid.shift': { tier: 'inform', curve: 'easeOut', duration: 0.22, says: 'the grid lines moved onto the cells the chosen grid marks' },
+  'map.loupe.arrive': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'this circle shows the cells under your finger' },
+  /** The character's lids close, stay shut for `hold` and open again. */
+  'character.blink.lid': {
+    tier: 'ambient', curve: 'punchy', duration: 0.07, lengthFrom: 'an eyelid closing, quicker than any change the interface makes',
+    hold: 0.13, amplitude: 1, amplitudeUnit: 'scale',
+  },
+  /** The Settings picture's grid lines glide as the map's own do. */
+  'settings.grid.shift': {
+    tier: 'inform', curve: 'punchy', duration: animConfig.gridShift.durationMs / 1000,
+    lengthFrom: 'the map grid glide it pictures (`view/shared/motion/anim-config.ts:gridShift`)',
+    says: 'the grid lines moved onto the cells the chosen grid marks',
+  },
+  /** The 2D map's one-time reveal on first mount. Opacity only: its box is where the projection says
+   *  the world is, so a transform would misplace the pointer. */
+  'canvas.reveal': { tier: 'ambient', curve: 'punchy', duration: DURATIONS.slow, amplitude: 1, amplitudeUnit: 'opacity' },
+  /** The shortcuts window's rows rise into place in reading order, `amplitude` px below. */
+  'keyboard.row.arrive': {
+    tier: 'inform', curve: 'stiff', amplitude: 10, amplitudeUnit: 'px', stagger: STAGGERS.row,
+    says: 'these are the shortcuts, in the order they are read',
+  },
   /** A Settings tile's caption crossfades from the setting's name into the value a press gave it,
    *  its width gliding on the same fade, and back to the name once `hold` has passed. */
   'settings.label.morph': { ...CONTROL_FADE, hold: 1.4, says: 'the setting now holds the value the tile names' },
-  'control.paint': { tier: 'inform', curve: 'ease', duration: 0.15, says: 'the control state changed' },
+  'control.paint': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the control state changed' },
   'control.fade': { ...CONTROL_FADE, says: 'the control state changed' },
-  'control.drop': { tier: 'inform', curve: 'ease', duration: 0.12, says: 'the drop target is active' },
-  'control.detail': { tier: 'inform', curve: 'easeOut', duration: 0.15, says: 'the selected detail is visible' },
-  'control.tint': { tier: 'inform', curve: 'easeOut', duration: 0.18, says: 'the key state changed' },
-  'control.hint': { tier: 'inform', curve: 'easeOut', duration: 0.16, says: 'the shortcut action changed' },
-  'section.expand': { tier: 'inform', curve: 'expand', duration: 0.42, says: 'the section is open or closed' },
-  'scroll.fade': { tier: 'ambient', curve: 'ease', duration: 0.18, amplitude: 1, amplitudeUnit: 'opacity' },
-  'scroll.fade.settle': { tier: 'ambient', curve: 'ease', duration: 0.06, amplitude: 24 },
-  'section.opacity': { tier: 'inform', curve: 'ease', duration: 0.3, says: 'the section content is available' },
-  'modal.resize': { tier: 'inform', curve: 'punchy', duration: 0.3, says: 'the window fits its content' },
-  'selection.fade': { tier: 'inform', curve: 'easeOut', duration: 0.12, says: 'the selection changed' },
+  'control.drop': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the drop target is active' },
+  'control.detail': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'the selected detail is visible' },
+  'control.tint': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the key state changed' },
+  'control.hint': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'the shortcut action changed' },
+  'section.expand': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the section is open or closed' },
+  'scroll.fade': { tier: 'ambient', curve: 'punchy', duration: DURATIONS.short, amplitude: 1, amplitudeUnit: 'opacity' },
+  'scroll.fade.settle': { tier: 'ambient', follow: FOLLOW_S, amplitude: 24 },
+  'section.opacity': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the section content is available' },
+  'modal.resize': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the window fits its content' },
+  'selection.fade': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the selection changed' },
   /** The selection card travels to a new place its selection leaves room for; a camera move is tracked instantly instead. */
   'selection.card.move': {
-    tier: 'inform', curve: 'punchy', duration: 0.26,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the same card, standing where its selection now has room for it',
   },
   /** The selection card grows from the point nearest the selection it names. */
@@ -166,32 +247,32 @@ export const MOTIONS = {
   /** A surface the visitor opened (a window, a menu, a notice, a guard) settles into place fast and stops. */
   'surface.arrive': { tier: 'inform', curve: 'stiff', says: 'this surface answers what you just did' },
   /** A surface being put away eases out flat, without the bounce it may have arrived with. */
-  'surface.leave': { tier: 'inform', curve: 'fade', duration: 0.16, says: 'the surface is put away' },
+  'surface.leave': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the surface is put away' },
   /** A card that answers a press at the place it was pressed (the note editor, a count badge) lands with a small overshoot. */
   'surface.pop': { tier: 'inform', curve: 'bouncy', says: 'this card belongs to what you just touched' },
   /** A control's moving part (a switch knob, a menu row's tint) travels to its new state. */
   'control.settle': { tier: 'inform', curve: 'stiff', says: 'the control now holds this value' },
   /** A segmented choice's plate slides under the segment just chosen and stops on it without overshooting. */
-  'control.plate.slide': { tier: 'inform', curve: 'punchy', duration: 0.24, says: 'this segment is the one chosen now' },
+  'control.plate.slide': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'this segment is the one chosen now' },
   /** A notice slides in from its window edge and settles. */
   'notice.arrive': { tier: 'inform', curve: 'stiff', says: 'there is something to read here' },
   /** A Show me's spotlight and dim travel to the next control without overshooting it. */
-  'tour.spotlight.move': { tier: 'inform', curve: 'roll', duration: 0.16, says: 'this is the control the tour describes now' },
+  'tour.spotlight.move': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'this is the control the tour describes now' },
   /** The tour window's reel and words travel `amplitude` px out the way the run went and the next
    *  card's in from the other side, crossing over; the words follow the reel by `stagger`, and the
    *  leaving card goes over `outShare` of the arrival. */
   'tour.copy.swap': {
-    tier: 'inform', curve: 'punchy', duration: TOUR_CROSS_S, amplitude: 24, stagger: 0.04, outShare: 0.6,
+    tier: 'inform', curve: 'punchy', duration: TOUR_CROSS_S, amplitude: 24, stagger: STAGGERS.row, outShare: 0.6,
     says: 'the tour moved on to the card that way',
   },
   /** After a part is pressed, a reel's bars follow the clip's time exponentially to it, `duration` the
    *  time constant; steady play and the loop's restart stand at the clip's own time. */
-  'tour.reel.seek': { tier: 'inform', curve: 'easeOut', duration: 0.06, says: 'the reel now plays from here' },
+  'tour.reel.seek': { tier: 'inform', follow: FOLLOW_S, says: 'the reel now plays from here' },
   /** A reel's frame, mark, bars and caption travel from their place in the card to the enlarged plate
    *  and back (`primitives/morph.ts:morphScope`), the plate growing with them from round the frame; a
    *  caption that re-flows crosses over in `outShare`, and the dim and the mark's glyphs cross over the
    *  whole motion. */
-  'tour.reel.enlarge': { tier: 'inform', curve: 'punchy', duration: 0.34, outShare: 0.4, fadeCurve: 'fade', says: 'the demonstration is shown large, or back in its card' },
+  'tour.reel.enlarge': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, ...FADE_SHARES, says: 'the demonstration is shown large, or back in its card' },
   /** A tips card's reel and words, dragged by a swipe too short to turn the card, spring back into place. */
   'tour.card.swipe': { tier: 'inform', curve: 'stiff', says: 'the card stays where it was' },
   /** The tour window's height follows its incoming card. */
@@ -199,53 +280,58 @@ export const MOTIONS = {
   /** A Show me's callout pops beside the control it rings; its scale settles continuously so it never snaps at the end. */
   'tour.card.pop': { tier: 'inform', curve: 'bouncy', settleScale: true, says: 'this callout describes the control it rings' },
   /** Stagger: each anchor's grab lands this long after the one before it. */
-  'curve.fade': { tier: 'inform', curve: 'easeOut', duration: 0.18, stagger: 0.045, says: 'the curve controls changed' },
-  'notice.leave': { tier: 'inform', curve: 'accel', duration: 0.2, says: 'the notice is dismissed' },
-  'notice.crossfade': { tier: 'inform', curve: 'fade', duration: 0.22, says: 'the arrival detail changed' },
+  'curve.fade': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, stagger: STAGGERS.row, says: 'the curve controls changed' },
+  'notice.leave': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the notice is dismissed' },
+  'notice.crossfade': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'the arrival detail changed' },
   /** The arrival notice's row eases to the width of its new line. */
-  'notice.resize': { tier: 'inform', curve: 'gentle', says: 'the notice fits its new line' },
+  'notice.resize': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the notice fits its new line' },
   /** A 3D shot in the export strip opens or closes its slot. */
-  'export.shot.resize': { tier: 'inform', curve: 'gentle', says: 'the shot list changed' },
-  'export.total': { tier: 'inform', curve: 'roll', duration: 0.6, says: 'the export size changed' },
-  'export.tint': { tier: 'inform', curve: 'swing', duration: 0.7, says: 'the export size increased or decreased' },
-  'preview.zoom': { tier: 'inform', curve: 'ease', duration: 0.08, says: 'the preview zoom changed' },
+  'export.shot.resize': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the shot list changed' },
+  'export.total': { tier: 'inform', curve: 'punchy', duration: DURATIONS.slow, says: 'the export size changed' },
+  'export.tint': { tier: 'inform', curve: 'swing', duration: DURATIONS.slow, says: 'the export size increased or decreased' },
+  'preview.zoom': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'the preview zoom changed' },
   /** The interface scale follows its setting exponentially; `duration` is the follow's time constant
    *  (a 60 Hz frame closes a fifth of the gap). */
-  'ui.zoom.follow': { tier: 'inform', curve: 'easeOut', duration: 0.075, says: 'the interface is resizing to the scale you chose' },
+  'ui.zoom.follow': { tier: 'inform', follow: FOLLOW_S, says: 'the interface is resizing to the scale you chose' },
   /** The chrome travels and resizes from its arrangement for the old input mode to the new one's
-   *  (`primitives/morph.ts`), a surface only one mode has arriving over the rest after `outShare`, and
-   *  content that leaves or re-flows inside a surface crossing what replaces it over `outShare`;
-   *  reduced motion steps to the new size. */
-  'shell.mode.resize': { tier: 'inform', curve: 'punchy', duration: 0.3, outShare: 0.5, fadeCurve: 'fade', says: 'the interface is sized for the input you are using now' },
+   *  (`primitives/morph.ts`), a surface only one mode has fading where it stands (out over `outShare`
+   *  of the travel, in after `inAt`), and content that leaves or re-flows inside a surface crossing
+   *  what replaces it over `outShare`; reduced motion steps to the new size. */
+  'shell.mode.resize': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, ...FADE_SHARES, says: 'the interface is sized for the input you are using now' },
   /** The frame's chrome travels from its old arrangement to its new one when the layout shape flips
-   *  (`primitives/morph.ts`), a surface only one arrangement has arriving over the rest after
-   *  `outShare`, and content that leaves or re-flows inside a surface crossing what replaces it over
-   *  `outShare`; reduced motion re-arranges at once. */
-  'shell.shape.morph': { tier: 'inform', curve: 'punchy', duration: 0.42, outShare: 0.5, fadeCurve: 'fade', says: 'these are the same controls, standing where the turned screen puts them' },
+   *  (`primitives/morph.ts`), a surface only one arrangement has fading where it stands (out over
+   *  `outShare` of the travel, in after `inAt`), and content that leaves or re-flows inside a surface
+   *  crossing what replaces it over `outShare`; reduced motion re-arranges at once. */
+  'shell.shape.morph': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, ...FADE_SHARES, says: 'these are the same controls, standing where the turned screen puts them' },
   /** A folded mode row's stack unfolds into the row and folds back, each tile travelling between the
    *  stack and its place (`shell/controls/ModeRow.tsx:ModeTiles`); reduced motion re-arranges at once. */
-  'shell.row.fold': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'these are the modes, folded into one stack' },
+  'shell.row.fold': { tier: 'inform', ...CHOREOGRAPHY, says: 'these are the modes, folded into one stack' },
   /** The dock's seam handle fades in once the dock has formed under it. */
-  'dock.handle.arrive': { tier: 'inform', curve: 'fade', duration: 0.2, says: 'the dock can be resized from here' },
-  /** The tiles behind a folded stack's front, the open mode's caption and the corner actions the
-   *  unfolded row passes over fade with the fold, on a curve that never crosses most of the way in one frame. */
-  'shell.row.fade': { tier: 'inform', curve: 'fade', duration: 0.26, says: 'these modes are behind the stack, and the stack shows no words' },
+  'dock.handle.arrive': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'the dock can be resized from here' },
+  /** The tiles behind a folded stack's front fade with the fold on its clock and curve, and the open
+   *  mode's caption, its plate and the corner actions the unfolded row passes over, which only one
+   *  arrangement shows, fade where they stand: out early, in late (`design/motion:arrangementFades`). */
+  'shell.row.fade': { tier: 'inform', ...CHOREOGRAPHY, says: 'these modes are behind the stack, and the stack shows no words' },
   /** The upright bottom bar's surface grows into the open mode's panel and back, as one surface. */
-  'shell.bar.expand': { tier: 'inform', curve: 'punchy', duration: 0.26, says: 'this panel is the bar you pressed, opened' },
+  'shell.bar.expand': { tier: 'inform', curve: CHOREOGRAPHY.curve, duration: CHOREOGRAPHY.duration, says: 'this panel is the bar you pressed, opened' },
   /** A Help figure's spotlight and its name plate travel to the corner being described. */
-  'help.figure.spotlight': { tier: 'inform', curve: 'ease', duration: 0.4, says: 'the figure now describes this part' },
+  'help.figure.spotlight': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, says: 'the figure now describes this part' },
   /** A Help figure's marks fade in and out with its script. */
-  'help.figure.fade': { tier: 'inform', curve: 'ease', duration: 0.2, says: 'the figure shows this mark now' },
+  'help.figure.fade': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'the figure shows this mark now' },
   /** A Help figure's pictured pointer glides to its next target. */
-  'help.figure.pointer': { tier: 'inform', curve: 'fade', duration: 0.6, says: 'the pointer moves to the next control' },
+  'help.figure.pointer': { tier: 'inform', curve: 'swing', duration: DURATIONS.slow, says: 'the pointer moves to the next control' },
+  /** A Help demo's beat that names no length of its own, and the hand's glide across every beat. */
+  'help.figure.step': { tier: 'inform', curve: 'swing', duration: DURATIONS.long, says: 'the figure moves on to its next beat' },
+  /** The ring a pictured press blooms out of, once or as a standing attention pulse. */
+  'help.figure.press': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, says: 'the figure pressed here' },
   /** In a window too narrow for two columns, the page list and the chosen page each fill Help; the
    *  page arrives from the end side and the list from the start side, `amplitude` px away. */
-  'help.screen': { tier: 'inform', curve: 'ease', duration: 0.24, amplitude: 24, says: 'the window now shows the page list or the chosen page' },
-  'help.highlight': { tier: 'inform', curve: 'ease', duration: 0.4, says: 'this is the requested section' },
-  'help.highlight.leave': { tier: 'inform', curve: 'ease', duration: 1.2, says: 'the requested section has been reached' },
-  'loading.dots': { tier: 'inform', curve: 'breathing', duration: 0.72, stagger: 0.14, loop: true, says: 'work is in progress' },
+  'help.screen': { tier: 'inform', curve: 'punchy', duration: DURATIONS.base, amplitude: 24, says: 'the window now shows the page list or the chosen page' },
+  'help.highlight': { tier: 'inform', curve: 'punchy', duration: DURATIONS.short, says: 'this is the requested section' },
+  'help.highlight.leave': { tier: 'inform', curve: 'punchy', duration: 1.2, lengthFrom: 'the highlight lingers so the eye finds the section after the scroll', says: 'the requested section has been reached' },
+  'loading.dots': { tier: 'inform', curve: 'swing', duration: 0.72, lengthFrom: 'one breath of the three dots, the stagger its phase offset', stagger: 0.14, loop: true, says: 'work is in progress' },
   'settings.cell.drop': {
-    tier: 'sample', curve: 'toss', fallCurve: 'gravity', duration: 1.25, loop: true, amplitude: 22.5,
+    tier: 'sample', curve: 'toss', fallCurve: 'gravity', duration: 1.25, lengthFrom: 'one loop of the preview: the fall, the bounce and the hold', loop: true, amplitude: 22.5,
     tracks: { full: CELL_BOUNCE, reduced: CELL_LAND }, previews: 'the motion preference',
   },
 
@@ -255,20 +341,20 @@ export const MOTIONS = {
   },
   /** The boot logo travels from the centered loader to the masthead. */
   'splash.logo.travel': {
-    tier: 'ambient', curve: 'punchy', duration: 0.5, amplitude: 160, amplitudeUnit: 'px',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.slow, amplitude: 160, amplitudeUnit: 'px',
   },
   /** The map and the pill fading up once the logo has landed. */
   'splash.content.fade': {
-    tier: 'ambient', curve: 'punchy', duration: 0.35, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.long, amplitude: 1, amplitudeUnit: 'opacity',
   },
   /** The stadium button's fill sweeping to the fetched share. */
   'splash.pill.fill': {
-    tier: 'inform', curve: 'punchy', duration: 0.28,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this share of the download is on the device',
   },
   /** The splash and app slide apart during handoff. */
   'splash.handoff': {
-    tier: 'ambient', curve: 'swing', duration: 0.5, amplitude: 900, amplitudeUnit: 'px',
+    tier: 'ambient', curve: 'swing', duration: DURATIONS.slow, amplitude: 900, amplitudeUnit: 'px',
   },
   /** Selection plates enter and leave independently instead of traveling between mode blocks. */
   'mode.plate.arrive': {
@@ -276,18 +362,25 @@ export const MOTIONS = {
     says: 'this is the block you are building in',
   },
   'mode.plate.leave': {
-    tier: 'inform', curve: 'stiff',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick,
     says: 'the block you were building in is no longer the one',
   },
   /** The bar for the mode being left. */
   'mode.bar.leave': {
-    tier: 'inform', curve: 'stiff',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick,
     says: 'the tools you were using are no longer the ones on the map',
   },
   /** The bar for the mode being entered. */
   'mode.bar.enter': {
     tier: 'inform', curve: 'stiff',
     says: 'these are the tools the map is armed with now',
+  },
+  /** A screen standing in the bar's place (`controls/ModeBar.tsx`) and the bar it covers hand over on one
+   *  clock: the one leaving fades out early, the one arriving in late; a whole bar fading over
+   *  `CHOREOGRAPHY`'s first share would blink. */
+  'mode.bar.cover': {
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long, ...FADE_SHARES,
+    says: 'the bar is set aside for this step, and comes back as you left it',
   },
   /** The name under the selected block. */
   'mode.caption.swap': {
@@ -296,22 +389,22 @@ export const MOTIONS = {
   },
   /** The fixed frame fades in with the map; transforms would change its descendants' containing block. */
   'frame.arrive': {
-    tier: 'ambient', curve: 'punchy', duration: 0.8, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.slow, amplitude: 1, amplitudeUnit: 'opacity',
   },
   /** Frame conceal and reveal use separate timings. */
   'frame.veil': {
-    tier: 'ambient', curve: 'punchy', duration: 0.34, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.long, amplitude: 1, amplitudeUnit: 'opacity',
   },
   'frame.unveil': {
-    tier: 'ambient', curve: 'punchy', duration: 0.12, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.quick, amplitude: 1, amplitudeUnit: 'opacity',
   },
   /** The bottom shelf's edge vignette travels its full depth on the shelf's transition timing. */
   'screen.seam.shade': {
-    tier: 'ambient', curve: 'punchy', duration: 0.3, amplitude: VIGNETTE_DEPTH,
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.base, amplitude: VIGNETTE_DEPTH,
   },
   /** Undo and redo yield their rail space when the layer stack expands. */
   'rail.history.yield': {
-    tier: 'inform', curve: 'punchy', duration: 0.26,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the layer stack has this part of the column now',
   },
   /** Rail buttons retain their identity as their group folds into additional columns. */
@@ -321,7 +414,7 @@ export const MOTIONS = {
   },
   /** Neighboring control groups yield space when the workspace changes shape. */
   'frame.layout.adapt': {
-    tier: 'inform', curve: 'punchy', duration: 0.26,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the controls keep their places relative to each other as space changes',
   },
   /** The layer stack's plate and rows resize together as one persistent control. */
@@ -330,50 +423,45 @@ export const MOTIONS = {
     says: 'this is the same stack of floors, at the size you just asked for',
   },
   /** A locked floor's tint arrives fast when it refuses a paint and leaves slowly, so a drag along it reads as one steady tint. */
-  'layer.lock.refuse': { tier: 'inform', curve: 'easeOut', duration: 0.12, says: 'this locked floor refused the paint' },
-  'layer.lock.release': { tier: 'inform', curve: 'easeOut', duration: 0.35, says: 'the refusal is over' },
+  'layer.lock.refuse': { tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, says: 'this locked floor refused the paint' },
+  'layer.lock.release': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, says: 'the refusal is over' },
   /** Layer selection and hover plates fade through the same fill property. */
   'layer.select.fade': {
-    tier: 'ambient', curve: 'settle', duration: 0.15, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.quick, amplitude: 1, amplitudeUnit: 'opacity',
   },
   'planet.choice.select': {
-    tier: 'inform', curve: 'punchy', duration: 0.18,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'this is the selected destination for the planet change',
   },
   /** The Change Planet preview crossfades to the planet just chosen. */
   'planet.preview.swap': {
-    tier: 'inform', curve: 'ease', duration: 0.18,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'the preview shows the planet you chose',
   },
   /** The preview's tools come and go with a saved planet, which is the only kind they act on. */
   'planet.tools.offer': {
-    tier: 'inform', curve: 'punchy', duration: 0.16, amplitude: 0.3, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.3, amplitudeUnit: 'scale',
     says: 'this planet is yours to edit, rename, copy, export or delete',
   },
   /** The video import's picture: ground the scan has just read fades in, the picture widens to
    *  what it has read and the camera's view glides after the camera (the time to cover most of
    *  the way), and the planet it read takes the picture's place. */
-  'scan.preview.reveal': { tier: 'inform', curve: 'easeOut', duration: 0.4, says: 'the import has read this ground' },
-  'scan.preview.follow': { tier: 'inform', curve: 'ease', duration: 0.6, says: 'the import has read further' },
-  'scan.preview.finish': { tier: 'inform', curve: 'ease', duration: 0.5, says: 'the planet the import read is ready' },
+  'scan.preview.reveal': { tier: 'inform', curve: 'punchy', duration: DURATIONS.long, says: 'the import has read this ground' },
+  'scan.preview.follow': { tier: 'inform', curve: 'punchy', duration: DURATIONS.slow, says: 'the import has read further' },
+  'scan.preview.finish': { tier: 'inform', curve: 'punchy', duration: DURATIONS.slow, says: 'the planet the import read is ready' },
   /** The planet session's chunk frame flashes once when a ground stroke reaches past the canvas. */
   'planet.frame.flash': {
-    tier: 'inform', curve: 'ease', duration: 0.9,
+    tier: 'inform', curve: 'swing', duration: DURATIONS.slow,
     says: 'the planet is at its size limit',
-  },
-  /** The 3D-only yaw controls enter and leave without reflowing controls above them. */
-  'rail.yaw.offer': {
-    tier: 'inform', curve: 'punchy', duration: 0.16, amplitude: 0.3, amplitudeUnit: 'scale',
-    says: 'turning the camera is something this view can do',
   },
   /** The mark behind the candidate a person chose. */
   'candidate.chosen': {
-    tier: 'inform', curve: 'punchy', duration: 0.18,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'this is the recipe that will be built',
   },
   /** The ring around the armed item. */
   'item.armed': {
-    tier: 'inform', curve: 'punchy', duration: 0.18,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'this is the piece the map will place',
   },
   /** An item card rising off the shelf while it is carried to the map, and settling back when it ends. */
@@ -383,21 +471,21 @@ export const MOTIONS = {
   },
   /** A candidate photograph settles over its loading state when asynchronous capture completes. */
   'candidate.shot.arrive': {
-    tier: 'inform', curve: 'punchy', duration: 0.22, amplitude: 0.05, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.05, amplitudeUnit: 'scale',
     says: 'the picture of what this recipe builds is ready',
   },
   /** The custom candidate flips between a recipe field and its equal-sized preview. */
   'candidate.custom.flip': {
-    tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 0.06, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base, amplitude: 0.06, amplitudeUnit: 'scale',
     says: 'this card is a recipe number you type, and this is the map it makes',
   },
   /** Restore-offer choreography orders the card, copy and actions; its countdown remains informative. */
   'restore.offer.arrive': {
-    tier: 'ambient', curve: 'punchy', duration: 0.24, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.short, amplitude: 1, amplitudeUnit: 'opacity',
   },
   /** The answered restore offer leaves before revealing the map. */
   'restore.offer.leave': {
-    tier: 'ambient', curve: 'punchy', duration: 0.18, amplitude: 10,
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.quick, amplitude: 10,
   },
   /** The restore photograph rises first in the offer choreography. */
   'restore.card.arrive': {
@@ -405,7 +493,7 @@ export const MOTIONS = {
   },
   /** Restore copy and actions arrive on successive beats of one motion. */
   'restore.words.arrive': {
-    tier: 'ambient', curve: 'punchy', duration: 0.22, amplitude: 10,
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.short, amplitude: 10,
   },
   /** A rail button grows and reveals its name without moving neighboring pointer targets. */
   'rail.name.reach': {
@@ -415,12 +503,12 @@ export const MOTIONS = {
   },
   /** The name of the card under the pointer, which the card itself does not carry. */
   'item.name.reach': {
-    tier: 'inform', curve: 'punchy', duration: 0.14,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick,
     says: 'the piece you are pointing at is called this',
   },
   /** Long item names travel through their measured overrun; reduced motion wraps the text instead. */
   'item.name.marquee': {
-    tier: 'ambient', curve: 'swing', duration: 8, loop: true, amplitude: 12,
+    tier: 'ambient', curve: 'swing', duration: 8, lengthFrom: 'one pass through a long name at a readable pace', loop: true, amplitude: 12,
   },
   /** A tool plate coordinates its active fill, bounds and optional setting pill. */
   'tool.plate.shape': {
@@ -430,24 +518,62 @@ export const MOTIONS = {
   /** The object shelf's search button grows along its row into the search field, and back; on a wide
    *  shelf short of room the field shrinks into the button, and grows back out of it. */
   'shelf.search.expand': {
-    tier: 'inform', curve: 'punchy', duration: 0.26,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this field and the search button are one control',
   },
   /** The wide object shelf's brush button grows along the names' row into a pill naming the way to
    *  place while a mouse rests on it, the search field beside it shrinking by as much, and back. */
   'shelf.brush.expand': {
-    tier: 'inform', curve: 'punchy', duration: 0.22,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is how the next press places',
   },
   /** The upright object shelf's cards travel between its one sideways row and its grid when its room
    *  crosses two rows (`primitives/morph.ts:morphScope`); a card scrolled out of view fades in over the rest. */
   'shelf.layout.morph': {
-    tier: 'inform', curve: 'punchy', duration: 0.34, outShare: 0.4,
+    tier: 'inform', ...CHOREOGRAPHY,
     says: 'these are the same cards, laid out for the room the panel has now',
+  },
+  /** The Blueprint strip unfolds into its library explorer and folds back, wide by its square and
+   *  upright as the panel's handle lets go past the turn, on the band's own curve and duration
+   *  (`CHOREOGRAPHY`): every piece both show travels box to box inside the shelf
+   *  (`primitives/morph.ts:morphScope`) in a lifted layer, a piece of a row rides the piece it stands
+   *  beside, the unfold square rides the band's top right corner, and what only one shows fades where
+   *  it stands. */
+  'blueprint.library.unfold': {
+    tier: 'inform', ...CHOREOGRAPHY,
+    says: 'this is the strip, unfolded into the whole library',
+  },
+  /** The open Blueprint explorer switches between its grid and details list, or to another folder or
+   *  search, on the library's re-arrangement clock and curve (`CHOREOGRAPHY`): each card both show
+   *  travels from where it stood to where it stands, between a grid card and a row by its picture, the
+   *  card's plate and name travelling around the picture as they fade, and what only one shows (a
+   *  row's words, the cards leaving or arriving) fades where it stands, out early and in late, the
+   *  travelling cards standing in a lifted layer over the scrollers; the folders, the head and its
+   *  title stand still. */
+  'blueprint.library.arrange': {
+    tier: 'inform', ...CHOREOGRAPHY,
+    says: 'these are the same blueprints, shown the way you chose',
+  },
+  /** Blueprint cards changing order (`bars/blueprint/use-blueprint-carry.ts:useReorderGlide`): they
+   *  stand aside to open the slot a carried card would take and close it again, and travel to the order a
+   *  release among them set, what was dropped setting off from its carried copy, a details row's picture
+   *  from the copy's picture with the copy travelling round it as it fades; a carry dropping the list's
+   *  sort travels the rows to the library's order. On the library's re-arrangement clock and curve
+   *  (`CHOREOGRAPHY`). */
+  'blueprint.library.reorder': {
+    tier: 'inform', ...CHOREOGRAPHY,
+    says: 'the library holds these blueprints in this order now',
+  },
+  /** Several Blueprint cards picked up together: a copy of each travels from its own slot to the
+   *  pointer, on the library's re-arrangement clock (`CHOREOGRAPHY`), and only then does the stack form,
+   *  its back plates stepping out and its count arriving over a second beat. */
+  'blueprint.carry.gather': {
+    tier: 'inform', curve: CHOREOGRAPHY.curve, duration: CHOREOGRAPHY.duration,
+    says: 'these are the cards you picked, gathered into the one stack you carry',
   },
   /** Shelf contents swap beneath a stationary category row. */
   'shelf.category.swap': {
-    tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 14,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 14,
     says: 'these are the things the category you just chose offers',
   },
   /** Slider name and value appear over the active knob and remain available under reduced motion. */
@@ -457,14 +583,16 @@ export const MOTIONS = {
   },
   /** A slider's knob and fill follow its value to each stop a press, a drag or a key moves it to, settling in about a tenth of a second so they never trail the finger. */
   'slider.glide': { tier: 'inform', curve: 'stiff', says: 'the slider now stands at this stop' },
-  /** A control both tools offer stays put across a tool switch and glides to its place in the new row. */
+  /** A control both tools offer stays put across a tool switch and glides to its place in the new row;
+   *  a control only one tool offers fades where it stands, out over `outShare` of the glide and in
+   *  after `inAt` of it (`design/motion:arrangementFades`). */
   'tool.control.morph': {
-    tier: 'inform', curve: 'punchy', duration: 0.28,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base, ...FADE_SHARES,
     says: 'this is the same control, carried over to the tool you switched to',
   },
   /** The size slider takes the length its row now leaves it, its right end standing still. */
   'tool.size.resize': {
-    tier: 'inform', curve: 'punchy', duration: 0.28,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the same slider, at the length its row has room for',
   },
   /** The armed tool's plate slides under the row to the tool just chosen. */
@@ -472,50 +600,40 @@ export const MOTIONS = {
     tier: 'inform', curve: 'stiff',
     says: 'the map is now armed with this tool instead of that one',
   },
-  /** A control only the new tool offers fades in once the old tool's own controls have gone. */
-  'tool.control.enter': {
-    tier: 'inform', curve: 'punchy', duration: 0.16,
-    says: 'this control belongs to the tool you switched to',
-  },
-  /** A control only the old tool offered fades where it stood, out of the row's flow. */
-  'tool.control.leave': {
-    tier: 'inform', curve: 'punchy', duration: 0.12,
-    says: 'this control belonged to the tool you put down',
-  },
   /** The selection plate and option names reshape together without scaling their contents. */
   'tool.option.select': {
-    tier: 'inform', curve: 'punchy', duration: 0.28,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the selected shape or corner treatment',
   },
   /** A custom tag grows into the Notes tag row where it was added. */
   'tag.pill.arrive': {
-    tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 0.3, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.3, amplitudeUnit: 'scale',
     says: 'this tag has joined the row',
   },
   /** A removed custom tag shrinks out of the row. */
   'tag.pill.leave': {
-    tier: 'inform', curve: 'punchy', duration: 0.14,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick,
     says: 'this tag has left the row',
   },
   /** Each custom tag wears a removal badge while the row is removing tags. */
   'tag.remove.badge': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 0.5, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.5, amplitudeUnit: 'scale',
     says: 'pressing this tag removes it',
   },
   /** The Done and Discard pair rises into the tool row while a note draft stands. */
   'draft.actions.arrive': {
-    tier: 'inform', curve: 'punchy', duration: 0.22, amplitude: 10,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 10,
     says: 'the strokes so far are one unfinished note, and this is how it ends',
   },
   /* Character poses own their WAAPI tracks; this registry covers surrounding UI motion. */
   /** Shelf wheel input closes on its horizontal target exponentially; duration is the time constant. */
   'shelf.row.wheel-glide': {
-    tier: 'ambient', curve: 'punchy', duration: 0.09, amplitude: 40, amplitudeUnit: 'px',
+    tier: 'ambient', follow: FOLLOW_S, amplitude: 40, amplitudeUnit: 'px',
   },
   /* Assistant motions cover panel state, job progress, setup and the hosted character. */
   /** The panel wipe and hosted-character step share one clock and the character's seat origin. */
   'panel.open': {
-    tier: 'inform', curve: 'punchy', duration: 0.32, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long, amplitude: 1, amplitudeUnit: 'opacity',
     says: 'the desk that just opened is the assistant you pressed',
   },
   /** The panel folds to the character button on the same clock used by the first dock-transition beat. */
@@ -530,38 +648,38 @@ export const MOTIONS = {
   },
   /** Crossfades in-place dock updates that do not change the session-state identity. */
   'panel.dock.paper': {
-    tier: 'inform', curve: 'punchy', duration: 0.24,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'the assistant has moved from one state to another',
   },
   /** Live status text changes stay legible throughout their brief emphasis. */
   'panel.status.update': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 0.35, amplitudeUnit: 'opacity',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.35, amplitudeUnit: 'opacity',
     says: 'the current operation has changed while the same task continues',
   },
   /** Flips the dock card for a session-state identity change; in-place text updates use dock.paper. */
   'panel.dock.flip': {
-    tier: 'inform', curve: 'punchy', duration: 0.28, outShare: 0.54,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base, outShare: 0.54,
     outCurve: 'accel', overshootAt: 0.66, landCurve: 'settle',
     says: 'the assistant has moved to a different session state, not just repainted the one it was in',
   },
   /** A new operation row rises onto the ticket. */
   'panel.op.enter': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 12, amplitudeUnit: 'px',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 12, amplitudeUnit: 'px',
     says: 'this step is new since you last looked at the ticket',
   },
   /** The existing operation mark scales once when a running row settles. */
   'panel.tick.settle': {
-    tier: 'inform', curve: 'punchy', duration: 0.34, amplitude: 0.3, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.3, amplitudeUnit: 'scale',
     says: 'this step is done, and this is how it went',
   },
   /** The marked-region outline pulses when an out-of-region write rolls the call back. */
   'panel.region.pulse': {
-    tier: 'inform', curve: 'punchy', duration: 0.6, amplitude: 0.45, amplitudeUnit: 'opacity',
+    tier: 'inform', curve: 'swing', duration: DURATIONS.slow, amplitude: 0.45, amplitudeUnit: 'opacity',
     says: 'your region held, and this is its edge',
   },
   /** A completion check lands on a newly finished plan stage. */
   'panel.plan.check': {
-    tier: 'inform', curve: 'punchy', duration: 0.2, amplitude: 0.4, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.4, amplitudeUnit: 'scale',
     says: 'this stage of the plan is behind you',
   },
   /** A blocking question card grows in place when the record pauses for an answer. */
@@ -571,17 +689,17 @@ export const MOTIONS = {
   },
   /** A gate verdict rises onto the card when the question becomes a settled record line. */
   'panel.gate.verdict': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 12, amplitudeUnit: 'px',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 12, amplitudeUnit: 'px',
     says: 'this gate has an answer now',
   },
   /** Answered ask cards fan from and restack into their in-place deck. */
   'panel.gate.deck': {
-    tier: 'inform', curve: 'punchy', duration: 0.22,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'these are the answered asks the deck was holding, standing where they were answered',
   },
   /** The parked character's status chip indicates that work continues while the panel is closed. */
   'panel.chip.hero': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 0.3, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 0.3, amplitudeUnit: 'scale',
     says: 'the assistant is still working on the map while the panel is shut',
   },
   /** The hosted character scales between floating and docked forms with a weighted landing. */
@@ -598,12 +716,12 @@ export const MOTIONS = {
   },
   /** The interface sheet and ground share one clock while making room for a docked panel. */
   'panel.pin.slide': {
-    tier: 'inform', curve: 'punchy', duration: 0.3,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the interface and the panel are sharing the window',
   },
   /** Side switching accelerates through the fully covered midpoint and settles at the destination. */
   'panel.pin.cross': {
-    tier: 'inform', curve: 'punchy', duration: 0.26, outShare: 1, outCurve: 'accel',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base, outShare: 1, outCurve: 'accel',
     says: 'the panel is going to the other end of the window, and this is one crossing',
   },
   /** A typed note grows into its place in the next-step queue. */
@@ -613,12 +731,12 @@ export const MOTIONS = {
   },
   /** A note consumed by the next step lifts out of the queue; recalled notes reverse their entry. */
   'panel.steer.deliver': {
-    tier: 'inform', curve: 'punchy', duration: 0.18, amplitude: 26, amplitudeUnit: 'px',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, amplitude: 26, amplitudeUnit: 'px',
     says: 'this note has left the queue and gone into the step it was queued for',
   },
   /** Each retry-countdown digit rolls upward as the wait shortens. */
   'panel.retry.digit': {
-    tier: 'inform', curve: 'punchy', duration: 0.12, amplitude: 8, amplitudeUnit: 'px',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick, amplitude: 8, amplitudeUnit: 'px',
     says: 'the wait is shorter than it was a second ago',
   },
   /** Setup groups move with the panel-height transition when the active step changes. */
@@ -628,153 +746,170 @@ export const MOTIONS = {
   },
   /** A refused setup key shakes once; static error styling carries the state under reduced motion. */
   'panel.setup.refuse': {
-    tier: 'ambient', curve: 'punchy', duration: 0.32, amplitude: 4, amplitudeUnit: 'px',
+    tier: 'ambient', ...SHAKE,
   },
   /** The composer field preserves one element while changing between compact and paragraph sizes. */
   'panel.composer.unfold': {
-    tier: 'inform', curve: 'punchy', duration: 0.26,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the same field you were typing in, at the size a paragraph needs',
   },
   /** The finished-jobs strip and its chevron share one open-and-close clock. */
   'panel.history.fold': {
-    tier: 'inform', curve: 'punchy', duration: 0.22,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the jobs that are already finished are folded away here',
   },
   /** The thoughts disclosure animates its own bounded height while record auto-follow is suspended. */
   'panel.thoughts.open': {
-    tier: 'inform', curve: 'punchy', duration: 0.2,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the thinking behind the row you pressed',
   },
   /** Duration caps a streamed burst; stagger is the ordinary interval between graphemes. */
   'panel.thoughts.stream': {
-    tier: 'inform', curve: 'linear', duration: 0.24, stagger: 0.012,
+    tier: 'inform', curve: 'linear', duration: DURATIONS.short, stagger: STAGGERS.glyph,
     says: 'new thoughts are arriving',
   },
   /** Shared unfold timing for operation details, full prose and management verdicts. */
   'panel.detail.unfold': {
-    tier: 'inform', curve: 'punchy', duration: 0.2,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'here is the rest of what this element holds',
   },
   /** Incoming screens and the composer share one reveal after the previous screen unmounts. */
   'panel.zone.swap': {
-    tier: 'inform', curve: 'punchy', duration: 0.14, amplitude: 8, amplitudeUnit: 'px',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short, amplitude: 8, amplitudeUnit: 'px',
     says: 'the panel switched to the screen your press asked for',
   },
   /** Active construction tape moves exactly one stripe period per seamless linear cycle. */
   'panel.tape.crawl': {
-    tier: 'ambient', curve: 'linear', duration: 1.6, loop: true,
+    tier: 'ambient', curve: 'linear', duration: 1.6, lengthFrom: 'one stripe period at a slow crawl', loop: true,
     amplitude: TAPE_STRIPE_PX, amplitudeUnit: 'px',
   },
   /** The streaming-text caret uses a discrete opacity blink; duration covers one full cycle. */
+  /** The sleeper's zzz light in sequence, `stagger` apart, and go out together. */
+  'character.zzz.plume': {
+    tier: 'ambient', curve: 'linear', duration: 2.1, lengthFrom: 'one breath of the sleeper', loop: true,
+    stagger: 0.35, amplitude: 1, amplitudeUnit: 'opacity',
+  },
+  /** Confetti over the tour's last card: each piece falls for its own share of `duration` as paper does,
+   *  held by drag to a steady speed, swaying up to `amplitude` px either side. */
+  'tour.confetti.fall': {
+    tier: 'ambient', curve: 'drift', duration: 3.2,
+    lengthFrom: 'the middle of the pieces\' falls, each drawn within a quarter of it so no two land together',
+    amplitude: 40, amplitudeUnit: 'px',
+  },
   'panel.says.caret': {
-    tier: 'ambient', curve: 'linear', duration: 1, loop: true, amplitude: 1, amplitudeUnit: 'opacity',
+    tier: 'ambient', curve: 'linear', duration: 1, lengthFrom: 'one blink of the caret', loop: true, amplitude: 1, amplitudeUnit: 'opacity',
   },
   /** A replacement badge uses a baked three-keyframe overshoot after the swap gap. */
   'panel.badge.pop': {
-    tier: 'inform', curve: 'linear', duration: 0.28,
+    tier: 'inform', curve: 'linear', duration: DURATIONS.base,
     says: 'this is the badge the assistant is wearing now',
   },
   /** Both ticket faces remain mounted while one card rotates between them. */
   'panel.ticket.flip': {
-    tier: 'inform', curve: 'punchy', duration: 0.55,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this ticket has another side, and it is the same ticket',
   },
   /** Construction-tape width advances to the completed fraction of the plan. */
   'panel.tape.fill': {
-    tier: 'inform', curve: 'punchy', duration: 0.5,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this much of the plan is behind you',
   },
   /** Receipt statistics count once from zero and decelerate into their final values. */
   'panel.stat.count': {
-    tier: 'inform', curve: 'settle', duration: 0.7,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.slow,
     says: 'this is what the job actually built',
   },
   /* Stylize motions cover the connection form and studio contents inside the shared modal shell. */
   /** Stylize pages leave before the next page enters from the side. */
   'stylize.page.swap': {
-    tier: 'inform', curve: 'punchy', duration: 0.32, outShare: 0.5, outCurve: 'accel',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long, outShare: 0.5, outCurve: 'accel',
     amplitude: 16, amplitudeUnit: 'px',
     says: 'this is the window\'s other page, not a change to the one you were on',
   },
   /** Page parts arrive in reading order with a shared stagger. */
   'stylize.row.stagger': {
-    tier: 'ambient', curve: 'punchy', duration: 0.4, stagger: 0.05, amplitude: 8, amplitudeUnit: 'px',
+    tier: 'ambient', curve: 'punchy', duration: DURATIONS.short, stagger: STAGGERS.row, amplitude: 8, amplitudeUnit: 'px',
   },
   /** Custom-provider setup opens its endpoint-address row between key and model. */
   'stylize.address.unfold': {
-    tier: 'inform', curve: 'punchy', duration: 0.3,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this connection is one you name yourself, so it needs an address',
   },
   /** The model row's border flashing as a list lands in it. */
   'stylize.model.arrive': {
-    tier: 'inform', curve: 'punchy', duration: 0.8,
+    tier: 'inform', curve: 'swing', duration: DURATIONS.slow,
     says: 'the endpoint answered, and these are the models it will run',
   },
   /** The primary verb growing once the last ingredient it was waiting on stands. */
   'stylize.button.arm': {
-    tier: 'inform', curve: 'punchy', duration: 0.4, amplitude: 0.07, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long, amplitude: 0.07, amplitudeUnit: 'scale',
     says: 'the connection is complete and this can be pressed now',
   },
   /** New content enters within the permanent status slot. */
   'stylize.status.pop': {
-    tier: 'inform', curve: 'punchy', duration: 0.3,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'the status line has something it did not say a moment ago',
   },
   'export.preview.status': {
-    tier: 'inform', curve: 'punchy', duration: 0.2,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
     says: 'the preview has moved to its next preparation task',
+  },
+  /** Save and share's picture fades in over the one before, which leaves once it has landed. */
+  'export.preview.swap': {
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.short,
+    says: 'the picture now shows the settings and words you chose',
   },
   /** A refused field shakes horizontally while static error styling preserves the evidence. */
   'stylize.fail.shake': {
-    tier: 'inform', curve: 'swing', duration: 0.4, amplitude: 5, amplitudeUnit: 'px',
+    tier: 'inform', ...SHAKE,
     says: 'this is the field the refusal is about',
   },
   /** Three sample cards breathe on the connection page. */
   'stylize.deck.breathe': {
-    tier: 'ambient', curve: 'swing', duration: 5.5, loop: true, stagger: 1.8, amplitude: 6, amplitudeUnit: 'px',
+    tier: 'ambient', curve: 'swing', duration: 5.5, lengthFrom: 'one slow breath, the stagger its phase offset', loop: true, stagger: 1.8, amplitude: 6, amplitudeUnit: 'px',
   },
   /** The canvas crossfades between visual treatments of the same map. */
   'stylize.canvas.crossfade': {
-    tier: 'inform', curve: 'punchy', duration: 0.5,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long,
     says: 'this is the same map drawn another way, not another map',
   },
   /** The two pictures changing places when the corner one is pressed. */
   'stylize.pip.swap': {
-    tier: 'inform', curve: 'punchy', duration: 0.3, amplitude: 0.04, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base, amplitude: 0.04, amplitudeUnit: 'scale',
     says: 'the picture you were looking at and the one in the corner have changed places',
   },
   /** A finished picture arriving on the shelf, out of the skeleton that was standing for it. */
   'stylize.card.enter': {
-    tier: 'inform', curve: 'punchy', duration: 0.5, amplitude: 0.14, amplitudeUnit: 'scale',
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.long, amplitude: 0.14, amplitudeUnit: 'scale',
     says: 'this take has just been drawn',
   },
   /** Indeterminate image progress slows across 90% of its track and never claims completion. */
   'stylize.progress.creep': {
-    tier: 'ambient', curve: 'settle', duration: 28, amplitude: 0.9, amplitudeUnit: 'scale',
+    tier: 'ambient', curve: 'punchy', duration: 28, lengthFrom: 'about as long as a picture takes to draw, so the creep never claims completion', amplitude: 0.9, amplitudeUnit: 'scale',
   },
   /** A retired picture leaves the shelf. */
   'stylize.shelf.retire': {
-    tier: 'inform', curve: 'punchy', duration: 0.2,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.quick,
     says: 'that picture is off the shelf for good',
   },
   /** A retired slot closes its width and gap so surviving cards reflow continuously. */
   'stylize.shelf.settle': {
-    tier: 'inform', curve: 'settle', duration: 0.32,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the shelf has closed the gap the retired picture left',
   },
   /** The fixed-size pane turns to the selected direction. */
   'stylize.pane.turn': {
-    tier: 'inform', curve: 'punchy', duration: 0.3,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'the pane is showing the direction you just picked',
   },
   /** The selection ring travels between booklet rows or shelf pictures. */
   'stylize.select.ring': {
-    tier: 'inform', curve: 'punchy', duration: 0.2,
+    tier: 'inform', curve: 'punchy', duration: DURATIONS.base,
     says: 'this is the one that is chosen now',
   },
   /** The entry button's outer style cards fan five pixels on hover. */
   'stylize.entry.fan': {
-    tier: 'ambient', curve: 'bouncy', amplitude: 5, amplitudeUnit: 'px',
+    tier: 'ambient', curve: 'stiff', amplitude: 5, amplitudeUnit: 'px',
   },
   /** The hero deck follows the pointer with decreasing travel through its card stack. */
   'stylize.deck.follow': {
@@ -782,7 +917,7 @@ export const MOTIONS = {
   },
   /** A press tosses the front sample card and advances the deck. */
   'stylize.deck.shuffle': {
-    tier: 'inform', curve: 'bouncy',
+    tier: 'inform', curve: 'stiff',
     says: 'that press turned the deck to another style sample',
   },
 } as const satisfies Record<string, Motion>;

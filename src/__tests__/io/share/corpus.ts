@@ -2,8 +2,8 @@
 import { createDefaultRegistry } from '../../../rules/index';
 import { makeState, makeTemplate } from '../../_support/map-state';
 import { openSave } from '../../../io/import/open-save';
-import { clearUnderLandmarks } from '../../../state/landmark-clearance';
-import { applyRelocation } from '../../../state/relocation-plan';
+import { clearUnderLandmarks } from '../../../tools/repair/landmark-clearance';
+import { applyRelocation } from '../../../tools/repair/relocation-plan';
 import { getMapTemplate, MAP_TEMPLATES } from '../../../config/maps';
 import { createGrid } from '../../../core/model/grid-model';
 import { NEIGHBORS4 } from '../../../core/grid/directions';

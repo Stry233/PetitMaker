@@ -18,6 +18,8 @@
 import { makeNoise } from './noise';
 import { fnv1a32 } from '../../../core/base/hash';
 import { makeRng } from '../../../core/base/rng';
+import { blurField } from '../../../core/base/fields';
+import { luma709 } from '../../../core/base/color';
 
 export interface Bitmap { data: Uint8ClampedArray; width: number; height: number }
 
@@ -40,28 +42,6 @@ interface WatercolorizeOptions {
   stroke?: number;
   /** Paper tint the light returns through. */
   paper?: [number, number, number];
-}
-
-/** One separable box blur, in place, radius 1 — repeated for spread. */
-function blur3(src: Float32Array, w: number, h: number, passes: number): Float32Array {
-  const a = src;
-  const b = new Float32Array(src.length);
-  for (let p = 0; p < passes; p++) {
-    for (let y = 0; y < h; y++) {
-      const row = y * w;
-      for (let x = 0; x < w; x++) {
-        const l = a[row + Math.max(0, x - 1)]!, c = a[row + x]!, r = a[row + Math.min(w - 1, x + 1)]!;
-        b[row + x] = (l + c + r) / 3;
-      }
-    }
-    for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) {
-        const u = b[Math.max(0, y - 1) * w + x]!, c = b[y * w + x]!, d = b[Math.min(h - 1, y + 1) * w + x]!;
-        a[y * w + x] = (u + c + d) / 3;
-      }
-    }
-  }
-  return a;
 }
 
 /** Edge-stopping smoothing on an RGB byte buffer: each pass averages the 3x3 neighbourhood with
@@ -197,7 +177,7 @@ export function watercolorize(img: Bitmap, o: WatercolorizeOptions): void {
       for (let x = 0; x < w; x++) {
         const i = (y * w + x) * 4;
         const r0 = D[i]! / 255, g0 = D[i + 1]! / 255, b0 = D[i + 2]! / 255;
-        const L = 0.2126 * r0 + 0.7152 * g0 + 0.0722 * b0;
+        const L = luma709(r0, g0, b0);
         if (L <= 0.02 || L >= 0.985) continue;
         const drift = (sampleQ(wetQ, x, y) - 0.5) * 0.7;
         /* soft step: the band transition spans a fifth of a band, so its contour is a smooth
@@ -224,7 +204,7 @@ export function watercolorize(img: Bitmap, o: WatercolorizeOptions): void {
       edge[y * w + x] = Math.min(1, (gx + gy) / 340);
     }
   }
-  const rim = blur3(edge, w, h, 1 + Math.max(1, Math.round(short / 640)));
+  const rim = blurField(edge, w, h, 1, 1 + Math.max(1, Math.round(short / 640)));
 
   /* 4-6. glaze, rim, granulation, blooms and paper relief, in one pass. */
   for (let y = 0; y < h; y++) {

@@ -105,8 +105,3 @@ export function mixHex(a: string, b: string, t: number): string {
   const B = rgbToOklab(hexToRgb(b));
   return rgbToHex(oklabToRgb([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t]));
 }
-
-export function rgba(hex: string, alpha: number): string {
-  const c = hexToRgb(hex);
-  return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
-}

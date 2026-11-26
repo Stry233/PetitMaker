@@ -13,14 +13,16 @@ import {
   type ContentType,
 } from './edit-mode';
 import type { EditorStore } from '../store';
+import type { MacroCoord } from '../../core/model/types';
+import { regionOnScreen } from './region';
 
 /** Store fields a tool reads under their own names. */
 const STORE_FIELDS = [
-  'layerPinned', 'layerVisibility', 'autoEdgeCut', 'eraserShape',
-  'tileMaterial', 'tileMaterialPicked', 'placementRotation', 'armingEpoch', 'region',
+  'terrainThickness', 'layerVisibility', 'autoEdgeCut', 'eraserShape',
+  'tileMaterial', 'tileMaterialPicked', 'placementRotation', 'armingEpoch',
   'planetMaterial', 'annotationTool', 'annotationZoneShape', 'annotationColor', 'annotationTag',
   'annotationSize', 'annotationRouteDashed', 'annotationRouteWidth',
-  'objectBrush', 'objectPaintShape', 'objectPaintSpacing',
+  'objectBrush', 'objectPaintShape', 'objectPaintSpacing', 'blueprint',
 ] as const satisfies readonly (keyof EditorStore)[];
 
 /** The plan notes' document state the annotate tool reads beside the arming: what is selected, the
@@ -43,8 +45,6 @@ export interface ToolArming extends Readonly<Pick<EditorStore, typeof STORE_FIEL
   readonly brushSize: number;
   /** The armed macro's id (`armedMacroOf`), or null. */
   readonly armedMacro: string | null;
-  /** The build floor the layer panel selects (`activeLayer`). */
-  readonly floor: number;
   /** The armed catalog item (`armedItemOf`), or null with nothing armed. */
   readonly armedItem: string | null;
   /** The armed items in the order they were picked (`armedPicksOf`), the armed item first. */
@@ -53,6 +53,8 @@ export interface ToolArming extends Readonly<Pick<EditorStore, typeof STORE_FIEL
   readonly groundEditable: boolean;
   /** Document state, not what the bar arms; snapshotted with the arming so a call reads one moment. */
   readonly notes: NoteDocument;
+  /** The region on screen (`region.ts:regionOnScreen`), which bounds a Smart Build press; `[]` for none. */
+  readonly region: readonly MacroCoord[];
 }
 
 const memo = new WeakMap<EditorStore, ToolArming>();
@@ -71,7 +73,7 @@ export function armingOf(s: EditorStore): ToolArming {
       contentType: contentTypeOf(s),
       brushSize: brushSizeOf(s),
       armedMacro: armedMacroOf(s),
-      floor: s.activeLayer,
+      region: regionOnScreen(s),
       armedItem: armedItemOf(s),
       picks: armedPicksOf(s),
       groundEditable: s.planetSession !== null,

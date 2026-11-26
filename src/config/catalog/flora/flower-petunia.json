@@ -1,0 +1,36 @@
+{
+  "id": "flower-petunia",
+  "category": "flora",
+  "name": {
+    "en": "Purple Petunia",
+    "zh": "紫矮牵牛",
+    "ja": "パープルペチュニア",
+    "ru": "Фиолетовая петуния",
+    "th": "พิทูเนียม่วง",
+    "id": "Petunia Ungu",
+    "fr": "Pétunia violet"
+  },
+  "aliases": [
+    "紫",
+    "purple"
+  ],
+  "icon": "flower-petunia",
+  "iconColor": "#b69fef",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-petunia",
+    "colorFamily": "purple"
+  }
+}

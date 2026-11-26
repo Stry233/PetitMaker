@@ -1,6 +1,6 @@
 /**
  * What an imported file is, decided once for every import surface: a map (a share image or a map
- * save, whatever `file.ts:inspectImportFile` reads), a planet file, a recorded game video,
+ * save, whatever `file.ts:inspectImportFile` reads), a planet file, a blueprint file, a recorded game video,
  * or none of these. Videos are told by their first bytes, with the type and extension as a
  * fallback; JSON is told apart by its `format` field. Kinds this edition cannot import read as
  * `unknown`, so the offline edition keeps refusing planet files and videos as it always has.
@@ -8,17 +8,29 @@
 import { SUPPORTS_JSON_FILES, SUPPORTS_VIDEO_IMPORT } from '../../platform/build/edition';
 import { MAX_IMPORT_BYTES } from '../save/limits';
 import { PLANET_FILE_FORMAT } from '../save/planet-codec';
+import { BLUEPRINT_FILE_FORMAT } from '../blueprint/format';
 import { ISO_FIRST_BOXES, opensEbml } from '../../pipelines/planet-scan/facts';
 import { readBlob } from './read-blob';
 
-export type ImportKind = 'map' | 'planet' | 'video' | 'unknown';
+export type ImportKind = 'map' | 'planet' | 'blueprint' | 'video' | 'unknown';
 /** `classifyImportFile`'s decision with a map told apart as a JSON save or a share image. */
-type ImportSource = 'map-save' | 'map-image' | 'planet' | 'video' | 'unknown';
+type ImportSource = 'map-save' | 'map-image' | 'planet' | 'blueprint' | 'video' | 'unknown';
 
 /** The recording containers the video picker offers by name as well as by type: macOS greys out
  *  files whose type it does not map to `video/*`, Matroska among them. */
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.m4v', '.mkv', '.webm'] as const;
 export const VIDEO_ACCEPT = ['video/*', ...VIDEO_EXTENSIONS].join(',');
+/** The pictures a map picker offers. */
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp';
+/** What a JSON file picker offers, by name as well as by type. */
+export const JSON_ACCEPT = '.json,application/json';
+/** What the map picker offers: map images, then map and planet files where JSON is read, then game
+ *  videos where they are read, so a picked one reaches its own window. */
+export const IMPORT_ACCEPT = [
+  IMAGE_ACCEPT,
+  ...(SUPPORTS_JSON_FILES ? [JSON_ACCEPT] : []),
+  ...(SUPPORTS_VIDEO_IMPORT ? [VIDEO_ACCEPT] : []),
+].join(',');
 
 /** `ftyp` major brands of still images (HEIF, AVIF), which share the video container's layout. */
 const IMAGE_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'mif1', 'msf1', 'avif', 'avis']);
@@ -70,12 +82,12 @@ async function readHead(file: Blob): Promise<Uint8Array | null> {
   }
 }
 
-/** Whether `text` is a planet file: a JSON object whose `format` names one. */
-function isPlanetText(text: string): boolean {
-  if (!text.includes(PLANET_FILE_FORMAT)) return false;
+/** Whether `text` is a JSON object whose `format` is `format`. */
+function hasFormat(text: string, format: string): boolean {
+  if (!text.includes(format)) return false;
   try {
     const parsed = JSON.parse(text) as { format?: unknown } | null;
-    return parsed?.format === PLANET_FILE_FORMAT;
+    return parsed?.format === format;
   } catch {
     return false;
   }
@@ -83,24 +95,39 @@ function isPlanetText(text: string): boolean {
 
 /** What `file` is; never throws. `name` is the file's own name where `file` is a bare Blob. */
 export async function classifyImportFile(file: File | Blob, name = file instanceof File ? file.name : ''): Promise<ImportKind> {
-  const source = await classifyImportSource(file, name);
-  return source === 'map-save' || source === 'map-image' ? 'map' : source;
+  return (await classifyImport(file, name)).kind;
 }
 
-/** `classifyImportFile`'s one decision, keeping which reader a map goes to. */
-export async function classifyImportSource(file: File | Blob, name = file instanceof File ? file.name : ''): Promise<ImportSource> {
+/** `classifyImportFile`'s one decision, keeping which reader a map goes to and the text read to
+ *  reach it, which that reader takes rather than reading the file again. */
+export interface ClassifiedImport {
+  kind: ImportKind;
+  source: ImportSource;
+  /** The whole file as text, where a JSON file was read to tell it; null where it was not read. */
+  text: string | null;
+}
+
+const classified = (source: ImportSource, text: string | null = null): ClassifiedImport => ({
+  kind: source === 'map-save' || source === 'map-image' ? 'map' : source, source, text,
+});
+
+/** What `file` is with what was read of it; never throws. */
+export async function classifyImport(file: File | Blob, name = file instanceof File ? file.name : ''): Promise<ClassifiedImport> {
   const head = SUPPORTS_VIDEO_IMPORT || SUPPORTS_JSON_FILES ? await readHead(file) : null;
-  if (SUPPORTS_VIDEO_IMPORT && head && sniffVideo(head)) return 'video';
+  if (SUPPORTS_VIDEO_IMPORT && head && sniffVideo(head)) return classified('video');
   const json = isJsonFile(file, name) || (head !== null && opensJson(head));
   if (SUPPORTS_JSON_FILES && json) {
+    let text: string | null = null;
     if (!(file.size > MAX_IMPORT_BYTES)) { // a source that reports no size is read; the map reader bounds it
       try {
-        if (isPlanetText(await readBlob(file, 'text'))) return 'planet';
+        text = await readBlob(file, 'text');
+        if (hasFormat(text, PLANET_FILE_FORMAT)) return classified('planet', text);
+        if (hasFormat(text, BLUEPRINT_FILE_FORMAT)) return classified('blueprint', text);
       } catch { /* unreadable text is the map reader's to refuse */ }
     }
-    if (isJsonFile(file, name)) return 'map-save';
+    if (isJsonFile(file, name)) return classified('map-save', text);
   }
-  if (isImageFile(file, name)) return 'map-image';
-  if (SUPPORTS_VIDEO_IMPORT && namesVideo(file, name)) return 'video';
-  return 'unknown';
+  if (isImageFile(file, name)) return classified('map-image');
+  if (SUPPORTS_VIDEO_IMPORT && namesVideo(file, name)) return classified('video');
+  return classified('unknown');
 }

@@ -7,7 +7,9 @@
 import { ZONE_COLORS } from '../../../core/model/palette';
 import { hexChannels, numberToHexString } from '../../../core/base/color';
 import type { CellZone } from '../../../core/game/zones';
-import { CHUNK_GRID_STYLE } from '../../shared/grid/reference-grid';
+import { CHUNK_GRID_STYLE, chunkDashRects, chunkStrokeCells } from '../../shared/grid/reference-grid';
+import { boundsWhere, rectsBounds, type Rect } from '../../../core/grid/rect';
+import { fitCells, makeCanvas, sizeToCssBox } from '../../shared/viewport/dom-canvas';
 
 /** One preview grid the scan posts, as the painter reads it. */
 interface ScanPicturePreview {
@@ -51,9 +53,6 @@ export interface ScanPictureLook {
   /** The frame's glide toward everything read. */
   readonly followMs: number;
 }
-
-/** A box in cells: `x0, y0` inclusive, `x1, y1` exclusive. */
-interface Box { x0: number; y0: number; x1: number; y1: number }
 
 /** Space kept around everything read, as a share of its larger side. */
 const FIT_MARGIN = 0.08;
@@ -106,42 +105,30 @@ class Layer<P extends ScanPicturePreview> {
         this.born[i] = born;
       }
     }
-    const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
-    const ctx = canvas?.getContext('2d') ?? null;
-    if (canvas && ctx) {
-      canvas.width = Math.max(1, cols);
-      canvas.height = Math.max(1, rows);
-      this.canvas = canvas;
-      this.image = ctx.createImageData(canvas.width, canvas.height);
-    } else {
-      this.canvas = null;
-      this.image = null;
-    }
+    const made = makeCanvas(cols, rows);
+    this.canvas = made?.canvas ?? null;
+    this.image = made ? made.ctx.createImageData(made.canvas.width, made.canvas.height) : null;
   }
 
   /** The units' box in cells. */
-  get box(): Box {
-    const p = this.preview, cell = this.read.vocabulary.cell;
-    return { x0: p.x / cell.width, y0: p.y / cell.height, x1: (p.x + p.cols * p.unitW) / cell.width, y1: (p.y + p.rows * p.unitH) / cell.height };
+  get box(): Rect {
+    return this.unitsBox({ x: 0, y: 0, w: this.preview.cols, h: this.preview.rows });
   }
 
   /** The box of the units read, in cells, or null. */
-  seenBox(): Box | null {
-    const { cols, rows, unitW, unitH, x, y } = this.preview;
-    const { cell, unseen } = this.read.vocabulary;
-    let c0 = Infinity, r0 = Infinity, c1 = -Infinity, r1 = -Infinity;
-    for (let i = 0; i < cols * rows; i++) {
-      if (this.cls[i] === unseen) continue;
-      const c = i % cols, r = Math.floor(i / cols);
-      if (c < c0) c0 = c;
-      if (c > c1) c1 = c;
-      if (r < r0) r0 = r;
-      if (r > r1) r1 = r;
-    }
-    if (!(c1 >= c0)) return null;
+  seenBox(): Rect | null {
+    const { cols, rows } = this.preview;
+    const unseen = this.read.vocabulary.unseen;
+    const seen = boundsWhere(cols, rows, (c, r) => this.cls[r * cols + c] !== unseen);
+    return seen && this.unitsBox(seen);
+  }
+
+  /** A box of units, in units from the grid's corner, as a box in cells. */
+  private unitsBox(units: Rect): Rect {
+    const { x, y, unitW, unitH } = this.preview, cell = this.read.vocabulary.cell;
     return {
-      x0: (x + c0 * unitW) / cell.width, y0: (y + r0 * unitH) / cell.height, x1: (x + (c1 + 1) * unitW) / cell.width,
-      y1: (y + (r1 + 1) * unitH) / cell.height,
+      x: (x + units.x * unitW) / cell.width, y: (y + units.y * unitH) / cell.height,
+      w: (units.w * unitW) / cell.width, h: (units.h * unitH) / cell.height,
     };
   }
 
@@ -178,9 +165,7 @@ class Layer<P extends ScanPicturePreview> {
   }
 }
 
-const union = (a: Box | null, b: Box | null): Box | null => (!a ? b : !b ? a : {
-  x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
-});
+const isRect = (r: Rect | null): r is Rect => r !== null;
 
 /** Steps `from` toward `to` by the share an exponential glide of time constant `tau` covers in `dt`. */
 const follow = (from: number, to: number, dt: number, tau: number) => (tau > 0 ? from + (to - from) * (1 - Math.exp(-dt / tau)) : to);
@@ -196,10 +181,10 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
   private coverage: Layer<P> | null = null;
   private ground: Layer<P> | null = null;
   /** The box the picture shows and the camera's view, as drawn and as aimed at, in cells. */
-  private shown: Box | null = null;
-  private aim: Box | null = null;
-  private view: Box | null = null;
-  private viewAim: Box | null = null;
+  private shown: Rect | null = null;
+  private aim: Rect | null = null;
+  private view: Rect | null = null;
+  private viewAim: Rect | null = null;
   private last = 0;
 
   /** Each class's colour is its zone's map colour. */
@@ -215,12 +200,12 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
     if (preview.kind === 'coverage') {
       this.coverage = new Layer(this.read, preview, this.coverage, now, animate);
       const v = preview.view;
-      this.viewAim = v ? { x0: v.x / cell.width, y0: v.y / cell.height, x1: (v.x + v.w) / cell.width, y1: (v.y + v.h) / cell.height } : null;
+      this.viewAim = v ? { x: v.x / cell.width, y: v.y / cell.height, w: v.w / cell.width, h: v.h / cell.height } : null;
     } else {
       this.ground = new Layer(this.read, preview, this.ground, now, animate);
       this.viewAim = null;
     }
-    this.aim = union(union(this.coverage?.seenBox() ?? null, this.ground?.box ?? null), this.viewAim);
+    this.aim = rectsBounds([this.coverage?.seenBox() ?? null, this.ground?.box ?? null, this.viewAim].filter(isRect));
     if (!animate || !this.shown) this.shown = this.aim;
     if (!animate || !this.view) this.view = this.viewAim;
     if (!this.viewAim) this.view = null;
@@ -243,41 +228,26 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
     let moving = false;
     if (this.coverage?.render(now, fade)) moving = true;
     if (this.ground?.render(now, fade)) moving = true;
-    const glide = (from: Box | null, to: Box | null): Box | null => {
+    const glide = (from: Rect | null, to: Rect | null): Rect | null => {
       if (!from || !to) return to;
-      const next = {
-        x0: follow(from.x0, to.x0, dt, tau), y0: follow(from.y0, to.y0, dt, tau), x1: follow(from.x1, to.x1, dt, tau),
-        y1: follow(from.y1, to.y1, dt, tau),
-      };
-      if (Math.max(Math.abs(next.x0 - to.x0), Math.abs(next.y0 - to.y0), Math.abs(next.x1 - to.x1), Math.abs(next.y1 - to.y1)) < SETTLED) return to;
+      const next = { x: follow(from.x, to.x, dt, tau), y: follow(from.y, to.y, dt, tau), w: follow(from.w, to.w, dt, tau), h: follow(from.h, to.h, dt, tau) };
+      if (Math.max(Math.abs(next.x - to.x), Math.abs(next.y - to.y), Math.abs(next.w - to.w), Math.abs(next.h - to.h)) < SETTLED) return to;
       moving = true;
       return next;
     };
     this.shown = glide(this.shown, this.aim);
     this.view = glide(this.view, this.viewAim);
 
-    const dpr = globalThis.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || canvas.width / dpr;
-    const cssH = canvas.clientHeight || canvas.height / dpr;
-    const backW = Math.max(1, Math.round(cssW * dpr));
-    const backH = Math.max(1, Math.round(cssH * dpr));
-    if (canvas.width !== backW) canvas.width = backW;
-    if (canvas.height !== backH) canvas.height = backH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const sized = sizeToCssBox(canvas);
+    if (!sized) return false;
+    const { ctx, cssW, cssH, scale: dpr } = sized;
     ctx.fillStyle = this.look.inset;
-    ctx.fillRect(0, 0, backW, backH);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     const box = this.shown;
     if (!box) return moving;
 
     // Fit the box less a margin, centred, cells square.
-    const bw = Math.max(1, box.x1 - box.x0);
-    const bh = Math.max(1, box.y1 - box.y0);
-    const pad = FIT_MARGIN * Math.max(bw, bh);
-    const cell = Math.min(cssW / (bw + 2 * pad), cssH / (bh + 2 * pad));
-    const ox = cssW / 2 - ((box.x0 + box.x1) / 2) * cell;
-    const oy = cssH / 2 - ((box.y0 + box.y1) / 2) * cell;
+    const { cell, x: ox, y: oy } = fitCells(cssW, cssH, box, 0, FIT_MARGIN * Math.max(1, box.w, box.h));
     ctx.setTransform(dpr * cell, 0, 0, dpr * cell, dpr * ox, dpr * oy);
     ctx.imageSmoothingEnabled = false;
 
@@ -296,7 +266,7 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
       if (!layer.canvas) return;
       const b = layer.box;
       ctx.globalAlpha = alpha;
-      ctx.drawImage(layer.canvas, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+      ctx.drawImage(layer.canvas, b.x, b.y, b.w, b.h);
       ctx.globalAlpha = 1;
     };
     if (this.coverage) paint(this.coverage, 1);
@@ -310,15 +280,17 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
         const cw = (g.unitW * chunk) / grid.width;
         const ch = (g.unitH * chunk) / grid.height;
         const S = CHUNK_GRID_STYLE.planetPreview;
-        ctx.strokeStyle = CHUNK_INK;
+        const lines = (from: number, to: number, step: number): number[] => {
+          const at: number[] = [];
+          for (let v = from; v < to - 1e-6; v += step) at.push(v);
+          return at;
+        };
+        ctx.fillStyle = CHUNK_INK;
         ctx.globalAlpha = S.opacity;
-        ctx.lineWidth = S.widthPx / cell;
-        ctx.setLineDash([CHUNK_GRID_STYLE.dashCells, CHUNK_GRID_STYLE.gapCells]);
-        ctx.beginPath();
-        for (let x = b.x0; x <= b.x1 + 1e-6; x += cw) { ctx.moveTo(x, b.y0); ctx.lineTo(x, b.y1); }
-        for (let y = b.y0; y <= b.y1 + 1e-6; y += ch) { ctx.moveTo(b.x0, y); ctx.lineTo(b.x1, y); }
-        ctx.stroke();
-        ctx.setLineDash([]);
+        const frame = { x: b.x, y: b.y, width: b.w, height: b.h };
+        for (const r of chunkDashRects(frame, lines(b.x, b.x + b.w, cw), lines(b.y, b.y + b.h, ch), chunkStrokeCells(cell, S.widthPx))) {
+          ctx.fillRect(r.x, r.y, r.width, r.height);
+        }
         ctx.globalAlpha = 1;
       }
     }
@@ -328,8 +300,8 @@ export class ScanPreviewPainter<P extends ScanPicturePreview> {
       ctx.lineWidth = VIEW_LINE / cell;
       ctx.beginPath();
       // Older engines draw the view square.
-      if (typeof ctx.roundRect === 'function') ctx.roundRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0, VIEW_RADIUS);
-      else ctx.rect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(v.x, v.y, v.w, v.h, VIEW_RADIUS);
+      else ctx.rect(v.x, v.y, v.w, v.h);
       ctx.fillStyle = this.look.viewInk;
       ctx.globalAlpha = VIEW_FILL;
       ctx.fill();

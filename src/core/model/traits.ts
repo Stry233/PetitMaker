@@ -40,6 +40,11 @@ export const isStructureRole = (role: CategoryRole | undefined): boolean => role
 /** Whether the item is a surface coating; false for a missing item. */
 export const isCoatingItem = (item: CatalogItem | undefined | null): boolean => !!item && isCoating(item);
 
+/** Whether the item refuses another of its kind beside it (`exclusionRadius`), so a row of it is a row
+ *  of refusals; false for a missing item. */
+export const refusesOwnNeighbour = (item: CatalogItem | undefined | null): boolean =>
+  !!item && hasTrait(item, 'exclusionRadius');
+
 /** Whether the item spans water between two flat ends (`waterSpan`). */
 export const isBridge = (item: CatalogItem | undefined | null): boolean => !!item && hasTrait(item, 'waterSpan');
 

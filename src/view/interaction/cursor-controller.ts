@@ -151,9 +151,24 @@ function apply(): void {
   surface.style.cursor = value;
 }
 
+let unwatchPreference: (() => void) | null = null;
+
+/** The system-cursors preference rewrites what every id resolves to without touching any state
+ *  here, so from its first surface on the controller hears the store and resolves again on a flip. */
+function watchPreference(): void {
+  if (unwatchPreference) return;
+  let last = useEditorStore.getState().systemCursors;
+  unwatchPreference = useEditorStore.subscribe((s) => {
+    if (s.systemCursors === last) return;
+    last = s.systemCursors;
+    apply();
+  });
+}
+
 /** Register the view whose element cursors are written to. Pass null on unmount; the outgoing
  *  element is cleared so a stale cursor cannot outlive the view that set it. */
 export function registerCursorSurface(el: HTMLElement | null): void {
+  if (el) watchPreference();
   base = el;
   retarget();
   apply();
@@ -177,7 +192,7 @@ export function releaseCursorSurface(el: HTMLElement | null): void {
  */
 export function pushCursorSurface(el: HTMLElement | null, cursor: CursorId | null = null): () => void {
   const claim: OverlayClaim | null = el ? { el, cursor } : null;
-  if (claim) overlays.push(claim);
+  if (claim) { watchPreference(); overlays.push(claim); }
   retarget();
   apply();
   let released = false;
@@ -238,15 +253,6 @@ export function setCursorBusy(busy: boolean): void {
   apply();
 }
 
-/**
- * Resolve the current state again and write it if it changed. Every other entry point is a state
- * setter, and the system-cursors preference rewrites what every id resolves to underneath this
- * module without touching any state here, so nothing else would re-resolve after a flip.
- */
-export function refreshCursor(): void {
-  apply();
-}
-
 /** Test-only: forget the surface and go back to defaults. */
 export function __resetCursorController(): void {
   state = { ...DEFAULT_STATE };
@@ -256,4 +262,6 @@ export function __resetCursorController(): void {
   surfaceOwn = '';
   applied = '';
   driveBusyRing(false);
+  unwatchPreference?.();
+  unwatchPreference = null;
 }

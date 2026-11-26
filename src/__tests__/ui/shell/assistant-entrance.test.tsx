@@ -29,7 +29,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 function mountShell() {
   return render(
     <I18nProvider>
-      <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+      <Shell><div data-testid="map-views" /></Shell>
     </I18nProvider>,
   );
 }
@@ -98,7 +98,7 @@ describe('a pictured shell', () => {
     render(
       <I18nProvider>
         <UiPreviewProvider pose={{ viewport: { w: 1280, h: 720 } }}>
-          <Shell onRestoreSession={() => {}}>{null}</Shell>
+          <Shell>{null}</Shell>
         </UiPreviewProvider>
       </I18nProvider>,
     );

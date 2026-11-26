@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { ArrivalToast } from '../../../../ui/chrome/floating/ArrivalToast';
-import { __resetArrivals, announceArrival } from '../../../../ui/session/arrival-bus';
+import { __resetArrivals, announceArrival } from '../../../../editor/session/arrival';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../../_support/tour';
 import { I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';

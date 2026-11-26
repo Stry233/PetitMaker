@@ -1,26 +1,26 @@
 /** The rail's view kit: the 2D/3D switch, the hide toggle, fit, zoom and the turns. */
 import type { Ref } from 'react';
-import { group, useRailReflow, RailButton } from './RailButton';
+import { group, RailButton } from './RailButton';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { helpTargetAttr } from '../../session/help-targets';
 import { hasWebGL2 } from '../../../platform/device/device-quality';
 import { useT } from '../../../i18n/context';
-import { host } from '../../../editor/host/host';
 import { useEditorStore } from '../../../state/store';
+import type { FramePose } from '../../../state/frame-pose';
+import { sessionOffers } from '../../../state/session-offer';
+import { interfaceHideable } from '../../../state/slices/blueprint';
 import { FitIcon as FitGlyph } from '../../primitives/line-glyphs';
-import { useScaleMoving } from '../../design/scale';
 import {
-  apparentSize, FIT_BOX, FIT_INK, FIT_TRIM, GLYPHS, ZOOM_BUTTONS, viewKitCell,
+  apparentSize, FIT_BOX, FIT_INK, FIT_TRIM, GLYPHS, viewKitCell,
 } from '../frame';
 import type { RailPlan } from '../frame-plan';
 import { GlyphIcon } from '../GlyphIcon';
-import { MOTIONS } from '../../design/motion/registry';
-import { useTransition } from '../../design/motion/use-motion';
 import { usePlanGlide } from '../frame-layout';
 import { INK } from '../../design/tokens';
 import { useFrameReadableWeight } from '../use-frame-zoom';
 import { RAIL } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { useRunCommand } from '../use-shell-commands';
 import { useMorphGroup } from '../../primitives/morph';
 
@@ -29,58 +29,40 @@ function FitIcon() {
   const box = FIT_BOX * FIT_TRIM * (RAIL.glyph / apparentSize(FIT_INK));
   return <span style={{ display: 'flex', width: box, height: box, flex: 'none' }}><FitGlyph size={box} /></span>;
 }
-/** How far the camera turns per press of a yaw button, in the units `camera.orbit` takes (screen px
- *  of drag), which is the only turn verb both views answer to. */
-const YAW_STEP = 60;
 /** Ms between repeats while a stepper is held: zoom and the turns repeat, the toggles and fit do not. */
 const STEP_REPEAT = 90;
 /** The two turns, named from the visitor's side: `dir: 1` is a drag to the right, carrying the planet that way. */
 const YAW_TURNS = [
-  { dir: -1, flip: true, labelKey: 'a11y.rotate_left', tourTarget: 'turn-left' },
-  { dir: 1, flip: false, labelKey: 'a11y.rotate_right', tourTarget: 'turn-right' },
+  { dir: -1, direction: 'left', flip: true, labelKey: 'a11y.rotate_left', tourTarget: 'turn-left' },
+  { dir: 1, direction: 'right', flip: false, labelKey: 'a11y.rotate_right', tourTarget: 'turn-right' },
 ] as const;
-/** The planet session's kit: fit, zoom in and zoom out, standing where the view switch and the hide
- *  toggle (`SESSION_VEILED`, the kit's first two cells) stood. */
-const SESSION_KIT = 3;
-const SESSION_VEILED = 2;
-/** How far under its own size a yaw button starts and ends. The registry's amplitude is how far it
- *  travels, and this shape is that travel spent on a scale. */
-const YAW_FROM = 1 - MOTIONS['rail.yaw.offer'].amplitude;
-/** A yaw button coming and going, on one motion in both directions: it is one fact either way. The
- *  transition rides each target rather than the element, so the press feedback keeps its own. */
-const yawArrival = (offer: Record<string, unknown>) => ({
-  initial: { opacity: 0, scale: YAW_FROM },
-  animate: { opacity: 1, scale: 1, transition: offer },
-  exit: { opacity: 0, scale: YAW_FROM, transition: offer },
-});
+/** The commands of the kit's first two cells, the view switch and the hide toggle: a session that
+ *  offers neither keeps the camera steps alone, standing where the two stood. */
+const LEAD = ['view.toggle', 'view.interface_hidden'] as const;
 /**
  * The view kit: the 2D/3D switch, the hide toggle, fit, zoom and the turns. The hide toggle is the one
  * button left standing when the interface is away, dimmed until reached for, so the way back is the
  * press that was the way out.
  */
-export function ViewKit({ boxRef, plan, right, hidden, onHide, session, drawnTop }: {
-  boxRef?: Ref<HTMLDivElement>; plan: RailPlan; right: number; hidden: boolean; onHide: () => void; session: boolean;
-  /** Where the live rail writer last drew the kit (`frame-layout.tsx:DrawnRail`). */
-  drawnTop?: () => number | null;
+export function ViewKit({ boxRef, plan, right, hidden, onHide, pose }: {
+  boxRef?: Ref<HTMLDivElement>; plan: RailPlan; right: number; hidden: boolean; onHide: () => void; pose: FramePose;
 }) {
   const t = useT();
-  const zooming = useScaleMoving();
   const glide = usePlanGlide('frame.layout.adapt');
   const weightAt = useFrameReadableWeight();
-  const offer = useTransition('rail.yaw.offer');
   const viewMode = useEditorStore((s) => s.viewMode);
+  const hideable = useEditorStore(interfaceHideable);
   const run = useRunCommand();
   const webgl2 = hasWebGL2();
   // The fill direction follows the buttons on screen, not the planned complement; a planet session keeps
-  // only the camera steps.
-  // Without the steppers (`RailPlan.steppers`, touch mode) the kit is its first three buttons in either view.
-  const zoomCells = plan.steppers ? ZOOM_BUTTONS : 0;
-  const shown = session ? SESSION_KIT - ZOOM_BUTTONS + zoomCells
-    : plan.kitButtons - (plan.steppers && viewMode !== '3d' ? YAW_TURNS.length : 0);
-  const cell = (i: number) => viewKitCell(session ? Math.max(0, i - SESSION_VEILED) : i, shown, plan.kitFiles);
+  // only the camera steps. Without the steppers (`RailPlan.steppers`, touch mode) the kit is its first
+  // three buttons in either view.
+  const [switchOffered, hideOffered] = LEAD.map((id) => sessionOffers(pose, id));
+  const veiledCells = LEAD.length - (switchOffered ? 1 : 0) - (hideOffered ? 1 : 0);
+  const shown = plan.kitButtons - veiledCells;
+  const cell = (i: number) => viewKitCell(Math.max(0, i < LEAD.length && switchOffered ? i : i - veiledCells), shown, plan.kitFiles);
   /** A row an upright panel stands over steps aside while it is open (`RailPlan.kitRows`). */
   const under = (i: number) => plan.kitRows !== undefined && cell(i).row > plan.kitRows;
-  const offset = useRailReflow(0, plan.kitTop, String(plan.kitFiles), zooming, drawnTop);
   return (
     <motion.div
       ref={boxRef}
@@ -90,9 +72,8 @@ export function ViewKit({ boxRef, plan, right, hidden, onHide, session, drawnTop
       {...mapEdgeAttr('right')}
       style={{
         ...group,
-        ...offset,
         top: plan.kitTop, right,
-        transition: zooming ? undefined : glide(['top', 'right']),
+        transition: glide(['top', 'right']),
         // Explicit cells keep exiting yaw buttons from reflowing the remaining controls.
         display: 'grid',
         gridTemplateColumns: `repeat(${plan.kitFiles}, ${RAIL.button}px)`,
@@ -108,12 +89,12 @@ export function ViewKit({ boxRef, plan, right, hidden, onHide, session, drawnTop
         files={plan.kitFiles}
         cell={cell(0)}
         grow="left"
-        veiled={hidden || session || under(0)}
+        veiled={hidden || !switchOffered || under(0)}
         unavailable={!webgl2}
         tourTarget="view3d"
         onPress={() => run('view.toggle')}
       >
-        <span style={{ fontSize: RAIL.viewLabel, fontWeight: weightAt(900, RAIL.viewLabel), color: INK }}>{viewMode.toUpperCase()}</span>
+        <span style={{ fontSize: roleSize('lead'), fontWeight: weightAt(900, roleSize('lead')), color: INK }}>{viewMode.toUpperCase()}</span>
       </RailButton>
       <RailButton
         morph="hide"
@@ -123,7 +104,8 @@ export function ViewKit({ boxRef, plan, right, hidden, onHide, session, drawnTop
         cell={cell(1)}
         grow="left"
         dim={hidden}
-        veiled={session || (!hidden && under(1))}
+        veiled={!hideOffered || (!hidden && under(1))}
+        unavailable={!hidden && !hideable}
         onPress={onHide}
       >
         <GlyphIcon glyph={GLYPHS.hideUi} size={RAIL.glyph} />
@@ -170,30 +152,23 @@ export function ViewKit({ boxRef, plan, right, hidden, onHide, session, drawnTop
         <GlyphIcon glyph={GLYPHS.zoomOut} size={RAIL.glyph} />
       </RailButton>
       </> : null}
-      {/*
-        The turns arrive and leave in the kit's last row: the kit is planned for its full complement and every
-        button holds an explicit cell, so a leaving turn moves nothing. Each is its own keyed child for
-        `AnimatePresence`.
-      */}
-      <AnimatePresence initial={false}>
-        {viewMode === '3d' && !session && plan.steppers ? YAW_TURNS.map(({ dir, flip, labelKey, tourTarget }) => (
+      {/* The turns stand and leave with the zoom pair, as the input mode's morph carries them. */}
+      {plan.steppers ? YAW_TURNS.map(({ dir, direction, flip, labelKey, tourTarget }) => (
           <RailButton
             key={dir}
             morph={`turn-${dir}`}
             label={t(labelKey)}
-            arrival={yawArrival(offer)}
             files={plan.kitFiles}
             cell={cell(plan.kitButtons - YAW_TURNS.length + YAW_TURNS.findIndex((y) => y.dir === dir))}
             grow="left"
             repeat={STEP_REPEAT}
             veiled={hidden || under(plan.kitButtons - YAW_TURNS.length + YAW_TURNS.findIndex((y) => y.dir === dir))}
             tourTarget={tourTarget}
-            onPress={() => host.camera.orbit(dir * YAW_STEP, 0)}
+            onPress={() => run('camera.turn', { direction })}
           >
             <GlyphIcon glyph={GLYPHS.rotate} size={RAIL.glyph} flip={flip} />
           </RailButton>
         )) : null}
-      </AnimatePresence>
     </motion.div>
   );
 }

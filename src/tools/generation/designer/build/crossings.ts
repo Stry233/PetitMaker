@@ -10,7 +10,7 @@
  * the streets do not reach is an ornament standing over the water.
  */
 import { flatIndex } from '../../../../core/grid/rect';
-import { surfaceElevation } from '../../../../core/domain/terrain/terrain-surface';
+import { isWaterAt, surfaceAt } from '../../../macros/terrain/terrain';
 import type { Rng } from '../../../../core/base/rng';
 import {
   TerrainType, type GridState, type MacroCoord, type PlacedObject,
@@ -22,7 +22,8 @@ import { crossingPool } from '../../../placement/crossings';
 import { removePlaced, tryPlace, type PlaceCtx } from '../../../placement/object';
 import type { RampSpec, StreetPlan } from '../streets/model';
 import { connector, type PaveGround, type Paving } from './paving';
-import { spanInScope, type Scope } from './scope';
+import { spanInScope } from './scope';
+import type { Scope } from '../../terrain-plan/scope';
 
 /**
  * The street plan's flights, laid as ramps.
@@ -231,18 +232,9 @@ function bank(state: GridState, x: number, y: number, step: { dx: number; dy: nu
     const nx = x + dx * k, ny = y + dy * k;
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) return null;
     if (isGroundWater(state, nx, ny)) continue;
-    return surfaceAt(state, nx, ny) === 0 ? { x: nx, y: ny } : null;
+    return !isWaterAt(state, nx, ny) && surfaceAt(state, nx, ny) === 0 ? { x: nx, y: ny } : null;
   }
   return null;
-}
-
-/** The standable surface of a cell (`surfaceElevation`, the tier placement reads, so a corner patch
- *  reads as its base) for the crossing scans: -1 for water and for anything off the map, so a caller
- *  testing for level ground can ask one question. */
-function surfaceAt(state: GridState, x: number, y: number): number {
-  const cell = state.cells[y]?.[x];
-  if (!cell) return -1;
-  return cell.terrain?.type === TerrainType.Water ? -1 : surfaceElevation(cell.terrain);
 }
 
 const isGroundWater = (state: GridState, x: number, y: number): boolean => {

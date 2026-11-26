@@ -4,8 +4,7 @@ import { AskDeck, deckRuns } from './AskDeck';
 import { GateBlock } from './GateBlock';
 import { OptionPick, optionAskFrom } from './OptionPick';
 import { PlanGate } from './PlanGate';
-
-type GateAnswer = (gateId: string, answer: 'allow' | 'skip' | 'words', words?: string) => void;
+import type { GateReply } from '../panel-shell-props';
 
 /** Whether the current job's asks draw any card at all. */
 export function asksStand(view: PanelView): boolean {
@@ -24,12 +23,12 @@ export function AskStack({ view, drafting, openDecks, onDeckChange, gateThumb, o
   onDeckChange(deckId: string, open: boolean): void;
   gateThumb?(ask: AskRecord): ReactNode;
   optionThumb?(option: GateOption): ReactNode;
-  onGateAnswer: GateAnswer;
+  onGateAnswer(gateId: string, reply: GateReply): void;
 }) {
   const cardFor = (ask: AskRecord): ReactNode => {
     const answerable = view.gate?.gateId === ask.gateId;
     const answer = (a: 'allow' | 'skip') => onGateAnswer(ask.gateId, a);
-    const inWords = (words: string) => onGateAnswer(ask.gateId, 'words', words);
+    const inWords = (words: string) => onGateAnswer(ask.gateId, { words });
     if (ask.options) {
       const pick = optionAskFrom(ask, optionThumb ? (option) => optionThumb(option) : undefined);
       return pick ? (
@@ -37,7 +36,7 @@ export function AskStack({ view, drafting, openDecks, onDeckChange, gateThumb, o
           key={ask.gateId}
           ask={pick}
           answerable={answerable}
-          onPick={(index) => { inWords(pick.cards[index]?.cap ?? ''); }}
+          onPick={(option) => onGateAnswer(ask.gateId, { option })}
           onDecline={() => answer('skip')}
         />
       ) : null;

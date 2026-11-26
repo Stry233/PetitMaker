@@ -169,6 +169,7 @@ describe('applyMacro', () => {
     const { kit, exec, state, registry } = setup();
     const cap: PostStrokeRule = {
       id: 'V-TEST-CAP',
+      description: 'A rule this test registers.',
       phase: 'post-stroke',
       validate: (s) => (s.objects.size > 5
         ? [{ ruleId: 'V-TEST-CAP', message: 'more than five objects', cells: [], grid: 'object' }]

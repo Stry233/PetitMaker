@@ -1,10 +1,11 @@
 /**
- * The object index is memoized per GridState and patched from `state.objectsDelta`, since a stroke
+ * The object index is memoized per objects Map and patched from `state.objectsDelta`, since a stroke
  * changes objects once per cell and a rebuild costs a catalog lookup and bucketing per object. A
  * patched index must equal one built from scratch, and a delta it cannot trust forces a rebuild.
  */
 import { describe, it, expect } from 'vitest';
-import { bumpObjectsVersion } from '../../core/model/grid-model';
+import { bumpObjectsVersion, cloneGridState, scratchGrid } from '../../core/model/grid-model';
+import { TerrainType } from '../../core/model/types';
 import type { GridState, PlacedObject } from '../../core/model/types';
 import { entriesCovering, entriesNear, getObjectIndex, objectAt, type ObjectIndex } from '../../state/object-index';
 import { __setCatalogItem } from '../../state/catalog';
@@ -35,7 +36,7 @@ function remove(state: GridState, ...objs: PlacedObject[]): void {
 }
 
 /** A from-scratch index over the same objects in the same Map order: a second
- *  GridState is a different memo key, so this can never return a patched index. */
+ *  objects Map is a different memo key, so this can never return a patched index. */
 function rebuilt(state: GridState): ObjectIndex {
   const fresh = makeState(state.template.width, state.template.height);
   for (const [id, obj] of state.objects) fresh.objects.set(id, obj);
@@ -205,6 +206,50 @@ describe('object-index: falls back to a rebuild rather than serving a stale inde
     add(state, c);
 
     expect(getObjectIndex(state).entries.map(e => e.obj.id)).toEqual(['a', 'b', 'c']);
+    expectMatchesRebuild(state);
+  });
+});
+
+describe('object-index: a copy of a map', () => {
+  it('reads its map\'s own index while it shares the map\'s objects, whatever its terrain', () => {
+    const state = makeState(24, 24);
+    add(state, tree('a', 1, 1), road('r', 3, 3));
+    const index = getObjectIndex(state);
+    const scratch = scratchGrid(state, [{ x: 1, y: 1 }]);
+    scratch.cells[1]![1]!.terrain = { type: TerrainType.Mountain, elevation: 2 };
+    expect(getObjectIndex(scratch)).toBe(index);
+    expectMatchesRebuild(scratch);
+  });
+
+  it('with objects of its own, sees its own after an edit, and the map keeps seeing its own', () => {
+    const state = makeState(24, 24);
+    add(state, tree('a', 1, 1), road('r', 3, 3));
+    getObjectIndex(state);
+    const copy = cloneGridState(state);
+    add(copy, tree('b', 5, 5));
+    remove(copy, copy.objects.get('a')!);
+    expect(getObjectIndex(copy).byId.has('b')).toBe(true);
+    expect(getObjectIndex(copy).byId.has('a')).toBe(false);
+    expectMatchesRebuild(copy);
+    expect(getObjectIndex(state).byId.has('a')).toBe(true);
+    expect(getObjectIndex(state).byId.has('b')).toBe(false);
+    expectMatchesRebuild(state);
+  });
+
+  it('read after its map\'s objects changed under it, sees what the map holds now, and so does the map', () => {
+    const state = makeState(24, 24);
+    add(state, tree('a', 1, 1));
+    const scratch = scratchGrid(state, []);
+    getObjectIndex(scratch);
+    add(state, tree('c', 7, 7));
+    for (let i = 0; i < 3; i++) {
+      expect(getObjectIndex(scratch).byId.has('c')).toBe(true);
+      expectMatchesRebuild(scratch);
+      expectMatchesRebuild(state);
+    }
+    remove(state, state.objects.get('a')!);
+    expect(getObjectIndex(scratch).byId.has('a')).toBe(false);
+    expectMatchesRebuild(scratch);
     expectMatchesRebuild(state);
   });
 });

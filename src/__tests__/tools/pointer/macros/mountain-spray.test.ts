@@ -11,7 +11,7 @@ import { cell, point } from '../../../_support/grid';
 const active: Array<() => void> = [];
 function setup(size = 1) {
   const state = makeState(48, 48), executor = makeExecutor(state);
-  const ctx = makeToolCtx(state, executor, size, 1, { brushSize: size, armedMacro: 'raise', armingEpoch: 1, region: [] });
+  const ctx = makeToolCtx(state, executor, size, { brushSize: size, armedMacro: 'raise', armingEpoch: 1, region: [] });
   const tool = new MacroTool();
   const down = (x = 12, y = 24) => tool.onPointerDown(cell({ x, y }), point({ x: x * 2, y: y * 2 }), ctx);
   const move = (x: number, y = 24) => tool.onPointerMove(cell({ x, y }), point({ x: x * 2, y: y * 2 }), ctx);
@@ -77,7 +77,7 @@ describe('mountain spray', () => {
       const stroke = begin();
       return { get size() { return stroke.size; }, commands: () => stroke.commands(), entries: () => stroke.entries(),
         commit: (opts) => stroke.commit(opts), rollback: () => stroke.rollback(), collapse: () => { stroke.collapse(); s.move(36); },
-        setGeneration: (mark) => stroke.setGeneration(mark) };
+        setGeneration: (mark) => stroke.setGeneration(mark), setGroups: (groups) => stroke.setGroups(groups) };
     };
     s.down(); s.up(36);
     expect(s.state.cells[24]![36]!.terrain?.elevation).toBeGreaterThan(0);

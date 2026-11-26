@@ -45,6 +45,8 @@ export interface TrimmedCell {
    * turns the canonical state to face the way this tile connects.
    */
   road?: RoadConnSide;
+  /** A terrain cell's whole result: its type, layer, cuts and a patch's base, as the pass leaves it. */
+  terrain?: TerrainCell;
 }
 
 /**
@@ -139,6 +141,21 @@ function clipToScratch(cmd: Command, owns: (x: number, y: number) => boolean): C
   return null;      // the preview issues terrain commands only
 }
 
+/** `state` with `before` run over `cells` alone, on a scratch: the ground a curve tweak's plan reads
+ *  once the previous curve is off the map. `state` itself when there is nothing to run. */
+export function scratchAfter(state: GridState, cells: readonly MacroCoord[], before: readonly Command[]): GridState {
+  if (before.length === 0) return state;
+  const owned = new Set(cells.map((c) => cellKey(c.x, c.y)));
+  const owns = (x: number, y: number) => owned.has(cellKey(x, y));
+  const scratch = scratchGrid(state, cells);
+  const silentBus = new EventBus<EditorEvents>();
+  for (const cmd of before) {
+    const clipped = clipToScratch(cmd, owns);
+    if (clipped) applyCommand(clipped, scratch, silentBus, applyTrim);
+  }
+  return scratch;
+}
+
 /**
  * Run the stroke and its trim pass on a scratch grid, and report every cell that ends up with a
  * shape a square ghost would misdraw.
@@ -198,7 +215,7 @@ export function previewAutoTrim(
     if (!t || t.type === TerrainType.None) continue;
     if (isSquareCorners(t.corners) && !t.patchOnly) continue;
     if (!shape.contains(x, y) && shapeSig(t) === was.get(cellKey(x, y))) continue;
-    out.push({ x, y, corners: t.corners ?? [...SQUARE_CORNERS], patch: !!t.patchOnly });
+    out.push({ x, y, corners: t.corners ?? [...SQUARE_CORNERS], patch: !!t.patchOnly, terrain: { ...t } });
   }
   return out;
 }

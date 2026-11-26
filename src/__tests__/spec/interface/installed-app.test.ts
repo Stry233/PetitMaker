@@ -5,10 +5,10 @@
  * the display mode stand in for the browser's.
  */
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { spec } from '../../_support/spec';
 import { installInstalledImmersive } from '../../../platform/device/installed-immersive';
-import { useFullscreen } from '../../../ui/primitives/use-fullscreen';
+import { runCommand } from '../../../editor/commands/run';
 import { removePref } from '../../../platform/storage/prefs';
 
 let fullscreen: Element | null = null;
@@ -57,14 +57,14 @@ describe('the installed app', () => {
     displayMode(true);
     let off = installInstalledImmersive();
     tap();
-    const { result } = renderHook(() => useFullscreen());
-    await act(async () => { result.current.toggle(); });
+    const settingsButton = () => act(async () => { await runCommand('view.fullscreen'); });
+    await settingsButton();
     expect(exit).toHaveBeenCalledTimes(1);
     off();
     off = installInstalledImmersive();
     tap();
     expect(request).toHaveBeenCalledTimes(1);
-    await act(async () => { result.current.toggle(); });
+    await settingsButton();
     expect(request).toHaveBeenCalledTimes(2);
     off();
     await act(async () => { await document.exitFullscreen(); });

@@ -4,7 +4,7 @@ Thanks for your interest in PetitMaker, an unofficial map editor for *Petit Plan
 
 ## At a glance
 
-- **Code contributions** are licensed **inbound = outbound** under **Apache-2.0**.
+- **Code contributions** are licensed **inbound = outbound** under **FSL-1.1-ALv2**, the Functional Source License with Apache-2.0 as its future license.
 - Every commit must carry a **Developer Certificate of Origin** sign-off (`Signed-off-by:`), added with `git commit -s`.
 - **Contributors retain copyright** in their contributions; you license your work to the project, you do not assign ownership to it.
 - **Art / non-code asset contributions** require separate **written permission** before they can be merged.
@@ -71,9 +71,9 @@ By making a contribution to this project, I certify that:
 
 ## Code license (inbound = outbound)
 
-Code contributions are accepted under **Apache-2.0**, the same license the project ships under (see `LICENSE` and `NOTICE`). By signing off, you license your code contribution to the project and its users under Apache-2.0.
+Code contributions are accepted under **FSL-1.1-ALv2**, the same license the project ships under (see `LICENSE` and `NOTICE`). By signing off, you license your code contribution to the project and its users under FSL-1.1-ALv2, including its grant of the Apache License, Version 2.0 on the second anniversary of the date the version containing it is made available. Contributions to versions up to and including v2.0.916, which shipped under Apache-2.0, stay licensed under Apache-2.0.
 
-**You retain copyright** in your contributions. The project does not require copyright assignment and does not act as a collective owner of your work. The copyright stays with each contributor, licensed under Apache-2.0 (see `docs/ASSET_LICENSES.md` for the full code-vs-brand-vs-asset scope split).
+**You retain copyright** in your contributions. The project does not require copyright assignment and does not act as a collective owner of your work. The copyright stays with each contributor, licensed under FSL-1.1-ALv2 (see `docs/ASSET_LICENSES.md` for the full code-vs-brand-vs-asset scope split).
 
 ## Art & non-code asset contributions
 

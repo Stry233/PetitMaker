@@ -1,7 +1,6 @@
 /**
- * Every `panel.*` motion in the registry has a call site, and no panel source times its own motion.
- * The scan mirrors `__tests__/ui/design/motion-registry.test.ts`; pose keyframes live in
- * `character/poses.ts` and are out of scope.
+ * Every `panel.*` motion in the registry has a call site; that no source times its own motion is
+ * `__tests__/ui/design/motion-registry.test.ts`'s scan, over every layer.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -11,7 +10,6 @@ import {
   cssMotion, flipProfile, framerMotion, outMotion, outSeconds, seconds, turnSeconds,
 } from '../../../ui/design/motion';
 import { repoFiles } from '../../_support/source-graph';
-import EXEMPT from './motion-wiring-allowlist.json';
 
 const DIR = 'src/ui/agent';
 
@@ -36,28 +34,6 @@ describe('every declared panel motion has a runner', () => {
   it('names every one of them at a call site', () => {
     const unwired = panelIds.filter((id) => !allText.includes(`'${id}'`) && !allText.includes(`"${id}"`));
     expect(unwired).toEqual([]);
-  });
-});
-
-describe('no panel motion is chosen at a call site', () => {
-  // The shell's offender set, plus a number in a hand-written CSS transition or animation string.
-  const OFFENDER = /duration:\s*[0-9.]+|stiffness:\s*[0-9]+|damping:\s*[0-9]+|cubic-bezier\(|ease:\s*\[|transition:\s*[`'"][^`'"]*[0-9]s|animation:\s*[`'"][^`'"]*[0-9]s/;
-  /** The files and folders (trailing slash) that time their own motion, each with its reason in
-   *  `motion-wiring-allowlist.json`. */
-  const exempt = (path: string): string | undefined =>
-    Object.keys(EXEMPT).find((entry) => (entry.endsWith('/') ? path.startsWith(entry) : path === entry));
-  const offences = (path: string, text: string): string[] => text.split('\n').flatMap((line: string, i: number) => (
-    OFFENDER.test(line) ? [`${path}:${i + 1}${line.trim()}`] : []
-  ));
-
-  it('takes every duration and curve from the registry', () => {
-    const found = files.filter(({ path }) => !exempt(path)).flatMap(({ path, text }) => offences(path, text));
-    expect(found).toEqual([]);
-  });
-
-  it('exempts only files that still time their own motion', () => {
-    const timing = new Set(files.filter(({ path, text }) => offences(path, text).length > 0).map(({ path }) => exempt(path)));
-    expect(Object.keys(EXEMPT).filter((entry) => !timing.has(entry))).toEqual([]);
   });
 });
 

@@ -40,7 +40,7 @@ function camera(view: '2d' | '3d', state: GridState): { projection: ViewProjecti
 }
 
 beforeEach(() => setStoreState({
-  autoEdgeCut: 'off', layerPinned: false, layerVisibility: {}, eraserShape: 'free',
+  autoEdgeCut: 'off', layerVisibility: {}, eraserShape: 'free',
   ...armedEditMode({ content: 'mountain', tool: ToolType.TerrainBrush }),
 }));
 
@@ -58,7 +58,6 @@ describe.each(['2d', '3d'] as const)('%s terrain pointer alignment', (view) => {
       ...headlessViewVerbs(),
     });
     manager.setActiveTool(action === 'erase' ? ToolType.Eraser : ToolType.TerrainBrush);
-    setStoreState({ activeLayer: action === 'raise' ? 2 : 1 });
     const p = point(action === 'build' ? GROUND_SLAB_Y : layerToY(1));
     expect(cellUnder(projection, p.x, p.y, 'object')).toEqual({ x: 4, y: 4 });
     manager.handlePointerMove(p.x, p.y);
@@ -107,7 +106,7 @@ describe('3d press at a grazing camera', () => {
       overlay: { showGhost() {}, clearGhost() {}, flashCommit() {} } as unknown as EditorView['overlay'],
       ...headlessViewVerbs(),
     });
-    setStoreState({ activeLayer: 1, drawingBrushSize: 3 });
+    setStoreState({ drawingBrushSize: 3 });
     manager.setActiveTool(ToolType.TerrainBrush);
     manager.handlePointerDown(400, 300);
     for (let i = 0; i < 8; i++) manager.handlePointerMove(400, 300);

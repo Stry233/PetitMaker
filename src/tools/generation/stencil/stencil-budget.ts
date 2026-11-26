@@ -1,12 +1,13 @@
 import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import type { StencilPlan } from '../recipe';
-import { catalogLoadValue, getCatalogItem } from '../../../state/catalog';
+import { catalogLoadValue } from '../../../state/catalog';
 import { LoadBudget } from '../../../state/load-budget';
 import type { ColorEntry } from './stencil-palette';
 import { detectFeatures, FEATURE_MAX } from './stencil-feature';
 import { coherentAreas } from './stencil-areas';
 import { colorDistance } from './color';
+import { pieceSize, pieceTurn } from './stencil-piece';
 import { stencilStrokePaths } from './stencil-text-grid';
 
 type StencilMatches = (ColorEntry | null)[];
@@ -19,7 +20,7 @@ const COLOR_EDGE = 24;
 
 function objectAt(plan: StencilPlan, index: number, catalogId: string): PlacedObject {
   return {
-    id: '', catalogId, rotation: 0, elevation: 0,
+    id: '', catalogId, rotation: pieceTurn(plan.facing, catalogId), elevation: 0,
     position: { x: plan.origin.x + index % plan.stencil.width, y: plan.origin.y + Math.floor(index / plan.stencil.width) },
   };
 }
@@ -164,10 +165,10 @@ export function budgetStencil(
   for (let i = 0; i < matches.length; i++) {
     const entry = matches[i];
     if (!entry) continue;
-    const item = plan.read === 'shape' ? getCatalogItem(entry.catalogId) : undefined;
+    const size = plan.read === 'shape' ? pieceSize(plan.facing, entry.catalogId) : { w: 1, h: 1 };
     const x = i % plan.stencil.width, y = Math.floor(i / plan.stencil.width);
-    for (let dy = 0; dy < Math.max(1, item?.height ?? 1); dy++) {
-      for (let dx = 0; dx < Math.max(1, item?.width ?? 1); dx++) coverage[(y + dy) * plan.stencil.width + x + dx] = 255;
+    for (let dy = 0; dy < size.h; dy++) {
+      for (let dx = 0; dx < size.w; dx++) coverage[(y + dy) * plan.stencil.width + x + dx] = 255;
     }
   }
   return { plan: { ...plan, stencil: { ...plan.stencil, coverage } }, matches, adapted: true };

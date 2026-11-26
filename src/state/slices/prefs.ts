@@ -10,9 +10,10 @@
  */
 import type { StateCreator } from 'zustand';
 import type { Locale } from '../../core/model/locale';
-import { GRID_MODES, readPref, removePref, writePref, type GridMode, type HintLevel, type MotionPref, type PrefId, type Quality3d, type ValueOf, type ViewMode, clampUiZoom, scaleProfileOf, UI_ZOOM_PREFS } from '../../platform/storage/prefs';
+import { readPref, removePref, writePref, type GridMode, type HintLevel, type MotionPref, type PrefId, type Quality3d, type ValueOf, type ViewMode, clampUiZoom, scaleLattice, scaleProfileOf, UI_ZOOM_DEFAULTS, UI_ZOOM_PREFS } from '../../platform/storage/prefs';
 import { readLayoutShape } from '../../platform/device/layout-shape';
 import type { InputMode } from '../../platform/device/input-mode';
+import { uiZoomReach } from '../ui-zoom-reach';
 import type { ShellSlice } from './shell';
 
 export type { GridMode, HintLevel, Quality3d, ViewMode };
@@ -21,7 +22,8 @@ export interface PrefsSlice {
   /** The UI scale in force (Ctrl +/-), independent of the map zoom: the current input mode's and
    *  arrangement's own preference (`UI_ZOOM_PREFS`), reloaded when either switches (`shell.ts`). */
   uiZoom: number;
-  /** Sets the UI scale of the input mode and arrangement in force. */
+  /** Sets the UI scale of the input mode and arrangement in force, no higher than the last stop the
+   *  window answers to (`ui-zoom-reach.ts`). */
   setUiZoom: (zoom: number) => void;
   locale: Locale;
   setLocale: (locale: Locale) => void;
@@ -48,8 +50,6 @@ export interface PrefsSlice {
   /** Which grid the map draws (`view/shared/viewport/view-settings.ts:shownGridOf` resolves `auto`). */
   gridMode: GridMode;
   setGridMode: (mode: GridMode) => void;
-  /** The Settings tile: the next mode in `GRID_MODES`, wrapping from the last to the first. */
-  cycleGridMode: () => void;
   /** The grid shortcut: off, or back to the mode it last turned off (`auto` when none was shown). */
   toggleGrid: () => void;
   /** The mode `toggleGrid` brings back: the last mode other than `off`, for this session. */
@@ -78,9 +78,10 @@ export const createPrefsSlice = (startMode: InputMode): StateCreator<PrefsSlice 
   return {
     uiZoom: readPref(UI_ZOOM_PREFS[scaleProfileOf(startMode, readLayoutShape('landscape'))]),
     setUiZoom: (zoom) => {
-      const next = clampUiZoom(zoom);
+      const profile = scaleProfileOf(get().inputMode, get().layoutShape);
+      const next = clampUiZoom(Math.min(zoom, scaleLattice(UI_ZOOM_DEFAULTS[profile], uiZoomReach()).hi));
       set({ uiZoom: next });
-      writePref(UI_ZOOM_PREFS[scaleProfileOf(get().inputMode, get().layoutShape)], next);
+      writePref(UI_ZOOM_PREFS[profile], next);
     },
     locale: readPref('locale'),
     setLocale: persisted('locale'),
@@ -99,7 +100,6 @@ export const createPrefsSlice = (startMode: InputMode): StateCreator<PrefsSlice 
     setQuality3d: persisted('quality3d'),
     gridMode,
     setGridMode,
-    cycleGridMode: () => setGridMode(GRID_MODES[(GRID_MODES.indexOf(get().gridMode) + 1) % GRID_MODES.length]!),
     toggleGrid: () => { const s = get(); setGridMode(s.gridMode === 'off' ? s.lastGridMode : 'off'); },
     lastGridMode: gridMode === 'off' ? 'auto' : gridMode,
     showChunkBounds: readPref('showChunkBounds'),

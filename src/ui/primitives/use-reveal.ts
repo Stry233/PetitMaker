@@ -3,7 +3,7 @@
  * while a finger holds it past the touch hold time (`gesture-timing.ts`) in touch mode, where nothing
  * hovers, and on a keyboard's focus in either. The mode is the live one (`design/input-mode.tsx`).
  */
-import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type MutableRefObject } from 'react';
 import { GESTURE_TIMING } from '../../platform/input/gesture-timing';
 import { useCurrentInputMode } from '../design/input-mode';
 
@@ -85,18 +85,22 @@ export function useReveal({ keepsClick = false, onChange }: {
     onFocus: (e) => { if (!pressing.current && focusVisible(e.target)) setShown(true); },
     onBlur: (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setShown(false); },
   };
-  if (!keepsClick) {
-    // A finger's leave comes between its release and the click, so the mark outlives the leave; a
-    // key's click (`detail` 0) is never the end of a hold and clears it instead.
-    bind.onClickCapture = (e) => {
-      const held = heldOpen.current;
-      heldOpen.current = false;
-      if (!held || e.detail === 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-  }
+  if (!keepsClick) bind.onClickCapture = heldClickCapture(heldOpen);
   return { shown, bind, touch };
+}
+
+/** The click-capture handler that swallows the click ending a press whose hold did something
+ *  (`held`: it opened a reveal or a menu), since that press was a hold, not a tap. A finger's leave
+ *  comes between its release and the click, so the mark lasts until the click; a key's click
+ *  (`detail` 0) never ends a hold and clears the mark instead. */
+export function heldClickCapture(held: MutableRefObject<boolean>): (e: MouseEvent<Element>) => void {
+  return (e) => {
+    const was = held.current;
+    held.current = false;
+    if (!was || e.detail === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
 }
 
 /** `props` spread over `bind`, where a handler both name runs the reveal's first and then the

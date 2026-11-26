@@ -15,6 +15,7 @@ import { plopScale, spinEase } from '../../../../view/shared/motion/object-beats
 import { animConfig } from '../../../../view/shared/motion/anim-config';
 import type { PlacedObject } from '../../../../core/model/types';
 import { makeState } from '../../../_support/map-state';
+import { beatClock } from '../../../_support/beat-clock';
 import { OBJECT_CHILD } from '../../../../view/map2d/draw/object-children';
 
 /** Progress points through the squash, its peak and the bounce back. */
@@ -48,12 +49,10 @@ const cabin: PlacedObject = { id: 'cabin', catalogId: 'building-fluorite-cabin',
 describe('object beats in both views', () => {
   it('plops the 2D sprite and the 3D instance along the same curve', () => {
     const wrapper = new PIXI.Container();
-    const queue: FrameRequestCallback[] = [];
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => { queue.push(cb); return queue.length; });
-    animateSquash(new Map([['a', wrapper]]), 'a', 2, () => {});
-    queue.shift()!(1000);
-    const seen2d = SAMPLES.map((t) => { queue.shift()!(1000 + t * animConfig.plop.settleMs); return { x: wrapper.scale.x, y: wrapper.scale.y }; });
-    vi.restoreAllMocks();
+    const loop = beatClock();
+    animateSquash(new Map([['a', wrapper]]), 'a', 2, loop.play);
+    loop.frame(1000);
+    const seen2d = SAMPLES.map((t) => { loop.frame(1000 + t * animConfig.plop.settleMs); return { x: wrapper.scale.x, y: wrapper.scale.y }; });
 
     const { scene, inst, decompose } = scene3d(cabin);
     const span = Math.max(inst.scaleX, inst.scaleZ, 1);
@@ -80,14 +79,12 @@ describe('object beats in both views', () => {
     const icon = new PIXI.Container();
     icon.name = OBJECT_CHILD.icon;
     wrapper.addChild(icon);
-    const queue: FrameRequestCallback[] = [];
-    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => { queue.push(cb); return queue.length; });
+    const loop = beatClock();
     const eased2d: number[] = [];
-    animateRotation(new Map([['a', wrapper]]), 'a', { fromDeg: 0, toDeg: 90 }, () => {}, (e) => eased2d.push(e));
-    queue.shift()!(1000);
+    animateRotation(new Map([['a', wrapper]]), 'a', { fromDeg: 0, toDeg: 90 }, loop.play, (e) => eased2d.push(e));
+    loop.frame(1000);
     // The first frame starts the clock at t = 0.
-    for (const t of SAMPLES) queue.shift()!(1000 + t * animConfig.rotation.durationMs);
-    vi.restoreAllMocks();
+    for (const t of SAMPLES) loop.frame(1000 + t * animConfig.rotation.durationMs);
 
     const { scene } = scene3d(cabin);
     const eased3d: number[] = [];

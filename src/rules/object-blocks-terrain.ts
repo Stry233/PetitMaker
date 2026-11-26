@@ -33,6 +33,7 @@ export function objectBlocksTerrainCell(index: ObjectIndex, x: number, y: number
 
 export const objectBlocksTerrainRule = definePreRule({
   id: 'V-PLACE-BLOCK',
+  description: 'Terrain cannot be painted or erased where a solid object stands. A road follows a mountain paint or an erase to the new level instead of blocking it; water cannot be painted over a road.',
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain, CommandType.TrimCorners],
 
   validate(cmd, state, fail) {

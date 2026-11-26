@@ -29,6 +29,8 @@ export type PressIntent =
   | { kind: 'tool-stroke' }
   /** Selects `block`; a terrain block also picks `pick` as the paste's top-left (EDIT-54). */
   | { kind: 'select'; block: BlockRef; pick?: MacroCoord }
+  /** Selects a placed blueprint whole: `blocks` are its standing members. */
+  | { kind: 'select-group'; blocks: readonly BlockRef[] }
   /** Picks the placement cell as the paste's top-left, clearing the selection (EDIT-54). */
   | { kind: 'pick-cell'; cell: MacroCoord }
   | { kind: 'toggle-select'; block: BlockRef }
@@ -37,8 +39,14 @@ export type PressIntent =
   | { kind: 'toggle-on-release'; block: BlockRef }
   | { kind: 'collapse-select'; id: string }
   | { kind: 'move-selection'; anchorId: string }
+  /** The drag moves the placed blueprint the selection is, whole. */
+  | { kind: 'move-placement' }
+  /** A tap runs `select` on its release, so a drag from the same press still finds the selection it started on. */
+  | { kind: 'select-on-release'; select: PressIntent }
   /** The drag carries a copy of the selection, leaving the originals (EDIT-60). */
   | { kind: 'copy-selection'; anchorId: string }
+  /** The drag carries a copy of the placed blueprint the selection is, whole, leaving it (EDIT-60). */
+  | { kind: 'copy-placement' }
   | { kind: 'band-select'; from: MacroCoord }
   | { kind: 'context-menu'; block: BlockRef }
   | { kind: 'cancel-pending' }
@@ -59,9 +67,9 @@ export interface PressFacts {
   selectMode: boolean;
   /** The active tool is a terrain brush (`Tool.brush`). */
   brush: boolean;
-  /** The armed catalog item. Only the placer arms one (`state/editing/edit-mode.ts`), so an item
-   *  here means the placer is up with it. */
-  armedItemId: string | null;
+  /** What one press places: the placer's armed catalog item, or what another placing tool declares
+   *  armed (`Tool.armedPlacement`, the blueprint tool's blueprint); null with nothing to place. */
+  armedPlacement: string | null;
   /** Something is copied, so the map's menu offers Paste (EDIT-56). */
   copyHeld: boolean;
   selection: readonly BlockRef[];
@@ -97,6 +105,12 @@ export interface PressFacts {
    *  road-link mark, the curve's chain of anchors. A tool that does not implement it is unaffected
    *  by the branch below. */
   pendingGesture: boolean;
+  /** The press lands inside the frame of the placed blueprint the selection is (Blueprint mode). */
+  inPlacement: boolean;
+  /** The placed blueprint the press lands in the frame or on a member of, in Blueprint mode, where a
+   *  press selects it whole: its standing members, and whether the selection already is it; null
+   *  elsewhere. */
+  group: { refs: readonly BlockRef[]; selected: boolean } | null;
   /** The active tool's `clickOnly` answer: the press acts, and a hand that then pulls is asking to
    *  move the map, not the tool, so the drag goes to the camera instead of dying in a stroke that
    *  ignores it. */
@@ -104,6 +118,9 @@ export interface PressFacts {
   /** The active tool's `strokes` answer: the armed item paints a stroke, so a press acts at once and
    *  its drag is the stroke, never a preview or a selection. */
   armedStrokes: boolean;
+  /** The views draw a stand-in, not the map the press would act on (`state/map-stand-in.ts`): a
+   *  press only moves the camera. */
+  lookOnly: boolean;
 }
 
 export interface PressPlan {
@@ -164,7 +181,7 @@ const selectFor = (f: PressFacts): PressIntent => {
  * it and the click would do nothing at all.
  */
 function armedPressSelects(f: PressFacts): boolean {
-  return !!f.armedItemId && !f.armedStrokes
+  return !!f.armedPlacement && !f.armedStrokes
     && !f.selectingRegion && !f.multiSelectHeld
     && f.hit !== null && !f.hit.locked && !f.placementAllowed;
 }
@@ -181,7 +198,21 @@ function resolveSelectionPress(f: PressFacts, dragMode: boolean): PressPlan {
   const onTap: PressIntent[] = [];
   const onDrag: PressIntent[] = [];
 
-  if (f.hit) {
+  if (!ctrl && f.group) {
+    // A placed blueprint is selected whole, as one house is: a press anywhere in its frame selects it,
+    // and on the group selected a tap puts it down and a drag carries it whole.
+    if (!f.group.selected) {
+      down.push({ kind: 'select-group', blocks: f.group.refs });
+    } else {
+      onTap.push({ kind: 'deselect' });
+      onDrag.push(f.hit && isMember(f.group.refs, f.hit.id) ? { kind: 'move-selection', anchorId: f.hit.id } : { kind: 'move-placement' });
+    }
+  } else if (ctrl && f.group?.selected && (!f.hit || isMember(f.group.refs, f.hit.id))) {
+    // The placed blueprint selected whole is copied whole from anywhere its plain drag would move it;
+    // a tap on one of its objects still takes that object out.
+    if (f.hit) onTap.push({ kind: 'toggle-on-release', block: { kind: 'object', id: f.hit.id } });
+    onDrag.push({ kind: 'copy-placement' });
+  } else if (f.hit) {
     const block: BlockRef = { kind: 'object', id: f.hit.id };
     if (ctrl && f.hit.draggable && isMember(f.selection, f.hit.id)) {
       // A Ctrl press on a selected member waits: a tap still takes it out of the selection, and a
@@ -199,6 +230,10 @@ function resolveSelectionPress(f: PressFacts, dragMode: boolean): PressPlan {
     } else {
       down.push({ kind: 'select', block });
     }
+  } else if (!ctrl && f.inPlacement) {
+    // Inside a placement just laid the drag carries it whole; a click still selects what it lands on.
+    onTap.push({ kind: 'select-on-release', select: selectFor(f) });
+    onDrag.push({ kind: 'move-placement' });
   } else if (!ctrl) {
     const sel = lone(f.selection);
     if (!f.pick && sel && sel.kind === 'terrain' && sel.x === f.terrain.x && sel.y === f.terrain.y) {
@@ -212,7 +247,7 @@ function resolveSelectionPress(f: PressFacts, dragMode: boolean): PressPlan {
   // joins a group, and a press over an object still toggles, so the band is what the drag means.
   if (ctrl && onDrag.length === 0) onDrag.push({ kind: 'band-select', from: f.macro });
 
-  const arms = onDrag.some((i) => i.kind === 'move-selection') || ctrl;
+  const arms = onDrag.some((i) => i.kind === 'move-selection' || i.kind === 'move-placement') || ctrl;
   if (!arms) {
     down.push({ kind: 'tool-stroke' });
     onDrag.push(...leftDragPan(dragMode));
@@ -225,7 +260,7 @@ function resolveSelectionPress(f: PressFacts, dragMode: boolean): PressPlan {
  *  other tool, a painting placer's included, acts on the way down, so a brush lays its dot under the finger at once and a second finger takes
  *  the stroke back. With an item armed, the multi-select modifier keeps its own gesture. */
 const touchPressWaits = (f: PressFacts): boolean =>
-  f.inputMode === 'touch' && (f.selectMode || (!!f.armedItemId && !f.multiSelectHeld && !f.armedStrokes));
+  f.inputMode === 'touch' && (f.selectMode || (!!f.armedPlacement && !f.multiSelectHeld && !f.armedStrokes));
 
 /** The first selected object: what a drag under the move latch moves the selection by. */
 const firstObject = (selection: readonly BlockRef[]): string | null =>
@@ -262,7 +297,7 @@ function resolveMultiSelectPress(f: PressFacts): PressPlan {
  */
 function resolvePendingPress(f: PressFacts): PressPlan {
   if (f.multiSelectHeld) return resolveMultiSelectPress(f);
-  if (f.armedItemId) {
+  if (f.armedPlacement) {
     const instead = armedPressSelects(f) ? f.hit : null;
     return {
       down: [],
@@ -274,13 +309,17 @@ function resolvePendingPress(f: PressFacts): PressPlan {
   }
   const onTap: PressIntent[] = [];
   const onDrag: PressIntent[] = latchedMove(f);
-  if (f.hit && isMember(f.selection, f.hit.id)) {
+  if (f.group) {
+    onTap.push(f.group.selected ? { kind: 'deselect' } : { kind: 'select-group', blocks: f.group.refs });
+    if (f.group.selected && onDrag.length === 0) onDrag.push(f.hit && isMember(f.group.refs, f.hit.id) ? { kind: 'move-selection', anchorId: f.hit.id } : { kind: 'move-placement' });
+  } else if (f.hit && isMember(f.selection, f.hit.id)) {
     onTap.push(f.selection.length > 1 ? { kind: 'collapse-select', id: f.hit.id } : { kind: 'deselect' });
     if (f.hit.draggable && onDrag.length === 0) onDrag.push({ kind: 'move-selection', anchorId: f.hit.id });
   } else if (!f.hit) {
     const sel = lone(f.selection);
     const same = !f.pick && sel?.kind === 'terrain' && sel.x === f.terrain.x && sel.y === f.terrain.y;
     onTap.push(same ? { kind: 'deselect' } : selectFor(f));
+    if (f.inPlacement && onDrag.length === 0) onDrag.push({ kind: 'move-placement' });
   } else {
     onTap.push({ kind: 'select', block: blockFor(f) });
   }
@@ -301,14 +340,17 @@ export function resolveNavTap(f: PressFacts): readonly PressIntent[] {
   // right press that never moved is the one press with no camera meaning left in it, and "put that
   // down" is what a hand reaches for it to mean.
   if (f.pendingGesture) return [{ kind: 'cancel-pending' }];
-  if (!f.selectMode) return [];
+  if (!f.selectMode || f.lookOnly) return [];
   const block = blockFor(f);
-  const out: PressIntent[] = [{ kind: 'context-menu', block }];
+  // The menu opens after the selection, which may put an armed card down, so it stands over the
+  // arming the press leaves.
+  const out: PressIntent[] = [];
   if (f.multiSelectHeld) {
     if (f.hit) out.push({ kind: 'toggle-select', block });
   } else {
     out.push(selectFor(f));
   }
+  out.push({ kind: 'context-menu', block });
   return out;
 }
 
@@ -325,9 +367,15 @@ export function resolvePress(f: PressFacts): PressPlan {
     const paint: PressIntent = { kind: 'paint-region' };
     return plan({ down: [paint], onDrag: [paint] });
   }
+  if (f.lookOnly) {
+    // A finger's press still waits, so a second finger pinches and a double tap zooms as on open ground.
+    return f.inputMode === 'touch'
+      ? { down: [], onTap: [], onDrag: leftDragPan(true), onHold: [], onDoubleTap: [{ kind: 'zoom-in' }], pending: true }
+      : plan({ onDrag: leftDragPan(true) });
+  }
   if (touchPressWaits(f)) return resolvePendingPress(f);
 
-  const armed = !!f.armedItemId;
+  const armed = !!f.armedPlacement;
   const brushCtrl = f.multiSelectHeld && f.brush;
   const dragMode = f.selectMode;
 
@@ -388,7 +436,7 @@ export function cursorFactsFor(f: PressFacts): CursorFacts {
   }
   return {
     ctrlHint,
-    pressSelects: (acts.some((i) => i.kind === 'select' || i.kind === 'pick-cell') && !acts.some((i) => i.kind === 'tool-stroke'))
+    pressSelects: (acts.some((i) => i.kind === 'select' || i.kind === 'select-group' || i.kind === 'pick-cell') && !acts.some((i) => i.kind === 'tool-stroke'))
       || (f.toolSelects && f.toolSelectHit !== null && !f.toolGrabs && p.down.some((i) => i.kind === 'tool-stroke')),
     // A press that would pick something up: the machine's own move gesture, or a tool-owned grab
     // (the annotate select state's note) — the open hand promises the same closed hand either way.

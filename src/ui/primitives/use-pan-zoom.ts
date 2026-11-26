@@ -7,8 +7,9 @@
  */
 import { cssMotion } from '../design/motion';
 import { clientPoint } from '../../platform/device/viewport-space';
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
+import { useTransient } from './use-transient';
 import { clamp } from '../../core/base/math';
 import { useCursorCss } from '../design/cursors/cursor-vars';
 import { timingFor, travelledPast } from '../../platform/input/gesture-timing';
@@ -72,22 +73,15 @@ export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
   const pointers = useRef(new Map<number, Drag>());
   const pinch = useRef<Pinch | null>(null);
   const lastTap = useRef<{ at: Point; time: number } | null>(null);
-  const [showResetHint, setShowResetHint] = useState(false);
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetHint = useTransient<true>(HINT_QUIET_MS);
   const panCursor = useCursorCss('move');
   const reduced = useReducedMotionConfig() === true;
 
-  const noteInteraction = () => {
-    setShowResetHint(true);
-    if (hintTimer.current) clearTimeout(hintTimer.current);
-    hintTimer.current = setTimeout(() => setShowResetHint(false), HINT_QUIET_MS);
-  };
-  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current); }, []);
+  const noteInteraction = () => resetHint.show(true);
 
   const reset = () => {
     setView(REST);
-    if (hintTimer.current) clearTimeout(hintTimer.current);
-    setShowResetHint(false); // back at rest, nothing left to reset
+    resetHint.clear(); // back at rest, nothing left to reset
   };
 
   /** The two fingers of a pinch, in press order. */
@@ -170,7 +164,7 @@ export function usePanZoom({ onTap }: PanZoomOptions = {}): PanZoom {
       transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,
       transition: pointers.current.size > 0 ? 'none' : cssMotion('preview.zoom', ['transform'], reduced),
     },
-    showResetHint,
+    showResetHint: resetHint.value !== null,
     reset,
   };
 }

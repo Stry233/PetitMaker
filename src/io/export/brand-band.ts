@@ -2,10 +2,41 @@
  *  site, its address, an invitation and a QR code. */
 import qrcode from 'qrcode-generator';
 import type { Rect } from '../../core/grid/rect';
-import { EXPORT_CARD, EXPORT_PAPER, FRAME_INK, rgbaOf } from '../../assets/brand-palette';
+import { EXPORT_CARD, EXPORT_PAPER, FRAME_INK } from '../../assets/brand-palette';
+import { rgbaOf } from '../../core/base/color';
 import { rrPath } from '../../view/shared/viewport/round-rect';
-import { PAD } from './compose';
+import { PAD, brandRowAt } from './compose';
 import type { Painter } from './paint';
+
+/** The band's vertical padding, in base px. */
+const BRAND_PAD_Y = 8;
+
+/** The QR's side, in px, in a band `bandH` px tall at scale `S`. */
+function brandQrSide(bandH: number, S: number): number {
+  return bandH - 2 * BRAND_PAD_Y * S;
+}
+
+/** The QR's side, in px, in a composition `width` px wide. */
+export function brandQrSideAt(width: number): number {
+  const { h, S } = brandRowAt(width);
+  return brandQrSide(h, S);
+}
+
+/** The smallest module, in px, a QR in a saved picture still reads at. */
+const MIN_QR_MODULE_PX = 2;
+
+/** Whether a QR of `text` at error level M reads at `side` px: each module, with one quiet module on
+ *  each side, spans `MIN_QR_MODULE_PX`. */
+export function qrReadableAt(text: string, side: number): boolean {
+  const qr = qrcode(0, 'M');
+  try {
+    qr.addData(text);
+    qr.make();
+  } catch {
+    return false; // past the largest QR
+  }
+  return side / (qr.getModuleCount() + 2) >= MIN_QR_MODULE_PX;
+}
 
 /** Draw the app lockup and, when configured by the deployment, its address and QR code. */
 export function drawBrand(p: Painter, rect: Rect, bare: boolean): void {
@@ -13,8 +44,8 @@ export function drawBrand(p: Painter, rect: Rect, bare: boolean): void {
   // Full-bleed exports add the inset that framed exports receive from their card padding.
   const inset = bare ? PAD * S : 0;
   const x0 = rect.x + inset, w = rect.w - 2 * inset;
-  const padY = 8 * S;
-  const contentH = rect.h - 2 * padY;
+  const padY = BRAND_PAD_Y * S;
+  const contentH = brandQrSide(rect.h, S);
   const cy = rect.y + rect.h / 2;
 
   if (bare) {
@@ -25,7 +56,9 @@ export function drawBrand(p: Painter, rect: Rect, bare: boolean): void {
   const hasSite = assets.brand.url.length > 0;
   const qrSide = hasSite ? contentH : 0;
   const qrX = x0 + w - qrSide;
-  if (hasSite) drawSiteQr(ctx, assets.brand.url, { x: qrX, y: rect.y + padY, w: qrSide, h: qrSide }, S);
+  const square = { x: qrX, y: rect.y + padY, w: qrSide, h: qrSide };
+  if (hasSite && assets.brand.qr) drawGivenQr(ctx, assets.brand.qr, square, S);
+  else if (hasSite) drawSiteQr(ctx, assets.brand.url, square, S);
 
   // Compensate for the transparent margins built into the lockup asset.
   const LOCKUP_OVERDRAW = 228 / 172;
@@ -67,6 +100,14 @@ export function drawBrand(p: Painter, rect: Rect, bare: boolean): void {
     ctx.fillText(assets.brand.label, textRight, cy + 5 * S);
   }
   ctx.textAlign = 'left';
+}
+
+/** Draw a QR the host made on the same card, its own quiet zone included. */
+function drawGivenQr(ctx: CanvasRenderingContext2D, qr: CanvasImageSource, square: Rect, S: number): void {
+  ctx.fillStyle = EXPORT_CARD;
+  rrPath(ctx, square, 6 * S);
+  ctx.fill();
+  ctx.drawImage(qr, square.x, square.y, square.w, square.h);
 }
 
 /** Draw an error-level-M QR code with one quiet-zone module on each side. */

@@ -19,6 +19,7 @@ import { useAgentConnection } from '../../../agent/connection/store';
 import { Shell } from '../../../ui/shell/Shell';
 import { panelProps } from '../../_support/agent-panel';
 import { repoFiles } from '../../_support/source-graph';
+import { watchBackKey, watchBackStack } from '../../../editor/back/back-out';
 
 const backing = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -91,12 +92,12 @@ function seedStore(id: string): void {
 
 const VERBS = { onSend: () => {}, onStop: () => {}, onPause: () => {}, onGateAnswer: () => {} };
 
-function renderPanel(id: string, onCollapse: () => void) {
+function renderPanel(id: string) {
   const { view, connected } = STATES[id]!;
   const view_ = render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <PanelShell {...panelProps({ view, connected, now: 0, onCollapse, ...VERBS })} />
+        <PanelShell {...panelProps({ view, connected, now: 0, ...VERBS })} />
       </I18nProvider>
     </MotionConfig>,
   );
@@ -107,7 +108,7 @@ function renderPanel(id: string, onCollapse: () => void) {
 function mountShell() {
   return render(
     <I18nProvider>
-      <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+      <Shell><div data-testid="map-views" /></Shell>
     </I18nProvider>,
   );
 }
@@ -122,14 +123,23 @@ beforeAll(async () => {
   cleanup();
 }, 40_000);
 
+/** The page's back key and the editor's states on the back stack, as the shell holds them. */
+let stops: (() => void)[] = [];
 beforeEach(() => {
   backing.clear();
   backing.set(TOUR_SEEN_KEY, TOUR_OFFERED);
   useEditorStore.setState({ locale: 'en', assistantOpen: true });
   useAgentSession.getState().clearSession();
+  stops = [watchBackStack(), watchBackKey()];
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  for (const stop of stops) stop();
+});
+
+/** Whether the panel stands folded. */
+const folded = (): boolean => !useEditorStore.getState().assistantOpen;
 
 describe('the collapse control never reads session state', () => {
   it('folds the panel from setup, from an open gate and from a refused key alike', async () => {
@@ -151,28 +161,26 @@ describe('the collapse control never reads session state', () => {
     }
   }, 40_000);
 
-  it('answers Escape with the collapse verb in every one of the three', () => {
+  it('folds on Escape in every one of the three', () => {
     for (const id of Object.keys(STATES)) {
-      const folded: number[] = [];
-      const view = renderPanel(id, () => folded.push(1));
+      useEditorStore.setState({ assistantOpen: true });
+      const view = renderPanel(id);
       fireEvent.keyDown(view.getByTestId('panel-shell'), { key: 'Escape' });
-      expect(folded, id).toEqual([1]);
+      expect(folded(), id).toBe(true);
       view.unmount();
     }
   });
 
   /** Guards the fixture: without it `setup.key-entry` could be testing the welcome screen. */
   it('genuinely stands the key form, and folds from it', () => {
-    const folded: number[] = [];
-    const view = renderPanel('setup.key-entry', () => folded.push(1));
+    const view = renderPanel('setup.key-entry');
     expect(view.getByTestId('setup-screen'), 'the form, not the keyless rest it is walked in from').toBeTruthy();
     fireEvent.keyDown(view.getByTestId('panel-shell'), { key: 'Escape' });
-    expect(folded).toEqual([1]);
+    expect(folded()).toBe(true);
     view.unmount();
   });
 
   it('folds from the manage card too', () => {
-    const folded: number[] = [];
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
@@ -181,7 +189,6 @@ describe('the collapse control never reads session state', () => {
             connected: true,
             initialZone: { kind: 'manage' },
             now: 0,
-            onCollapse: () => folded.push(1),
             ...VERBS,
           })}
           />
@@ -190,12 +197,11 @@ describe('the collapse control never reads session state', () => {
     );
     expect(view.getByTestId('manage-screen')).toBeTruthy();
     fireEvent.keyDown(view.getByTestId('panel-shell'), { key: 'Escape' });
-    expect(folded).toEqual([1]);
+    expect(folded()).toBe(true);
   });
 
   /** An opened record's own way out is Back; Escape still folds the panel. */
   it('folds from an opened past record too', () => {
-    const folded: number[] = [];
     const settled = job({ orderSeq: 7, outcome: 'done', kind: 'build' });
     const view = render(
       <MotionConfig reducedMotion="always">
@@ -206,7 +212,6 @@ describe('the collapse control never reads session state', () => {
             filed: new Set([7]),
             initialZone: { kind: 'record', seq: 7 },
             now: 0,
-            onCollapse: () => folded.push(1),
             ...VERBS,
           })}
           />
@@ -217,7 +222,7 @@ describe('the collapse control never reads session state', () => {
     expect(view.getByTestId('archive-card')).toBeTruthy();
     expect(view.getByTestId('dock-sentence').textContent).toContain('Reading a past job');
     fireEvent.keyDown(view.getByTestId('panel-shell'), { key: 'Escape' });
-    expect(folded).toEqual([1]);
+    expect(folded()).toBe(true);
   });
 
   /** `managing` lives in `PanelColumn` and only the fold clears it, so the card must go with the panel. */
@@ -243,7 +248,6 @@ describe('the collapse control never reads session state', () => {
   /** Escape peels one layer per press: the composer's ghost first, then the field, and only a bare
    *  panel folds. One press never both clears the field and folds the panel. */
   it('lets the composer clear itself before the panel folds', () => {
-    const folded: number[] = [];
     const view = render(
       <MotionConfig reducedMotion="always">
         <I18nProvider>
@@ -251,7 +255,6 @@ describe('the collapse control never reads session state', () => {
             view: baseView({ suggestion: 'Yes, add the bridge' }),
             connected: true,
             now: 0,
-            onCollapse: () => folded.push(1),
             ...VERBS,
           })}
           />
@@ -262,15 +265,15 @@ describe('the collapse control never reads session state', () => {
 
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(view.queryByTestId('composer-ghost')).toBeNull();
-    expect(folded).toEqual([]);
+    expect(folded()).toBe(false);
 
     fireEvent.change(input, { target: { value: 'pave the square' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(input.value).toBe('');
-    expect(folded).toEqual([]);
+    expect(folded()).toBe(false);
 
     fireEvent.keyDown(input, { key: 'Escape' });
-    expect(folded).toEqual([1]);
+    expect(folded()).toBe(true);
   });
 });
 
@@ -278,14 +281,18 @@ describe('a machine-initiated advance never writes the open flag', () => {
   /** A source scan, since no app state can prove the absence of a write: a probe timer, a retry or
    *  an arriving job reaching for the flag would show up here as another writer. */
   it('is written by the shell and the store slice only', () => {
-    const writers = repoFiles('src', { skip: ['__tests__'] })
-      .filter((path) => /setAssistantOpen|assistantOpen\s*:/.test(readFileSync(path, 'utf8')))
-      .sort();
-    expect(writers).toEqual([
-      'src/editor/session/context.ts', // a planet session the user opens folds the panel away
-      'src/state/slices/shell.ts',     // owns the flag, and persists nothing about it
-      'src/ui/agent/PanelColumn.tsx',  // the panel's own Escape, and nothing else in the panel
-      'src/ui/shell/Shell.tsx',        // the block the user presses, and the chip that reopens it
+    const sources = repoFiles('src', { skip: ['__tests__'] });
+    const naming = (pattern: RegExp) => sources.filter((path) => pattern.test(readFileSync(path, 'utf8'))).sort();
+    expect(naming(/setAssistantOpen|assistantOpen\s*:/)).toEqual([
+      'src/editor/back/back-out.ts',       // Escape or Android's back while the panel is the newest state
+      'src/editor/commands/settings.ts',   // the command a press of the block, the chip or the fold control runs
+      'src/editor/session/context.ts',     // a planet session the user opens folds the panel away
+      'src/state/slices/shell.ts',         // owns the flag, and persists nothing about it
+    ]);
+    // The command is pressed by controls only: a timer, a retry or an arriving job pressing it would show here.
+    expect(naming(/'app\.assistant'/)).toEqual([
+      'src/editor/commands/settings.ts',
+      'src/ui/shell/Shell.tsx',            // the block the user presses, and the chip that reopens it
     ]);
   });
 

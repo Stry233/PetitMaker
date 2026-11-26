@@ -1,10 +1,13 @@
 /**
- * One picture of a choice between maps, as a radio option: the picture over a caption with the radio
- * dot, the label and an optional count badge. The whole option presses as one control; a press on its
- * picture is a pan and chooses through the picture's own tap. Change Planet's carry step and the
- * landmark repair's choice both offer their maps this way.
+ * A choice between maps as a radio group of pictures (`PictureChoices`): each option the picture over
+ * a caption with the radio dot, the label and an optional count badge, in the danger pair where it
+ * counts what the choice loses. The whole option presses as one control; a press on its picture is a
+ * pan and chooses through the picture's own tap. Change Planet's carry step and the landmark repair's
+ * choice both offer their maps this way.
  */
-import { useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
+import { useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useWindowColumns } from '../use-window-columns';
+import { stepIn, type CycleStep } from '../../../../core/base/cycle';
 import { motion } from 'framer-motion';
 import { cssMotion } from '../../../design/motion';
 import { cursors, font, radii } from '../../../design/styles';
@@ -32,24 +35,23 @@ const dotFill = (on: boolean): CSSProperties => ({
   transition: cssMotion('planet.choice.select', ['opacity']),
 });
 /** The option's fill is the surface the chip stands on: the chosen yellow and the hover inset both
- *  take the plate chip, the bare plate takes the inset one. */
-const badgeStyle = (lifted: boolean): CSSProperties => ({
-  ...windowChip(lifted ? 'inset' : 'plate'), flex: 'none', marginInlineStart: 'auto',
-  display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', pointerEvents: 'none',
+ *  take the plate chip, the bare plate takes the inset one; a loss keeps its danger pair on either. */
+const badgeStyle = (lifted: boolean, loss: boolean): CSSProperties => ({
+  ...windowChip(lifted ? 'inset' : 'plate', loss ? 'danger' : 'plain'), flex: 'none', marginInlineStart: 'auto',
+  whiteSpace: 'nowrap', pointerEvents: 'none',
   transition: cssMotion('planet.choice.select', ['background-color']),
 });
-const swatchStyle: CSSProperties = { width: 14, height: 14, borderRadius: radii.sm, flex: 'none' };
 /* The whole option presses as one control; a press on its picture is a pan and does not. */
 
-export function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId, label, badge, children }: {
+function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId, label, badge, children }: {
   checked: boolean;
   onSelect: () => void;
   onKeyDown: (e: KeyboardEvent) => void;
   optionRef: (el: HTMLDivElement | null) => void;
   testId: string;
   label: string;
-  /** A count beside the label, with the colour its cells wear in the picture where they show. */
-  badge: { text: string; swatch?: string } | null;
+  /** A count beside the label; `loss` marks a count of what the choice leaves behind or takes away. */
+  badge: { text: string; loss?: boolean } | null;
   children: (onTap: () => void) => React.ReactNode;
 }) {
   const [hover, setHover] = useState(false);
@@ -77,11 +79,56 @@ export function PictureOption({ checked, onSelect, onKeyDown, optionRef, testId,
         <span aria-hidden style={dotStyle(checked)}><span style={dotFill(checked)} /></span>
         <span id={labelId} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
         {badge && (
-          <span id={badgeId} data-testid="planet-dropped" style={badgeStyle(checked || hover)}>
-            {badge.swatch && <i aria-hidden style={{ ...swatchStyle, background: badge.swatch }} />}{badge.text}
-          </span>
+          <span id={badgeId} data-testid="planet-dropped" style={badgeStyle(checked || hover, !!badge.loss)}>{badge.text}</span>
         )}
       </div>
     </motion.div>
+  );
+}
+
+/** One option of a `PictureChoices` group. */
+export interface PictureChoice<T extends string> {
+  value: T;
+  testId: string;
+  label: string;
+  badge: { text: string; loss?: boolean } | null;
+  /** The picture, which chooses this option through `onTap`. */
+  picture: (onTap: () => void) => ReactNode;
+}
+
+/** The options side by side, stacked where the window body is too narrow for two columns. Arrow keys
+ *  move the choice as in any radio group, and the chosen option is the one tab stop. `columns` is the
+ *  owner's reading where its footer follows the same switch. */
+export function PictureChoices<T extends string>({ choices, value, onChange, labelledBy, columns: owned }: {
+  choices: readonly PictureChoice<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  /** The element naming the choice. */
+  labelledBy: string;
+  columns?: 1 | 2;
+}) {
+  const [measured, bodyRef] = useWindowColumns();
+  const columns = owned ?? measured;
+  const refs = useRef(new Map<T, HTMLDivElement>());
+  const keys = (at: number) => (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(choices[at]!.value); return; }
+    const step: CycleStep | 0 = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = stepIn(choices.map((c) => c.value), choices[at]!.value, step);
+    onChange(next);
+    refs.current.get(next)?.focus();
+  };
+  return (
+    <div ref={bodyRef} role="radiogroup" aria-labelledby={labelledBy} data-columns={columns}
+      style={{ display: 'flex', gap: 16, ...(columns === 1 ? { flexDirection: 'column' } : null) }}>
+      {choices.map((choice, i) => (
+        <PictureOption key={choice.value} checked={choice.value === value} onSelect={() => onChange(choice.value)} onKeyDown={keys(i)}
+          optionRef={(el) => { if (el) refs.current.set(choice.value, el); else refs.current.delete(choice.value); }}
+          testId={choice.testId} label={choice.label} badge={choice.badge}>
+          {choice.picture}
+        </PictureOption>
+      ))}
+    </div>
   );
 }

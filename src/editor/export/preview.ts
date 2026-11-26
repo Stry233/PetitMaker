@@ -17,12 +17,13 @@ import { composeStylizedBaseMap } from '../../io/export/stylized-band';
 import type { CameraAngle } from '../../state/view-camera';
 import { translateFor } from '../../i18n/context';
 import { shownPlanetName } from '../session/planet-names';
-import type { ExportOptions } from '../../io/export/types';
-import type { GridState } from '../../core/model/types';
+import type { ExportOptions, PictureChoices } from '../../io/export/types';
+import type { GridState, MapNotes } from '../../core/model/types';
 import type { Locale } from '../../core/model/locale';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { selectedVersion } from '../../state/stylize-versions';
-import { brandInfo } from './brand';
+import { brandInfo, type HostMark } from './brand';
+import { pictureOptions } from './picture-words';
 import { layerNumeral } from '../../i18n/terms/layer-name';
 
 export { loadBrandLockup } from './brand';
@@ -82,15 +83,20 @@ export function captureCard3dAngles(state: GridState, angles?: CameraAngle[], ma
  *  Always the same composed layout as the export (map dominant + optional restore-strip band),
  *  so the preview matches the final image and every appearance option stays visible. */
 interface PaintPreviewArgs {
-  options: ExportOptions; summary: MapProvenanceSummary | null; state: GridState; locale: Locale;
+  options: PictureChoices;
+  /** The title and description the caller's text check approved for this picture, over which an
+   *  image import's protected originals stand as on the export (`pictureOptions`); null paints
+   *  none, and the stock footer, as while the words wait for their check. */
+  words: MapNotes | null;
+  summary: MapProvenanceSummary | null; state: GridState; locale: Locale;
   baseMap: BaseMapSource; card3dAngles: HTMLImageElement[];
   /** The real rendered share-code band (built async by the modal); the caller gates painting on
    *  it being ready, so null here only means "this export carries no code". */
   codeImg?: HTMLCanvasElement | null;
   /** The locale's logo lockup, preloaded by the caller (null = plain-text fallback). */
   brandLockup?: HTMLImageElement | null;
-  /** The deployment's canonical origin, which the band names under the site mark. */
-  site: string;
+  /** The deployment's canonical origin, which the band names under the site mark, or the QR its host made. */
+  site: string | HostMark;
   /** Resolved values approved by the text check; do not substitute fresh map metadata afterward. */
   footerTokens?: Record<string, string>;
 }
@@ -111,7 +117,8 @@ export function paintPreviewLayout(args: PaintPreviewArgs): PaintedPreview | nul
 }
 
 function paintCanvasLayout(args: PaintPreviewArgs): { canvas: HTMLCanvasElement; comp: ReturnType<typeof computeComposition>; scale: number } | null {
-  const { options, summary, state, locale, baseMap, card3dAngles, codeImg } = args;
+  const { summary, state, locale, baseMap, card3dAngles, codeImg } = args;
+  const options = pictureOptions(state, args.options, args.words);
   const sum = summary ?? EMPTY_SUMMARY;
   const mapAspect = aspectOf(baseMap);
   // The code band's geometry is exact pixel math (moduleBaseFor of the composition width), so the

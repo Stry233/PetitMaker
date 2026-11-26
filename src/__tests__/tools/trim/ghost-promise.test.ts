@@ -21,12 +21,12 @@ const SQUARE: Corners = ['square', 'square', 'square', 'square'];
 const ARC_STEPS = 6;
 
 /** A world with a layer-1 plain already laid and trimmed. */
-function world(elevation: number, brush = 3, autoEdgeCut: AutoEdgeCut = 'off') {
+function world(brush = 3, autoEdgeCut: AutoEdgeCut = 'off') {
   const state = makeState(50, 50);
   const executor = makeExecutor(state);
   const ghost: { cells: MacroCoord[]; trim: readonly TrimmedCell[] }[] = [];
   const ctx = {
-    ...makeToolCtx(state, executor, brush, elevation, { autoEdgeCut }),
+    ...makeToolCtx(state, executor, brush, { autoEdgeCut }),
     overlay: {
       showGhost({ cells }: { cells: MacroCoord[] }, _c: number, trim?: readonly TrimmedCell[]) {
         ghost.push({ cells, trim: trim ?? [] });
@@ -60,7 +60,7 @@ afterEach(() => {
 
 describe('a curve laid at a higher layer on an existing plain', () => {
   it('promises, while it is being DRAWN, the shape the finish produces', () => {
-    const w = world(2, 3, 'round');
+    const w = world(3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(cell(c), point(MICRO), w.ctx); w.tool.onPointerUp(cell(c), point(MICRO), w.ctx); };
     const anchors = [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }];
     click(anchors[0]!); click(anchors[1]!);
@@ -89,7 +89,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
   });
 
   it('leaves the map in the shape the ghost promised', () => {
-    const w = world(2, 3, 'round');
+    const w = world(3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(cell(c), point(MICRO), w.ctx); w.tool.onPointerUp(cell(c), point(MICRO), w.ctx); };
     for (const a of [{ x: 12, y: 14 }, { x: 19, y: 22 }, { x: 26, y: 14 }]) click(a);
     click({ x: 26, y: 14 });
@@ -111,7 +111,7 @@ describe('a curve laid at a higher layer on an existing plain', () => {
 
   it('and promises a shape for every cell that ends up with one', () => {
     // The other direction: no cut on the map that the ghost showed as square.
-    const w = world(2, 3, 'round');
+    const w = world(3, 'round');
     const click = (c: MacroCoord) => { w.tool.onPointerDown(cell(c), point(MICRO), w.ctx); w.tool.onPointerUp(cell(c), point(MICRO), w.ctx); };
     for (const a of [{ x: 12, y: 16 }, { x: 20, y: 20 }, { x: 27, y: 16 }]) click(a);
     click({ x: 27, y: 16 });

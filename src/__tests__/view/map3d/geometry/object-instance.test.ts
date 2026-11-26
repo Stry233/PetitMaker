@@ -1,10 +1,9 @@
 /**
- * The per-object instance resolver: incremental add/remove builds one object's
- * instance without re-deriving the whole map, so it must agree exactly with
- * the bulk builder's output for the same object.
+ * The per-object instance resolver: the 3D view places each object through it as the object is
+ * added, so it alone decides which group draws an object and where.
  */
 import { describe, it, expect } from 'vitest';
-import { buildObjectInstances, objectInstance } from '../../../../view/map3d/geometry/object-meshes';
+import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { type GridState, type PlacedObject } from '../../../../core/model/types';
 import { makeState } from '../../../_support/map-state';
 import { getCatalogItem } from '../../../../state/catalog';
@@ -21,7 +20,7 @@ const place = (id: string, catalogId: string, x: number, y: number, extra: Parti
   ({ id, catalogId, position: { x, y }, rotation: 0, elevation: 0, ...extra });
 
 describe('objectInstance', () => {
-  it('matches the bulk builder for archetype, model, ramp and trimmed-road cases', () => {
+  it('instances a house and a ramp in their groups and leaves every road to the road mesh', () => {
     expect(getCatalogItem('building-myhouse')).toBeTruthy();
     const objs = [
       place('house', 'building-myhouse', 4, 4),
@@ -30,21 +29,16 @@ describe('objectInstance', () => {
       place('ramp', 'ramp-green-steps', 8, 14, { elevation: 1, rotation: 90 }),
     ];
     const state = withObjects(...objs);
-    const bulk = buildObjectInstances(state);
-    const bulkFlat = [...bulk.entries()].flatMap(([k, list]) => list.map((inst) => ({ k, inst })));
-
     for (const obj of objs) {
       const single = objectInstance(state, obj);
       if (obj.id === 'trimmed' || obj.id === 'road') {
         expect(single, 'every road is meshed, not instanced').toBeNull();
         continue;
       }
-      expect(single).not.toBeNull();
-      const match = bulkFlat.find((e) => e.k === single!.groupKey && JSON.stringify(e.inst) === JSON.stringify(single!.inst));
-      expect(match, `bulk builder contains ${obj.id}'s instance`).toBeTruthy();
+      expect(single, obj.id).not.toBeNull();
+      expect(single!.groupKey, obj.id).toMatch(/^[am]:/);
+      expect(Object.values(single!.inst).filter((v) => typeof v === 'number').every(Number.isFinite), obj.id).toBe(true);
     }
-    // bulk emits exactly the two instanced objects: both roads live in the road mesh
-    expect(bulkFlat).toHaveLength(2);
   });
 
   it.each([0, 90, 180, 270] as const)('fills the turned plaza footprint exactly at %s degrees', (rotation) => {

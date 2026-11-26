@@ -59,13 +59,21 @@ The CSP meta fallback cannot enforce `frame-ancestors`, `X-Frame-Options` or HST
 
 The scheme-wide HTTPS allowance means CSP does not restrict a compromised same-origin script to the named providers. `script-src 'self'`, dependency review, input handling and key redaction therefore remain the controls against code injection and exfiltration. Custom base URLs are not secrets and are stored in local storage. A key entered on the connection screen is sent only to the built-in provider hosts whose key format it matches, or to a custom endpoint the user has chosen explicitly.
 
+### Provider sign-in
+
+Where a deployment offers it, the assistant's panel opens a provider's consent page in a window of its own with a PKCE challenge and a random `state`. The provider returns the user to `/connect/`, a static page that hands the code to the editor over a same-origin `BroadcastChannel` and removes it from the address; the page's `Cross-Origin-Opener-Policy` cuts the opener link, so no `postMessage` is involved. The editor accepts only the answer carrying its own `state` and trades the code with its verifier for a key or token of the user's account.
+
+OpenRouter's exchange needs no secret and goes from the browser to OpenRouter. ModelScope demands the application's client secret, so the mainland site runs one edge function, `edge/sign-in.js`, that adds it. This is the token-mediating backend of the IETF guidance for browser applications: the secret stays on the edge, the token still reaches the browser, and no model traffic passes through the function. It answers one path, from the site's own origins, with JSON of two fixed shapes; reaches one fixed upstream address; returns four named fields or a refusal code; and stores and logs nothing. A caller without a code a real user consented to obtains nothing, and one with such a code obtains only that user's own token.
+
+The function has no rate limit of its own, and a token returned by sign-in is held in the browser like a pasted key, so script injection on this origin could read it; `script-src 'self'` remains the control.
+
 ## API-key handling
 
 `src/platform/storage/vault.ts` seals secrets with AES-GCM under a non-extractable WebCrypto key stored by IndexedDB. Non-extractable prevents scripts from exporting the key bytes; scripts running in this origin can still ask the browser to decrypt with that key.
 
 Agent settings support older or restricted browsers by storing a base64-obfuscated key until the asynchronous vault upgrade succeeds. Obfuscation only prevents casual reading and is not encryption. Illustration-provider keys have no obfuscation fallback: if the vault cannot seal a key, it remains in memory for that browser session and is not persisted.
 
-Provider keys go directly from the browser to the selected built-in or custom endpoint. Key-format identification is local. Ambiguous keys require explicit provider selection, and regional services require a region choice. Validation contacts only that selected endpoint. Public model-capability requests to Models.dev carry ordinary network metadata, without keys, map content or prompts. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/platform/remote/redact.ts`.
+Provider keys go directly from the browser to the selected built-in or custom endpoint; the one exception is the ModelScope sign-in exchange above, where the token passes through the site's edge function once as it is issued. Key-format identification is local. Ambiguous keys require explicit provider selection, and regional services require a region choice. Validation contacts only that selected endpoint. Public model-capability requests to Models.dev carry ordinary network metadata, without keys, map content or prompts. They do not pass through a PetitMaker-operated server, are not intentionally logged and are removed from displayed or persisted provider error text by `src/platform/remote/redact.ts`.
 
 An unreadable sealed Agent blob is retained so temporary IndexedDB failure does not erase a user's stored key. A key removed while that blob is unreadable can reappear if the vault becomes readable later. Settings > Local data deletes local storage, session storage and the IndexedDB vault before reloading, which clears both readable and unreadable records.
 
@@ -74,7 +82,7 @@ An unreadable sealed Agent blob is retained so temporary IndexedDB failure does 
 - **Published prompts.** Prompts and skills ship with the application. They must contain no secrets or private operating material.
 - **Instruction boundaries.** Application prompts distinguish user tasks from map data, tool results, helper reports and recalled summaries. Quoted reference data remains separate from application instructions during replay and summarization. These are model guidance; tool permissions and approval state are enforced independently.
 - **Tool boundary.** Tool inputs are schema-checked, and map mutations pass through the validated command executor. Agent tools cannot read browser storage, cookies or general network resources.
-- **Narrow host capabilities.** `view_map` captures map pixels for a vision request. `export_map` asks the application UI to run its export flow; the tool does not write a file directly.
+- **Narrow host capabilities.** `view_map` captures map pixels for a vision request. `run_app_action` runs one of the app's own commands, the ones its controls and keys run, with arguments checked against the command's description (settings, view options, windows, export choices); an export command sets the choices and opens the export window, and the user confirms the download. The assistant is offered no command that destroys stored work or edits the map.
 - **Atomic region lock.** When a region is active, every affected cell and complete object footprint must remain inside it. A violating tool call rolls back as one stroke.
 - **Approval tiers.** Strict mode gates every write. Checkpoint mode gates plans and broad edits. Autopilot allows writes without those gates. The active tier is read again before each write.
 - **Bounded work.** Parent and delegated jobs use the limits exported by `src/agent/core/governor.ts`. A delegated job cannot delegate again.

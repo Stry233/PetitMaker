@@ -3,15 +3,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ reviewText: vi.fn(), reviewMap: vi.fn(), capture: vi.fn() }));
+vi.mock('../../../pipelines/moderation/text/reviewer', async (load) => ({
+  ...await load<typeof import('../../../pipelines/moderation/text/reviewer')>(),
+  reviewText: mocks.reviewText,
+}));
 vi.mock('../../../pipelines/moderation', async (load) => ({
   ...await load<typeof import('../../../pipelines/moderation')>(),
-  reviewText: mocks.reviewText, reviewMap: mocks.reviewMap,
+  reviewMap: mocks.reviewMap,
 }));
 vi.mock('../../../editor/review/map-capture', () => ({ captureReviewViews: mocks.capture }));
 
 import { TextReviewer } from '../../../editor/review/text-review';
 import { reviewedTextParts } from '../../../editor/review/text-parts';
-import { MAP_REVIEW_UNAVAILABLE, forgetMapReview, knownMapReview, reviewLiveMap } from '../../../editor/review/map-review';
+import { forgetMapReview, knownMapReview, reviewLiveMap } from '../../../editor/review/map-review';
 import { ReviewTooLong } from '../../../pipelines/moderation';
 
 const listener = () => ({ progress: vi.fn(), settled: vi.fn(), failed: vi.fn() });
@@ -65,7 +69,7 @@ describe('the text reviewer', () => {
 describe('the live map check', () => {
   it('reads a failed capture as unavailable and lets an abort through', async () => {
     mocks.capture.mockRejectedValue(new Error('no view'));
-    expect(await reviewLiveMap({ illustration: false, annotations: true }, new AbortController().signal)).toBe(MAP_REVIEW_UNAVAILABLE);
+    expect(await reviewLiveMap({ illustration: false, annotations: true }, new AbortController().signal)).toEqual({ status: 'unavailable' });
     const aborted = new AbortController();
     aborted.abort();
     await expect(reviewLiveMap({ illustration: false, annotations: true }, aborted.signal)).rejects.toThrow();

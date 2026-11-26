@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { installKeyTracking } from '../../../platform/input/held-keys';
-import { isCommandHeld, onCommandHeldChange } from '../../../state/keymap/held';
+import { isCommandHeld, isHeldCommandKey, onCommandHeldChange } from '../../../state/keymap/held';
 import { useKeybinds } from '../../../state/keymap/store';
 
 installKeyTracking();
@@ -91,6 +91,29 @@ describe('the multi-select command', () => {
     expect(isCommandHeld('selection.multi')).toBe(true);
     up({ key: 'Meta', metaKey: false });
     expect(isCommandHeld('selection.multi')).toBe(false);
+  });
+});
+
+describe('a held command\'s key', () => {
+  const space = { key: ' ', code: 'Space', shiftKey: false };
+  const letter = { key: 'h', code: 'KeyH', shiftKey: false };
+
+  it('is Space for the pan drag and the modifiers of the other held commands by default', () => {
+    expect(isHeldCommandKey(space)).toBe(true);
+    expect(isHeldCommandKey({ key: 'Control', code: 'ControlLeft', shiftKey: false })).toBe(true);
+    expect(isHeldCommandKey({ key: 'Enter', code: 'Enter', shiftKey: false })).toBe(false);
+    expect(isHeldCommandKey(letter)).toBe(false);
+  });
+
+  it('follows a rebind of the pan drag and lets its old key go', () => {
+    keymap().rebind('camera.pan_drag', 'h');
+    expect(isHeldCommandKey(letter)).toBe(true);
+    expect(isHeldCommandKey(space)).toBe(false);
+  });
+
+  it('is no key of an unbound command', () => {
+    keymap().clear('camera.pan_drag');
+    expect(isHeldCommandKey(space)).toBe(false);
   });
 });
 

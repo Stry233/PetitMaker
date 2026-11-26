@@ -1,19 +1,18 @@
 // @vitest-environment jsdom
 /**
- * The motion preference has to reach three gates that can't read the store themselves: the canvas rAF
- * loops (the `motion-state` singleton), CSS (`<html data-reduced-motion>`), and Framer (<MotionConfig>
- * in App, covered by its own props). These tests pin the two that `useMotionEnabled` publishes,
- * including the cases a CSS media query cannot express on its own: "Reduced" while the OS says
- * no-preference, and "Full" while the OS asks for reduce.
+ * The motion preference reaches Framer through `useMotionEnabled`, which reads the value the
+ * editor's session publishes, CSS through the attribute `animations.css` keys off, and the Settings
+ * samples, which show each level whatever is in force.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderHook, render, screen, act, cleanup, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
-import { resolveReducedMotion, useMotionEnabled } from '../../../ui/session/use-motion-enabled';
+import { useMotionEnabled } from '../../../ui/session/use-motion-enabled';
+import { resolveReducedMotion } from '../../../platform/storage/prefs';
 import { en } from '../../../i18n/locales/en';
 import { useEditorStore } from '../../../state/store';
-import { isMotionReduced, __resetMotionState } from '../../../platform/channels/motion-state';
+import { setReducedMotion, __resetMotionState } from '../../../platform/channels/motion-state';
 import { I18nProvider } from '../../../i18n/context';
 import { SettingsModal } from '../../../ui/chrome/modals/settings/SettingsModal';
 import { Spinner } from '../../../ui/primitives/Spinner';
@@ -27,74 +26,21 @@ function mockOsPrefers(reduce: boolean): void {
     removeEventListener: () => {},
   }));
 }
-const attr = (): string | undefined => document.documentElement.dataset.reducedMotion;
 
-beforeEach(() => {
-  __resetMotionState();
-  delete document.documentElement.dataset.reducedMotion;
-});
+beforeEach(() => { __resetMotionState(); });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useMotionEnabled publishes the effective preference', () => {
-  it('[UI-08] "reduced" reduces both gates even when the OS asks for nothing', () => {
-    mockOsPrefers(false);
-    useEditorStore.setState({ motionPref: 'reduced' });
-    renderHook(() => useMotionEnabled());
-    expect(isMotionReduced()).toBe(true);
-    expect(attr()).toBe('1');
-  });
-
-  it('[UI-08] "full" keeps motion on even when the OS asks for reduce', () => {
-    mockOsPrefers(true);
-    useEditorStore.setState({ motionPref: 'full' });
-    renderHook(() => useMotionEnabled());
-    expect(isMotionReduced()).toBe(false);
-    // Must be an explicit '0', not just absent: the CSS media query is scoped to opt out on it.
-    expect(attr()).toBe('0');
-  });
-
-  it('[UI-08] "system" follows the OS, both ways', () => {
-    mockOsPrefers(true);
-    useEditorStore.setState({ motionPref: 'system' });
-    const a = renderHook(() => useMotionEnabled());
-    expect(isMotionReduced()).toBe(true);
-    expect(attr()).toBe('1');
-    a.unmount();
-
-    mockOsPrefers(false);
-    useEditorStore.setState({ motionPref: 'system' });
-    renderHook(() => useMotionEnabled());
-    expect(isMotionReduced()).toBe(false);
-    expect(attr()).toBe('0');
-  });
-
-  it('updates the effective value when the OS setting changes while the app is open', () => {
-    let reduce = false;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      get matches() { return reduce && q.includes('prefers-reduced-motion'); },
-      media: q,
-      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
-      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
-    }));
-    useEditorStore.setState({ motionPref: 'system' });
+describe('useMotionEnabled', () => {
+  it('hands Framer the effective value as it is published, from the first render on', () => {
+    setReducedMotion(true);
     const hook = renderHook(() => useMotionEnabled());
-    expect(hook.result.current).toBe(false);
-
-    act(() => { reduce = true; listeners.forEach((fn) => fn()); });
     expect(hook.result.current).toBe(true);
-    expect(isMotionReduced()).toBe(true);
-    expect(attr()).toBe('1');
-
-    act(() => useEditorStore.setState({ motionPref: 'full' }));
+    act(() => setReducedMotion(false));
     expect(hook.result.current).toBe(false);
-    expect(attr()).toBe('0');
-    hook.unmount();
-    expect(listeners.size).toBe(0);
   });
 });
 
-describe('the CSS gate agrees with the attribute the hook writes', () => {
+describe('the CSS gate agrees with the attribute the session writes', () => {
   const css = readFileSync('src/ui/design/animations.css', 'utf8');
 
   it('keys its reduced rules off data-reduced-motion, not only the media query', () => {

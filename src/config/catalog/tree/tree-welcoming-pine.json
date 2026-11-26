@@ -1,0 +1,40 @@
+{
+  "id": "tree-welcoming-pine",
+  "category": "tree",
+  "name": {
+    "en": "Welcoming Pine",
+    "zh": "迎客松",
+    "ja": "迎客松",
+    "ru": "Гостеприимная сосна",
+    "th": "สนต้อนรับแขก",
+    "id": "Pinus Penyambut Tamu",
+    "fr": "Pin de bienvenue"
+  },
+  "aliases": [
+    "松",
+    "pine"
+  ],
+  "icon": "tree-welcoming-pine",
+  "iconColor": "#828b4f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 296.7,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    }
+  ],
+  "plant": {
+    "species": "tree-welcoming-pine",
+    "colorFamily": "green"
+  }
+}

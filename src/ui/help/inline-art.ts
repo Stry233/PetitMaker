@@ -3,7 +3,7 @@
  * (`shell/frame.ts`, the terrain tool glyphs, the smart menu's star, the load meter), so re-pointing a
  * control's art redraws the help; icons with no richer owner fall through to the icon glob.
  */
-import { ASSISTANT_BLOCK, GLYPHS, LAYERS_STACK_SRC, MODES, TOP_RIGHT, type Glyph } from '../shell/frame';
+import { ASSISTANT_BLOCK, GLYPHS, MODES, TOP_RIGHT, type Glyph } from '../shell/frame';
 import { TOOL_CELLS } from '../shell/bars/terrain-cells';
 import { SMART } from '../shell/bars/smart-menu';
 import { iconUrl } from '../../assets/icon-urls';
@@ -35,6 +35,7 @@ const CONTROL_ART: Record<string, () => InlineArt | undefined> = {
   'mode-mountain': () => modeArt('mountain'),
   'mode-water': () => modeArt('water'),
   'mode-generate': () => modeArt('generate'),
+  'mode-blueprint': () => modeArt('blueprint'),
   assistant: () => img(ASSISTANT_BLOCK.src),
   'share-btn': () => topRightArt('share'),
   menu: () => topRightArt('menu'),
@@ -46,7 +47,6 @@ const CONTROL_ART: Record<string, () => InlineArt | undefined> = {
   'rail-zoom-in': () => ({ kind: 'glyph', glyph: GLYPHS.zoomIn }),
   'rail-zoom-out': () => ({ kind: 'glyph', glyph: GLYPHS.zoomOut }),
   'rail-hide': () => ({ kind: 'glyph', glyph: GLYPHS.hideUi }),
-  'rail-layers': () => plated(LAYERS_STACK_SRC),
   settings: () => plated(iconUrl('settings')),
   help: () => plated(iconUrl('help')),
   // The smart-build cell's own star (`icons/ui/splat.png` is the mode row's selection blob).

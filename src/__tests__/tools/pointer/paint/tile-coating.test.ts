@@ -18,14 +18,14 @@ describe('tile-coating helper', () => {
 
   it('places the armed material when it differs from the default', () => {
     const state = makeState(10, 10);
-    placeTileCell({ x: 2, y: 2 }, makeToolCtx(state, exec(state), 1, 1, { tileMaterial: 'path-cobblestone' }), new Set());
+    placeTileCell({ x: 2, y: 2 }, makeToolCtx(state, exec(state), 1, { tileMaterial: 'path-cobblestone' }), new Set());
     expect(objectsByCatalog(state, 'path-cobblestone').length).toBe(1);
     expect(objectsByCatalog(state, 'path-overgrown-dirt').length).toBe(0);
   });
 
   it('places any catalog road material, not just the built-in dirt one', () => {
     const state = makeState(10, 10);
-    placeTileCell({ x: 7, y: 8 }, makeToolCtx(state, exec(state), 1, 1, { tileMaterial: 'path-simple-brick' }), new Set());
+    placeTileCell({ x: 7, y: 8 }, makeToolCtx(state, exec(state), 1, { tileMaterial: 'path-simple-brick' }), new Set());
     expect(objectsByCatalog(state, 'path-simple-brick').length).toBe(1);
   });
 
@@ -41,7 +41,7 @@ describe('tile-coating helper', () => {
     const state = makeState(10, 10);
     const e = exec(state);
     placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e), new Set());
-    placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e, 1, 1, { tileMaterial: 'path-cobblestone' }), new Set());
+    placeTileCell({ x: 4, y: 4 }, makeToolCtx(state, e, 1, { tileMaterial: 'path-cobblestone' }), new Set());
     expect(objectsByCatalog(state, 'path-overgrown-dirt').length).toBe(0);
     expect(objectsByCatalog(state, 'path-cobblestone').length).toBe(1);
   });
@@ -90,7 +90,7 @@ describe('tile-coating helper', () => {
     expect(getObjectIndex(state).entries.length).toBe(state.objects.size);
 
     // repainting the same area strips each old coating first: still no rebuild
-    const secondCtx = makeToolCtx(state, e, 1, 1, { tileMaterial: 'path-cobblestone' });
+    const secondCtx = makeToolCtx(state, e, 1, { tileMaterial: 'path-cobblestone' });
     const repaint = new Set<string>();
     for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) placeTileCell({ x, y }, secondCtx, repaint);
 

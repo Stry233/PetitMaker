@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cellKey, fitAspect, inflateRect, parseCellKey, rectsOverlap, regionBounds, uniqueCells, type Rect } from '../../../core/grid/rect';
+import { boundsOf, boundsWhere, cellKey, fitAspect, indexBounds, inflateRect, parseCellKey, rectsBounds, rectsOverlap, rectsTouch, regionBounds, uniqueCells, type Rect } from '../../../core/grid/rect';
 import type { MacroCoord } from '../../../core/model/types';
 
 describe('inflateRect', () => {
@@ -82,5 +82,29 @@ describe('cell keys', () => {
 
   it('keep each cell once, at its first place', () => {
     expect(uniqueCells([{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 3 }])).toEqual([{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 0, y: 3 }]);
+  });
+});
+
+describe('bounds of cells and rects', () => {
+  it('bounds a predicate over a grid, and nothing when it accepts no cell', () => {
+    expect(boundsWhere(10, 8, (x, y) => (x === 2 && y === 3) || (x === 6 && y === 5))).toEqual({ x: 2, y: 3, w: 5, h: 3 });
+    expect(boundsWhere(4, 4, () => false)).toBeNull();
+  });
+
+  it('bounds the cells any accessor reads off its items', () => {
+    const items = [{ at: { x: 4, y: 1 } }, { at: { x: 1, y: 6 } }];
+    expect(boundsOf(items, (i) => i.at)).toEqual({ x: 1, y: 1, w: 4, h: 6 });
+    expect(boundsOf([], (i: { at: { x: number; y: number } }) => i.at)).toBeNull();
+  });
+
+  it('bounds flat indices from any iterable', () => {
+    expect(indexBounds(new Set([12, 3, 25]), 10)).toEqual({ x: 2, y: 0, w: 4, h: 3 });
+  });
+
+  it('unions rects, and touches within a pad', () => {
+    expect(rectsBounds([{ x: 1, y: 1, w: 2, h: 2 }, { x: 5, y: 0, w: 1, h: 4 }])).toEqual({ x: 1, y: 0, w: 5, h: 4 });
+    expect(rectsBounds([])).toBeNull();
+    expect(rectsTouch({ x: 0, y: 0, w: 2, h: 2 }, { x: 2, y: 0, w: 1, h: 1 }, 1)).toBe(true);
+    expect(rectsTouch({ x: 0, y: 0, w: 2, h: 2 }, { x: 3, y: 0, w: 1, h: 1 }, 1)).toBe(false);
   });
 });

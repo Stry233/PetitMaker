@@ -10,9 +10,9 @@
  * `pipelines` compute over `state` and the data below it and never draw. No tool or view imports a
  * pipeline or is imported by one (`APART_LAYERS`), so their place between `tools` and `view` is a
  * choice; they rank below `io`, which reads their facts (the review rule, the recording formats, the stylize
- * settings), and `agent` and `ui`, which run them; no `editor` verb does. `view` draws over the
- * contract in `tools/pointer/runtime/`. `io` saves, shares and exports, reading views to draw an image;
- * `editor` sits above them because a verb needs generation, a view and the save codec together,
+ * settings), and the editor's wiring, `agent` and `ui`, which run them; no `editor/operations/` verb
+ * does. `view` draws over the contract in `tools/pointer/runtime/`. `io` saves, shares and exports,
+ * reading views to draw an image; `editor` sits above them because a verb needs generation, a view and the save codec together,
  * and `agent` drives `editor`. `legal` ranks above `agent` because its disclosure lists read the
  * assistant's and the illustration studio's provider tables. `entry` is the root files of `src/` and
  * `src/lite/`, which compose the app and which nothing imports.
@@ -100,7 +100,7 @@ export const LAYER_DOCS: Readonly<Record<Layer, { summary: string; owns: string 
   },
   rules: {
     summary: 'two-phase validators, one rule family per file, in a RuleRegistry',
-    owns: 'two-phase validators (pre-command and post-stroke), one rule family per file',
+    owns: 'two-phase validators (pre-command and post-stroke), one rule family per file, and the reading of whether a map stands within them (`legality.ts`)',
   },
   i18n: {
     summary: 'the seven locale tables, localizedName and the brand name',
@@ -108,7 +108,7 @@ export const LAYER_DOCS: Readonly<Record<Layer, { summary: string; owns: string 
   },
   tools: {
     summary: 'the pointer tools and their Tool/ToolContext contract in `pointer/`, and the map-edit libraries and generation they share, each behind an index.ts door',
-    owns: 'interaction handlers (gesture to `Command`) behind the `pointer/runtime/` contract, and the libraries, which import no pointer tool: shared placement and object edits, Smart Build macros, map readings and `generation/` (designed planets, mazes, stencil pictures, the carry between planets, and the run that builds candidates in a worker pool)',
+    owns: 'interaction handlers (gesture to `Command`) behind the `pointer/runtime/` contract, and the libraries, which import no pointer tool: shared placement and object edits, Smart Build macros, map readings, the map repair a load runs (`repair/`) and `generation/` (designed planets, mazes, stencil pictures, the carry between planets, and the run that builds candidates in a worker pool)',
   },
   view: {
     summary: 'the active view, the shared pointer machine, view-neutral parts, and the two live editing views: map2d (PixiJS) and map3d (three.js)',
@@ -120,7 +120,7 @@ export const LAYER_DOCS: Readonly<Record<Layer, { summary: string; owns: string 
   },
   editor: {
     summary: 'the live editor: the session, its verbs, the host, command bodies, interactive helpers, the development console API',
-    owns: 'the live editor: `session/` (`currentEditor`, map installs, the session\'s tools), the editor\'s verbs in `operations/` (`newMap`, `loadMap`, `generateMap`, each a plain function taking an `EditContext` or a port), what a shell asks of the view (`host/host.ts`), the keyboard and tap command bodies (`commands/`), the interactive helpers around an operation (`editing/`) and the development-only programmatic API (`dev/`). A tool computes, `editor/` runs it against the live editor, `ui/` presents it; a pipeline is run by the surface that needs it',
+    owns: 'the live editor: `session/` (`currentEditor`, map installs, the session\'s tools), the editor\'s verbs in `operations/` (`newMap`, `loadMap`, `generateMap`, each a plain function taking an `EditContext` or a port), what a shell asks of the view (`host/host.ts`), the keyboard and tap command bodies (`commands/`), the interactive helpers around an operation (`editing/`), the pages, search and text of Help (`help/`) and the development-only programmatic API (`dev/`). A tool computes, `editor/` runs it against the live editor, `ui/` presents it; a pipeline is run by the editor\'s wiring or the surface that needs it, never by an `operations/` verb',
   },
   agent: {
     summary: 'the LLM assistant harness',

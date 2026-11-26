@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { I18nProvider } from '../../../../i18n/context';
 import { HintTokens } from '../../../../ui/help/hints/hint-marks';
-import type { ResolvedToken } from '../../../../ui/help/hints/catalogue';
+import type { ResolvedToken } from '../../../../editor/help/key-tokens';
 import { setStoreState } from '../../../_support/store';
 
 const strip = (tokens: ResolvedToken[]) =>

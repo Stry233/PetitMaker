@@ -5,6 +5,7 @@
 import { flatIndex } from '../../../../core/grid/rect';
 import type { PlacedObject } from '../../../../core/model/types';
 import { getCatalogItem } from '../../../../state/catalog';
+import { refusesOwnNeighbour } from '../../../../core/model/traits';
 import type { AnchorPlan } from '../places/anchors';
 import type { RegionPalette } from './palette';
 import { mirrorOf, reflect, symmetrize, type Axis, type Mirror } from './symmetry';
@@ -64,7 +65,7 @@ export function endMarks(input: DressInput, ground: EndGround): PlantMark[][] {
     const palette = palettes.get((aheadCell === undefined ? undefined : paletteOf.get(aheadCell)) ?? regionId);
     if (!palette) continue;
     const id = palette.species('mass');
-    if (getCatalogItem(id)?.traits?.some((t) => t.type === 'exclusionRadius')) continue;
+    if (refusesOwnNeighbour(getCatalogItem(id))) continue;
     // Centre of the face outward, so the block comes out mirrored about the street's own axis: an
     // end spot laid greedily from one side is an asymmetry dropped into a region the composition
     // score reads as a whole.

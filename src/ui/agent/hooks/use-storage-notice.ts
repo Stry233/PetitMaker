@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { RepairAct } from '../derive/repair';
+import type { RepairAct } from '../../../agent/panel';
 
 type StorageNotice = 'pruned' | 'lost' | 'corrupt' | null | undefined;
 

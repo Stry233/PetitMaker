@@ -30,6 +30,8 @@ interface RoadSurfaceHost {
   surfaceContainerFor(elev: number): PIXI.Container;
   /** The map the layer draws. */
   state(): GridState | null;
+  /** The road lookup the surfaces of `state` read; the state's own roads by default. */
+  roads?(state: GridState): RoadLookup;
 }
 
 export class RoadSurfaces {
@@ -86,7 +88,7 @@ export class RoadSurfaces {
     if (this.host.container().destroyed) return;
     const gridState = this.host.state();
     if (!gridState) return;
-    const roads = roadLookup(gridState);
+    const roads = this.host.roads?.(gridState) ?? roadLookup(gridState);
     const regions = this.regions.regionsFor(gridState, roadSurfaceTiles(gridState), roads);
     const carried = (id: string): boolean => this.inFlight.has(id);
     // While a group tween carries members, their surfaces draw as `shared/road/flight.ts` describes.

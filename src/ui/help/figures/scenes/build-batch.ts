@@ -8,7 +8,7 @@
 import { ToolType } from '../../../../state/editing/vocabulary';
 import type { SandboxWorld } from '../../../../editor/sandbox/demo-world';
 import type { MacroCoord } from '../../../../core/model/types';
-import type { TokenSpec } from '../../hints/catalogue';
+import type { TokenSpec } from '../../../../editor/help/key-tokens';
 import { bandSteps, ctrlHeld } from './build-objects';
 import {
   CABIN, CTRL_KEYS, FLOWER, Hand, INTERIOR, TREE, armItem, freshSession, placeThrough, sayNotice,

@@ -227,7 +227,7 @@ interface RampSite {
  *  side). We validate with the registry's pre-command rules so the same placement
  *  constraints the placement ghost uses (flat, zone, etc.) are applied
  *  without touching state. */
-function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): RampSite[] {
+export function scanRampSites(deps: AgentToolDeps, near: MacroCoord, limit: number): RampSite[] {
   const state = deps.getState();
   const exec = deps.getExecutor();
   const reg = exec.getRegistry();

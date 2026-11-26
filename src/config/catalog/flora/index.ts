@@ -39,6 +39,15 @@ import shrub from './shrub.json';
 import plant_gardenia from './plant-gardenia.json';
 import plant_azalea from './plant-azalea.json';
 import plant_agave from './plant-agave.json';
+import flower_petunia from './flower-petunia.json';
+import flower_petunia_red from './flower-petunia-red.json';
+import flower_petunia_white from './flower-petunia-white.json';
+import flower_adonis from './flower-adonis.json';
+import flower_adonis_red from './flower-adonis-red.json';
+import flower_adonis_white from './flower-adonis-white.json';
+import plant_bird_of_paradise from './plant-bird-of-paradise.json';
+import plant_desert_rose from './plant-desert-rose.json';
+import plant_nandina from './plant-nandina.json';
 
 export const flora: CatalogItem[] = [
   flower_sunflower, flower_sunflower_red, flower_sunflower_green, flower_rose, flower_rose_cyan,
@@ -49,4 +58,6 @@ export const flora: CatalogItem[] = [
   flower_canna_yellow, flower_canna_red, flower_canna_gold, flower_portulaca_white, flower_portulaca_purple,
   flower_portulaca_yellow, flower_agapanthus, flower_agapanthus_white, flower_agapanthus_blue, shrub,
   plant_gardenia, plant_azalea, plant_agave,
+  flower_petunia, flower_petunia_red, flower_petunia_white, flower_adonis, flower_adonis_red, flower_adonis_white,
+  plant_bird_of_paradise, plant_desert_rose, plant_nandina,
 ] as CatalogItem[];

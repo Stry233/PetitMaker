@@ -15,7 +15,7 @@
 import { placeObjectCommand, removeObjectCommand } from '../../../core/model/command-build';
 import { paintLayer, raiseBottomUp, type RaiseTarget } from '../terrain-plan';
 import { TerrainType } from '../../../core/model/types';
-import type { Command, GridState, MacroCoord, PlacedObject, ValidationResult } from '../../../core/model/types';
+import type { Command, GridState, MacroCoord, PlacedObject, Rotation, ValidationResult } from '../../../core/model/types';
 import { FLAT_SAFE_ELEVATION, type Stencil, type StencilBudgetOutcome, type StencilPlan, type StencilWaterRole } from '../recipe';
 import { getCell } from '../../../core/model/grid-model';
 import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
@@ -35,6 +35,7 @@ import { declaredColorPalette, type ColorEntry } from './stencil-palette';
 import { isChunkLoadEnforced } from '../../../core/model/load';
 import { LoadBudget } from '../../../state/load-budget';
 import { budgetStencil } from './stencil-budget';
+import { pieceSize, pieceTurn } from './stencil-piece';
 import { strokeTilePalette, strokeTileMask } from './stencil-line-tiles';
 import { coatingLayer, isCoatingItem } from '../../../core/model/traits';
 import { ELEVATION_MAX } from '../../../core/game/profile';
@@ -77,8 +78,17 @@ export interface StencilResult {
   coated?: number;
 }
 
-/** Where the stencil's top-left cell sits on the map, and what it may write to. */
-interface StencilPlacement { origin: MacroCoord; stencil: Stencil; allow?: ReadonlySet<number> }
+/** Where the stencil's top-left cell sits on the map, what it may write to, and the map direction
+ *  its top points (absent is north). */
+interface StencilPlacement { origin: MacroCoord; stencil: Stencil; allow?: ReadonlySet<number>; facing?: Rotation }
+
+/** A piece of the picture at map cell `at`, standing on the surface there and turned with it. */
+function piece(state: GridState, facing: Rotation | undefined, catalogId: string, at: MacroCoord): PlacedObject {
+  return {
+    id: generateObjectId(), catalogId, position: at, rotation: pieceTurn(facing, catalogId),
+    elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
+  };
+}
 
 /**
  * A cell the generator may write to at all: on the map, buildable ground, and inside the run's own
@@ -201,10 +211,9 @@ function layStencilTerrain(
  * refusing at every second cell for overlapping the one before it. A step whose whole footprint is
  * not covered is skipped, which is what keeps the outline readable at the size the glyph was drawn.
  */
-function* shapeTiles(stencil: Stencil, catalogId: string): Iterable<{ x: number; y: number }> {
-  const item = getCatalogItem(catalogId);
-  if (!item) return;
-  const stepX = Math.max(1, item.width), stepY = Math.max(1, item.height);
+function* shapeTiles(stencil: Stencil, catalogId: string, facing: Rotation | undefined): Iterable<{ x: number; y: number }> {
+  if (!getCatalogItem(catalogId)) return;
+  const { w: stepX, h: stepY } = pieceSize(facing, catalogId);
   for (let y = 0; y + stepY <= stencil.height; y += stepY) {
     for (let x = 0; x + stepX <= stencil.width; x += stepX) {
       let whole = true;
@@ -218,27 +227,22 @@ function* shapeTiles(stencil: Stencil, catalogId: string): Iterable<{ x: number;
 
 function layStencilObjects(
   state: GridState,
-  { origin, stencil, allow }: StencilPlacement,
+  { origin, stencil, allow, facing }: StencilPlacement,
   catalogId: string,
   executeCommand: (cmd: Command) => ValidationResult,
 ): StencilResult {
   let placed = 0, skipped = 0;
-  for (const { x, y } of shapeTiles(stencil, catalogId)) {
+  for (const { x, y } of shapeTiles(stencil, catalogId, facing)) {
     const at = { x: origin.x + x, y: origin.y + y };
     if (!writable(state, at.x, at.y, allow)) { skipped++; continue; }
-    const obj: PlacedObject = {
-      id: generateObjectId(), catalogId,
-      position: at, rotation: 0,
-      elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
-    };
-    if (executeCommand(placeObjectCommand(obj)).success) placed++;
+    if (executeCommand(placeObjectCommand(piece(state, facing, catalogId, at))).success) placed++;
     else skipped++;
   }
   return { placed, skipped };
 }
 
 function layStencilLines(
-  state: GridState, { origin, stencil, allow }: StencilPlacement,
+  state: GridState, { origin, stencil, allow, facing }: StencilPlacement,
   executeCommand: (cmd: Command) => ValidationResult,
 ): StencilResult {
   const palette = strokeTilePalette(getAllItems()), curved = strokeTilePalette(getAllItems(), true);
@@ -246,7 +250,7 @@ function layStencilLines(
   for (let y = 0; y < stencil.height; y++) for (let x = 0; x < stencil.width; x++) {
     if (!covered(stencil, x, y)) continue;
     const index = y * stencil.width + x;
-    const tile = (stencil.curves?.[index] ? curved : palette).get(strokeTileMask(stencil, index));
+    const tile = (stencil.curves?.[index] ? curved : palette).get(strokeTileMask(stencil, index, facing));
     const position = { x: origin.x + x, y: origin.y + y };
     if (!tile || !writable(state, position.x, position.y, allow)) { skipped++; continue; }
     const object: PlacedObject = {
@@ -375,7 +379,7 @@ interface StencilColorOptions {
  */
 export function layStencilColor(
   state: GridState,
-  { origin, stencil, allow }: StencilPlacement,
+  { origin, stencil, allow, facing }: StencilPlacement,
   executeCommand: (cmd: Command) => ValidationResult,
   { maxElevation, contrast = 1, water = 'none', fitTones = true }: StencilColorOptions,
 ): StencilResult {
@@ -527,11 +531,7 @@ export function layStencilColor(
     const pave = (cells: readonly number[], catalogId: string): void => {
       for (const i of cells) {
         const at = { x: origin.x + (i % sw), y: origin.y + ((i / sw) | 0) };
-        const obj: PlacedObject = {
-          id: generateObjectId(), catalogId, position: at, rotation: 0,
-          elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
-        };
-        if (executeCommand(placeObjectCommand(obj)).success) { res.placed++; coated++; }
+        if (executeCommand(placeObjectCommand(piece(state, facing, catalogId, at))).success) { res.placed++; coated++; }
         else res.skipped++;
       }
     };
@@ -631,7 +631,7 @@ function matchObjectColors(
  */
 export function layStencilObjectColor(
   state: GridState,
-  { origin, stencil, allow }: StencilPlacement,
+  { origin, stencil, allow, facing }: StencilPlacement,
   palette: readonly { catalogId: string; rgb: number }[],
   executeCommand: (cmd: Command) => ValidationResult,
   { contrast = 1, fitTones = true, matches }: { contrast?: number; fitTones?: boolean; matches?: (ColorEntry | null)[] } = {},
@@ -645,12 +645,7 @@ export function layStencilObjectColor(
       const match = chosen[y * sw + x];
       if (!match) continue;
       const at = { x: origin.x + x, y: origin.y + y };
-      const obj: PlacedObject = {
-        id: generateObjectId(), catalogId: match.catalogId,
-        position: at, rotation: 0,
-        elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
-      };
-      if (executeCommand(placeObjectCommand(obj)).success) placed++;
+      if (executeCommand(placeObjectCommand(piece(state, facing, match.catalogId, at))).success) placed++;
       else skipped++;
     }
   }
@@ -728,7 +723,7 @@ interface StencilDecorOptions {
  */
 export function layStencilDecor(
   state: GridState,
-  { origin, stencil, allow }: StencilPlacement,
+  { origin, stencil, allow, facing }: StencilPlacement,
   decor: { palette: readonly { catalogId: string; rgb: number }[]; density?: number },
   executeCommand: (cmd: Command) => ValidationResult,
   { replaceable, primary = [], paved = false }: StencilDecorOptions = {},
@@ -780,12 +775,7 @@ export function layStencilDecor(
       if (!mayCoat && isCoatingItem(getCatalogItem(standing.catalogId))) return false;
       if (!executeCommand(removeObjectCommand(standing)).success) return false;
     }
-    const obj: PlacedObject = {
-      id: generateObjectId(), catalogId,
-      position: at, rotation: 0,
-      elevation: surfaceElevation(getCell(state.cells, at.x, at.y)?.terrain),
-    };
-    if (!executeCommand(placeObjectCommand(obj)).success) {
+    if (!executeCommand(placeObjectCommand(piece(state, facing, catalogId, at))).success) {
       // The base object goes back under its own id, which the load rule credits with its own load.
       if (standing) executeCommand(placeObjectCommand(standing));
       return false;
@@ -860,7 +850,9 @@ function layStencilPlan(
   executeCommand: (cmd: Command) => ValidationResult,
   matches?: (ColorEntry | null)[],
 ): StencilResult {
-  const placement = { origin: plan.origin, stencil: plan.stencil, ...(plan.allow ? { allow: plan.allow } : {}) };
+  const placement: StencilPlacement = {
+    origin: plan.origin, stencil: plan.stencil, ...(plan.allow ? { allow: plan.allow } : {}), ...(plan.facing ? { facing: plan.facing } : {}),
+  };
   const before = plan.decor?.palette.length ? new Set(state.objects.keys()) : null;
   // What the picture is told in, which is also what the decoration is measured against: a cell is
   // worth marking partly because this palette cannot say its colour.
@@ -912,7 +904,7 @@ function matchPlanObjects(state: GridState, plan: StencilPlan): (ColorEntry | nu
   const matches: (ColorEntry | null)[] = Array(plan.stencil.width * plan.stencil.height).fill(null);
   const item = plan.fill?.kind === 'object' ? getCatalogItem(plan.fill.catalogId) : undefined;
   if (!item) return matches;
-  for (const { x, y } of shapeTiles(plan.stencil, item.id)) {
+  for (const { x, y } of shapeTiles(plan.stencil, item.id, plan.facing)) {
     if (writable(state, plan.origin.x + x, plan.origin.y + y, plan.allow)) {
       matches[y * plan.stencil.width + x] = { catalogId: item.id, rgb: 0 };
     }

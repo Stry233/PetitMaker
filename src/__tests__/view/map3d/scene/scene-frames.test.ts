@@ -12,7 +12,7 @@ function requestWindow(): number {
   const loop = new FrameLoop(() => {});
   loop.request();
   let frames = 0;
-  while (loop.advance()) frames++;
+  while (loop.advance(0)) frames++;
   return frames;
 }
 import { makeState, setTerrain } from '../../../_support/map-state';

@@ -14,13 +14,13 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { useReveal } from '../../../../primitives/use-reveal';
 import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { cursors, radii } from '../../../../design/styles';
-import { DANGER_INK, DANGER_SURFACE, ACTIVE, inkTint, rgbaOf } from '../../../../design/tokens';
-import { skin } from '../../../../design/window-skin';
+import { DANGER_INK, DANGER_SURFACE, inkTint } from '../../../../design/tokens';
+import { pickedRing, skin } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
 import { useT } from '../../../../../i18n/context';
 import { versionSrc, type StylizeVersion } from '../../../../../state/stylize-versions';
+import { CUSTOM_DIRECTION_ID } from '../../../../../pipelines/stylize/facts';
 import { useScrollRow } from '../../../../primitives/use-scroll-row';
-import { MAP_ASPECT } from './sample-art';
 import { entering } from './stylize-parts';
 import { amplitude, cssMotion, framerMotion, NO_MOTION } from '../../../../design/motion';
 import { useInteractionProfiles } from '../../../../design/input-mode';
@@ -34,7 +34,9 @@ const CREEP_PCT = amplitude('stylize.progress.creep') * 100;
 
 /** The picture a card shows, where the browser can be given one. */
 
-export function VersionShelf({ versions, selectedId, running, runningBand, originalSrc, onTry, onPick, onRetire, enterIndex = 0 }: {
+export function VersionShelf({ aspect, versions, selectedId, running, runningBand, originalSrc, onTry, onPick, onRetire, enterIndex = 0 }: {
+  /** The pictured map's own ratio, which every slot is drawn at. */
+  aspect: number;
   versions: readonly StylizeVersion[];
   selectedId: string | null;
   running: boolean;
@@ -92,7 +94,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
           aria-label={t('stylize.original')}
           onClick={() => onPick(null)}
           {...tryOriginal}
-          style={cardStyle(selectedId === null, originalSrc)}
+          style={cardStyle(aspect, selectedId === null, originalSrc)}
        >
           <span style={tagStyle}>{t('stylize.original')}</span>
         </ActionButton>
@@ -103,10 +105,10 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
       <AnimatePresence initial={false} custom={minted}>
         {([...versions, ...(painting ? ['painting' as const] : [])]).map((entry) => {
           if (entry === 'painting') {
-            return <PaintingCard key="painting" band={runningBand} reduced={reduced} />;
+            return <PaintingCard key="painting" aspect={aspect} band={runningBand} reduced={reduced} />;
           }
           return (
-            <VersionCard key={entry.id} version={entry} picked={selectedId === entry.id} reduced={reduced}
+            <VersionCard key={entry.id} aspect={aspect} version={entry} picked={selectedId === entry.id} reduced={reduced}
               onTry={onTry} onPick={onPick} onRetire={onRetire} />
           );
         })}
@@ -119,7 +121,7 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.55 }}
           transition={framerMotion('stylize.shelf.settle')}
-          style={{ ...slotBox, ...slotStyle }}
+          style={{ ...slotBox, ...slotStyle(aspect) }}
         />
       ))}
     </motion.div>
@@ -128,7 +130,8 @@ export function VersionShelf({ versions, selectedId, running, runningBand, origi
 
 /** One take's slot: its card, and the retire square the slot's reveal shows (in touch mode, the
  *  kept card's too). */
-function VersionCard({ version, picked, reduced, onTry, onPick, onRetire }: {
+function VersionCard({ aspect, version, picked, reduced, onTry, onPick, onRetire }: {
+  aspect: number;
   version: StylizeVersion;
   picked: boolean;
   reduced: boolean;
@@ -143,7 +146,7 @@ function VersionCard({ version, picked, reduced, onTry, onPick, onRetire }: {
   const retireName = useNameReveal(t('stylize.retire'));
   const tryIt = useReveal({ onChange: (shown) => onTry(shown ? version.id : null) }).bind;
   const retirable = slot.shown || (slot.touch && picked);
-  const custom = version.direction === 'custom';
+  const custom = version.direction === CUSTOM_DIRECTION_ID;
   const label = t('stylize.version_label', { n: version.no });
   return (
     <motion.div
@@ -176,7 +179,7 @@ function VersionCard({ version, picked, reduced, onTry, onPick, onRetire }: {
         {...(custom && version.prompt ? { title: version.prompt } : {})}
         onClick={() => onPick(version.id)}
         {...tryIt}
-        style={cardStyle(picked, versionSrc(version))}
+        style={cardStyle(aspect, picked, versionSrc(version))}
      >
         <span style={tagStyle}>
           {label}
@@ -215,7 +218,7 @@ function VersionCard({ version, picked, reduced, onTry, onPick, onRetire }: {
  * until it answers, so the bar creeps to a mark short of the end over a take's usual length (one step
  * under reduced motion) and only the finished picture fills it.
  */
-function PaintingCard({ band, reduced }: { band: string; reduced: boolean }) {
+function PaintingCard({ aspect, band, reduced }: { aspect: number; band: string; reduced: boolean }) {
   const percent = reduced ? CREEP_PCT / 2 : CREEP_PCT;
   const bar: CSSProperties = { height: '100%', background: skin.active, borderRadius: radii.pill };
 
@@ -229,7 +232,7 @@ function PaintingCard({ band, reduced }: { band: string; reduced: boolean }) {
           : { opacity: 0, flexBasis: 0, marginRight: 0, transition: framerMotion('stylize.shelf.settle') },
       }}
       exit="exit"
-      style={{ ...slotBox, ...slotStyle, background: skin.inset, position: 'relative', overflow: 'hidden' }}>
+      style={{ ...slotBox, ...slotStyle(aspect), background: skin.inset, position: 'relative', overflow: 'hidden' }}>
       <span aria-hidden style={{ ...bandStyle, background: band }} />
       <div aria-hidden style={trackStyle}>
         {reduced ? (
@@ -273,16 +276,16 @@ const slotBox: CSSProperties = {
 };
 
 /** One slot of the sheet: the map's ratio, and the hairline that keeps an empty one drawn. */
-const slotStyle: CSSProperties = {
+const slotStyle = (aspect: number): CSSProperties => ({
   width: '100%',
-  aspectRatio: String(MAP_ASPECT),
+  aspectRatio: String(aspect),
   borderRadius: radii.md,
   boxShadow: `inset 0 0 0 1.5px ${skin.line}`,
-};
+});
 
-function cardStyle(picked: boolean, src: string | null): CSSProperties {
+function cardStyle(aspect: number, picked: boolean, src: string | null): CSSProperties {
   return {
-    ...slotStyle,
+    ...slotStyle(aspect),
     position: 'relative',
     display: 'block',
     padding: 0,
@@ -294,9 +297,7 @@ function cardStyle(picked: boolean, src: string | null): CSSProperties {
     ...(src ? { backgroundImage: `url(${src})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
     // The unpicked ring is the picked one at zero width rather than the slot's own hairline alone:
     // a shadow list that changes length cannot be interpolated, so the ring would land in one frame.
-    boxShadow: picked
-      ? `inset 0 0 0 1.5px ${skin.line}, 0 0 0 2.5px ${skin.active}`
-      : `inset 0 0 0 1.5px ${skin.line}, 0 0 0 0 ${rgbaOf(ACTIVE, 0)}`,
+    boxShadow: `inset 0 0 0 1.5px ${skin.line}, ${pickedRing(picked)}`,
   };
 }
 

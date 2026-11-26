@@ -1,5 +1,6 @@
-// One check of the live map's pictures by the map review. The window's hook keeps the result per
-// map revision and runs at most one check at a time.
+// One check of the live map's pictures by the map review. `map-session.ts` keeps the result per
+// map revision and runs at most one check at a time, and reaches this module only through
+// `edition-review.ts:liveMapCheck`, since an edition without the check must not load its worker.
 import { reviewMap, type MapReview } from '../../pipelines/moderation';
 import { throwIfAborted } from '../../platform/async/abort';
 import { captureReviewViews } from './map-capture';
@@ -7,7 +8,7 @@ import { captureReviewViews } from './map-capture';
 export type { MapReview };
 
 /** What a check that could not run reports. */
-export const MAP_REVIEW_UNAVAILABLE: MapReview = { status: 'unavailable' };
+const MAP_REVIEW_UNAVAILABLE: MapReview = { status: 'unavailable' };
 
 /** What was checked: the map and the caller's key for the pictures it showed (its revision, notes
  *  and illustration). */

@@ -16,7 +16,7 @@ import {
   allocateEntries, areaSalience, AREA_MIN, cellDepths, coherentAreas, figureRim, fuseAreas, mergeToTarget, regionFlatness,
   regionTarget, type Area, type AreaReading,
 } from '../../../../tools/generation/stencil/stencil-areas';
-import { HUE_CHROMA_MIN, blendColor, hueMatched, hueOf, luma, nearestEntry, signedTurn } from '../../../../tools/generation/stencil/color';
+import { HUE_CHROMA_MIN, hueMatched, hueOf, luma, nearestEntry, signedTurn } from '../../../../tools/generation/stencil/color';
 import { FEATURE_MAX_SHARE } from '../../../../tools/generation/stencil/stencil-feature';
 import { layStencilColor } from '../../../../tools/generation/stencil/stencil-generator';
 import { paletteToneRange, terrainPalette } from '../../../../tools/generation/stencil/stencil';
@@ -320,12 +320,6 @@ describe('which entry each area is told in', () => {
     for (const id of light) {
       for (const other of dark) expect(slots[id]!).toBeGreaterThanOrEqual(slots[other]!);
     }
-  });
-
-  it('blends a colour toward another, and at the ends is each one exactly', () => {
-    expect(blendColor(0x000000, 0xffffff, 0)).toBe(0x000000);
-    expect(blendColor(0x000000, 0xffffff, 1)).toBe(0xffffff);
-    expect(blendColor(0x000000, 0x646464, 0.5)).toBe(0x323232);
   });
 });
 

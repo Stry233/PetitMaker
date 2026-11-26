@@ -18,18 +18,25 @@ import { editorToolWiring } from '../../../editor/session/tool-wiring';
 import { COMMAND_BY_ID, type CommandContext } from '../../../editor/commands/commands';
 import { useEditorStore } from '../../../state/store';
 import { holdEditInFlight } from '../../../state/edits-in-flight';
-import { activeToolOf } from '../../../state/editing/edit-mode';
+import { activeToolOf, armedItemOf, armedPicksOf } from '../../../state/editing/edit-mode';
+import { toggleArmedItem, toggleItemPick } from '../../../editor/editing/object-shelf';
+import { toggleAgentRegion } from '../../../editor/editing/region-brush';
+import { __setBlueprintLibrary, armBlueprint, saveBlueprint } from '../../../editor/editing/blueprint';
+import { createBlueprintLibrary, memoryBlueprintBackend } from '../../../io/storage/blueprint-library';
 import { selectedObjectIds } from '../../../state/selection';
 import { ToolType } from '../../../state/editing/vocabulary';
 import { armedEditMode, resetStore, setStoreState } from '../../_support/store';
 import { headlessViewVerbs } from '../../_support/tool-manager';
 import type { MacroCoord, PlacedObject } from '../../../core/model/types';
-import { watchFirstEdit } from '../../../editor/session/restore';
+import { watchVisitorEngaged } from '../../../editor/session/restore';
 import { measureJsonSections } from '../../../editor/export/json-export';
 import { readTourWatch } from '../../../ui/session/tour-watch';
 import { executeToolCall, type AgentToolDeps } from '../../../agent/tools';
 
 const TREE = 'tree-apple';
+const STALL = 'building-stall';
+const DAISY = 'flower-daisy';
+const ROSE = 'flower-rose';
 const noop = (): void => {};
 const overlay = new Proxy({} as ToolOverlay, { get: () => noop });
 const view = {
@@ -129,6 +136,20 @@ describe('selecting objects', () => {
     expect(selected()).toEqual([]);
   });
 
+  spec('EDIT-24', 'a Ctrl selection with an item armed puts the item down, Ctrl+A as a Ctrl+click does', () => {
+    const { w, a } = twoTrees();
+    toggleArmedItem(STALL);
+    holdCtrl(true);
+    press(a.position);
+    holdCtrl(false);
+    expect(armedItemOf(useEditorStore.getState()), 'Ctrl+click').toBeNull();
+    toggleArmedItem(STALL);
+    key('selection.all');
+    expect(armedItemOf(useEditorStore.getState()), 'Ctrl+A').toBeNull();
+    expect(tool()).toBe(ToolType.Hand);
+    expect(selected()).toHaveLength(w.state.objects.size);
+  });
+
   spec('EDIT-24', 'Escape lets go of a press still down but leaves a build landing by itself, and the selection with it', () => {
     twoTrees();
     key('selection.all');
@@ -155,16 +176,126 @@ describe('selecting objects', () => {
     expect(selected()).toHaveLength(w.state.objects.size);
   });
 
-  spec('EDIT-25', 'a selection stands under the Hand tool and the object placer, and arming any other tool clears it', () => {
-    const { a } = twoTrees();
+  spec('EDIT-25', 'arming an item or a tool clears the selection, and one made with an item armed stands under it', () => {
+    const { w, a, b } = twoTrees();
     press(a.position);
     const s = useEditorStore.getState;
-    s().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: TREE } });
+    toggleArmedItem(TREE);
     expect(tool()).toBe(ToolType.ObjectPlacer);
-    expect(selected(), 'the placer keeps it').toEqual([a.id]);
+    expect(selected(), 'arming the card clears it').toEqual([]);
+    press(b.position);
+    expect(selected(), 'a press the tree cannot place on selects instead').toEqual([b.id]);
+    expect(w.object(b.id)).toBeDefined();
+    toggleArmedItem(STALL);
+    expect(selected(), 'arming another card clears it').toEqual([]);
+    press(b.position);
+    s().setEditMode({ arm: { kind: 'none' } });
+    expect(selected(), 'putting the card down keeps it').toEqual([b.id]);
     s().setEditMode({ mode: 'mountain', arm: { kind: 'brush' } });
     expect(tool()).toBe(ToolType.TerrainBrush);
     expect(selected(), 'the brush clears it').toEqual([]);
+  });
+
+  spec('EDIT-25', 'arming an item clears a selection of several, and adding a card to the armed ones clears one made with a card armed', () => {
+    const { b } = twoTrees();
+    key('selection.all');
+    toggleArmedItem(DAISY);
+    expect(selected()).toEqual([]);
+    press(b.position);
+    expect(selected()).toEqual([b.id]);
+    toggleItemPick(ROSE);
+    expect(armedPicksOf(useEditorStore.getState())).toEqual([DAISY, ROSE]);
+    expect(selected()).toEqual([]);
+  });
+
+  spec('EDIT-25', 'coming back to Objects arms the card it held again and clears a selection made meanwhile', () => {
+    const { a } = twoTrees();
+    toggleArmedItem(STALL);
+    useEditorStore.getState().setEditMode({ mode: null });
+    press(a.position);
+    expect(selected()).toEqual([a.id]);
+    useEditorStore.getState().setEditMode({ mode: 'object' });
+    expect(armedItemOf(useEditorStore.getState())).toBe(STALL);
+    expect(selected()).toEqual([]);
+  });
+
+  spec('EDIT-25', 'starting Generate\'s or the assistant\'s region clears the selection, and ending it brings none back', () => {
+    const { a } = twoTrees();
+    const s = useEditorStore.getState;
+    press(a.position);
+    s().setSelectingRegion(true, 'generator');
+    expect(selected(), 'Generate\'s region').toEqual([]);
+    s().setSelectingRegion(false);
+    expect(selected()).toEqual([]);
+    press(a.position);
+    toggleAgentRegion();
+    expect(selected(), 'the assistant\'s region').toEqual([]);
+    toggleAgentRegion();
+    expect(selected()).toEqual([]);
+  });
+
+  spec('EDIT-25', 'the delete question and a menu on the selection close when the selection ends, and a menu on another object stays', () => {
+    const { w, a, b } = twoTrees();
+    const s = useEditorStore.getState;
+    press(a.position);
+    key('selection.delete');
+    expect(s().deletePopover).toEqual({ kind: 'object', id: a.id });
+    toggleArmedItem(STALL);
+    expect(s().deletePopover, 'arming a card').toBeNull();
+    s().setEditMode({ arm: { kind: 'none' } });
+    press(a.position);
+    s().setContextMenu({ x: 0, y: 0, target: { kind: 'object', id: a.id }, mode: 'pc' });
+    s().setEditMode({ mode: 'mountain', arm: { kind: 'brush' } });
+    expect(s().contextMenu, 'arming a brush').toBeNull();
+    s().setEditMode({ mode: null });
+    press(a.position);
+    s().setContextMenu({ x: 0, y: 0, target: { kind: 'object', id: b.id }, mode: 'touch' });
+    s().setSelection([]);
+    expect(s().contextMenu, 'a menu on another object').not.toBeNull();
+    s().setSelectingRegion(true, 'generator');
+    expect(s().contextMenu, 'a region step takes up the presses, and any menu closes (EDIT-78)').toBeNull();
+    expect(w.object(a.id)).toBeDefined();
+  });
+
+  spec('EDIT-24', 'Ctrl+A or a Ctrl+click with a blueprint armed puts the blueprint down, as it does an armed item', async () => {
+    const { w, at, a } = twoTrees();
+    const stop = __setBlueprintLibrary(createBlueprintLibrary(memoryBlueprintBackend()));
+    try {
+      const s = useEditorStore.getState;
+      s().setEditMode({ mode: 'blueprint' });
+      const record = await saveBlueprint({ frame: { x: at.x, y: at.y, w: 4, h: 4 }, name: 'Tree', author: null, folder: null });
+      if (typeof record === 'string') throw new Error(`refused: ${record}`);
+      armBlueprint(record.id);
+      holdCtrl(true);
+      press(a.position);
+      holdCtrl(false);
+      expect(s().blueprint.armed, 'Ctrl+click').toBeNull();
+      expect(selected()).toEqual([a.id]);
+      armBlueprint(record.id);
+      key('selection.all');
+      expect(s().blueprint.armed, 'Ctrl+A').toBeNull();
+      expect(selected()).toHaveLength(w.state.objects.size);
+    } finally { stop(); }
+  });
+
+  spec('EDIT-25', 'with the selection cleared by arming, Delete leaves the object that was selected', () => {
+    const { w, a } = twoTrees();
+    press(a.position);
+    toggleArmedItem(STALL);
+    key('selection.delete');
+    expect(useEditorStore.getState().deletePopover).toBeNull();
+    expect(w.object(a.id)).toBeDefined();
+  });
+
+  spec('EDIT-24', 'with an item armed and an object selected under it, the first Escape clears the selection and the next puts the item down', () => {
+    const { b } = twoTrees();
+    toggleArmedItem(TREE);
+    press(b.position);
+    key('selection.deselect');
+    expect(selected()).toEqual([]);
+    expect(armedItemOf(useEditorStore.getState())).toBe(TREE);
+    key('selection.deselect');
+    expect(armedItemOf(useEditorStore.getState())).toBeNull();
   });
 
   spec('EDIT-26', 'Ctrl with a brush up selects instead of painting, then switches to the Hand tool', () => {
@@ -221,6 +352,20 @@ describe('turning before placing', () => {
     const house = [...w.state.objects.values()].find((o) => o.catalogId === HOUSE);
     expect(house?.rotation).toBe(90);
     expect(useEditorStore.getState().placementRotation, 'the turn carries over').toBe(90);
+  });
+
+  spec('EDIT-31', 'arming an item clears the selection before it, so the rotate shortcut turns the waiting item and leaves the object', () => {
+    const w = world();
+    const at = w.openGround(14, 14);
+    const house = placeItem(w, HOUSE, { x: at.x + 2, y: at.y + 2 })!;
+    open(w);
+    press(house.position);
+    expect(selected()).toEqual([house.id]);
+    toggleArmedItem(STALL);
+    expect(selected()).toEqual([]);
+    key('selection.rotate_cw');
+    expect(useEditorStore.getState().placementRotation).toBe(90);
+    expect(w.object(house.id)?.rotation).toBe(0);
   });
 
   spec('EDIT-31', 'with objects selected, the rotate shortcut turns the selection instead', () => {
@@ -401,7 +546,7 @@ describe('undoing and redoing the selection', () => {
     const { w, a, b } = twoTrees();
     setStoreState({ eventBus: w.sandbox.bus });
     let edited = 0;
-    const stop = watchFirstEdit(() => { edited++; });
+    const stop = watchVisitorEngaged(() => { edited++; });
     const depth = history().historyDepth();
     const steps = measureJsonSections('all')!.historySteps;
     const edits = readTourWatch().edits;

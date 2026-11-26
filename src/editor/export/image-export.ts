@@ -6,31 +6,33 @@
  */
 import { runImageExport } from '../../io/export/run-image-export';
 import { prepareOwnImageReceipt } from '../../io/export/own-image-receipts';
-import { DEFAULT_FOOTER, formatFooterDate } from '../../io/export/footer-template';
+import { formatFooterDate } from '../../io/export/footer-template';
 import { deviceCanvasLimits } from '../../io/export/canvas-limits';
 import { downloadBlob, exportFileName } from '../../io/export/download';
 import { exportText } from '../../io/export/review-text';
-import type { ExportOptions } from '../../io/export/types';
-import { SUPPORTS_DOWNLOADS } from '../../platform/build/edition';
+import { RESOLUTION_KEYS, type ExportOptions, type PictureChoices, type ResolutionKey } from '../../io/export/types';
+import { RESOLUTION_WIDTHS } from '../../io/export/compose';
+import { pngSize } from '../../io/share';
+import { SUPPORTS_PICTURE_DOWNLOAD } from '../../platform/build/edition';
+import { DeliveryLimitError } from '../../platform/host/delivery-limit';
 import { showToast } from '../../platform/channels/toast-bus';
 import { translate } from '../../i18n/context';
 import { protectedImageNotes } from '../../state/notes-attribution';
 import { useEditorStore } from '../../state/store';
 import { host } from '../host/host';
-import { automaticExportReview, isReviewTooLong } from '../review/edition-review';
+import { automaticExportReview, automaticTextReview } from '../review/edition-review';
+import { heldWords } from '../review/held-words';
 import type { MapReview } from '../review/map-review';
 import type { ReviewIssue, ReviewResult, TextPart } from '../review/text-review';
 import { shownPlanetName } from '../session/planet-names';
-import { brandInfo, loadBrandLockup } from './brand';
+import type { MapNotes } from '../../core/model/types';
+import { brandInfo, loadBrandLockup, type HostMark } from './brand';
+import { pictureOptions } from './picture-words';
 import { footerTokenValues, selectedStylizedBase } from './preview';
 import { renderShareCodeAsset, shareCodeIssueKey, shareCodeKey, type ShareCodeAsset } from './share-code';
 
 export { openingExportOptions, rememberExportOptions } from '../../io/export/options-store';
-
-/** The options with the map's own words taken out, as "export without text" writes them. */
-function textlessOptions(options: ExportOptions): ExportOptions {
-  return { ...options, title: '', description: '', footerTemplate: DEFAULT_FOOTER };
-}
+export { withWords } from './picture-words';
 
 /** The texts the check must approve before `options` reach a preview or an export: the title, the
  *  description and the footer as resolved from `footer`. */
@@ -38,22 +40,35 @@ export function exportReviewParts(options: ExportOptions, footer: Record<string,
   return exportText(options, { ...footer, date: formatFooterDate(), dims: '0×0' });
 }
 
-/** What a preview may show: `options` once their text is approved (or where this edition leaves the
- *  check to the export notice), else the options without their text. */
-export function previewSafeOptions(options: ExportOptions, approved: boolean, composing: boolean): ExportOptions {
-  return (!automaticExportReview && !composing) || approved ? options : textlessOptions(options);
+/** Shares a link to the live map through `share` once the words the link carries, the map's title and
+ *  description, passed the check the export runs on them. */
+export async function shareMapLink(
+  options: ExportOptions, share: () => Promise<void>, checkText: (parts: TextPart[]) => Promise<ReviewResult>,
+): Promise<{ status: 'held'; issue: ReviewIssue } | { status: 'done' }> {
+  const issue = await heldWords(exportText({ ...options, footer: false }, {}), checkText);
+  if (issue) return { status: 'held', issue };
+  await share();
+  return { status: 'done' };
+}
+
+/** The words a preview may paint: `notes` once their text is approved, or ready to go to the check
+ *  the export runs (or where this edition leaves the check to the export notice), else none. */
+export function previewWords(notes: MapNotes, approved: boolean, composing: boolean): MapNotes | null {
+  return (!automaticTextReview && !composing) || approved ? notes : null;
 }
 
 interface ImageExportRequest {
-  options: ExportOptions;
+  /** The picture's choices; its title and description are read from the map (`pictureOptions`). */
+  options: PictureChoices;
   /** Export without the title, description and footer text. */
   withoutText: boolean;
-  /** The window session's timestamp, which the share code's payload carries. */
-  createdAt: string;
-  /** The band the preview built, reused when its width and payload inputs match the slot. */
+  /** The band the preview built, reused when its width and payload inputs match the slot; a band
+   *  built for the export carries the same timestamp, or its own where no preview stood. */
   previewCode: ShareCodeAsset | null;
   /** The deployment's canonical origin for the maker's band. */
   site: string;
+  /** The QR the deployment's host makes for the band at a size, in place of the site's. */
+  mark?: (resolution: ResolutionKey) => Promise<HostMark | null>;
 }
 
 interface ImageExportHooks {
@@ -80,7 +95,20 @@ type ImageExportOutcome =
   /** The text check refused the words or could not run. */
   | { status: 'held'; issue: ReviewIssue }
   | { status: 'failed' }
+  /** The picture passed the limit of the container it was sent to and was not sent; `fits` is the
+   *  largest smaller size expected to pass, null where none is. */
+  | { status: 'too-large'; fits: ResolutionKey | null }
   | { status: 'done' };
+
+/** The share of a limit a re-sized picture is planned to fill: compression varies with the content. */
+const FIT_HEADROOM = 0.85;
+
+/** The largest size below `current` a picture should fit `limit` at, when at `width` px it ran to
+ *  `length`: the encoded length follows the picture's area. */
+function sizeThatFits(current: ResolutionKey, width: number, length: number, limit: number): ResolutionKey | null {
+  const smaller = RESOLUTION_KEYS.slice(0, RESOLUTION_KEYS.indexOf(current)).filter((key) => RESOLUTION_WIDTHS[key] < width);
+  return smaller.reverse().find((key) => length * (RESOLUTION_WIDTHS[key] / width) ** 2 <= limit * FIT_HEADROOM) ?? null;
+}
 
 /** Exports the share picture of the live map, raising the result's notices. */
 export async function exportImage(request: ImageExportRequest, hooks: ImageExportHooks): Promise<ImageExportOutcome> {
@@ -89,7 +117,6 @@ export async function exportImage(request: ImageExportRequest, hooks: ImageExpor
     const mapResult = await hooks.checkMap().catch(() => null);
     if (!mapResult || mapResult.status === 'blocked' || signal.aborted) return { status: 'stopped' };
   }
-  const options = request.withoutText ? textlessOptions(request.options) : request.options;
   await hooks.begin();
   try {
     if (signal.aborted) return { status: 'stopped' };
@@ -98,6 +125,7 @@ export async function exportImage(request: ImageExportRequest, hooks: ImageExpor
     const state = store.gridState;
     if (request.withoutText && state && protectedImageNotes(state)) return { status: 'stopped' };
     if (!executor || !state) return { status: 'stopped' };
+    const options = pictureOptions(state, request.options, request.withoutText ? null : undefined);
 
     const now = Date.now();
     // What this device's canvas can actually allocate: a composition past it is a blank image,
@@ -105,30 +133,21 @@ export async function exportImage(request: ImageExportRequest, hooks: ImageExpor
     const limits = deviceCanvasLimits();
     const summary = executor.getProvenanceSummary();
     const footerTokens = footerTokenValues(state, options, store.locale, summary);
-    const parts = exportReviewParts(options, footerTokens);
-    if (automaticExportReview && parts.length) {
-      hooks.reviewing(true);
-      try {
-        const result = await hooks.checkText(parts);
-        if (signal.aborted) return { status: 'stopped' };
-        if (!result.allowed) return { status: 'held', issue: result };
-      } catch (error) {
-        if (signal.aborted) return { status: 'stopped' };
-        return { status: 'held', issue: isReviewTooLong(error) ? 'too-long' : 'unavailable' };
-      }
-      hooks.reviewing(false);
-    }
+    const issue = await heldWords(exportReviewParts(options, footerTokens), hooks.checkText, hooks.reviewing);
     if (signal.aborted) return { status: 'stopped' };
+    if (issue) return { status: 'held', issue };
 
     const lockup = await loadBrandLockup(store.locale);
+    const mark = request.mark ? await request.mark(options.resolution) : null;
     const shownName = shownPlanetName(state.template, store.locale);
-    const { previewCode, createdAt } = request;
+    const { previewCode } = request;
+    const createdAt = previewCode?.createdAt ?? new Date().toISOString();
     const result = await runImageExport(host, {
       state, summary, options, limits,
       stylized: selectedStylizedBase(translate('export.ai_tag')),
       shots: useEditorStore.getState().export3dShots,
       footerTokens,
-      brand: brandInfo(store.locale, options, lockup, request.site),
+      brand: brandInfo(store.locale, options, lockup, mark ?? request.site),
       translate,
       shareCode: async (width) => {
         if (previewCode && previewCode.canvas.width === width && previewCode.builtKey === shareCodeKey(width, createdAt, shownName)) {
@@ -149,9 +168,15 @@ export async function exportImage(request: ImageExportRequest, hooks: ImageExpor
     if (signal.aborted) return { status: 'stopped' };
     // The final composition determines whether the image carries PetitGlyph.
     if (!await hooks.confirmNotice(result.carriesCode) || signal.aborted) return { status: 'stopped' };
-    if (hooks.deliver) await hooks.deliver(blob);
-    else if (SUPPORTS_DOWNLOADS) downloadBlob(blob, exportFileName([now], 'png'));
-    else throw new Error('Image delivery unavailable');
+    try {
+      if (hooks.deliver) await hooks.deliver(blob);
+      else if (SUPPORTS_PICTURE_DOWNLOAD) downloadBlob(blob, exportFileName([now], 'png'));
+      else throw new Error('Image delivery unavailable');
+    } catch (error) {
+      if (!(error instanceof DeliveryLimitError) || signal.aborted) throw error;
+      const width = (await pngSize(blob))?.width ?? RESOLUTION_WIDTHS[options.resolution === 'original' ? 'high' : options.resolution];
+      return { status: 'too-large', fits: sizeThatFits(options.resolution, width, error.length, error.limit) };
+    }
     if (signal.aborted) return { status: 'stopped' };
     rememberOwnImage();
     useEditorStore.getState().markExported();   // this map has now left the browser

@@ -69,7 +69,7 @@ describe('the placement hover: anchor resolution', () => {
   it('canActAt agrees with the ghost at the same half anchor (probe/click parity)', () => {
     const state = grassMap();
     const ctx = {
-      ...makeToolCtx(state, exec(state), 1, 1, { armedItem: 'hs-ux-slab', placementRotation: 0 }),
+      ...makeToolCtx(state, exec(state), 1, { armedItem: 'hs-ux-slab', placementRotation: 0 }),
       point: point({ x: 7.3, y: 5 }),
     };
     const tool = new ObjectPlacerTool();
@@ -82,7 +82,7 @@ describe('ObjectPlacerTool.onPointerDown: half anchor click', () => {
     const state = grassMap();
     const executor = exec(state);
     const ctx = {
-      ...makeToolCtx(state, executor, 1, 1, { armedItem: 'hs-ux-slab', placementRotation: 0 }),
+      ...makeToolCtx(state, executor, 1, { armedItem: 'hs-ux-slab', placementRotation: 0 }),
       point: point({ x: 7.8, y: 5.5 }),
     };
     const tool = new ObjectPlacerTool();
@@ -95,7 +95,7 @@ describe('ObjectPlacerTool.onPointerDown: half anchor click', () => {
     const state = grassMap();
     const executor = exec(state);
     const ctx = {
-      ...makeToolCtx(state, executor, 1, 1, { armedItem: 'tree-apple', placementRotation: 0 }),
+      ...makeToolCtx(state, executor, 1, { armedItem: 'tree-apple', placementRotation: 0 }),
       point: point({ x: 7.3, y: 5 }),
     };
     const tool = new ObjectPlacerTool();

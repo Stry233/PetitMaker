@@ -7,13 +7,15 @@ import { regionTokens, mapSummary, selectionContext, REGION_CAP } from '../../..
 describe('regionTokens', () => {
   it('renders terrain tokens with a coordinate ruler', () => {
     const state = makeState(10, 10);
-    setTerrain(state, 2, 1, TerrainType.Mountain, 3);
-    setTerrain(state, 3, 1, TerrainType.Water, 0);
+    // A cell rests on the ground from its own index to the next, so cell (2,1) rests on this mountain
+    // and cell (5,1) on this water; the cells touching either rest on it only in part.
+    for (const [x, y] of [[2, 1], [3, 1], [2, 2], [3, 2]] as const) setTerrain(state, x, y, TerrainType.Mountain, 3);
+    for (const [x, y] of [[5, 1], [6, 1], [5, 2], [6, 2]] as const) setTerrain(state, x, y, TerrainType.Water, 0);
     setZone(state, 0, 0, CellZone.Void);
-    const out = regionTokens(state, { x1: 0, y1: 0, x2: 4, y2: 2 });
+    const out = regionTokens(state, { x1: 0, y1: 0, x2: 7, y2: 2 });
     const rows = out.split('\n');
-    expect(rows.some((r) => r.includes('~....'))).toBe(true); // y=0: void then grass
-    expect(rows.some((r) => r.includes('..3A.'))).toBe(true); // y=1: mountain3, water0
+    expect(rows.some((r) => r.includes('~^^^===.'))).toBe(true); // y=0: void, the mountain's step, the water's bank, grass
+    expect(rows.some((r) => r.includes('.^3^=A=.'))).toBe(true); // y=1: mountain 3 and water 0 between their edges
     expect(out).toContain('Legend');
   });
 
@@ -30,14 +32,13 @@ describe('regionTokens', () => {
     expect(out).toContain('too large');
   });
 
-  it('marks a solid object footprint o over the cells a paint there would be refused at', () => {
+  it('marks a solid object footprint o on the cells it stands on', () => {
     const state = makeState(10, 10);
     state.objects.set('t', makeObject('tree-apple', 5, 5));
     const out = regionTokens(state, { x1: 4, y1: 4, x2: 7, y2: 7 });
     const rows = out.split('\n');
-    // A 1x1 object blocks the four −0.5-shifted terrain cells its rect overlaps (V-PLACE-BLOCK).
-    expect(rows.some((r) => r.startsWith('   5 ') && r.includes('.oo.'))).toBe(true);
-    expect(rows.some((r) => r.startsWith('   6 ') && r.includes('.oo.'))).toBe(true);
+    expect(rows.some((r) => r.startsWith('   5 ') && r.includes('.o..'))).toBe(true);
+    expect(rows.some((r) => r.startsWith('   6 ') && r.includes('....'))).toBe(true);
     expect(out).toContain('o object footprint');
   });
 
@@ -47,7 +48,7 @@ describe('regionTokens', () => {
     state.objects.set('r', makeObject('path-blue-board', 7, 7));
     const out = regionTokens(state, { x1: 0, y1: 0, x2: 9, y2: 9 });
     const rows = out.split('\n');
-    expect(rows.some((r) => r.startsWith('   2 ') && r.includes('PP'))).toBe(true);
+    expect(rows.some((r) => r.startsWith('   2 ') && r.includes('..P.'))).toBe(true);
     // The road follows a surface change rather than blocking it, so its cell keeps the ground glyph.
     expect(rows.some((r) => r.startsWith('   7 ') && !r.includes('o'))).toBe(true);
   });

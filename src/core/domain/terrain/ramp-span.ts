@@ -25,6 +25,12 @@ export function rampOrientation(rotation: Rotation): { spanAxis: 'x' | 'y'; high
   return { spanAxis: rotation === 0 || rotation === 180 ? 'y' : 'x', highAtStart: rotation === 0 || rotation === 90 };
 }
 
+/** A ramp's rotation once the ground under it turns a quarter clockwise: its downhill side runs
+ *  +y, +x, -y, -x at 0, 90, 180, 270, the reverse of a clockwise turn, so it steps back a quarter. */
+export function turnRampRotation(rotation: Rotation): Rotation {
+  return ((rotation + 270) % 360) as Rotation;
+}
+
 const CARDINAL_OFFSETS: readonly MacroCoord[] = [
   { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
 ];
@@ -111,6 +117,18 @@ export function detectRampSpan(
   return null;
 }
 
+/** The terrain cells a ramp laid at `position` and `rotation` rests on: the run along its span,
+ *  the run across it, and which along cell is its cliff end. */
+function rampCells(
+  { rotation, position }: Pick<PlacedObject, 'position' | 'rotation'>, perpWidth: number, spanLen: number,
+): { isVert: boolean; along: { lo: number; hi: number }; perp: { lo: number; hi: number }; highCell: number } {
+  const { spanAxis, highAtStart } = rampOrientation(rotation);
+  const isVert = spanAxis === 'y';
+  const along = terrainRun(isVert ? position.y : position.x, spanLen, isVert ? 'y' : 'x');
+  const perp = terrainRun(isVert ? position.x : position.y, perpWidth, isVert ? 'x' : 'y');
+  return { isVert, along, perp, highCell: highAtStart ? along.lo : along.hi };
+}
+
 /**
  * Whether the terrain under a ramp at `rot` and `pos` matches its profile. Terrain renders on the
  * terrain grid (up-left), so a whole-anchored footprint is visually overlapped by one extra cell on
@@ -121,14 +139,10 @@ export function detectRampSpan(
  * directions require a 1-high end and a spanLen-low run with flat support at each.
  */
 function profileHolds(
-  state: GridState, { rotation: rot, position: pos }: Pick<PlacedObject, 'position' | 'rotation'>,
+  state: GridState, ramp: Pick<PlacedObject, 'position' | 'rotation'>,
   [hElev, lElev]: readonly [high: number, low: number], perpWidth: number, spanLen: number,
 ): boolean {
-  const { spanAxis, highAtStart } = rampOrientation(rot);
-  const isVert = spanAxis === 'y';
-  const along = terrainRun(isVert ? pos.y : pos.x, spanLen, isVert ? 'y' : 'x');
-  const perp = terrainRun(isVert ? pos.x : pos.y, perpWidth, isVert ? 'x' : 'y');
-  const highCell = highAtStart ? along.lo : along.hi;
+  const { isVert, along, perp, highCell } = rampCells(ramp, perpWidth, spanLen);
   for (let a = along.lo; a <= along.hi; a++) {
     const exp = a === highCell ? hElev : lElev;
     for (let p = perp.lo; p <= perp.hi; p++) {
@@ -151,4 +165,20 @@ export function rampSpanHolds(
   perpWidth: number, spanLen: number, layers: number,
 ): boolean {
   return profileHolds(state, ramp, [ramp.elevation, ramp.elevation - layers], perpWidth, spanLen);
+}
+
+/**
+ * The elevation a ramp laid at `position` and `rotation` stores: the lowest surface across its cliff
+ * end, the cells `rampSpanHolds` reads as the high plateau. Its footprint corner lies on the low run
+ * for a ramp facing -x or -y, so the surface at the corner is no reading of it.
+ */
+export function rampHighElevation(
+  state: GridState, ramp: Pick<PlacedObject, 'position' | 'rotation'>, perpWidth: number, spanLen: number,
+): number {
+  const { isVert, perp, highCell } = rampCells(ramp, perpWidth, spanLen);
+  let elev = Infinity;
+  for (let p = perp.lo; p <= perp.hi; p++) {
+    elev = Math.min(elev, surfaceElevation(getCell(state.cells, isVert ? p : highCell, isVert ? highCell : p)?.terrain));
+  }
+  return elev;
 }

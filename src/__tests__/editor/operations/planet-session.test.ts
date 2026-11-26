@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useEditorStore } from '../../../state/store';
+import { regionOf } from '../../../state/editing/region';
 import { newMap } from '../../../editor/operations/map';
 import { editorPort } from '../../../editor/session/context';
 import type { EditContext } from '../../../core/commands/edit-context';
-import {
-  enterPlanetSession, leavePlanetSession, finishPlanetSession, sessionPlanet,
-} from '../../../editor/operations/planet-session';
+import { sessionCut } from '../../_support/planet-session';
+import { enterPlanetSession, leavePlanetSession, finishPlanetSession } from '../../../editor/operations/planet-session';
 import { host } from '../../../editor/host/host';
 import { planetTemplateId, PLANET_MAX_CELLS } from '../../../core/model/planet';
 import { deriveBoundary } from '../../../core/model/shore';
@@ -26,7 +26,7 @@ import type { SessionPort } from '../../../editor/session/context';
 import { cellSet, type CellSet } from '../../../core/grid/grids';
 import { cellsOn } from '../../../core/grid/grid-convert';
 import { TERRAIN_GRID } from '../../../core/game/profile';
-import { armedMacroOf, designModeOf } from '../../../state/editing/edit-mode';
+import { armedItemOf, armedMacroOf, designModeOf } from '../../../state/editing/edit-mode';
 
 /** A second editor beside the store's, with its own bus and canvas. */
 function sideEditor(): SessionPort {
@@ -98,14 +98,13 @@ describe('planet session', () => {
   it('[PLAN-09] leave restores selection, layers, edit mode and view mode', () => {
     const s = store();
     s.setEditMode({ mode: 'water', arm: { kind: 'erase' } });
-    s.setActiveLayer(2);
     s.setLayerVisibility(1, false);
     s.setLayerLocked(3, true);
     s.setSelection([{ kind: 'terrain', x: 5, y: 6 }]);
     s.setViewMode('3d');
     const before = store();
     const saved = {
-      editMode: before.editMode, activeLayer: before.activeLayer, layerPinned: before.layerPinned,
+      editMode: before.editMode,
       layerVisibility: before.layerVisibility, lockedLayers: before.gridState!.lockedLayers, selection: before.selection,
     };
     enterPlanetSession(editorPort, null);
@@ -115,8 +114,6 @@ describe('planet session', () => {
     const after = store();
     expect(after.editMode).toBe(saved.editMode);
     expect(designModeOf(after)).toBe(designModeOf(before));
-    expect(after.activeLayer).toBe(saved.activeLayer);
-    expect(after.layerPinned).toBe(saved.layerPinned);
     expect(after.layerVisibility).toBe(saved.layerVisibility);
     expect(after.gridState!.lockedLayers).toBe(saved.lockedLayers);
     expect(after.selection).toBe(saved.selection);
@@ -124,17 +121,28 @@ describe('planet session', () => {
     s.setViewMode('2d');
   });
 
+  it('[PLAN-09] leave gives back a selection made with an item armed, the item still armed', () => {
+    store().setEditMode({ mode: 'object', arm: { kind: 'item', itemId: 'tree-apple' } });
+    const id = [...store().gridState!.objects.keys()][0]!;
+    store().setSelection([{ kind: 'object', id }]);
+    const saved = store().selection;
+    enterPlanetSession(editorPort, null);
+    leavePlanetSession(editorPort);
+    expect(armedItemOf(store())).toBe('tree-apple');
+    expect(store().selection).toBe(saved);
+  });
+
   it('parks the painted region with the map and clears it inside the session', () => {
     const region = [{ x: 40, y: 40 }, { x: 41, y: 40 }];
-    store().setRegion(region);
-    store().setSelectingRegion(true);
+    store().setRegion(region, 'generator');
+    store().setSelectingRegion(true, 'generator');
     store().setDeletePopover({ kind: 'terrain', x: 1, y: 1 });
     enterPlanetSession(editorPort, null);
-    expect(store().region).toEqual([]);
+    expect(regionOf(store(), 'generator')).toEqual([]);
     expect(store().selectingRegion).toBe(false);
     expect(store().deletePopover).toBeNull();
     leavePlanetSession(editorPort);
-    expect(store().region).toBe(region);
+    expect(regionOf(store(), 'generator')).toBe(region);
   });
 
   it('[PLAN-09] parks the cameras it is given and returns them on leave', () => {
@@ -143,6 +151,12 @@ describe('planet session', () => {
     expect(store().planetSession!.parked.camera2d).toEqual(camera);
     expect(leavePlanetSession(editorPort)).toEqual({ view2d: camera });
     expect(host.camera.takeQueued()).toBeNull();
+  });
+
+  it('[UI-67] returns the flat view\'s heading with the camera it parked', () => {
+    const camera = { x: 12, y: -8, zoom: 1.4, rotation: 0.9 };
+    enterPlanetSession(editorPort, null, { view2d: camera });
+    expect(leavePlanetSession(editorPort)).toEqual({ view2d: camera });
   });
 
   it('returns no camera on leave when none was parked', () => {
@@ -271,7 +285,7 @@ describe('planet session', () => {
     enterPlanetSession(editorPort, null);
     paintGround(rect(100, 100, 20, 20));
     paintGround(rect(120, 100, 3, 20), CellZone.Beach);
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     const at = (x: number, y: number) => t.zones[y - 96]![x - 96]!;
     expect(at(120, 110)).toBe(CellZone.Boundary);
     expect(at(121, 110)).toBe(CellZone.Beach);
@@ -288,7 +302,7 @@ describe('planet session', () => {
     const last = rimRows.length - 1 - [...rimRows].reverse().findIndex((row) => row.length > 0);
     // The fixture's grass reaches one row short of its bottom edge, where no sand lies beyond the rim.
     expect(rimRows.slice(0, last).flat().every((c) => c.under === CellZone.Beach)).toBe(true);
-    expect(sessionPlanet(store().gridState!)!.template.id).toBe(planet.id);
+    expect(sessionCut()!.template.id).toBe(planet.id);
     const y = rimRows.findIndex((row) => row.length > 0);
     const x = cells[y]!.findIndex((c) => c.zone === CellZone.Boundary);
     store().commandExecutor!.execute({ type: CommandType.EraseTerrain, cells: rect(x, y + 1, 2, 1), ground: CellZone.Void });
@@ -331,7 +345,7 @@ describe('planet session', () => {
     const planet = shoredPlanet();
     expect(validatePlanetTemplate(planet)).toBeNull();
     enterPlanetSession(editorPort, entryOf(planet));
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     expect(t.id).toBe(planet.id);
     expect(templateAnchor(t)!).toEqual(templateAnchor(planet)!);
     expect(Array.from(t.terrain!)).toEqual(Array.from(planet.terrain!));
@@ -341,10 +355,10 @@ describe('planet session', () => {
   it('[PLAN-11] records a pond on the drawn ground as water, with grass under it and no rim around it', () => {
     enterPlanetSession(editorPort, null);
     paintGround(rect(100, 100, 40, 30));
-    const plain = sessionPlanet(store().gridState!)!.template;
+    const plain = sessionCut()!.template;
     store().commandExecutor!.execute({ type: CommandType.PaintTerrain, cells: rect(110, 110, 3, 2), terrainType: TerrainType.Water, elevation: 0 });
     expect(cellAt(111, 110)).toMatchObject({ zone: CellZone.Grass, terrain: { type: TerrainType.Water, elevation: 0 } });
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     expect(t.zones).toEqual(plain.zones);
     expect(t.id).not.toBe(plain.id);
     expect(validatePlanetTemplate(t)).toBeNull();
@@ -353,13 +367,13 @@ describe('planet session', () => {
     expect(t.water?.reduce((n, v) => n + v, 0)).toBe(6);
     leavePlanetSession(editorPort);
     enterPlanetSession(editorPort, entryOf(t));
-    expect(sessionPlanet(store().gridState!)!.template.id).toBe(t.id);
+    expect(sessionCut()!.template.id).toBe(t.id);
   });
 
   it('[PLAN-07] crops the drawn ground to whole chunks with a derived shore and no plaza', () => {
     enterPlanetSession(editorPort, null);
     paintGround(rect(100, 100, 50, 40));
-    const t = sessionPlanet(store().gridState!)!.template;
+    const t = sessionCut()!.template;
     expect(t.width).toBe(64);
     expect(t.height).toBe(48);
     expect(t.chunkGrid).toEqual({ origin: { x: 0, y: 0 }, columns: 4, rows: 3 });
@@ -377,7 +391,7 @@ describe('planet session', () => {
       id: ANCHOR_LANDMARK.id, catalogId: ANCHOR_LANDMARK.id, position: { x: 130.5, y: 99.5 },
       width: ANCHOR_LANDMARK.width, height: ANCHOR_LANDMARK.height, rotation: 0, elevation: 1, locked: false,
     });
-    const t = sessionPlanet(state)!.template;
+    const t = sessionCut()!.template;
     expect(t.width).toBe(64);
     expect(t.height).toBe(32);
     expect(t.chunkGrid).toEqual({ origin: { x: 0, y: 0 }, columns: 4, rows: 2 });

@@ -6,13 +6,26 @@ import { armingOf } from '../../../state/editing/arming';
 import { cellAtPoint } from '../../../core/grid/pointer';
 import { isCommandHeld } from '../../../state/keymap/held';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
-import { isDraggableObject, pointerTarget, type PointerTarget } from '../selection-hover';
+import { groupProbeOf, isDraggableObject, pointerTarget, type PointerTarget } from '../selection-hover';
 import type { GridState } from '../../../core/model/types';
 import type { GridCell, GridId, MapPoint } from '../../../core/grid/grids';
 import type { PressFacts } from '../press/press-plan';
 import { modalityOf } from '../../../platform/input/gesture-timing';
 import { activeToolOf, armedItemOf } from '../../../state/editing/edit-mode';
 import { pasteOffered } from '../../../state/clipboard';
+import { groupUnder, selectedGroupFrame, type GroupProbe } from '../../../state/placed-groups';
+import { sameSelection, shownOn } from '../../../state/selection';
+import { rectContains, type Rect } from '../../../core/grid/rect';
+import { standInShown } from '../../../state/map-stand-in';
+
+/** Whether `cell` lies inside `rect`, none for null. */
+const inside = (rect: Rect | null, cell: { x: number; y: number }): boolean => !!rect && rectContains(rect, cell.x, cell.y);
+
+/** The group a press on `on` selects whole, and whether the selection already is it. */
+function pressedGroup(store: EditorStore, on: GroupProbe): PressFacts['group'] {
+  const under = groupUnder(store, on);
+  return under ? { refs: under.refs, selected: sameSelection(store.selection, under.refs) } : null;
+}
 
 /** What is under the pointer at one screen position, resolved once: the hover probe reads it for
  *  its box and its change key, and builds the press facts from it without picking again. */
@@ -43,7 +56,7 @@ export function probePointer(x: number, y: number): PointerProbe | null {
   const macro = cellAtPoint(point, PLACEMENT_GRID);
   // Mesh-precise pick first (a tree's canopy selects the tree), then the footprint test, which
   // covers flat items and views without mesh picking.
-  const target = pointerTarget(gridState, point, view.projection.pickObject?.(x, y) ?? undefined);
+  const target = pointerTarget(gridState, point, view.projection.pickObject?.(x, y) ?? undefined, shownOn(store));
   const tools = getActiveToolManager();
   const tool = tools?.getActiveTool();
   const context = tools?.getContext();
@@ -71,13 +84,14 @@ export function pressFactsAt(button: number, pointerType: string, probe: Pointer
   const { hit, terrain, pick } = probe.target;
   // Keyed by the store's tool type, as the selection rules are: they hold with no live tool too.
   const declared = toolDeclares(activeToolOf(store));
+  const arming = armingOf(store);
   const toolGrabs = !!(ctx && (tool?.grabAt?.(macro, ctx) ?? false));
   return {
     button,
     inputMode: modalityOf({ pointerType }),
-    selectMode: declared.selectMode(armingOf(store)),
+    selectMode: declared.selectMode(arming),
     brush: declared.brush,
-    armedItemId: armedItemOf(store),
+    armedPlacement: armedItemOf(store) ?? declared.armedPlacement(arming),
     copyHeld: pasteOffered(store),
     selection: store.selection,
     selectingRegion: store.selectingRegion,
@@ -93,7 +107,10 @@ export function pressFactsAt(button: number, pointerType: string, probe: Pointer
     toolSelects: !!(ctx && (tool?.selects?.(ctx) ?? false)),
     toolSelectHit: (ctx && tool?.selectHit) ? tool.selectHit(macro, ctx) : null,
     pendingGesture: (ctx ? tool?.hasPending?.(ctx) : false) ?? false,
+    inPlacement: inside(selectedGroupFrame(store), macro),
+    group: pressedGroup(store, groupProbeOf(probe.target, macro)),
     clickOnlyStroke: !!(ctx && tool?.clickOnly?.(macro, ctx)),
     armedStrokes: !!(ctx && tool?.strokes?.(ctx)),
+    lookOnly: standInShown(store),
   };
 }

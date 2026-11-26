@@ -1,10 +1,13 @@
 /*
- * Where a contextual key acts, and what it does there. `keyContext` is the one resolution of the
- * context; `CONTEXT_KEYS` gives each context's keys their action and label, read by the toolbar's
+ * Where a key acts, and what a contextual key does there. `keyContext` is the one resolution of the
+ * context and `appKeyReaches` the one answer to whether an app-wide binding hears a press made in a
+ * text field; `CONTEXT_KEYS` gives each context's keys their action and label, read by the toolbar's
  * labels and by the command bodies (`editor/commands/commands.ts`) alike.
  */
+import { isTextEntry } from '../../platform/input/text-entry';
 import { isAnnotating, isContentMode, type BuildMode } from '../editing/edit-mode';
 import type { AnnotationTool, DesignMode, ObjectBrush } from '../editing/vocabulary';
+import { blueprintSaving, type BlueprintStep } from '../slices/blueprint';
 import type { I18nKey } from '../../i18n/keys';
 import type { CommandId } from './registry';
 
@@ -15,25 +18,67 @@ export type ToolbarContext = typeof TOOLBAR_CONTEXTS[number];
  *  the keys keep the terrain toolbar's layout. */
 export type KeyContext = ToolbarContext | 'map';
 
-/** What the key context reads of the editor. */
-export interface KeyContextInputs {
+/** A surface standing in the bar's place: Blueprint's save step, its frame step, the region screen
+ *  of the generate shelf or the assistant, or the object shelf's brush bar (EDIT-64). */
+export type BarFront = 'save' | 'frame' | 'scope' | 'brush';
+
+/** What the bar's front reads of the editor. */
+interface BarFrontInputs {
+  blueprintStep: BlueprintStep;
   selectingRegion: boolean;
+  regionSelectionOwner: string | null;
   editMode: { mode: BuildMode };
-  annotationTool: AnnotationTool;
-  /** The object shelf's brush bar stands in its place (EDIT-64). */
+  /** The object shelf's brush bar is asked for (EDIT-64). */
   objectBrushBar: boolean;
 }
 
-/** Where a key acts, in precedence order: the region brush, the object brush bar, the notes (by
- *  their armed tool), a terrain surface's build tools, or the map. */
+/** Whether the object shelf's brush bar is open, in front or under a region screen; a card armed in it
+ *  is part of its state either way. */
+export const brushBarOpen = (s: Pick<BarFrontInputs, 'objectBrushBar' | 'editMode'>): boolean =>
+  s.objectBrushBar && s.editMode.mode === 'object';
+
+/** Which surface stands in the bar's place, or null where the mode's own bar does: the save step,
+ *  then a region being painted (Blueprint's as its frame step), then the open brush bar. The screen
+ *  the frame shows, where a key acts and what a back-out ends all read this one answer. */
+export function barInFront(s: BarFrontInputs): BarFront | null {
+  if (blueprintSaving(s.blueprintStep)) return 'save';
+  if (s.selectingRegion) return s.regionSelectionOwner === 'blueprint' ? 'frame' : 'scope';
+  return brushBarOpen(s) ? 'brush' : null;
+}
+
+/** What the key context reads of the editor. */
+export interface KeyContextInputs extends BarFrontInputs {
+  annotationTool: AnnotationTool;
+}
+
+/** Where a key acts, in precedence order: the region brush, the object brush bar (`barInFront`), the
+ *  notes (by their armed tool), a terrain surface's build tools, or the map. */
 export function keyContext(s: KeyContextInputs): KeyContext {
-  if (s.selectingRegion) return 'region';
-  if (s.objectBrushBar && s.editMode.mode === 'object') return 'objects';
+  const front = barInFront(s);
+  if (front === 'frame' || front === 'scope') return 'region';
+  if (front === 'brush') return 'objects';
   if (isAnnotating(s)) {
     const tool = s.annotationTool;
     return tool === 'zone' || tool === 'erase' || tool === 'chip' || tool === 'route' ? `notes-${tool}` : 'notes-other';
   }
   return isContentMode(s.editMode.mode) ? 'terrain' : 'map';
+}
+
+/** A key press as `appKeyReaches` reads it. */
+interface KeyPress {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  target: EventTarget | null;
+  getModifierState(key: string): boolean;
+}
+
+/** Whether an app-wide binding (What's this, the interface scale keys) hears `press`: anywhere but a
+ *  text field, and in one only a press that types nothing there, an F key or a Ctrl or Cmd chord
+ *  (AltGraph, which types, aside), so a binding moved onto a letter never fires while the user types. */
+export function appKeyReaches(press: KeyPress): boolean {
+  if (!isTextEntry(press.target)) return true;
+  return /^F\d+$/.test(press.key) || ((press.ctrlKey || press.metaKey) && !press.getModifierState('AltGraph'));
 }
 
 /** The toolbar whose keys a context uses. */
@@ -121,6 +166,17 @@ export const CONTEXT_KEYS: Readonly<Record<KeyContext, ContextKeys>> = {
   'notes-erase': { ...NOTE_KEYS, 'tool.option_cycle': { label: 'annot.size' } },
   'notes-other': { ...NOTE_KEYS, 'tool.option_cycle': { label: 'annot.size' } },
 };
+
+/** The keys of `context` whose action is of `kind`, in the toolbar's order, each with its command:
+ *  the table read backwards, which a toolbar's pills are drawn from. */
+export function contextKeysDoing<D extends KeyAction['do']>(
+  context: KeyContext, kind: D,
+): { id: ContextualCommandId; action: Extract<KeyAction, { do: D }> }[] {
+  return CONTEXTUAL_COMMANDS.flatMap((id) => {
+    const action = CONTEXT_KEYS[context][id]?.action;
+    return action?.do === kind ? [{ id, action: action as Extract<KeyAction, { do: D }> }] : [];
+  });
+}
 
 const TERRAIN_TOOLS: readonly CommandId[] = ['tool.brush', 'tool.erase', 'tool.trim', 'tool.smart'];
 const NOTE_TOOLS: readonly CommandId[] = [...TERRAIN_TOOLS, 'tool.measure'];

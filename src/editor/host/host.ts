@@ -11,6 +11,7 @@
 import { showBuildableRegion, clearBuildableRegion, showPath, clearPath } from '../../view/shared/overlay/overlay-view-sync';
 import { getActiveView } from '../../view/active-view';
 import { getMapRenderer } from '../../view/map2d/scene/renderer-registry';
+import { cameraOfPose, poseOfCamera } from '../../view/map2d/camera/viewport';
 import { get3DCamera, set3DCamera } from '../../view/map3d/scene/renderer-registry';
 import type { CameraAngle, View2dCamera, ViewCameras } from '../../state/view-camera';
 import { paintSpinRing } from '../../view/shared/overlay/selection-paint';
@@ -22,6 +23,7 @@ import { captureMapStills } from '../../view/map3d/capture/stills';
 import type { Rect } from '../../core/grid/rect';
 import type { PlanetFrame } from '../../core/model/planet';
 import type { CellSet } from '../../core/grid/grids';
+import type { RegionGuides } from '../../tools/pointer/runtime';
 import type { MapCaptureOptions } from '../../view/map-capture';
 import { parkCameras, takeParkedCameras } from '../../view/shared/viewport/parked-camera';
 
@@ -42,6 +44,13 @@ export const host = {
     zoomOut(): void { getActiveView()?.camera.zoomStepAnimated(-1); },
     /** Turns the camera as a drag of `dx`, `dy` screen px would, in the views that turn. */
     orbit(dx: number, dy: number): void { getActiveView()?.camera.orbit?.(dx, dy); },
+    /** One eased turn step of the camera buttons; false where no view shows the map or it does not turn. */
+    turnStep(dir: 1 | -1): boolean {
+      const camera = getActiveView()?.camera;
+      if (!camera?.turnStep) return false;
+      camera.turnStep(dir);
+      return true;
+    },
     fit(): void {
       getActiveView()?.camera.fitToMap();
       useEditorStore.getState().eventBus.emit('camera-fit', {});
@@ -49,21 +58,19 @@ export const host = {
     get2d(): View2dCamera | undefined {
       const vp = getMapRenderer()?.viewport;
       if (!vp) return undefined;
-      const v = vp.getView();
-      return { x: v.offsetX, y: v.offsetY, zoom: v.zoom };
+      return cameraOfPose(vp.getView());
     },
     /** The 2D camera Fit lands on for the map shown. */
     fitted2d(): View2dCamera | undefined {
       const vp = getMapRenderer()?.viewport;
       const template = useEditorStore.getState().gridState?.template;
       if (!vp || !template) return undefined;
-      const v = vp.fittedView(template.width, template.height);
-      return { x: v.offsetX, y: v.offsetY, zoom: v.zoom };
+      return cameraOfPose(vp.fittedView(template.width, template.height));
     },
     set2d(c: View2dCamera): void {
       const r = getMapRenderer();
       if (!r) return;
-      r.viewport.setView({ zoom: c.zoom, offsetX: c.x, offsetY: c.y });
+      r.viewport.setView(poseOfCamera(c));
       r.applyViewportTransform();
     },
     get3d(): CameraAngle | undefined { return get3DCamera(); },
@@ -104,7 +111,7 @@ export const host = {
     poof(id: string): void { getActiveView()?.animateRemove?.(id); },
   },
   buildableRegion: {
-    show(cells: MacroCoord[], dimensionScale?: number): void { showBuildableRegion(cells, dimensionScale); },
+    show(cells: MacroCoord[], guides?: RegionGuides): void { showBuildableRegion(cells, guides); },
     clear(): void { clearBuildableRegion(); },
     /** The standing region breathing once, as its own answer to "why was that refused": the caller
      *  brings the numbers, since a duration is declared in the motion registry and nowhere else. */

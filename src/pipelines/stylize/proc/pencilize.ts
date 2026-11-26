@@ -18,6 +18,7 @@
 import { makeNoise } from './noise';
 import { fnv1a32 } from '../../../core/base/hash';
 import { blurField } from '../../../core/base/fields';
+import { luma709 } from '../../../core/base/color';
 import type { Bitmap } from './watercolorize';
 
 interface PencilizeOptions {
@@ -43,7 +44,7 @@ export function pencilize(img: Bitmap, o: PencilizeOptions): void {
   /* luminance, and the two Gaussian scales XDoG compares */
   const n = w * h;
   const L = new Float32Array(n);
-  for (let i = 0; i < n; i++) L[i] = (0.2126 * D[i * 4]! + 0.7152 * D[i * 4 + 1]! + 0.0722 * D[i * 4 + 2]!) / 255;
+  for (let i = 0; i < n; i++) L[i] = luma709(D[i * 4]!, D[i * 4 + 1]!, D[i * 4 + 2]!) / 255;
   const narrowPasses = Math.max(1, Math.round(short / 900));
   const g1 = blurField(L, w, h, 1, narrowPasses);
   const g2 = blurField(L, w, h, 1, narrowPasses + 2);
@@ -64,7 +65,7 @@ export function pencilize(img: Bitmap, o: PencilizeOptions): void {
     for (let x = 0; x < w; x++) {
       const j = y * w + x, i = j * 4;
       const r0 = D[i]! / 255, gr0 = D[i + 1]! / 255, b0 = D[i + 2]! / 255;
-      const lum = 0.2126 * r0 + 0.7152 * gr0 + 0.0722 * b0;
+      const lum = luma709(r0, gr0, b0);
       const tone = 1 - lum;
 
       /* the stroke direction: the drawing's own where given, a sketching angle otherwise */

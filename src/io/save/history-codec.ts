@@ -17,8 +17,8 @@ import { isCellZone, isGroundZone, isSandZone } from '../../core/game/zones';
 import { clonePlacedObject, templateCellZone } from '../../core/model/grid-model';
 import { isLandmarkItem } from '../../core/model/landmarks';
 import { readTaintDelta } from '../../core/provenance/serialize';
-import { admitSaveObject, isValidTerrainType, isValidElevation, isValidObjectId, isValidRotation } from './admission';
-import { isValidCorners } from './terrain-token';
+import { admitSaveObject, isValidCorners, isValidTerrainType, isValidElevation, isValidRotation } from './admission';
+import { isValidId } from '../../core/base/guards';
 import { currentCatalogId } from '../../config/catalog/retired-ids';
 import { migrateV1RampHistory } from './format/migrations/001-v1-to-v2';
 
@@ -39,9 +39,9 @@ type HistoryTemplate = Pick<MapTemplate, 'width' | 'height' | 'zones'>;
 
 export function encodeHistory(entries: HistoryEntry[], depth: 'all' | number): HistorySection {
   const kept = depth === 'all' ? entries : entries.slice(Math.max(0, entries.length - depth));
-  // A step's generation marks are session-only: the save's own generation section is the record.
+  // A step's generation and group marks are session-only: the save's own sections are the record.
   const plain = kept.map((e) => {
-    const { generation: _session, ...rest } = e;
+    const { generation: _session, groups: _groups, ...rest } = e;
     const cmd = e.cmd;
     if (cmd.type !== CommandType.RemoveObject) return rest;
     const removedObject = e.objectOps?.removed.find((o) => o.id === cmd.objectId);
@@ -60,16 +60,13 @@ const isCoord = (c: unknown, t: HistoryTemplate): c is MacroCoord =>
 
 const optional = <T>(v: unknown, test: (v: unknown) => v is T): boolean => v === undefined || test(v);
 const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
-const isElevation = (v: unknown): v is number => isValidElevation(v);
-const isTerrainType = (v: unknown): v is number => isValidTerrainType(v);
-const isRotation = (v: unknown): v is number => isValidRotation(v);
 
 /** History restores objects atomically, so malformed geometry rejects the entire section. A
  *  landmark is laid from the template and never replayed, so no step may name one. */
 function validObject(o: unknown, t: HistoryTemplate): boolean {
   if (!o || typeof o !== 'object') return false;
   const obj = o as Partial<PlacedObject>;
-  if (!isValidObjectId(obj.id) || obj.locked !== undefined || !obj.position || typeof obj.position !== 'object') return false;
+  if (!isValidId(obj.id) || obj.locked !== undefined || !obj.position || typeof obj.position !== 'object') return false;
   if (!optional(obj.corners, isValidCorners) || !isValidElevation(obj.elevation)) return false;
   // History carries corners as an array, which the wire-shaped admission reads as a suffix.
   return admitSaveObject({ ...obj, corners: undefined, x: obj.position.x, y: obj.position.y }, t) !== null;
@@ -95,7 +92,7 @@ function validSnapshot(s: unknown, t: HistoryTemplate): boolean {
   if (terrain === null) return true;
   if (!terrain || typeof terrain !== 'object') return false;
   if (!isValidTerrainType(terrain.type) || !isValidElevation(terrain.elevation)) return false;
-  return optional(terrain.patchBase, isElevation) && optional(terrain.corners, isValidCorners) && optional(terrain.patchOnly, isBoolean);
+  return optional(terrain.patchBase, isValidElevation) && optional(terrain.corners, isValidCorners) && optional(terrain.patchOnly, isBoolean);
 }
 
 /** Every field the command's replay reads, by type; an unknown type rejects the section. */
@@ -112,18 +109,18 @@ function validCommand(cmd: unknown, t: HistoryTemplate): boolean {
       return validObject(c.object, t);
     case CommandType.RemoveObject: {
       const removed = (c as LegacyCommandFields).removedObject;
-      return isValidObjectId(c.objectId) && !isLandmarkItem(c.objectId)
+      return isValidId(c.objectId) && !isLandmarkItem(c.objectId)
         && (removed === undefined || (validObject(removed, t) && c.objectId === removed.id));
     }
     case CommandType.TrimCorners: {
       const legacy = c as LegacyCommandFields;
       const wire = c as WireTrim;
       return inBounds(c.x, c.y, t) && (c.layer === 'terrain' || c.layer === 'road')
-        && (c.objectId === undefined || (isValidObjectId(c.objectId) && !isLandmarkItem(c.objectId)))
+        && (c.objectId === undefined || (isValidId(c.objectId) && !isLandmarkItem(c.objectId)))
         && optional(legacy.beforeCorners, isValidCorners) && isValidCorners(c.afterCorners)
-        && optional(wire.patchOnly, isBoolean) && optional(wire.terrainType, isTerrainType)
-        && optional(wire.elevation, isElevation) && optional(wire.patchBase, isElevation)
-        && optional(legacy.beforeRotation, isRotation) && optional(wire.afterRotation, isRotation);
+        && optional(wire.patchOnly, isBoolean) && optional(wire.terrainType, isValidTerrainType)
+        && optional(wire.elevation, isValidElevation) && optional(wire.patchBase, isValidElevation)
+        && optional(legacy.beforeRotation, isValidRotation) && optional(wire.afterRotation, isValidRotation);
     }
     default:
       return false;
@@ -190,8 +187,9 @@ export function decodeHistory(raw: unknown, template: HistoryTemplate, objects: 
     if (!entry.cmd || typeof entry.cmd !== 'object' || !Array.isArray(entry.before) || !Array.isArray(entry.after)) return null;
     // Older saves stamp each command with a time nothing reads; it is dropped so a re-save leaves it out.
     delete (entry.cmd as { timestamp?: unknown }).timestamp;
-    // Generation marks are never saved, and undo would write one into the map unchecked.
+    // Generation and group marks are never saved, and undo would write one into the map unchecked.
     delete entry.generation;
+    delete entry.groups;
     if (entry.objectOps !== undefined) {
       if (!entry.objectOps || typeof entry.objectOps !== 'object') return null;
       if (!Array.isArray(entry.objectOps.removed) || !Array.isArray(entry.objectOps.added)) return null;

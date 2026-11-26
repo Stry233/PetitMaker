@@ -1,10 +1,33 @@
-import { paintTerrainCommand } from '../../../core/model/command-build';
+import { mountainLadder, paintTerrainCommand } from '../../../core/model/command-build';
 import { TerrainType, type Command, type MacroCoord, type PaintTerrainCommand, type ValidationResult } from '../../../core/model/types';
 import type { TerrainPlan } from './types';
+import type { Scope } from './scope';
 import { cellKey } from '../../../core/grid/rect';
 
+/** A column to build: its cell, the first layer laid on it and the layer it ends at. */
+interface Column { at: MacroCoord; from: number; top: number }
+
 /**
- * Turn a certified plan into PaintTerrain commands the CommandExecutor will accept.
+ * The layers that build every column from its own `from` up to its `top`, lowest first, each layer
+ * carrying every column still climbing, so each cell stands on the layer below it (V-MTN-02 and
+ * V-WTR-01 by construction). Mountain climbs through `mountainLadder`; water starts at the ground's
+ * own layer 0, which no mountain layer is.
+ */
+function columnLayers(columns: readonly Column[], type: TerrainType): PaintTerrainCommand[] {
+  if (type === TerrainType.Mountain) return mountainLadder(columns, (c) => c.at, (c) => c.from - 1, (c) => c.top);
+  let low = Infinity, high = -Infinity;
+  for (const c of columns) { low = Math.min(low, c.from); high = Math.max(high, c.top); }
+  const cmds: PaintTerrainCommand[] = [];
+  for (let e = low; e <= high; e++) {
+    const cells = columns.filter((c) => c.from <= e && c.top >= e).map((c) => c.at);
+    if (cells.length) cmds.push(paintTerrainCommand(cells, type, e));
+  }
+  return cmds;
+}
+
+/**
+ * Turn a certified plan into PaintTerrain commands the CommandExecutor will accept, inside `scope`
+ * (the whole map when null).
  *
  * The no-floating pre-command rule (V-MTN-02/V-WTR-01) requires that painting
  * elevation N at a cell, the cell already holds elevation >= N-1. So terrain must be
@@ -13,52 +36,46 @@ import { cellKey } from '../../../core/grid/rect';
  * next; the topmost paint sets its final height). Emitting one command per cell at its
  * final elevation (the naive grouping) makes every tier-2+ cell float and get rejected.
  */
-export function planToCommands(plan: TerrainPlan, region: MacroCoord[] | null): PaintTerrainCommand[] {
-  const inRegion = region ? new Set(region.map((c) => cellKey(c.x, c.y))) : null;
-  const allowed = (x: number, y: number): boolean => !inRegion || inRegion.has(cellKey(x, y));
-
-  let maxTier = 0, maxWater = -1;
-  for (let i = 0; i < plan.tier.length; i++) {
-    if (plan.tier[i]! > maxTier) maxTier = plan.tier[i]!;
-    if (plan.water[i]! > maxWater) maxWater = plan.water[i]!;
-  }
-
-  const cmds: PaintTerrainCommand[] = [];
-  const layer = (type: TerrainType, elevation: number, keep: (i: number) => boolean): void => {
-    const cells: MacroCoord[] = [];
-    for (let y = 0; y < plan.height; y++) {
-      for (let x = 0; x < plan.width; x++) {
-        if (!allowed(x, y)) continue;
-        if (keep(y * plan.width + x)) cells.push({ x, y });
-      }
+export function planToCommands(plan: TerrainPlan, scope: Scope | null): PaintTerrainCommand[] {
+  const mountains: Column[] = [], waters: Column[] = [];
+  for (let y = 0; y < plan.height; y++) {
+    for (let x = 0; x < plan.width; x++) {
+      if (scope && !scope.cell(x, y)) continue;
+      const i = y * plan.width + x;
+      if (plan.tier[i]! >= 1) mountains.push({ at: { x, y }, from: 1, top: plan.tier[i]! });
+      if (plan.water[i]! >= 0) waters.push({ at: { x, y }, from: 0, top: plan.water[i]! });
     }
-    if (cells.length) cmds.push(paintTerrainCommand(cells, type, elevation));
-  };
-
-  // Mountains: layers 1..maxTier, each carrying every cell with final tier >= L.
-  for (let L = 1; L <= maxTier; L++) layer(TerrainType.Mountain, L, (i) => plan.tier[i]! >= L);
-  // Water: layers 0..maxWater, each carrying every cell with water elevation >= L.
-  for (let L = 0; L <= maxWater; L++) layer(TerrainType.Water, L, (i) => plan.water[i]! >= L);
-
-  return cmds;
+  }
+  return [...columnLayers(mountains, TerrainType.Mountain), ...columnLayers(waters, TerrainType.Water)];
 }
 
 /**
- * Paint `cells` as one layer, and on refusal retry them one by one so a single illegal cell cannot
- * take the layer down with it. `onRefuse` hears each cell refused alone, by its index in `cells`.
- * Returns how many cells took the layer.
+ * Paint `cells` as one layer, and on refusal split it in halves down to the single cells that are
+ * the refusal, so one illegal cell cannot take the layer down with it. Cells within a paint are
+ * judged independently (zone, bleed, support under the cell itself), so a half that stands is the
+ * same map as the whole would have been. `onRefuse` hears each cell refused alone, by its index in
+ * `cells`, in index order. Returns how many cells took the layer.
  */
 export function paintLayer(
   cells: readonly MacroCoord[], type: TerrainType, elevation: number,
   execute: (cmd: Command) => ValidationResult, onRefuse?: (index: number) => void,
 ): number {
-  if (cells.length === 0) return 0;
-  if (execute(paintTerrainCommand([...cells], type, elevation)).success) return cells.length;
+  const paint = (lo: number, hi: number): number => {
+    if (execute(paintTerrainCommand(cells.slice(lo, hi), type, elevation)).success) return hi - lo;
+    if (hi - lo === 1) { onRefuse?.(lo); return 0; }
+    const mid = (lo + hi) >> 1;
+    return paint(lo, mid) + paint(mid, hi);
+  };
+  return cells.length === 0 ? 0 : paint(0, cells.length);
+}
+
+/** Build `columns` of `type` layer by layer (`columnLayers`), each layer painted by `paintLayer`.
+ *  Returns how many cells took a layer. */
+export function buildColumns(
+  columns: readonly Column[], type: TerrainType, execute: (cmd: Command) => ValidationResult,
+): number {
   let placed = 0;
-  cells.forEach((cell, i) => {
-    if (execute(paintTerrainCommand([cell], type, elevation)).success) placed++;
-    else onRefuse?.(i);
-  });
+  for (const cmd of columnLayers(columns, type)) placed += paintLayer(cmd.cells, type, cmd.elevation, execute);
   return placed;
 }
 

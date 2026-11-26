@@ -74,7 +74,7 @@ function drawn(sc: Scenario, anchors: MacroCoord[]): GridState {
   const state = makeState(28, 24);
   const ex = makeExecutor(state);
   sc.setup(ex);
-  const ctx = makeToolCtx(state, ex, 2, 1, { autoEdgeCut: sc.trim, contentType: sc.content, tileMaterial: road[0]!.id, eraserShape: 'curve' });
+  const ctx = makeToolCtx(state, ex, 2, { autoEdgeCut: sc.trim, contentType: sc.content, tileMaterial: road[0]!.id, eraserShape: 'curve' });
   const tool = sc.eraser ? new EraserTool() : new DrawingTool();
   if (tool instanceof DrawingTool) {
     arm(ctx, { shape: 'curve', contentType: sc.content });

@@ -1,6 +1,7 @@
 import { tourTargetSelector, type TourTargetId } from './steps';
 import { visualRect, type VisualRect } from '../../design/visual-rect';
 import { viewportSize } from '../../../platform/device/viewport-space';
+import { rectsBounds } from '../../../core/grid/rect';
 import type { Box } from './place-beside';
 
 /** The first carrier of `id` that has laid out and stands at least partly on screen. */
@@ -25,11 +26,9 @@ function shownRect(id: TourTargetId): VisualRect | null {
  */
 export function measureTargets(ids: readonly TourTargetId[]): Box | null {
   if (typeof document === 'undefined') return null;
-  const rects = ids.map(shownRect).filter((r): r is VisualRect => r !== null);
-  if (rects.length === 0) return null;
-  const left = Math.min(...rects.map((r) => r.left));
-  const top = Math.min(...rects.map((r) => r.top));
-  const right = Math.max(...rects.map((r) => r.left + r.width));
-  const bottom = Math.max(...rects.map((r) => r.top + r.height));
-  return { left, top, width: right - left, height: bottom - top };
+  const box = rectsBounds(ids.flatMap((id) => {
+    const r = shownRect(id);
+    return r ? [{ x: r.left, y: r.top, w: r.width, h: r.height }] : [];
+  }));
+  return box && { left: box.x, top: box.y, width: box.w, height: box.h };
 }

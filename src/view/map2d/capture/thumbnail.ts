@@ -21,7 +21,7 @@
 import { WATER_COLOR } from '../../../core/model/palette';
 import type { GridState, PlacedObject } from '../../../core/model/types';
 import { objectRect } from '../../../state/object-geometry';
-import { cellsCaptureFrame, type MapFrame } from '../../../core/grid/map-chunks';
+import { cellsCaptureFrame, cellsCapturing, type MapFrame } from '../../../core/grid/map-chunks';
 import type { AnnotationsState } from '../../../core/model/annotations';
 import { boundedMap, type BoundedMap } from '../../../core/base/bounded-map';
 import { useEditorStore } from '../../../state/store';
@@ -88,6 +88,34 @@ export function seaFrame(
   return { width, height, dx: Math.floor((width - w) / 2), dy: Math.floor((height - h) / 2) };
 }
 
+/** What a turned picture photographs: the bounds of `frame`'s cells turned by `turn` radians about
+ *  their centre, as a capture frame, the cells the picture shows, and how many times the bounds' long
+ *  side is the cells'. */
+function turnedBounds(frame: CellFrame, turn: number): { capture: MapFrame; shows: MapFrame; grow: number } {
+  const shows = cellsCaptureFrame(frame);
+  const cos = Math.abs(Math.cos(turn)), sin = Math.abs(Math.sin(turn));
+  const width = shows.width * cos + shows.height * sin, height = shows.width * sin + shows.height * cos;
+  const x = shows.x + shows.width / 2 - width / 2, y = shows.y + shows.height / 2 - height / 2;
+  return { capture: cellsCapturing({ x, y, width, height }), shows, grow: Math.max(width, height) / Math.max(shows.width, shows.height) };
+}
+
+/** `shot` of a turned frame's bounds (`turnedBounds`) turned back upright and cut to the cells it
+ *  shows, the sea under any corner past the map, as the 2D canvas shows there. */
+function upright(shot: HTMLCanvasElement, bounds: { capture: MapFrame; shows: MapFrame }, turn: number): HTMLCanvasElement {
+  const perCell = shot.width / cellsCaptureFrame(bounds.capture).width;
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(bounds.shows.width * perCell));
+  out.height = Math.max(1, Math.round(bounds.shows.height * perCell));
+  const ctx = out.getContext('2d');
+  if (!ctx) return shot;
+  ctx.fillStyle = WATER_COLOR;
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate(-turn);
+  ctx.drawImage(shot, -shot.width / 2, -shot.height / 2);
+  return out;
+}
+
 function frameInSea(shot: HTMLCanvasElement, aspect: number): HTMLCanvasElement {
   const box = seaFrame(shot.width, shot.height, aspect);
   if (box.width === shot.width && box.height === shot.height) return shot;
@@ -106,7 +134,7 @@ function frameInSea(shot: HTMLCanvasElement, aspect: number): HTMLCanvasElement 
  * The cells a picture of `state` covers, in cells, and so where a painter places it: `frame` when the
  * picture is a crop; else everything the renderer draws of the map, the whole template with the
  * terrain bleed of its first row and column and every object it draws, `flagged` included. An
- * object's art stays inside its footprint (`draw/sprite-fit.ts:footprintFit`), so its footprint
+ * object's art stays inside its footprint (`draw/object-sprite.ts:objectSpritePose`), so its footprint
  * bounds its drawing; a landmark laid past the template's edge (Hexia's station) widens the picture.
  */
 export function mapPictureFrame(state: Pick<GridState, 'template' | 'objects'>, frame?: CellFrame, flagged: readonly PlacedObject[] = []): MapFrame {
@@ -128,6 +156,9 @@ interface MapPictureOptions {
   aspect?: number;
   /** The cells to frame; absent frames the whole template. */
   frame?: CellFrame | null;
+  /** How far a turned 2D view turned the frame, in radians as its heading: the picture shows the
+   *  frame's cells as that view drew them. */
+  turn?: number;
   /** The caller's version of a grid edited in place, which takes a fresh picture per value; absent
    *  takes it once. The notes are versioned here, so callers never fold them in. */
   version?: string | number;
@@ -199,7 +230,7 @@ function notesKey(state: GridState, notes: AnnotationsState | null | undefined):
 
 function pictureKey(state: GridState, longSidePx: number, opts: MapPictureOptions): string {
   const { aspect, frame, version, flagged } = opts;
-  const framed = frame ? `${frame.x},${frame.y},${frame.width},${frame.height}` : '';
+  const framed = frame ? `${frame.x},${frame.y},${frame.width},${frame.height},${opts.turn ?? 0}` : '';
   const flags = flagged?.map((o) => `${o.id}@${o.position.x},${o.position.y},${o.rotation}`).join(';') ?? '';
   return `${longSidePx}|${aspect ?? ''}|${framed}|${version ?? ''}|${notesKey(state, opts.notes)}|${flags}`;
 }
@@ -207,13 +238,16 @@ function pictureKey(state: GridState, longSidePx: number, opts: MapPictureOption
 async function capture(state: GridState, longSidePx: number, opts: MapPictureOptions): Promise<HTMLCanvasElement | null> {
   const renderer = getMapRenderer();
   if (!renderer) return null;
+  const turn = opts.frame && opts.turn ? opts.turn : 0;
+  const turned = opts.frame && turn ? turnedBounds(opts.frame, turn) : null;
   const shot = await renderer.captureState(state, {
-    maxPx: longSidePx,
-    ...(opts.frame ? { frame: opts.frame } : {}),
+    maxPx: longSidePx * (turned?.grow ?? 1),
+    ...(opts.frame ? { frame: turned?.capture ?? opts.frame } : {}),
     ...(opts.notes !== undefined ? { notes: opts.notes } : {}),
     ...(opts.flagged?.length ? { flagged: opts.flagged } : {}),
   });
-  return shot && opts.aspect ? frameInSea(shot, opts.aspect) : shot;
+  const shown = shot && turned ? upright(shot, turned, turn) : shot;
+  return shown && opts.aspect ? frameInSea(shown, opts.aspect) : shown;
 }
 
 /**

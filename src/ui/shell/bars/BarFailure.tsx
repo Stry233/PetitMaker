@@ -8,7 +8,7 @@ import { btnReset, cursors, radii } from '../../design/styles';
 import { PLATE, PLATE_INK } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';
 import { mapEdgeAttr } from '../../primitives/map-edge';
-import { SHELF_TABS, TEXT, UPRIGHT_SPACE } from '../units';
+import { SHELF_TABS, UPRIGHT_SPACE } from '../units';
 import { BarText } from './bar-atoms';
 import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameZoom } from '../use-frame-zoom';
@@ -35,7 +35,7 @@ export function BarFailure({ onRetry }: { onRetry: () => void }) {
             columnGap: SHELF_TABS.gap, ...(upright ? {} : { rowGap: SHELF_TABS.gap }),
           }}
         >
-          <BarText size={TEXT.head} onMap>{t('guard.surface_failed')}</BarText>
+          <BarText role="note" onMap>{t('guard.surface_failed')}</BarText>
           <ActionButton
             interaction="action"
             data-testid="bar-retry"
@@ -45,7 +45,7 @@ export function BarFailure({ onRetry }: { onRetry: () => void }) {
               height: SHELF_TABS.field, padding: `0 ${SHELF_TABS.padX}px`, background: PLATE,
             }}
           >
-            <BarText size={TEXT.head} color={PLATE_INK} weight={900}>{t('guard.retry')}</BarText>
+            <BarText role="action" color={PLATE_INK} weight={900}>{t('guard.retry')}</BarText>
             <TouchReach zoom={zoom} />
           </ActionButton>
         </motion.div>

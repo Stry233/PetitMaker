@@ -101,6 +101,29 @@ describe('placeSelectionCard in a short map area', () => {
   });
 });
 
+describe('placeSelectionCard for a placed blueprint', () => {
+  // A 1280 by 800 window in Blueprint mode: a placed blueprint's details list every kind and terrain
+  // it laid, here far taller than the map area the frame leaves clear.
+  const WINDOW = { width: 1280, height: 800 };
+  const AREA = { left: 0, top: 124, right: 1044, bottom: 518 };
+  const CARD = { w: 298, h: 48, body: 933 };
+  const apart = (p: ReturnType<typeof shown>, sel: { x: number; y: number; w: number; h: number }) => {
+    const dx = Math.max(0, sel.x - (p.left + CARD.w), p.left - (sel.x + sel.w));
+    const dy = Math.max(0, sel.y - (p.top + CARD.h), p.top - (sel.y + sel.h));
+    return Math.hypot(dx, dy);
+  };
+
+  it('[EDIT-47] keeps the header next to the group at a small zoom, wherever the group is drawn', () => {
+    // Zoomed out, the group is drawn small; the first three boxes are as the 3D and 2D views drew one.
+    const drawn = [{ x: 572, y: 381, w: 31, h: 20 }, { x: 511, y: 365, w: 62, h: 37 }, { x: 471, y: 296, w: 111, h: 111 }];
+    const swept = Array.from({ length: 18 }, (_, i) => ({ x: 300 + i * 20, y: 140 + i * 20, w: 31, h: 20 }));
+    for (const sel of [...drawn, ...swept]) {
+      const p = shown(placeSelectionCard(sel, CARD, WINDOW, { area: AREA }));
+      expect(apart(p, sel), JSON.stringify({ sel, p })).toBeLessThanOrEqual(CARD_GAP);
+    }
+  });
+});
+
 describe('placeFittedCard', () => {
   // A phone column whose wide label stands high up and whose buttons below are narrow.
   const PHONE = { width: 390, height: 844 };
@@ -125,6 +148,29 @@ describe('placeFittedCard', () => {
         expect(again.size).toEqual(fit.size);
       }
     }
+  });
+});
+
+describe('placeFittedCard on a narrow phone', () => {
+  // A 390 px upright phone whose map area runs the full width: a multi-selection's header, with its
+  // extra control, leaves the name less room than its shortest width.
+  const PHONE = { width: 390, height: 844 };
+  const AREA = { left: 0, top: 70, right: 390, bottom: 700 };
+  const OPTS = { areaAt: () => AREA, titleMin: 53, titleMax: 242 };
+
+  it('[EDIT-47] leaves the name out where the room holds the controls but not the shortest name, so the card stays on screen', () => {
+    const parts = { title: 96, others: 347 };
+    const fit = placeFittedCard({ x: 180, y: 320, w: 24, h: 24 }, parts, { h: 48, body: 160 }, PHONE, OPTS);
+    const p = shown(fit.placement);
+    expect(fit.titleCap).toBe(0);
+    expect(fit.size.w).toBe(parts.others);
+    expect(p.left).toBeGreaterThanOrEqual(AREA.left + CARD_MARGIN - 1e-9);
+    expect(p.left + fit.size.w).toBeLessThanOrEqual(AREA.right - CARD_MARGIN + 1e-9);
+  });
+
+  it('[EDIT-47] keeps the shortest name wherever it fits beside the controls', () => {
+    const fit = placeFittedCard({ x: 180, y: 320, w: 24, h: 24 }, { title: 96, others: 300 }, { h: 48, body: 160 }, PHONE, OPTS);
+    expect(fit.titleCap).toBe(390 - 2 * CARD_MARGIN - 300);
   });
 });
 

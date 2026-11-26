@@ -71,6 +71,9 @@ export const PANEL_MIN_HEIGHT = 430;
  *  desk's reserved seat against this inset, so the two read one number. */
 export const PANEL_PAD = PANEL_PLATE_PAD;
 
+/** A question the panel asks unrolls this wide, in frame px: the panel's own column less its gutters. */
+export const PANEL_CONFIRM_W = 300;
+
 /** A card's padding inside the panel (`.face`, `.aticket`, `.apaper` all draw the same paper). */
 export const CARD_PAD = 12;
 

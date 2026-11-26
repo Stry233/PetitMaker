@@ -1,10 +1,11 @@
 import { framerMotion } from '../../../design/motion';
 import { afterPaint } from '../../../../platform/async/after-paint';
-import { useAttribution } from './use-attribution';
-import { useMapReview, useTextReview } from './edition-export';
+import { setMapNotes, useAttribution } from './use-attribution';
+import { useMapReview } from './review/use-map-review';
+import { useTextReview } from './review/use-text-review';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { radii, font } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
@@ -15,14 +16,17 @@ import { WindowBody, WindowFooter } from '../../../primitives/Window';
 import { useLocale, useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { provenanceSummaryOf } from '../../../../state/executor';
-import { RESOLUTION_WIDTHS, formatFooterDate, isImportable, type ExportOptions } from '../../../../io/export/facts';
+import { FALLBACK_MAP_ASPECT, RESOLUTION_WIDTHS, formatFooterDate, isImportable, type ExportOptions, type ResolutionKey } from '../../../../io/export/facts';
 import { ExportControls } from './ExportControls';
 import { ExportPreview } from './ExportPreview';
 import { footerTokenValues } from '../../../../editor/export/preview';
+import type { HostMark } from '../../../../editor/export/brand';
 import {
-  exportImage, exportReviewParts, openingExportOptions, previewSafeOptions, rememberExportOptions,
+  exportImage, exportReviewParts, openingExportOptions, previewWords, rememberExportOptions, shareMapLink, withWords,
 } from '../../../../editor/export/image-export';
+import { preparedExportRevision, subscribePreparedExport } from '../../../../editor/export/prepared';
 import type { ReviewIssue, ReviewProgress } from '../../../../editor/review/text-review';
+import { exportUnavailable, exportWords, type ExportStanding } from '../../../../editor/export/availability';
 import { LEGAL } from '../../../../legal/config';
 import { useShareCode } from './use-share-code';
 import { Expand } from '../../../primitives/Expand';
@@ -36,7 +40,7 @@ import { STACKED_PREVIEW_HEIGHT, useWindowColumns } from '../use-window-columns'
 function footerDimsSample(res: ExportOptions['resolution']): string {
   if (res === 'original') return 'native';
   const w = RESOLUTION_WIDTHS[res];
-  return `${w}×${Math.round(w / 1.2)}`;
+  return `${w}×${Math.round(w / FALLBACK_MAP_ASPECT)}`;
 }
 
 interface ImageDelivery {
@@ -46,12 +50,26 @@ interface ImageDelivery {
   send: (image: Blob) => Promise<void>;
 }
 
+/** A link that opens the map, which the host shares without a picture. */
+interface MapLinkAction {
+  label: string;
+  share: () => Promise<void>;
+}
+
+/** The QR the deployment's host makes for the picture's footer at a size. */
+type FooterMark = (resolution: ResolutionKey) => Promise<HostMark | null>;
+
 /** The share-picture controls on their own, so the "save and share" window can carry them as one
  *  of its sections. Everything expensive here is gated on `open` — the provenance summary,
  *  the share-code build, the preview's captures — so a mounted-but-hidden section costs nothing.
  *  `entered` is the host shell's `useModalEntered` answer: the picture waits for the card to settle. */
 export function ExportPanel(
-  { open, entered, onDone, deliveries }: { open: boolean; entered: boolean; onDone: () => void; deliveries?: readonly ImageDelivery[] },
+  { open, entered, onDone, deliveries, link, mark, artStyle }: {
+    open: boolean; entered: boolean; onDone: () => void; deliveries?: readonly ImageDelivery[];
+    link?: MapLinkAction; mark?: FooterMark;
+    /** The controls' Art style group (`ExportControls`). */
+    artStyle?: ReactNode;
+  },
 ) {
   const t = useT();
   // Gated on `open`: this selector runs on every store update, and the provenance
@@ -62,22 +80,30 @@ export function ExportPanel(
   const locale = useLocale();
   // The window opens the way it was left: every choice but the map's own words is remembered.
   const [remembered, setOptions] = useState<ExportOptions>(openingExportOptions);
+  // Choices prepared outside the window while this panel stands are read again as they arrive.
+  const prepared = useSyncExternalStore(subscribePreparedExport, preparedExportRevision);
+  const [shownPrepared, setShownPrepared] = useState(prepared);
+  if (prepared !== shownPrepared) {
+    setShownPrepared(prepared);
+    setOptions(openingExportOptions());
+  }
   // The title and description are the map's own notes, shared with the JSON export and the share code.
   useEditorStore((s) => s.gridState?.notes);
-  const setMapNotes = useEditorStore((s) => s.setMapNotes);
   const attribution = useAttribution(open);
   const notes = attribution.notes;
   const notesKey = JSON.stringify(notes);
   const settledNotes = useSettledValue(notes);
-  const options = useMemo<ExportOptions>(
-    () => ({ ...remembered, title: settledNotes.title ?? '', description: settledNotes.description ?? '' }),
-    [remembered, settledNotes],
-  );
+  // The choices with the map's words, for the words' check and the footer. The export takes the
+  // choices alone and reads the words from the map; the preview takes the words once approved.
+  const options = useMemo<ExportOptions>(() => withWords(remembered, settledNotes), [remembered, settledNotes]);
   const [exporting, setExporting] = useState(false);
   /** How far a tiled export has come, or null while the export is not tiled. */
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [reviewProgress, setReviewProgress] = useState<ReviewProgress | null>(null);
   const [reviewIssue, setReviewIssue] = useState<ReviewIssue | null>(null);
+  /** A picture its delivery refused as too large, with the size expected to fit. */
+  const [tooLarge, setTooLarge] = useState<{ fits: ResolutionKey | null; delivery: ImageDelivery } | null>(null);
+  const [sharingLink, setSharingLink] = useState(false);
   const notice = useExportNotice(open, options, gridState);
   const exportRun = useRef<AbortController | null>(null);
   function cancelExport() {
@@ -88,7 +114,7 @@ export function ExportPanel(
     if (!open) cancelExport();
     return () => { exportRun.current?.abort(); exportRun.current = null; };
   }, [open]);
-  useEffect(() => { setReviewIssue(null); }, [options]);
+  useEffect(() => { setReviewIssue(null); setTooLarge(null); }, [options]);
 
   // The entrance comes first. The preview's capture, its paint and the share-code encode are all
   // synchronous main-thread work that would land inside the card's opening spring and stall it, so
@@ -98,24 +124,24 @@ export function ExportPanel(
   useEffect(() => { cancelExport(); }, [gridState, mapReview.revision]);
   const ready = open && settled && mapReview.previewReady;
 
-  // One timestamp per modal session: it goes into the code's payload, so fixing it at open makes
-  // the previewed band pixel-identical to the exported one (the export reuses the cached asset).
-  const [createdAt, setCreatedAt] = useState('');
-  useEffect(() => { if (open) setCreatedAt(new Date().toISOString()); }, [open]);
-
   const [composing, setComposing] = useState(false);
   useEffect(() => { if (!open) setComposing(false); }, [open]);
   const footerValues = open && gridState ? footerTokenValues(gridState, options, locale, summary ?? null) : {};
   const reviewParts = exportReviewParts(options, footerValues);
   const textReview = useTextReview(open, reviewParts, composing);
   const issue = reviewIssue ?? textReview.issue;
-  const textlessExportDisabled = attribution.locked || exporting || mapReview.pending || mapReview.result?.status === 'blocked';
-  const exportDisabled = composing || exporting || mapReview.pending || mapReview.result?.status === 'blocked' || (issue !== null && typeof issue === 'object');
+  // The picture's words are checked as it exports; without them, nothing of the words holds it.
+  const standing: ExportStanding = {
+    exporting, composing, map: { pending: mapReview.pending, blocked: mapReview.result?.status === 'blocked' },
+    words: exportWords(issue, textReview.allowed),
+  };
+  const textlessExportDisabled = attribution.locked || exportUnavailable({ ...standing, composing: false, words: 'approved' }, true);
+  const exportDisabled = exportUnavailable(standing, true);
 
-  // The web edition waits for review; Lite uses the manual export acknowledgement.
-  const safeOptions = previewSafeOptions(options, textReview.allowed, composing);
-  const previewOptions = useSettledValue(safeOptions);
-  const previewFooter = useSettledValue({ ...footerValues, title: previewOptions.title });
+  // The player's own preview shows words the check approved or that wait for the check the export runs;
+  // a Lite build without the check uses the manual export acknowledgement.
+  const shownWords = previewWords(settledNotes, textReview.ready, composing);
+  const previewFooter = useSettledValue({ ...footerValues, title: shownWords?.title ?? '' });
   const openedWith = useRef(remembered);
   useEffect(() => { rememberExportOptions(remembered, openedWith.current); }, [remembered]);
 
@@ -124,12 +150,20 @@ export function ExportPanel(
   // entrance. While it builds, the preview keeps its last picture (or its loading state when
   // there is none yet — no placeholder band).
   const code = useShareCode(ready, gridState ?? null, {
-    summary: summary ?? null, importable: isImportable(options), resolution: options.resolution, createdAt, notesKey,
+    summary: summary ?? null, importable: isImportable(options), resolution: options.resolution, notesKey,
   });
   const codeAsset = code.asset;
   const codeIssue = code.issue;
 
-  async function handleExport(withoutText = false, delivery?: ImageDelivery) {
+  // The host's footer QR, made once the picture starts and again for each size.
+  const [previewMark, setPreviewMark] = useState<HostMark | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (ready && mark) void mark(options.resolution).then((made) => { if (live) setPreviewMark(made); });
+    return () => { live = false; };
+  }, [ready, mark, options.resolution]);
+
+  async function handleExport(withoutText = false, delivery?: ImageDelivery, resolution?: ResolutionKey) {
     if (delivery && !delivery.available) return;
     if (exportRun.current || !open || (withoutText ? textlessExportDisabled : exportDisabled)) return;
     const controller = new AbortController();
@@ -138,7 +172,10 @@ export function ExportPanel(
     let begun = false;
     try {
       const outcome = await exportImage(
-        { options, withoutText, createdAt, previewCode: codeAsset, site: LEGAL.canonicalOrigin },
+        {
+          options: resolution ? { ...remembered, resolution } : remembered, withoutText, previewCode: codeAsset,
+          site: LEGAL.canonicalOrigin, ...(mark ? { mark } : {}),
+        },
         {
           signal,
           checkMap: () => mapReview.check(),
@@ -146,6 +183,7 @@ export function ExportPanel(
           begin: () => {
             begun = true;
             setReviewIssue(null);
+            setTooLarge(null);
             if (withoutText) textReview.cancel();
             signal.addEventListener('abort', textReview.cancel, { once: true });
             setExporting(true);
@@ -158,6 +196,7 @@ export function ExportPanel(
         },
       );
       if (outcome.status === 'held' && !signal.aborted) setReviewIssue(outcome.issue);
+      if (outcome.status === 'too-large' && delivery && !signal.aborted) setTooLarge({ fits: outcome.fits, delivery });
       if (outcome.status === 'done') onDone();
     } finally {
       if (begun) signal.removeEventListener('abort', textReview.cancel);
@@ -177,7 +216,7 @@ export function ExportPanel(
   const [columns, bodyRef] = useWindowColumns();
 
   const controls = (
-      <ExportControls options={options} setOptions={setOptions} notes={notes} setNotes={setMapNotes} titleLocked={attribution.titleLocked} descriptionLocked={attribution.descriptionLocked} summary={summary ?? null} footerSamples={footerSamples} checkingFields={textReview.pending && !exporting ? reviewParts.map((part) => part.field) : []} refusedFields={issue && typeof issue === 'object' ? issue.fields : []} reviewLabel={t('export.review.checking')} />
+      <ExportControls artStyle={artStyle} options={options} setOptions={setOptions} notes={notes} setNotes={setMapNotes} titleLocked={attribution.titleLocked} descriptionLocked={attribution.descriptionLocked} summary={summary ?? null} footerSamples={footerSamples} checkingFields={textReview.pending && !exporting ? reviewParts.map((part) => part.field) : []} refusedFields={issue && typeof issue === 'object' ? issue.fields : []} reviewLabel={t('export.review.checking')} />
   );
   const composition = { onCompositionStartCapture: () => setComposing(true), onCompositionEndCapture: () => setComposing(false) };
   const settings = columns === 2
@@ -190,10 +229,25 @@ export function ExportPanel(
       {/* Keep hover and focus inside the collapsing clip without narrowing the controls. */}
       <div style={{ margin: '0 -12px' }}>
         <Expand open={!!issue || textReview.paused}>
-          <div role={issue ? "alert" : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('caption'), lineHeight: 1.5 }}>
+          <div role={issue ? "alert" : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('note'), lineHeight: 1.5 }}>
             {issue === 'unavailable' ? t('export.review.unavailable') : issue === 'too-long' ? t('export.review.too_long') : issue ? t('export.review.content', { fields: issue.fields.map((field) => t(REVIEW_FIELD_LABEL[field])).join(', ') }) : ''}
             {(textReview.paused || issue === 'unavailable') && <ActionButton appearance="secondary" style={{ marginTop: 8, width: '100%' }} onClick={() => { setReviewIssue(null); textReview.retry(); }}>{t('export.review.retry')}</ActionButton>}
             {issue && !attribution.locked && <ActionButton appearance="secondary" disabled={textlessExportDisabled} style={{ marginTop: 8, width: '100%' }} onClick={() => void handleExport(true)}>{t('export.review.without_text')}</ActionButton>}
+          </div>
+        </Expand>
+        <Expand open={!!tooLarge}>
+          <div role={tooLarge ? 'alert' : undefined} style={{ padding: 12, color: skin.ink, ...roleFont('note'), lineHeight: 1.5 }}>
+            {tooLarge?.fits ? t('export.too_large_fits', { size: t(`export.res_${tooLarge.fits}`) })
+              : tooLarge ? t('export.too_large') : ''}
+            {tooLarge?.fits && <ActionButton appearance="secondary" disabled={exportDisabled} style={{ marginTop: 8, width: '100%' }}
+              onClick={() => {
+                const { fits, delivery } = tooLarge;
+                if (!fits) return;
+                setOptions((o) => ({ ...o, resolution: fits }));
+                void handleExport(false, delivery, fits);
+              }}>
+              {t('export.save_at', { size: t(`export.res_${tooLarge.fits}`) })}
+            </ActionButton>}
           </div>
         </Expand>
       </div>
@@ -203,6 +257,19 @@ export function ExportPanel(
   const actions = deliveries ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, flex: 'none' }}>
       {deliveries.map((delivery) => <ActionButton key={delivery.id} appearance="primary" onClick={() => void handleExport(false, delivery)} disabled={exportDisabled || !delivery.available} aria-busy={exporting}>{delivery.label}</ActionButton>)}
+      {link && <ActionButton appearance="primary" disabled={exporting || sharingLink} busy={sharingLink}
+        onClick={() => {
+          setSharingLink(true);
+          setReviewIssue(null);
+          void shareMapLink(options, link.share, (parts) => textReview.check(parts)).then((outcome) => {
+            if (outcome.status === 'held') setReviewIssue(outcome.issue);
+            setSharingLink(false);
+          }, (error: unknown) => {
+            // A refused share changed nothing, so it is only logged.
+            console.error('[export] link share failed', error);
+            setSharingLink(false);
+          });
+        }}>{link.label}</ActionButton>}
       <ActionButton appearance="secondary" onClick={onDone}>{t('export.btn_cancel')}</ActionButton>
     </div>
   ) : (
@@ -216,8 +283,8 @@ export function ExportPanel(
     <div key="preview" data-testid="export-preview" style={{ minHeight: 0, display: 'flex', flexDirection: 'column', ...(columns === 1 ? { flex: 'none', height: STACKED_PREVIEW_HEIGHT, marginBottom: 14 } : null) }}>
       <ExportPreview
         key={mapReview.revision} open={ready} preparing={open && mapReview.previewReady} checkingMap={mapReview.pending}
-        options={previewOptions} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending}
-        codeIssue={codeIssue} footerTokens={previewFooter}
+        options={remembered} words={shownWords} summary={summary ?? null} codeImg={codeAsset?.canvas ?? null} codePending={code.pending}
+        codeIssue={codeIssue} footerTokens={previewFooter} mark={mark ? previewMark : null}
       />
     </div>
   );
@@ -241,9 +308,8 @@ export function ExportPanel(
             transition={framerMotion('control.detail')}
             style={{ position: 'absolute', inset: 0, zIndex: 1, background: VEIL, backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radii.lg }}
          >
-            <Spinner size={38} thickness={4} />
+            <Spinner />
             <div role="status" style={{ fontFamily: font.family, ...roleFont('label'), color: skin.ink }}>{activeProgress ? t('export.review.checking') : exportProgress !== null ? t('export.progress', { percent: Math.round(exportProgress * 100) }) : t('export.exporting')}</div>
-            {activeProgress && <div style={{ ...roleFont('caption'), color: skin.muted, maxWidth: 320, textAlign: 'center' }}>{t('export.review.private')}</div>}
             <ActionButton appearance="secondary" autoFocus onClick={cancelExport}>{t('export.review.cancel')}</ActionButton>
           </motion.div>
         )}

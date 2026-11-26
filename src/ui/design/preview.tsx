@@ -35,6 +35,13 @@ export interface UiPreviewPose {
   /** The region screen standing in the bar's place in the picture over an empty region, with the tool
    *  it shows (its width and guides as the live store holds them); absent means not standing. */
   regionScreen?: { tool: RegionTool };
+  /** Blueprint's save step standing in the bar's place in the picture, its fields as a new save
+   *  opens them and its two pictures those of the library's first blueprint that has them, with no
+   *  viewfinder over the map; absent means not standing. */
+  blueprintSave?: true;
+  /** The Blueprint strip unfolded into its explorer on All, in the view it shows, nothing selected;
+   *  absent means as the live store holds it. */
+  blueprintExplorer?: { view: 'grid' | 'list' };
 }
 
 const UiPreviewContext = createContext<UiPreviewPose | null>(null);

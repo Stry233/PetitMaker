@@ -1,4 +1,5 @@
-/** Pins which surfaces the job zone stands for a session: offers, terminal card, notices, the sketch seat. */
+/** Pins how the job zone shows a session: the welcome, the notices, the sketch seat and the height floor.
+ *  Where each job stands is `agent/core/job-readings.ts:jobStanding`'s, tested beside it. */
 import { describe, it, expect } from 'vitest';
 import { sessionLayout, type SessionInputs } from '../../../../ui/agent/derive/session-layout';
 import type { JobView, PanelView } from '../../../../agent/core/project-view';
@@ -22,24 +23,10 @@ function inputs(over: Partial<SessionInputs> = {}): SessionInputs {
 }
 
 describe('the session layout', () => {
-  it('stands the newest settled job as its card and keeps it out of history', () => {
-    const done = job({ orderSeq: 2, outcome: 'done' });
-    const layout = sessionLayout(inputs({ view: view({ jobs: [job({ outcome: 'done' }), done] }) }));
-    expect(layout.settled?.job).toBe(done);
-    expect(layout.past.map((j) => j.orderSeq)).toEqual([1]);
-  });
-
-  it('offers a restored pause for resumption instead of a live ticket card', () => {
-    const held = job({ orderSeq: 3 });
-    const layout = sessionLayout(inputs({ view: view({ phase: 'paused', current: held }), restored: true }));
-    expect(layout.offered).toBe(held);
-  });
-
   it('rests keyless on the welcome only with nothing outstanding', () => {
     expect(sessionLayout(inputs({ connected: false })).showWelcome).toBe(true);
     const stopped = view({ phase: 'paused', current: job() });
-    const layout = sessionLayout(inputs({ connected: false, view: stopped }));
-    expect([layout.showWelcome, layout.keyCleared]).toEqual([false, true]);
+    expect(sessionLayout(inputs({ connected: false, view: stopped })).showWelcome).toBe(false);
   });
 
   it('names another map before an unknown one, and neither over a screen', () => {
@@ -47,7 +34,12 @@ describe('the session layout', () => {
     const base = inputs({ view: view({ jobs }), otherMap: new Set([1]), unknownMap: new Set([2]) });
     expect(sessionLayout(base).noticeCls).toBe('other-map');
     expect(sessionLayout({ ...base, zone: { kind: 'manage' } }).noticeCls).toBeNull();
-    expect(sessionLayout(base).settledBlocked).toBe('unknown-map');
+  });
+
+  it('opens the past record the zone names in place of the card', () => {
+    const jobs = [job({ orderSeq: 1, outcome: 'done' }), job({ orderSeq: 2, outcome: 'done' })];
+    const layout = sessionLayout(inputs({ view: view({ jobs }), zone: { kind: 'record', seq: 1 } }));
+    expect([layout.opened, layout.settled, layout.noticeCls]).toEqual([jobs[0], null, null]);
   });
 
   it('dresses the idle zone with the sketch only when nothing else stands', () => {

@@ -16,7 +16,7 @@ const pavement = 'path-simple-brick', print = 'print-field-junction';
 const at = { x: 4, y: 4 };
 function setup() {
   const state = makeState(20, 20), executor = makeExecutor(state);
-  const ctx = (tileMaterial: string) => makeToolCtx(state, executor, 1, 1, { tileMaterial, contentType: 'road', placementRotation: 90 });
+  const ctx = (tileMaterial: string) => makeToolCtx(state, executor, 1, { tileMaterial, contentType: 'road', placementRotation: 90 });
   const paint = (id: string) => {
     const start = executor.beginStroke();
     expect(placeTileCell(at, ctx(id), new Set())).toBe(true);

@@ -20,6 +20,7 @@ import { definePreRule } from './define';
 
 export const layerLockRule = definePreRule({
   id: 'V-LOCK-01',
+  description: 'Terrain on a locked layer cannot be modified; the lock is a user setting.',
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain, CommandType.TrimCorners],
   validate(cmd, state, fail) {
     if (state.lockedLayers.size === 0) return [];

@@ -2,8 +2,8 @@
   "id": "tree-flame",
   "category": "tree",
   "name": {
-    "en": "Flame Tree",
-    "zh": "火焰树",
+    "en": "Taffean Flower Tree",
+    "zh": "塔法花树",
     "ja": "カエンボク",
     "ru": "Огненное дерево",
     "th": "ต้นหางนกยูง",
@@ -14,7 +14,9 @@
     "凤凰木",
     "royal poinciana",
     "橙",
-    "orange"
+    "orange",
+    "flame tree",
+    "火焰树"
   ],
   "icon": "tree-flame",
   "iconColor": "#d37f3d",

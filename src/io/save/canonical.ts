@@ -54,9 +54,9 @@ function stable(c: CanonicalSave): string {
 
 export function canonicalBytes(c: CanonicalSave): Uint8Array { return new TextEncoder().encode(stable(c)); }
 
-/** A SaveFile JSON string for the shared save loader. */
-export function toSaveJSON(c: CanonicalSave, annotations?: AnnotationsState): string {
-  const save: SaveFile = {
+/** The save file the shared save loader reads `c` and `annotations` from; it shares their objects. */
+export function toSaveFile(c: CanonicalSave, annotations?: AnnotationsState): SaveFile {
+  return {
     version: c.version,
     templateId: c.templateId,
     cells: c.cells,
@@ -64,7 +64,6 @@ export function toSaveJSON(c: CanonicalSave, annotations?: AnnotationsState): st
     metadata: { savedAt: '' },
     ...(annotations ? { annotations } : {}),
   };
-  return JSON.stringify(save);
 }
 
 /** The template signature a save or share code records, for the drift check on import. A built-in

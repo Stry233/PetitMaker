@@ -21,7 +21,7 @@
 import { TerrainType, type GridState, type MacroCoord, type ValidationError } from '../core/model/types';
 import { getCell } from '../core/model/grid-model';
 import { cellElevation, isWaterAtElev, traceToMountain } from '../core/domain/terrain/waterfall-geometry';
-import { DIR_OFFSETS, PERP_DIRS, type Direction } from '../core/grid/directions';
+import { DIRECTIONS, DIR_OFFSETS, PERP_DIRS, type Direction } from '../core/grid/directions';
 import { TERRAIN_GRID } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
 import { definePostRule, type Fail } from './define';
@@ -87,6 +87,7 @@ function checkAdjacentRowUniformity(
 
 export const waterfallAdjacentUniformityRule = definePostRule({
   id: 'V-WTR-03',
+  description: 'The row directly below a waterfall lip must all be one elevation across the full width of the fall, its capping mountains included.',
 
   validate(state, opts, fail) {
     const { width, height } = state.template;
@@ -100,7 +101,7 @@ export const waterfallAdjacentUniformityRule = definePostRule({
 
         const elev = cell.terrain.elevation;
 
-        for (const flowDir of ['north', 'south', 'east', 'west'] as Direction[]) {
+        for (const flowDir of DIRECTIONS) {
           const { dx, dy } = DIR_OFFSETS[flowDir];
           const neighborElev = cellElevation(state, x + dx, y + dy);
           if (neighborElev >= elev) continue; // needs height drop

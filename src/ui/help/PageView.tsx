@@ -11,12 +11,12 @@ import { providerName } from '../../i18n/terms/providers';
 import { Fragment, memo, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useObservedSize } from '../primitives/use-observed-size';
 import { useEditorStore } from '../../state/store';
-import { startTour } from '../chrome/tour/use-tour';
+import { tourOpenable } from '../../state/slices/shell';
 import { useLocale } from '../../i18n/context';
 import { useReadingT } from '../design/reading';
 import { PosedDeviceFacts, useTouchMode } from '../design/input-mode';
 import { useKeybinds } from '../../state/keymap/store';
-import { resolveTokenSpecs } from './hints/catalogue';
+import { keyRowContext, resolveTokenSpecs } from '../../editor/help/key-tokens';
 import { HintTokens } from './hints/hint-marks';
 import { roleWeight, roleFont, LINE_HEIGHT } from '../design/text-weight';
 import { ACTIVE, INK, INSET, LINE, MUTED, PLATE, PLATE_INK, TEXT_PRIMARY, rgbaOf } from '../design/tokens';
@@ -28,7 +28,8 @@ import { Pill } from '../primitives/Pill';
 import { BrandLockup } from '../chrome/BrandLockup';
 import { LoadDiscSvg } from '../shell/controls/LoadMeter';
 import { inlineArt, type InlineArt } from './inline-art';
-import { helpFacts } from './facts';
+import { readerFacts } from './facts';
+import { pageFigure, sectionFigure, type HelpFigure } from './page-figures';
 import { HELP_SCENES } from './figures/scenes';
 import { HelpDemo } from './figures/HelpDemo';
 import { HelpReel, useHelpReel } from './figures/HelpReel';
@@ -40,9 +41,10 @@ import { FigureRoomContext, figureShare } from './figures/figure-scale';
 /** Below this width a figure's plate gives its content more of the column. */
 const NARROW_FIGURE = 360;
 import { useInView } from './figures/use-in-view';
-import type { HelpPage, HelpPageId, HelpSection } from './page-schema';
-import { HELP_GROUP_TITLES, HELP_PAGES } from './catalog';
+import type { HelpPage, HelpPageId, HelpSection } from '../../editor/help/page-schema';
+import { HELP_GROUP_TITLES, HELP_PAGES } from '../../editor/help/catalog';
 import type { TextKey } from '../../i18n/keys';
+import { pressCommand } from '../../editor/commands/run';
 
 /** One box for every inline art: the same height and baseline whatever the kind, so a sentence's
  *  icons sit level with each other and with the text. */
@@ -142,11 +144,11 @@ const STEP_LINK: CSSProperties = {
   cursor: cursors.clickable, whiteSpace: 'nowrap',
 };
 
-function SectionView({ section }: { section: HelpSection }) {
+function SectionView({ section, figure }: { section: HelpSection; figure?: HelpFigure }) {
   const t = useReadingT();
   const touch = useTouchMode();
   const overrides = useKeybinds((s) => s.overrides);
-  const facts = helpFacts(useLocale());
+  const facts = readerFacts(useLocale());
   if (section.kind === 'callout') {
     return (
       <div style={{ background: rgbaOf(ACTIVE, 0.28), borderRadius: radii.md, padding: '12px 16px', marginTop: 14 }}>
@@ -218,7 +220,7 @@ function SectionView({ section }: { section: HelpSection }) {
         {heading}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
           {section.rows.map((row) => {
-            const tokens = resolveTokenSpecs(row.tokens, overrides, section.anchor.startsWith('notes-') ? 'notes-zone' : 'terrain');
+            const tokens = resolveTokenSpecs(row.tokens, overrides, keyRowContext(section.anchor));
             if (!tokens) return null;
             return (
               <div key={row.doKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -240,13 +242,13 @@ function SectionView({ section }: { section: HelpSection }) {
       {section.bodyKeys.map((key) => (
         <p key={key} style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.75, marginTop: 6 }}>{emphasize(t(key, facts))}</p>
       ))}
-      {section.figure && <Figure fig={section.figure} />}
+      {figure && <Figure fig={figure} />}
     </section>
   );
 }
 
 /** A figure in the reader's form, or in the form it is about (`HelpFigure.form`). */
-function Figure({ fig }: { fig: HelpPage['figure'] }) {
+function Figure({ fig }: { fig: HelpFigure | undefined }) {
   if (!fig?.form) return <FigureBody fig={fig} />;
   return (
     <PosedDeviceFacts {...fig.form}>
@@ -255,9 +257,9 @@ function Figure({ fig }: { fig: HelpPage['figure'] }) {
   );
 }
 
-function FigureBody({ fig }: { fig: HelpPage['figure'] }) {
+function FigureBody({ fig }: { fig: HelpFigure | undefined }) {
   const t = useReadingT();
-  const facts = helpFacts(useLocale());
+  const facts = readerFacts(useLocale());
   const ref = useRef<HTMLElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const ready = useInView(ref);
@@ -340,7 +342,7 @@ function FigureBody({ fig }: { fig: HelpPage['figure'] }) {
   );
 }
 
-function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: ReturnType<typeof helpFacts>; t: ReturnType<typeof useReadingT> }) {
+function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: ReturnType<typeof readerFacts>; t: ReturnType<typeof useReadingT> }) {
   return (
     <div style={{ borderTop: `1px solid ${LINE}`, padding: '14px 0' }}>
       <h4 style={{ ...roleFont('head'), color: INK, margin: '0 0 6px' }}>{t(qKey, facts)}</h4>
@@ -352,15 +354,14 @@ function QaRow({ qKey, aKey, facts, t }: { qKey: TextKey; aKey: TextKey; facts: 
 function PageAction({ action }: { action: NonNullable<HelpPage['action']> }) {
   const t = useReadingT();
   const setModal = useEditorStore((s) => s.setModal);
-  // The tour walks the map's interface, which a planet session has set aside.
-  const inSession = useEditorStore((s) => s.planetSession !== null);
-  const unavailable = action.kind === 'replay-tour' && inSession;
+  const tourShut = !useEditorStore(tourOpenable);
+  const unavailable = action.kind === 'replay-tour' && tourShut;
   const run = () => {
     // Either action opens something the help window would otherwise stand in front of, so the
     // help steps aside first; it keeps the reader's place for the way back.
     setModal('help', false);
-    if (action.kind === 'open-keyboard') { setModal('keyboard', true); return; }
-    startTour();
+    if (action.kind === 'open-keyboard') { pressCommand('window.open', { window: 'keyboard' }); return; }
+    pressCommand('tour.start');
   };
   return (
     <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
@@ -379,7 +380,7 @@ export const PageView = memo(function PageView(
 ) {
   useEffect(() => onReady?.(page.id), [onReady, page.id]);
   const t = useReadingT();
-  const facts = helpFacts(useLocale());
+  const facts = readerFacts(useLocale());
   return (
     <article style={{ padding: '24px 32px 40px', maxWidth: 730 }}>
       {page.hero ? (
@@ -398,9 +399,11 @@ export const PageView = memo(function PageView(
         <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: '0 0 8px' }}>{emphasize(t(page.ledeKey, facts))}</p>
         <p style={{ ...roleFont('reading'), color: PLATE_INK, lineHeight: 1.65, margin: 0 }}>{emphasize(t(page.entryKey, facts))}</p>
       </div>
-      <Figure fig={page.figure} />
+      <Figure fig={pageFigure(page.id)} />
       {page.action && <PageAction action={page.action} />}
-      {page.sections.map((section, i) => <SectionView key={i} section={section} />)}
+      {page.sections.map((section, i) => (
+        <SectionView key={i} section={section} figure={section.kind === 'prose' ? sectionFigure(page.id, section.anchor) : undefined} />
+      ))}
       {page.qa.length > 0 && (
         <>
           <h3 style={{ ...roleFont('lead'), color: INK, margin: '28px 0 8px' }}>{t('help.qa_title')}</h3>

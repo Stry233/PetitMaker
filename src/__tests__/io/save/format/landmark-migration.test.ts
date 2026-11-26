@@ -3,7 +3,7 @@ import legacy from '../../../fixtures/saves/landmarks-v2.json';
 import expected from '../../../fixtures/saves/landmarks-v3.json';
 import { CURRENT_VERSION, migrateToCurrent } from '../../../../io/save/format';
 import { serialize, decodeSave } from '../../../../io/save/json-codec';
-import { clearUnderLandmarks } from '../../../../state/landmark-clearance';
+import { clearUnderLandmarks } from '../../../../tools/repair/landmark-clearance';
 import { parseSave } from '../../../../io/save/parse';
 import { inspectImportFile } from '../../../../io/import/file';
 import { parseTemplate, readPlanetFile, serializeTemplate } from '../../../../io/save/planet-codec';

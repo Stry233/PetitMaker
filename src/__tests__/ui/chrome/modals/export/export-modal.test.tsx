@@ -10,7 +10,8 @@ import { useEditorStore } from '../../../../../state/store';
 import { makeState } from '../../../../_support/map-state';
 import { CommandExecutor } from '../../../../../core/commands/command-executor';
 import { createDefaultRegistry } from '../../../../../rules';
-import { I18nProvider } from '../../../../../i18n/context';
+import { I18nProvider, translateFor } from '../../../../../i18n/context';
+import { runCommand } from '../../../../../editor/commands/run';
 import { reviewText } from '../../../../../pipelines/moderation/text/reviewer';
 
 const requestNotice = vi.hoisted(() => vi.fn(async (_hasPetitGlyph?: boolean) => true));
@@ -117,6 +118,15 @@ describe('ExportModal', () => {
     expect(high.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(high);
     expect(screen.getByText('High').closest('button')!.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('shows picture choices prepared outside the window while it stands open', async () => {
+    mountStateWith();
+    render(<ShareWindow />, { wrapper: Wrapper });
+    const high = () => screen.getByText(translateFor('en', 'export.res_high')).closest('button')!.getAttribute('aria-pressed');
+    expect(high()).toBe('false');
+    await act(() => runCommand('app.export_image', { resolution: 'high' }));
+    await waitFor(() => expect(high()).toBe('true'));
   });
 
   it('offers only the two v2 presets (Share / Plain) — no Clean preset, no strip-mode picker', () => {

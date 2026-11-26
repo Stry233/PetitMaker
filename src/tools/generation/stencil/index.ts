@@ -5,9 +5,9 @@
  * Running the plan goes through the facade (`../generate.ts`), which imports `run.ts` directly, so
  * `generateStencil`, `runStencilPlan` and the lay passes stay behind this door.
  */
-export { terrainPalette, tilesAShape } from './stencil';
+export { terrainPalette } from './stencil';
 export { readSourceNature, type SampleOptions } from './stencil-sample';
-export { isEmojiGrapheme, limitTextGraphemes } from './stencil-text-segments';
+export { isEmojiGrapheme } from './stencil-text-segments';
 export { installStencilBrowser, type DecodedImage, type StencilBrowser } from './stencil-browser';
 export {
   ensureGlyphFonts, glyphFontsReady, islandBox, rasterizeText, regionBox, type StencilBox,
@@ -17,3 +17,5 @@ export { buildStencilPlan, forgetStencilImage, peekStencilPlan, type PlanInputs,
 export { pictureRecipe, type StencilFillKind } from './fill-recipes';
 export { planInputsFor, regionAllow, stencilBoxFor, type PlanKnobs } from './plan-inputs';
 export { paletteItems } from './stencil-palette';
+export { stencilFrame } from './stencil-turn';
+export { LETTER_SAMPLES } from './letter-samples';

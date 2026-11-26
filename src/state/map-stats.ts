@@ -15,7 +15,7 @@ import type { EventBus } from '../core/commands/event-bus';
 import { roundLoad } from '../core/model/load';
 import { chunkKey } from '../core/grid/rect';
 import { isBuildableZone } from '../core/game/zones';
-import { mapChunkAt } from '../core/grid/map-chunks';
+import { chunkName, mapChunkAt, mapChunkAxes } from '../core/grid/map-chunks';
 import { objectDeltasSince } from '../core/model/grid-model';
 import { TerrainType, type GridState, type MapTemplate, type ObjectsDelta, type PlacedObject } from '../core/model/types';
 import { type EditorEvents } from './editing/events';
@@ -29,7 +29,7 @@ interface ChunkStat { objects: number; load: number; unknownLoads: number }
  *  object-delta patch path (`applyObject`), so a held reference keeps reading current values
  *  rather than the map state at the moment it was returned. Memoize on its field values, never on
  *  its identity. */
-export interface MapStats {
+interface MapStats {
   /** cellsByLayer[n] = cells whose terrain reaches at least layer n. Fixed length
    *  ELEVATION_MAX + 1; index 0 is unused (terrain never occupies layer 0). */
   cellsByLayer: number[];
@@ -259,6 +259,36 @@ export function getMapStats(state: GridState): MapStats {
 
   cache.set(state, { stats, folded, objectsVersion, cellsVersion });
   return stats;
+}
+
+/** One region of the map: where it is, what it is called, and what it carries. */
+interface ChunkLoad {
+  cx: number;
+  cy: number;
+  /** "A1", "B4": the name the map itself draws at that row and column. */
+  name: string;
+  /** Load carried, in the same units the chunk-load rule holds a placement to. */
+  value: number;
+  /** How many objects stand there, which is what the value is derived from. */
+  objects: number;
+  unknownLoads: number;
+}
+
+/** What one region carries. A region with nothing in it is not in the stats at all, and reads as
+ *  empty rather than as absent. */
+export function chunkLoad(stats: MapStats, cx: number, cy: number): ChunkLoad {
+  const stat = stats.chunks.get(chunkKey(cx, cy));
+  return { cx, cy, name: chunkName(cx, cy), value: stat?.load ?? 0, objects: stat?.objects ?? 0, unknownLoads: stat?.unknownLoads ?? 0 };
+}
+
+/** Every region of a map this size in reading order, the empty ones included, so a reader can answer where there is room. */
+export function allChunkLoads(stats: MapStats, template: MapTemplate): ChunkLoad[] {
+  const rows: ChunkLoad[] = [];
+  const axes = mapChunkAxes(template);
+  for (let cy = 0; cy < axes.rows.length; cy++) {
+    for (let cx = 0; cx < axes.columns.length; cx++) rows.push(chunkLoad(stats, cx, cy));
+  }
+  return rows;
 }
 
 /**

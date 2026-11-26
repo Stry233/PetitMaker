@@ -17,6 +17,6 @@ export interface RuleDispatcher {
   validatePreCommand(cmd: Command, state: GridState, scope?: StrokeScope): ValidationError[];
   /** Run all post-stroke rules against the full `state`. */
   validatePostStroke(state: GridState, opts?: { firstOnly?: boolean }): ValidationError[];
-  /** Registered rule ids and phases, for introspection. */
-  getRules(): { id: string; phase: 'pre-command' | 'post-stroke' }[];
+  /** Each registered rule's id, phase and own statement of what it requires, in running order. */
+  getRules(): { id: string; phase: 'pre-command' | 'post-stroke'; description: string }[];
 }

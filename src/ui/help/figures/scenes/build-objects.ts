@@ -1,5 +1,5 @@
 /** The Help Center's Build scenes for water, roads, trims, objects and groups. */
-import { helpFacts } from '../../facts';
+import { helpFacts } from '../../../../editor/help/facts';
 import { TerrainType, type MacroCoord } from '../../../../core/model/types';
 import {
   CTRL_KEYS, ROTATE_KEYS, DELETE_KEYS, Hand, armItem, macroArming, pickTool, timed, freshSession, placeThrough, putDown, sayNotice,
@@ -56,13 +56,11 @@ const water: HelpScene = {
   plot: { x1: 67, y1: 99, x2: 74, y2: 103 },
   strip: { kind: 'tools', active: 'draw', surface: 'water' },
   run: ({ world }) => {
-    // The basin stands before the brush arrives: water above ground level is legal only against
-    // rock at its own layer, so the walls are the recipe's first ingredient (the same authoring
-    // as the objects scene's pond).
+    // The block stands before the brush arrives: water lies at the height its stroke starts on, and
+    // above ground level it is legal only against rock at its own layer, so the stroke starts inside
+    // the block and the rim it leaves is the basin's wall.
     world.beginStroke();
-    world.paint(row(100, 67, 74), TerrainType.Mountain, 1);
-    world.paint(row(103, 67, 74), TerrainType.Mountain, 1);
-    for (let y = 101; y <= 102; y++) world.paint([{ x: 67, y }, { x: 74, y }], TerrainType.Mountain, 1);
+    world.paint(rect(67, 100, 74, 103), TerrainType.Mountain, 1);
     world.commit();
     const fill = rect(68, 101, 73, 102);
     return [
@@ -71,7 +69,7 @@ const water: HelpScene = {
       { press: true, dur: 220 },
       { press: false, move: [68, 101], pointer: 'water', dur: 500 },
       { capKey: 'help.fig.water_2', press: true, dur: 160, on: ({ world: w }) => w.beginStroke() },
-      { move: [73, 102], dur: 900, during: stroke(fill, TerrainType.Water, 1) },
+      { move: [73, 102], dur: 900, during: stroke(fill, TerrainType.Water) },
       { press: false, capKey: 'help.fig.water_3', dur: 1500, on: ({ world: w }) => { w.commit(); } },
       { dur: 500 },
     ];
@@ -338,7 +336,9 @@ const grouprotate: HelpScene = {
 const locked: HelpScene = {
   // The plaza's south-west corner, which is the only part of the slab a readable crop can hold.
   stage: PLAZA_EDGE,
-  plot: { x1: 73, y1: 88, x2: 86, y2: 99 },
+  // The plot stops above the neighbourhood's raised ground at its south-east corner, which Clear keeps
+  // as the base of the ground beyond it.
+  plot: { x1: 73, y1: 88, x2: 86, y2: 97 },
   run: (ctx, _t, form = MOUSE_FORM) => {
     freshSession(ctx);
     const { world } = ctx;

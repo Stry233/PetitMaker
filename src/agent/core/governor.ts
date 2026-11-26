@@ -133,6 +133,12 @@ export function hasLandedWrite(log: SessionLog): boolean {
   return landedWriteCount(log) > 0;
 }
 
+/** Whether this job delivered work that edits no map, an app action run, which the zero-edit
+ *  delivery nudge must not send back either. */
+export function hasDeliveredOffMap(log: SessionLog, facts: Pick<ToolFacts, 'delivers'>): boolean {
+  return jobEvents(log).some((e) => e.kind === 'toolResult' && !e.isError && facts.delivers(e.name));
+}
+
 /** A successful map read after the latest retained edit already provides a verification opportunity. */
 export function hasRecentVerification(log: SessionLog, facts: Pick<ToolFacts, 'verifies'>): boolean {
   let verified = false;

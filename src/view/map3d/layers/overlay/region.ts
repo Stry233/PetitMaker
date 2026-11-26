@@ -1,4 +1,5 @@
-import { cellEdges, dimensionDrawing } from '../../../../core/model/annotation/dimensions';
+import { dimensionDrawing } from '../../../../core/model/annotation/dimensions';
+import type { RegionGuides } from '../../../../tools/pointer/runtime';
 import { AnnotationLayer3D } from '../annotation-layer';
 import * as THREE from 'three';
 import { regionPulseFactor } from '../../../shared/overlay/region-pulse';
@@ -6,9 +7,11 @@ import { cellDecals } from '../../geometry/overlay-decals';
 import { cellSet, type CellSet } from '../../../../core/grid/grids';
 import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { ROUTE_TINT } from '../../../shared/overlay/preview-cell';
-import { gridOffset } from '../../../../core/grid/grid-convert';
+import { REGION_FILL } from '../../../shared/overlay/region-edge';
+import { hexStringToNumber } from '../../../../core/base/color';
 import type { OverlayHost3D } from './host';
-import { makeMat, toGeo } from './paint';
+import { makeMat } from './paint';
+import { toPlainGeometry } from '../../draw/mesh-upload';
 
 /** The buildable region drape with its dimensions and pulse, and the maze route. */
 export class OverlayRegions3D {
@@ -17,27 +20,20 @@ export class OverlayRegions3D {
   private buildable: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   /** What the buildable drape was last asked to show. Kept because the decal is baked at each cell's
    *  surface height, so a generation under it leaves the mesh describing terrain that is gone. */
-  private buildableAsk: { cells: CellSet; dimensionScale?: number } | null = null;
+  private buildableAsk: { cells: CellSet; guides?: RegionGuides } | null = null;
   readonly regionDimensions = new AnnotationLayer3D();
 
-  showBuildableRegion(set: CellSet, dimensionScale?: number): void {
+  showBuildableRegion(set: CellSet, guides?: RegionGuides): void {
     this.dropBuildableRegion();
     const { grid, cells } = set;
-    this.buildableAsk = { cells: cellSet(grid, [...cells]), dimensionScale };
-    const bounds = dimensionScale === undefined ? null : cellEdges(cells);
-    if (bounds && dimensionScale !== undefined) {
-      const offset = gridOffset(grid);
-      const shifted = { left: bounds.left + offset.x, right: bounds.right + offset.x, top: bounds.top + offset.y, bottom: bounds.bottom + offset.y };
-      this.regionDimensions.update(this.host.state(), null, { draft: null, tagLabel: () => '', dimensions: dimensionDrawing(shifted, dimensionScale) });
+    this.buildableAsk = { cells: cellSet(grid, [...cells]), ...(guides ? { guides } : null) };
+    if (guides) {
+      this.regionDimensions.update(this.host.state(), null, { draft: null, tagLabel: () => '', dimensions: dimensionDrawing(guides.edges, guides.scale) });
     } else this.regionDimensions.update(this.host.state(), null, { draft: null, tagLabel: () => '' });
     const data = cellDecals(this.host.state(), cells, grid);
     if (!data.positions.length) return;
-    const geo = toGeo(data);
-    // White, as the 2D view draws it, and for the reason the 2D view can ignore: this decal tints
-    // the terrain it lies on, and the terrain is eight greens plus a green grass zone. A green tint
-    // over green changes almost nothing, so the region a person had just painted was invisible over
-    // exactly the surface they were most likely to paint it on. White lightens whatever is under it.
-    const mat = makeMat(0xffffff, 0.25);
+    const geo = toPlainGeometry(data);
+    const mat = makeMat(hexStringToNumber(REGION_FILL.color), REGION_FILL.alpha);
     const mesh = new THREE.Mesh(geo, mat);
     this.host.group.add(mesh);
     this.buildable = { mesh, geo, mat };
@@ -54,7 +50,7 @@ export class OverlayRegions3D {
   refreshBuildable(): void {
     const ask = this.buildableAsk;
     if (!ask) return;
-    this.showBuildableRegion(ask.cells, ask.dimensionScale);
+    this.showBuildableRegion(ask.cells, ask.guides);
   }
 
   /** The pulse in flight: when it started, how long it runs and how far the drape dips. */
@@ -120,7 +116,7 @@ export class OverlayRegions3D {
     this.clearPath();
     const data = cellDecals(this.host.state(), cells, grid);
     if (!data.positions.length) return;
-    const geo = toGeo(data);
+    const geo = toPlainGeometry(data);
     const mat = makeMat(ROUTE_TINT, 0.55);
     const mesh = new THREE.Mesh(geo, mat);
     this.host.group.add(mesh);

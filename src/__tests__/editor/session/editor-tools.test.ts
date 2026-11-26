@@ -60,7 +60,7 @@ function loadBlank(): GridState {
 
 function armBrush(): void {
   store().setEditMode({ mode: 'mountain', arm: { kind: 'brush' } });
-  useEditorStore.setState({ activeLayer: 1, layerPinned: true, autoEdgeCut: 'off', drawingBrushSize: 1 });
+  useEditorStore.setState({ autoEdgeCut: 'off', drawingBrushSize: 1 });
   expect(activeToolOf(store())).toBe(ToolType.TerrainBrush);
 }
 

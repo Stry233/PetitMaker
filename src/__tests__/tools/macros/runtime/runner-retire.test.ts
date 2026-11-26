@@ -1,7 +1,7 @@
 /** Pins when the off-thread macro runners retire: only when the runner can no longer answer, never for one failed job. */
 import { describe, expect, it } from 'vitest';
 import { createDefaultRegistry } from '../../../../rules';
-import { applyMacroAsync, hasMacroBuildRunner, MacroRunnerUnavailable, type MacroBuild } from '../../../../tools/macros/run';
+import { buildMacroThen, MacroRunnerUnavailable, type MacroBuild } from '../../../../tools/macros/run';
 import type { MacroOffThread } from '../../../../tools/macros/context';
 import { previewMacro, previewMacroAsync, type MacroPreview } from '../../../../tools/macros/runtime/preview';
 import { detachedContext } from '../../../../tools/macros/runtime/scratch';
@@ -23,14 +23,22 @@ describe('macro runner retirement', () => {
       },
     };
     const ported = () => ({ ...context(), offThread });
-    expect(await applyMacroAsync(ported(), 'raise', { seed: 1, at })).toBeTruthy();
-    expect(hasMacroBuildRunner(ported())).toBe(true);
+    const builds: (MacroBuild | null)[] = [];
+    const press = (seed: number) => buildMacroThen(ported(), 'raise', { seed, at }, {
+      land: (built) => { builds.push(built); },
+      failed: (error) => { throw error; },
+    });
+    await press(1);
+    expect(builds.at(-1)?.run.commands.length).toBeGreaterThan(0);
+    expect(offThread.build).not.toBeNull();
     failure = null;
-    await applyMacroAsync(ported(), 'raise', { seed: 2, at });
+    await press(2);
     expect(calls).toBe(2);
     failure = new MacroRunnerUnavailable('pool broken');
-    await applyMacroAsync(ported(), 'raise', { seed: 3, at });
-    expect(hasMacroBuildRunner(ported())).toBe(false);
+    await press(3);
+    expect(offThread.build).toBeNull();
+    expect(press(4)).toBeNull();
+    expect(calls).toBe(3);
   });
 
   it('keeps the preview runner after one failed job and drops it once the runner is unavailable', async () => {

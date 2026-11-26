@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 // Synchronous decode matrix; about 40 s on an idle machine.
 vi.setConfig({ testTimeout: 120_000 });
 import { encodeGlyph } from '../../../../io/share/glyph/encode';
-import { decodeGlyph } from '../../../../io/share/glyph/decode';
+import { readGlyph } from '../../../../io/share/glyph/decode';
 import { PRODUCT_PAPER } from '../../../../io/share/glyph/palette';
 import * as D from './degrade';
 
@@ -63,7 +63,7 @@ describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)',
         const data = payload(n);
         const g = encodeGlyph(data, 12)!;
         const t = fxs[f]!(new Uint8Array(g.rgba), g.width, g.height);
-        expect(eq(decodeGlyph(t, g.width, g.height), data)).toBe(true);
+        expect(eq(readGlyph(t, g.width, g.height).payload, data)).toBe(true);
       });
     }
   }
@@ -72,7 +72,7 @@ describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)',
       const data = payload(n);
       const g = encodeGlyph(data, 12)!;
       for (const t of [D.downUp(g.rgba, g.width, g.height, 0.25), D.randomImage(g.rgba.length, 3)]) {
-        const out = decodeGlyph(t, g.width, g.height);
+        const out = readGlyph(t, g.width, g.height).payload;
         expect(out === null || eq(out, data)).toBe(true);
       }
     }
@@ -81,7 +81,7 @@ describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)',
     const data = payload(10033);
     const g = encodeGlyph(data, 18)!;
     expect(g.profile.name).toBe('4-tone/6');
-    expect(eq(decodeGlyph(g.rgba, g.width, g.height), data)).toBe(true);
+    expect(eq(readGlyph(g.rgba, g.width, g.height).payload, data)).toBe(true);
   });
   it('localizes a blurred dense capsule at a nonzero pixel phase', () => {
     const data = payload(2873);
@@ -89,6 +89,6 @@ describe('glyph robustness matrix (exact-or-null; wrong bytes = suite failure)',
     expect(glyph.profile.name).toBe('4-tone/3');
     const composition = embed(glyph, 8, 12);
     const blurred = D.gaussSmall(composition.rgba, composition.width, composition.height);
-    expect(eq(decodeGlyph(blurred, composition.width, composition.height), data)).toBe(true);
+    expect(eq(readGlyph(blurred, composition.width, composition.height).payload, data)).toBe(true);
   });
 });

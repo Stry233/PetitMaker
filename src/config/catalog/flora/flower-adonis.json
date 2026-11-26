@@ -1,0 +1,36 @@
+{
+  "id": "flower-adonis",
+  "category": "flora",
+  "name": {
+    "en": "Orange Winter Adonis",
+    "zh": "橙冰凉花",
+    "ja": "オレンジフクジュソウ",
+    "ru": "Оранжевый адонис",
+    "th": "อะโดนิสส้ม",
+    "id": "Adonis Oranye",
+    "fr": "Adonis orange"
+  },
+  "aliases": [
+    "橙",
+    "orange"
+  ],
+  "icon": "flower-adonis",
+  "iconColor": "#eeaf53",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-adonis",
+    "colorFamily": "orange"
+  }
+}

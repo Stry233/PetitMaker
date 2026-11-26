@@ -28,8 +28,6 @@ const ARCHETYPE_TUNING = {
                                    // not a per-cell margin scaled up into a ~1-micro-block inset per side
 } as const;
 
-export const ARCHETYPE_KEYS: ArchetypeKey[] = [...CATEGORIES.map((c) => c.id), 'platform'];
-
 /** Translate a primitive (built centred at origin) so its base sits at y=0. */
 function onGround(g: THREE.BufferGeometry, height: number): THREE.BufferGeometry {
   g.translate(0, height / 2, 0);

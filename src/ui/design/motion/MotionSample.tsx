@@ -24,9 +24,9 @@ function leaveBeat(): void {
   if (--shared.members === 0) shared = { epoch: null, members: 0 };
 }
 
-/** The easing from `from` to the next key: a rise and a fall take the entry's curves, a level segment eases. */
+/** The easing from `from` to the next key: a rise and a fall take the entry's curves, a level segment swings from rest to rest. */
 function segmentEasing(from: SampleKey, to: SampleKey | undefined, rise: string, fall: string): string {
-  if (!to || to[1] === from[1]) return CSS_CURVES.ease;
+  if (!to || to[1] === from[1]) return CSS_CURVES.swing;
   return to[1] > from[1] ? rise : fall;
 }
 

@@ -1,27 +1,11 @@
 /* The game's names and catalog facts the assistant's prompt and tool text read, each from its source:
- * zone words from the profile's `ZONES`, the anchor landmark by its catalog name and id, and the
+ * zone words from `core/game/zones.ts`, the anchor landmark by its catalog name and id, and the
  * bridges' span from their catalog traits. */
-import { ANCHOR_LANDMARK, ZONES, type CellZone, type ZoneSpec } from '../../core/game/profile';
+import { ANCHOR_LANDMARK } from '../../core/game/profile';
 import { getCatalogItem } from '../../state/catalog';
 import { bridgeSpanRange } from '../../tools/placement';
 
-/** Every zone a map holds, buildable ones first and then the rest by id: the order the assistant
- *  reads them in. */
-export const ZONE_ORDER: readonly CellZone[] = (Object.keys(ZONES).map(Number) as CellZone[])
-  .sort((a, b) => Number(spec(b).buildable) - Number(spec(a).buildable) || a - b);
-
-function spec(zone: CellZone): ZoneSpec {
-  return (ZONES as Readonly<Record<number, ZoneSpec>>)[zone]!;
-}
-
-/** The English word for `zone`. */
-export const zoneName = (zone: CellZone): string => spec(zone).name;
-
-/** The buildable zones' words, as one phrase. */
-export const BUILDABLE_ZONES: string = ZONE_ORDER.filter((z) => spec(z).buildable).map(zoneName).join(' or ');
-
-/** The words of every zone that refuses edits, in reading order. */
-export const UNBUILDABLE_ZONES: readonly string[] = ZONE_ORDER.filter((z) => !spec(z).buildable).map(zoneName);
+export { BUILDABLE_ZONES, UNBUILDABLE_ZONES, ZONE_ORDER, zoneName } from '../../core/game/zones';
 
 /** `words` as an English list closed by `or`: `a, b or c`. */
 export function orList(words: readonly string[]): string {

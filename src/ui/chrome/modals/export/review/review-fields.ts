@@ -11,4 +11,8 @@ export const REVIEW_FIELD_LABEL: Record<TextField, I18nKey> = {
   planet: 'planet.name_field',
   // A custom note tag's field shows its own refusal, `annot.tag_refused`.
   tag: 'annot.tag',
+  // A blueprint's imported texts are checked in the background and never named in an export refusal.
+  'blueprint-name': 'blueprint.field_name',
+  'blueprint-author': 'blueprint.field_author',
+  'blueprint-folder': 'blueprint.field_folder',
 };

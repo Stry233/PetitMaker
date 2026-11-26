@@ -1,6 +1,7 @@
 /**
- * The tour's last screen: what the run covered, each card's tile a way back to it, a fall of
- * confetti, and one way on to the map. The tour stays in Settings, which its words say.
+ * The tour's last screen: what the run covered, each card's tile a way back to it, and one way on to
+ * the map, with a fall of confetti the deck lays over the whole card. The tour stays in Settings,
+ * which its words say.
  *
  * What makes a fall read as confetti rather than as objects dropping is that every piece differs
  * from every other and that the pieces are paper: thin, light, and turning as they go. So each one
@@ -25,6 +26,7 @@ import { useSurfaceZoom } from '../../design/scale';
 import { reelFiles } from './reels';
 import type { useDeckLayout } from './TourDeck';
 import type { TourController } from './use-tour';
+import { easingCss, seconds } from '../../design/motion';
 
 /** The app's own tile colours, so the pieces read as bits of it rather than party stock. The
  *  card's own cream and plain white are deliberately not in the set: a piece the colour of what it
@@ -55,10 +57,10 @@ const WAVE_SHARE = 0.7;
 
 /** Samples per fall. The sway and the tumble are sinusoids sampled at these points and linearly
  *  interpolated between them, which at this count is smooth to the eye. */
-const KEYFRAMES = 24;
+const KEYFRAMES = 40;
 
 /** The last share of a fall, over which a piece fades, so nothing vanishes mid-air at full opacity. */
-const FADE_TAIL = 0.2;
+const FADE_TAIL = 0.12;
 
 interface Piece {
   left: number;    // % of the card's width
@@ -93,19 +95,19 @@ const PIECES: readonly Piece[] = (() => {
       h: short,
       radius: disc ? radii.pill : radii.sm,
       color: rng.pick(PIECE_COLORS),
-      fall: rng.range(1.4, 2.4),
-      delay: rng.float() < WAVE_SHARE ? rng.range(0, 0.25) : rng.range(0.25, 0.75),
+      fall: seconds('tour.confetti.fall') * rng.range(0.74, 1.26),
+      delay: rng.float() < WAVE_SHARE ? rng.range(0, 0.5) : rng.range(0.5, 1.5),
       sway: rng.range(10, 40),
       phase: rng.range(0, Math.PI * 2),
-      turns: rng.range(0.75, 1.75),
+      turns: rng.range(1.05, 2.45),
       spin: rng.range(180, 720) * (rng.float() < 0.5 ? -1 : 1),
-      tumble: rng.range(0.6, 2.2),
+      tumble: rng.range(0.96, 3.52),
     };
   });
 })();
 
-/** The piece's path, sampled: it falls at a steady rate, sways across it on its own sine, spins in
- *  the plane, and turns over on a period unrelated to the spin. */
+/** The piece's path, sampled evenly over its fall (the fall's curve times it): it sways across the
+ *  fall on its own sine, spins in the plane, and turns over on a period unrelated to the spin. */
 function keyframesFor(p: Piece, from: number, to: number): Keyframe[] {
   return Array.from({ length: KEYFRAMES + 1 }, (_, k) => {
     const at = k / KEYFRAMES;
@@ -120,10 +122,11 @@ function keyframesFor(p: Piece, from: number, to: number): Keyframe[] {
   });
 }
 
-/** A dense wave and then a thinner trail, about three seconds, then done: no loop running behind a
- *  modal someone is reading. Nothing renders under reduced motion, since a decoration that cannot
- *  move has nothing to say. */
-function Confetti() {
+/** A dense wave and then a thinner trail, about five seconds, then done: no loop running behind a
+ *  modal someone is reading. It fills its positioned parent, the card, and stands before the card's
+ *  screens, whose box is positioned, so it falls behind the words and tiles. Nothing renders under
+ *  reduced motion, since a decoration that cannot move has nothing to say. */
+export function RecapConfetti() {
   const reduced = useReducedMotionConfig();
   const hostRef = useRef<HTMLDivElement>(null);
   // Read once, before the first paint: the fall plays once over the box it opened on.
@@ -145,7 +148,7 @@ function Confetti() {
       running.push(el.animate(keyframesFor(p, -p.h - 12, height + p.h + 12), {
         duration: p.fall * 1000,
         delay: p.delay * 1000,
-        easing: 'linear',
+        easing: easingCss('tour.confetti.fall'),
         fill: 'both', // holds the piece above the card through its delay, and gone after its fall
       }));
     });
@@ -238,7 +241,6 @@ export function TourRecap({ tour, layout }: { tour: TourController; layout: Retu
     : { gridTemplateColumns: `repeat(${across}, minmax(0, 1fr))`, gridAutoRows: 'max-content', overflowY: 'auto', ...scrollBleed(bleed), ...gridFade };
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: layout.tall ? 18 : 20, minHeight: 0, flex: '1 1 auto' }} data-testid="tour-recap">
-      <Confetti />
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <h2 style={{ ...windowTitle, textAlign: 'start', margin: 0 }}>{t('tour.recap_title')}</h2>
         <p style={{ ...roleFont('body'), color: skin.muted, margin: 0, lineHeight: 1.45 }}>{t('tour.recap_body')}</p>

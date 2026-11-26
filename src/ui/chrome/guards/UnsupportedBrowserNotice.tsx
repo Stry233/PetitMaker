@@ -1,18 +1,17 @@
 /**
  * A notice for a visitor whose browser is an app's built-in view or an engine older than the CSS
- * zoom the interface is measured against. Both readings are guesses (a user-agent match and one
- * layout probe), so the notice only informs: nothing is blocked, and the dismissal is remembered.
+ * zoom the interface is measured against (`io/storage/browser-notice-facts.ts:browserNoticeDue`). Both
+ * readings are guesses, so the notice only informs: nothing is blocked, and the dismissal is remembered.
  */
 import { useState, type CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { isInAppBrowser } from '../../../platform/device/browser-env';
-import { browserNoticeSeen, rememberBrowserNoticeSeen } from '../../../io/storage/browser-notice-facts';
+import { browserNoticeDue } from '../../../io/storage/browser-notice-facts';
+import { rememberBrowserNoticeSeen } from '../../../editor/session/visit-marks';
 import { activeTarget } from '../../../platform/build/deploy-targets';
 import { font } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { NoticeAction, NoticeBar, NoticeLink } from '../../primitives/NoticeBar';
-import { zoomedRectsAreVisual } from '../../design/visual-rect';
 
 const column: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 };
 
@@ -22,7 +21,7 @@ const actions: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8, marg
 
 export function UnsupportedBrowserNotice() {
   const t = useT();
-  const [show, setShow] = useState(() => (isInAppBrowser() || !zoomedRectsAreVisual()) && !browserNoticeSeen());
+  const [show, setShow] = useState(browserNoticeDue);
   const downloads = activeTarget().browserDownloads;
 
   const dismiss = () => { rememberBrowserNoticeSeen(); setShow(false); };

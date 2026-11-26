@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { SUPPORTS_CLIPBOARD } from '../../platform/build/edition';
 import { useTransient } from './use-transient';
 import { ControlBubble } from './ControlBubble';
 
@@ -7,25 +6,18 @@ import { ControlBubble } from './ControlBubble';
 const COPIED_HOLD_MS = 1200;
 
 /**
- * Copies text to the clipboard and remembers which `target` was copied for `COPIED_HOLD_MS`.
- * A refused or unavailable clipboard leaves `copied` untouched; an edition without clipboard support
- * (`edition.ts:SUPPORTS_CLIPBOARD`) never attempts it.
+ * Runs the caller's `copy` and remembers which `target` was copied for `COPIED_HOLD_MS`. A copy
+ * that answers false (refused or unavailable) leaves `copied` untouched.
  */
-export function useCopyFeedback<T extends string = 'copied'>(): {
+export function useCopyFeedback<T extends string = 'copied'>(copy: (text: string) => Promise<boolean>): {
   copied: T | null;
   copy: (text: string, target?: T) => Promise<void>;
 } {
   const { value: copied, show } = useTransient<T>(COPIED_HOLD_MS);
-  const copy = async (text: string, target = 'copied' as T) => {
-    if (!SUPPORTS_CLIPBOARD) return;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
-    show(target);
+  const copyAndShow = async (text: string, target = 'copied' as T) => {
+    if (await copy(text)) show(target);
   };
-  return { copied, copy };
+  return { copied, copy: copyAndShow };
 }
 
 /**

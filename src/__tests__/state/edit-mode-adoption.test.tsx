@@ -104,13 +104,13 @@ describe('edit mode adoption', () => {
   it('puts the region brush away when the build mode changes, and only then', () => {
     // The region outranks the tool, so a region left painting under a terrain mode takes every press.
     s().setEditMode({ mode: 'generate' });
-    s().setSelectingRegion(true);
+    s().setSelectingRegion(true, 'generator');
     s().setEditMode({ mode: 'mountain' });
     expect(s().selectingRegion).toBe(false);
 
     // Arming inside the mode the region was painted for keeps it.
     s().setEditMode({ mode: 'object' });
-    s().setSelectingRegion(true);
+    s().setSelectingRegion(true, 'generator');
     s().setEditMode({ arm: { kind: 'item', itemId: 'tree-apple' } });
     expect(s().selectingRegion).toBe(true);
   });

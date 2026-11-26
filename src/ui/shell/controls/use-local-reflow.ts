@@ -10,17 +10,14 @@ import { pageMorphing } from '../../primitives/morph';
  * unzoomed px, while a continuous CSS zoom around it follows the frame directly. Spread `x`/`y` onto
  * a motion element positioned at its new place. A glide starts only when `place` (what the layout
  * decided) changes while `enabled`; the offset is rebased with `jump`, so the coordinate change
- * never becomes spring velocity. Reduced motion lands at once. `drawnY`, where given, says where the
- * element is drawn when something past React (a per-frame writer) has moved it since the last render,
- * so the glide starts there rather than at the last rendered place. A reflow that starts during a
+ * never becomes spring velocity. Reduced motion lands at once. A reflow that starts during a
  * UI-zoom glide rides it instead of its own motion, closing with what is left of the glide so it lands
  * on the glide's last frame and nothing moves after the glide ends. A reflow committed while the page's
  * morph measures (an input-mode switch, a shape flip) lands at once: the morph carries it.
  */
-export function useLocalReflow(x: number, y: number, place: string, { motionId, enabled = true, drawnY }: {
+export function useLocalReflow(x: number, y: number, place: string, { motionId, enabled = true }: {
   motionId: MotionId;
   enabled?: boolean;
-  drawnY?: () => number | null;
 }): { x: MotionValue<number>; y: MotionValue<number> } {
   const dx = useMotionValue(0), dy = useMotionValue(0);
   const previous = useRef<{ x: number; y: number; place: string }>();
@@ -43,12 +40,17 @@ export function useLocalReflow(x: number, y: number, place: string, { motionId, 
     } else if (enabled && before && before.place !== place) {
       stop();
       dx.jump(dx.get() + before.x - x);
-      dy.jump(dy.get() + (drawnY?.() ?? before.y) - y);
+      dy.jump(dy.get() + before.y - y);
       running.current = [animate(dx, 0, transition), animate(dy, 0, transition)];
-      // A UI-zoom glide running now takes the offset over from the reflow's own motion.
+      // A UI-zoom glide running now takes the offset over from the reflow's own motion. A glide re-aimed
+      // on the way (a held key) leaves more of itself to run: the ride sets off again from where the
+      // offset stands, so the cell keeps closing on its place.
       let base: { left: number; x: number; y: number } | null = null;
+      let last = Infinity;
       const ride = () => {
         const now = glideRemainingNow();
+        if (base && now !== null && now > last) base = { left: now, x: dx.get(), y: dy.get() };
+        if (now !== null) last = now;
         if (!base) {
           if (now === null || now <= 0) return;
           running.current.forEach(animation => animation.stop());

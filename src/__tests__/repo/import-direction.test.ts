@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
-import { SRC, allSpecifiers, importEdges, resolveSpec, runtimeSpecifiers, sourceFiles, srcRelative, subfolders } from '../_support/source-graph';
+import ts from 'typescript';
+import { SRC, allSpecifiers, importEdges, resolveSpec, runtimeSpecifiers, sourceFiles, sourceText, srcRelative, subfolders } from '../_support/source-graph';
 import allowlist from './import-direction-allowlist.json';
 import { APART_LAYERS, LAYER_RANK as RANK, rankedLayer, type Layer } from '../../../scripts/layers.mts';
 
@@ -132,5 +133,30 @@ describe('tools reach the editor through ToolContext', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('no pointer tool keeps a module-level mutable binding: a page-wide slot is an argument no port carries', () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(SRC, 'tools', 'pointer'))) {
+      for (const name of mutableModuleBindings(sourceText(file))) offenders.push(`${srcRelative(file)}: ${name}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+/** The names a module's top level binds with `let` or `var`. Module state a tool may keep is a `const`
+ *  cache keyed by its source, which this does not read. */
+function mutableModuleBindings(text: string): string[] {
+  const source = ts.createSourceFile('module.ts', text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
+  return source.statements.flatMap((statement) => {
+    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) !== 0) return [];
+    return statement.declarationList.declarations.map((d) => d.name.getText(source));
+  });
+}
+
+describe('mutable module bindings', () => {
+  it('reads let and var at the top level, not const or a binding inside a function', () => {
+    const text = 'let a = 1;\nexport var b = 2;\nconst c = new Map();\nfunction f() { let d = 0; return d; }';
+    expect(mutableModuleBindings(text)).toEqual(['a', 'b']);
   });
 });

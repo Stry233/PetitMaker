@@ -4,7 +4,7 @@
  * arrangements preserve the water-cap and mountain-support invariants. Local masks avoid a browser
  * font rasterizer, keeping this stage pure and worker-safe.
  */
-import { flatIndex, type Rect } from '../../../../core/grid/rect';
+import { flatIndex, inflateRect, type Rect } from '../../../../core/grid/rect';
 import { makeRng, type Rng } from '../../../../core/base/rng';
 import type { MacroCoord } from '../../../../core/model/types';
 import type { Stencil } from '../../recipe';
@@ -572,14 +572,10 @@ function commit(t: TerrainPlan, found: Found): LandmarkPlan {
     }
   }
   return {
-    kind: found.kind, phraseId: found.phraseId, panel, frame: grow(panel, FRAME_PAD), tier, ink,
+    kind: found.kind, phraseId: found.phraseId, panel, frame: inflateRect(panel, FRAME_PAD), tier, ink,
     scale: found.scale, axis: found.axis,
   };
 }
-
-/** A rectangle grown by `pad` on every side. */
-const grow = (r: Rect, pad: number): Rect =>
-  ({ x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: r.h + 2 * pad });
 
 /** The frame's own cells, panel excluded and clipped to the map: the band the pipeline paves and the
  *  decoration pass leaves alone. */

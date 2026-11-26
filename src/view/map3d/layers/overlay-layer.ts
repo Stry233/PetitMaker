@@ -2,7 +2,8 @@ import type { GlQuality } from '../../../platform/device/device-quality';
 import * as THREE from 'three';
 import { BodyOutlines3D } from './body-outlines';
 import type { GridState, ValidationError } from '../../../core/model/types';
-import type { GhostCell, GhostPaint, PlacementGhost, ToolOverlay, SelectionOpts } from '../../../tools/pointer/runtime';
+import type { FlipAxes } from '../../../tools/objects';
+import type { GhostBlock, GhostCell, GhostPrior, GhostPaint, PlacementGhost, RegionGuides, ToolOverlay, SelectionOpts } from '../../../tools/pointer/runtime';
 import type { MacroRect } from '../../interaction/marquee';
 import type { RowSpan } from '../../../core/grid/cell-spans';
 import type { TrimmedCell } from '../../../tools/trim';
@@ -27,6 +28,8 @@ interface Overlay3DDeps {
   /** The rendered body box of a placed object, which selection marks fit. */
   objectBox?(id: string): THREE.Box3 | null;
   nowMs?(): number;
+  /** See `OverlayHost3D.holdTerrain`. */
+  holdTerrain?(prior: readonly GhostPrior[]): () => void;
   /** Shows the moved objects at their destinations while a move preview runs. */
   moveObjects?(destinations: readonly PlacedObject[]): void;
   /** The camera and canvas rect the move origins' and flags' screen-space outlines project through. */
@@ -58,6 +61,7 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
 
   readonly state = (): GridState => this.deps.state();
   readonly requestRender = (): void => this.deps.requestRender();
+  readonly holdTerrain = (prior: readonly GhostPrior[]): (() => void) => this.deps.holdTerrain?.(prior) ?? (() => {});
   readonly objectBox = (id: string): THREE.Box3 | null => this.deps.objectBox?.(id) ?? null;
   readonly nowMs = (): number => this.deps.nowMs?.() ?? performance.now();
   readonly modelQuality = (): GlQuality => this.deps.modelQuality?.() ?? 'full';
@@ -116,8 +120,8 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
     this.ghosts.showPlacementGhost(ghost, valid);
   }
 
-  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void {
-    this.ghosts.showGroupPlacementGhost(members, valid);
+  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean, onBuilt?: boolean): void {
+    this.ghosts.showGroupPlacementGhost(members, valid, onBuilt);
   }
 
   /** Consume the pending selection and ghost updates — called once per rendered frame. */
@@ -134,6 +138,9 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   /** The members the last flush could draw no selection for: the map no longer holds them. */
   unresolvedSelections(): readonly string[] { return this.boxes.unresolvedSelections(); }
   clearSelection(): void { this.boxes.clearSelection(); }
+  turnBlocks(blocks: readonly GhostBlock[], prior: readonly GhostPrior[], pivot: { x: number; y: number }, sweepDeg: number, flip?: FlipAxes): void {
+    this.ghosts.turnBlocks(blocks, prior, pivot, sweepDeg, flip);
+  }
   showHover(rect: Rect, grid: GridId): void { this.boxes.showHover(rect, grid); }
   clearHover(): void { this.boxes.clearHover(); }
   showBand(rect: MacroRect): void { this.boxes.showBand(rect); }
@@ -145,14 +152,16 @@ export class OverlayLayer3D implements ToolOverlay, OverlayHost3D {
   /** Advance flash decay, the move origins' fade and the region pulse; true while any runs (keeps
    *  the render window open, like a canvas animation). */
   tick(): boolean {
-    const arriving = this.noteGhost.tick();
+    const noteArriving = this.noteGhost.tick();
+    const turning = this.ghosts.tickTurn();
+    const arriving = noteArriving || turning;
     const flagFading = this.flagged.tick();
     const fading = (this.moveOrigins?.tick() ?? false) || arriving || flagFading;
     const pulsing = this.regions.stepRegionPulse() || fading;
     return this.flashes.tick() || pulsing;
   }
 
-  showBuildableRegion(set: CellSet, dimensionScale?: number): void { this.regions.showBuildableRegion(set, dimensionScale); }
+  showBuildableRegion(set: CellSet, guides?: RegionGuides): void { this.regions.showBuildableRegion(set, guides); }
   /** Re-bake the buildable drape over the terrain as it stands now; the scene calls this whenever cells change. */
   refreshBuildable(): void { this.regions.refreshBuildable(); }
   pulseBuildableRegion(durationMs: number, dip: number): void { this.regions.pulseBuildableRegion(durationMs, dip); }

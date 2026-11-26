@@ -15,7 +15,7 @@ describe('skill titles', () => {
   it('show a known skill in the interface language and an unknown one as recorded', () => {
     for (const locale of LOCALES) {
       const t = (key: TextKey) => translateFor(locale, key);
-      expect(skillTitle({ name: 'cozy-village', title: 'Cozy Village' }, t)).toBe(translateFor(locale, 'agent.skill_cozy_village'));
+      expect(skillTitle({ name: 'figure-landscape', title: 'Figure Landscape' }, t)).toBe(translateFor(locale, 'agent.skill_figure_landscape'));
     }
     expect(skillTitle({ name: 'retired-skill', title: 'Retired' }, (key) => key)).toBe('Retired');
   });

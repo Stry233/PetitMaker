@@ -4,7 +4,7 @@
  * measured once, and the serializer options the choices make.
  */
 import type { HistoryEntry } from '../../core/commands/command-apply';
-import type { MapNotes } from '../../core/model/types';
+import type { GridState, MapNotes } from '../../core/model/types';
 import { RECENT_HISTORY_STEPS } from './facts';
 import { SECTIONS, carrying, type ExportJsonOptions, type SectionKey, type SectionNeed, type SectionSizes } from '../save/sections';
 
@@ -20,12 +20,25 @@ export interface JsonSections extends Record<JsonSectionKey, boolean> {
 }
 
 /** Which optional sections the open map can carry at all. */
-export type JsonSectionAvailability = Record<SectionNeed, boolean>;
+type JsonSectionAvailability = Record<SectionNeed, boolean>;
+
+/** What `state`'s map has of the data a section needs; nothing without a map. */
+export function sectionAvailability(state: Pick<GridState, SectionNeed> | null | undefined): JsonSectionAvailability {
+  return { generation: !!state?.generation, provenance: !!state?.provenance };
+}
+
+/** Whether a file can carry `key` at all: a section that needs map data only where the map has it. */
+export function sectionAvailable(key: SectionKey, available: JsonSectionAvailability): boolean {
+  const spec = SECTIONS.find((section) => section.key === key);
+  return !spec || !('needs' in spec) || available[spec.needs];
+}
 
 type JsonSectionAction =
   | { type: 'toggle'; key: JsonSectionKey }
   | { type: 'set'; key: JsonSectionKey; on: boolean }
-  | { type: 'depth'; depth: HistoryDepth };
+  | { type: 'depth'; depth: HistoryDepth }
+  /** Choices made outside the window, laid over the ones standing. */
+  | { type: 'apply'; choices: Partial<JsonSections> };
 
 /** The file a window opens on: the sections carried by default, those that need map data where the
  *  map has it. */
@@ -39,12 +52,13 @@ export function sectionsReducer(state: JsonSections, action: JsonSectionAction):
     case 'toggle': return { ...state, [action.key]: !state[action.key] };
     case 'set': return state[action.key] === action.on ? state : { ...state, [action.key]: action.on };
     case 'depth': return state.historyDepth === action.depth ? state : { ...state, historyDepth: action.depth };
+    case 'apply': return { ...state, ...action.choices };
   }
 }
 
 /** Each section as carried: a choice the map cannot honour (no recipe, no provenance) counts as off. */
 function carriedSections(sections: JsonSections, available: JsonSectionAvailability): Record<SectionKey, boolean> {
-  return Object.fromEntries(SECTIONS.map((spec) => [spec.key, sections[spec.key] && (!('needs' in spec) || available[spec.needs])])) as Record<SectionKey, boolean>;
+  return Object.fromEntries(SECTIONS.map(({ key }) => [key, sections[key] && sectionAvailable(key, available)])) as Record<SectionKey, boolean>;
 }
 
 export const historyDepthSteps = (depth: HistoryDepth): 'all' | number => (depth === 'all' ? 'all' : RECENT_HISTORY_STEPS);
@@ -58,6 +72,13 @@ export function measuringOptions(history: ExportJsonOptions['history'], session:
     carry: carrying(...SECTIONS.map(({ key }) => key).filter((key) => key !== LIVE_SECTION)),
     ...(history ? { history } : {}), ...(session ? { session } : {}), pretty: false,
   };
+}
+
+const encoder = new TextEncoder();
+
+/** The notes' size as the file writes them, measured on their own so typing never serializes the history. */
+export function notesByteLength(notes: MapNotes | undefined, pretty: boolean): number {
+  return notes ? encoder.encode(JSON.stringify(notes, null, pretty ? 2 : undefined)).length : 0;
 }
 
 /** The file's estimated size: the carried sections' measured sizes plus the notes, measured live. The

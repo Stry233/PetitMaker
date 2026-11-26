@@ -4,7 +4,7 @@ import { measureBox, measurePoint, PicturedShell, useLiveShellZoom, useWindowSna
 import { cutShare, useFigureRoom } from '../figure-scale';
 import { INERT } from './PreviewFrame';
 import { useObservedSize } from '../../../primitives/use-observed-size';
-import { useScriptedWalk } from '../scripted-walk';
+import { useScriptedWalk } from '../../../primitives/use-scripted-walk';
 import { cssMotion } from '../../../design/motion';
 import { useRef, useState, type ReactNode } from 'react';
 import { drawCursorImg } from '../demo-cursor';
@@ -37,7 +37,7 @@ export function NotesRowTour() {
   const [row, setRow] = useState({ visible: true, locked: false });
   // The settled pose reads its window and mark as the pictured shell lays out.
   useObservedSize(() => (near && still ? rootRef.current : null), () => { readBox(); readTap(NOTES_TAP.eye)(); }, [near, win.w]);
-  useScriptedWalk(NOTES_WALK.length, LAYER_BEAT_MS, near && !still, (step) => {
+  useScriptedWalk({ length: NOTES_WALK.length, beatMs: LAYER_BEAT_MS, active: near && !still, restartOn: win.w }, (step) => {
     const press = NOTES_WALK[step]!;
     return [
       [150, () => { readBox(); readTap(NOTES_TAP[press])(); }],
@@ -45,7 +45,7 @@ export function NotesRowTour() {
       [1200, () => setRow((r) => (press === 'eye' ? { ...r, visible: !r.visible } : { ...r, locked: !r.locked }))],
       [1500, () => { clearTap(); readBox(); }],
     ];
-  }, win.w);
+  });
 
   return (
     <PicturedCrop walk={walk}>
@@ -235,7 +235,7 @@ export function LayersTour() {
   const { win, near, still, rootRef, readBox, readTap, clearTap } = walk;
   const steps = upright ? LAYER_WALK_UPRIGHT : LAYER_WALK;
   useObservedSize(() => (near && (still || upright) ? rootRef.current : null), () => { readBox(); if (still) readTap(LAYER_TAP_STILL)(); }, [near, win.w]);
-  useScriptedWalk(steps.length, LAYER_BEAT_MS, near && !still, (step) => {
+  useScriptedWalk({ length: steps.length, beatMs: LAYER_BEAT_MS, active: near && !still, restartOn: win.w }, (step) => {
     const press = steps[step]!;
     const firePress = (phase: 'down' | 'up') => () => {
       const root = rootRef.current;
@@ -256,7 +256,7 @@ export function LayersTour() {
       [2050, readBox],
       [2600, readBox],
     ];
-  }, win.w);
+  });
 
   return (
     <PicturedCrop walk={walk}>

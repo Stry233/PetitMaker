@@ -4,7 +4,9 @@
  * Operations return null when SubtleCrypto or IndexedDB is unavailable.
  */
 
+import { base64ToBytes, bytesToBase64 } from '../../core/base/bytes';
 import { BROWSER_DATABASES } from './prefs';
+import { idbStore } from './idb-store';
 
 export interface SealedBlob {
   /** base64 12-byte AES-GCM IV */
@@ -13,79 +15,54 @@ export interface SealedBlob {
   ct: string;
 }
 
-/** IndexedDB database name declared in the shared persisted-key table. */
-const DB_NAME = BROWSER_DATABASES.agentVault;
 const STORE = 'k';
 const KEY_ID = 'aes-v1';
+const vault = idbStore(BROWSER_DATABASES.agentVault, STORE, 2000);
 
 const subtle = (): SubtleCrypto | null =>
   typeof crypto !== 'undefined' && crypto.subtle ? crypto.subtle : null;
-const idb = (): IDBFactory | null => (typeof indexedDB !== 'undefined' ? indexedDB : null);
-
-const b64 = (buf: ArrayBuffer): string => {
-  let s = '';
-  const bytes = new Uint8Array(buf);
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-  return btoa(s);
-};
-const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
-  const raw = atob(s);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-};
-
-function openDb(f: IDBFactory): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = f.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function dbGet<T>(db: IDBDatabase, id: string): Promise<T | undefined> {
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
-    req.onsuccess = () => resolve(req.result as T | undefined);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function dbPut(db: IDBDatabase, id: string, value: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(value, id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
 
 let keyPromise: Promise<CryptoKey | null> | null = null;
 
-/** Create or load the origin's non-extractable vault key. */
+/** The stored key, undefined when none is stored, or null when the vault could not answer. */
+const readKey = (): Promise<{ key: CryptoKey | undefined } | null> => vault.settle<{ key: CryptoKey | undefined } | null>((db, done) => {
+  const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(KEY_ID);
+  req.onsuccess = () => done({ key: req.result as CryptoKey | undefined });
+  req.onerror = () => done(null);
+}, null);
+
+const storeKey = (key: CryptoKey): Promise<boolean> => vault.settle((db, done) => {
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).put(key, KEY_ID);
+  tx.oncomplete = () => done(true);
+  tx.onerror = tx.onabort = () => done(false);
+}, false);
+
+/** Create or load the origin's non-extractable vault key; a new key is made only when the vault
+ *  answered that it holds none. */
+async function loadKey(): Promise<CryptoKey | null> {
+  const s = subtle();
+  if (!s) return null;
+  const read = await readKey();
+  if (!read) return null;
+  if (read.key) return read.key;
+  try {
+    const key = await s.generateKey({ name: 'AES-GCM', length: 256 }, /* extractable */ false, ['encrypt', 'decrypt']);
+    return (await storeKey(key)) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The vault key, loaded once; a vault that could not answer, or ran past its deadline, is asked again next time. */
 function getVaultKey(): Promise<CryptoKey | null> {
-  keyPromise ??= (async () => {
-    const s = subtle();
-    const f = idb();
-    if (!s || !f) return null;
-    try {
-      const db = await openDb(f);
-      try {
-        let key = await dbGet<CryptoKey>(db, KEY_ID);
-        if (!key) {
-          key = await s.generateKey({ name: 'AES-GCM', length: 256 }, /* extractable */ false, ['encrypt', 'decrypt']);
-          await dbPut(db, KEY_ID, key);
-        }
-        return key;
-      } finally {
-        db.close();
-      }
-    } catch {
-      return null;
-    }
-  })();
-  return keyPromise;
+  if (keyPromise) return keyPromise;
+  const mine: Promise<CryptoKey | null> = loadKey().then((key) => {
+    if (!key && keyPromise === mine) keyPromise = null;
+    return key;
+  });
+  keyPromise = mine;
+  return mine;
 }
 
 async function sealWithKey(key: CryptoKey, plain: string): Promise<SealedBlob> {
@@ -93,30 +70,20 @@ async function sealWithKey(key: CryptoKey, plain: string): Promise<SealedBlob> {
   if (!s) throw new Error('SubtleCrypto unavailable');
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await s.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plain));
-  return { iv: b64(iv.buffer), ct: b64(ct) };
+  return { iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(ct)) };
 }
 
 async function openWithKey(key: CryptoKey, blob: SealedBlob): Promise<string> {
   const s = subtle();
   if (!s) throw new Error('SubtleCrypto unavailable');
-  const plain = await s.decrypt({ name: 'AES-GCM', iv: unb64(blob.iv) }, key, unb64(blob.ct));
+  const plain = await s.decrypt({ name: 'AES-GCM', iv: base64ToBytes(blob.iv) }, key, base64ToBytes(blob.ct));
   return new TextDecoder().decode(plain);
 }
 
-/** Delete the vault, resolving on completion, failure, or a two-second deadline. */
+/** Delete the vault, resolving on completion, failure or the deadline. */
 export function deleteVault(): Promise<void> {
   keyPromise = null;
-  const f = idb();
-  if (!f) return Promise.resolve();
-  return new Promise((resolve) => {
-    const done = () => resolve();
-    const timer = setTimeout(done, 2000);
-    const req = f.deleteDatabase(DB_NAME);
-    req.onsuccess = req.onerror = req.onblocked = () => {
-      clearTimeout(timer);
-      done();
-    };
-  });
+  return vault.remove();
 }
 
 /** Encrypt with the origin vault key; null when the vault is unavailable. */

@@ -4,16 +4,17 @@
  * mounted a pointer machine: both canvases stay mounted, and the window listener has one owner.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import { usePointerInteraction } from '../../../../view/interaction/use-pointer-interaction';
 import { setActiveView } from '../../../../view/active-view';
+import { mapHostAttr } from '../../../../view/interaction/map-wheel';
 import type { ActiveView } from '../../../../tools/pointer/runtime';
 
 function Host({ id }: { id: string }) {
   const ref = useRef<HTMLDivElement>(null);
   usePointerInteraction(ref);
-  return <div ref={ref} data-testid={id} />;
+  return <div ref={ref} data-testid={id} {...mapHostAttr} />;
 }
 
 function fakeView() {
@@ -21,9 +22,10 @@ function fakeView() {
   return { camera, view: { camera, overlay: {}, projection: {} } as unknown as ActiveView };
 }
 
+/** A pinch over the 2D view's host. */
 function pinch(): WheelEvent {
-  const event = new WheelEvent('wheel', { deltaY: -30, ctrlKey: true, cancelable: true });
-  window.dispatchEvent(event);
+  const event = new WheelEvent('wheel', { deltaY: -30, ctrlKey: true, bubbles: true, cancelable: true });
+  screen.getByTestId('2d').dispatchEvent(event);
   return event;
 }
 

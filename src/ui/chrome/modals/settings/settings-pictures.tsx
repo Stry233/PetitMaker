@@ -10,7 +10,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 import { MotionSample } from '../../../design/motion/MotionSample';
 import { font, radii, cursors, visuallyHidden } from '../../../design/styles';
 import { FRAME_INK, ON_DARK, inkTint, SHADE, rgbaOf } from '../../../design/tokens';
-import { skin } from '../../../design/window-skin';
+import { pickedRing, skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { CellZone } from '../../../../core/game/zones';
 import { ELEVATION_COLORS, WATER_COLOR, ZONE_COLORS } from '../../../../core/model/palette';
@@ -20,9 +20,10 @@ import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../../../core/game/profi
 import type { GridId } from '../../../../core/grid/grids';
 import { CHUNK_GRID_STYLE } from '../../../../view/shared/grid/reference-grid';
 import type { GridMode } from '../../../../platform/storage/prefs';
+import { resolveReducedMotion } from '../../../../platform/storage/facts';
 import { cursorArt } from '../../../../assets/cursors/cursor-art';
 import { iconUrl } from '../../../../assets/icon-urls';
-import { resolveReducedMotion, useOsReducedMotion } from '../../../session/use-motion-enabled';
+import { useOsReducedMotion } from '../../../session/use-motion-enabled';
 
 /* ── the mini-map every picture tile draws ─────────────────────────────────
  * A 10×7-cell postage stamp of a map in the real palette (zone + elevation
@@ -150,9 +151,7 @@ export const picStyle = (on: boolean): CSSProperties => ({
   borderRadius: radii.md,
   overflow: 'hidden',
   background: GRASS,
-  boxShadow: on
-    ? `inset 0 0 0 1px ${inkTint(0.12)}, 0 0 0 3px ${skin.active}`
-    : `inset 0 0 0 1px ${inkTint(0.12)}`,
+  boxShadow: `inset 0 0 0 1px ${inkTint(0.12)}, ${pickedRing(on)}`,
   transition: cssMotion('control.paint', ['box-shadow']),
 });
 
@@ -216,7 +215,7 @@ const CROSSFADE = presence('settings.label.morph', { opacity: 0 });
  */
 function MorphLabel({ text }: { text: string }): ReactNode {
   const reduced = useReducedMotionConfig() === true;
-  const { ref, gliding } = useSizeGlide<HTMLSpanElement>(text, { axis: 'width', motionId: 'settings.label.morph' });
+  const { ref, gliding } = useSizeGlide<HTMLSpanElement>({ change: text, axis: 'width', motionId: 'settings.label.morph' });
   return (
     <span aria-hidden style={spillFrame}>
       {/* The box whose width glides; its white-space is inherited by every layer, so a wording on

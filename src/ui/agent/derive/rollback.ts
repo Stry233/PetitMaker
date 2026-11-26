@@ -1,43 +1,19 @@
-import type { Translate } from '../../../i18n/keys';
 /*
- * Shared rollback accounting for every assistant take-back control. A rollback pops all undo entries
- * above its watermark, including later manual edits or jobs. `mine` identifies entries above the
- * recorded job end when that depth is known; otherwise confirmation reports only the total. Controls
- * for another or unknown map are omitted, while a running job temporarily disables them.
+ * How every assistant take-back control stands and what it asks before it acts. Whether it may run
+ * and its cost are `agent/panel.ts:takeBackStanding`'s: `mine` counts entries above the recorded job
+ * end when that depth is known, otherwise the question states only the total.
  */
+import type { Translate } from '../../../i18n/keys';
+import type { RollbackCost, TakeBackFacts, TakeBackStanding } from '../../../agent/panel';
 
-/** What one take-back press would cost, in undo entries. */
-export interface RollbackCost {
-  /** Every entry the press pops. */
-  steps: number;
-  /**
-   * How many of those were laid down after the job settled — the user's own later work, or a later
-   * job's. Absent means unknowable (a record with no settle depth), never zero.
-   */
-  mine?: number;
-}
+/** The facts of a card drawn outside a session: no job in flight, no live depth, no other map. */
+export const AT_REST: TakeBackFacts = { running: false };
 
-/**
- * What popping to `watermark` would cost, or null where the live depth is unknown (no map open, a
- * caller that reads none) and the panel therefore has no number to state.
- *
- * `jobTop` is the job's own settle depth (`JobView.endUndoIndex`).
- */
-export function rollbackCost(
-  watermark: number,
-  depth: number | undefined,
-  jobTop?: number,
-): RollbackCost | null {
-  if (depth === undefined) return null;
-  const steps = Math.max(0, depth - watermark);
-  if (jobTop === undefined) return { steps };
-  return { steps, mine: Math.max(0, depth - Math.max(jobTop, watermark)) };
-}
-
-/** Whether a press aimed at `watermark` would take anything off the map at all. A rewind that pops
- *  nothing is not a take-back, and offering one is a control that does nothing. */
-export function rollbackReaches(watermark: number, depth: number | undefined): boolean {
-  return depth === undefined || depth > watermark;
+/** A take-back control as its card draws it: held while a job runs, with the reason readable, or
+ *  ready with what the press costs; null where the take-back is refused for good and has no control. */
+export function takeBackControl(standing: TakeBackStanding): { busy: boolean; cost: RollbackCost | null } | null {
+  if (standing.refused === undefined) return { busy: false, cost: standing.cost };
+  return standing.refused === 'busy' ? { busy: true, cost: null } : null;
 }
 
 /** Confirmation copy for a take-back. The visible pill and screen-reader label both state its size

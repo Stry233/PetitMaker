@@ -493,13 +493,13 @@ describe('the two decks, and the clock that steps up beside the word', () => {
     it('names one playbook, the newest style ahead of any method', () => {
       const skills: JobView['skills'] = [
         { name: 'terracing', kind: 'method', title: 'Terracing' },
-        { name: 'cozy-village', kind: 'style', title: 'Cozy Village' },
+        { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' },
         { name: 'roads', kind: 'method', title: 'Road Grammar' },
       ];
       const withStyle = renderWithI18n(
         <DeskHeader view={makeView({ phase: 'executing', current: makeJob({ skills }) })} now={0} />,
       );
-      expect(withStyle.getByTestId('dock-meta').textContent).toBe('Cozy Village playbook');
+      expect(withStyle.getByTestId('dock-meta').textContent).toBe('Figure Landscape playbook');
       withStyle.unmount();
 
       const methodsOnly = renderWithI18n(

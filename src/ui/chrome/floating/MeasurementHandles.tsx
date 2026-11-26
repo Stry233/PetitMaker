@@ -1,25 +1,34 @@
 import { helpTargetAttr } from '../../session/help-targets';
-import { useRef, type PointerEvent } from 'react';
 import { getActiveView } from '../../../view/active-view';
-import { moveMeasureEnd } from '../../../editor/editing/annotation-edit';
-import { HALVES, noteStepCell, zoneCellCentre, type MeasureNote } from '../../../core/model/annotations';
+import { measureEndDrag, nudgeMeasureEnd, type MeasureEndDrag } from '../../../editor/editing/annotation-edit';
+import { noteStepCell, zoneCellCentre, type MeasureNote } from '../../../core/model/annotations';
 import { clientPoint } from '../../../platform/device/viewport-space';
 import { useT } from '../../../i18n/context';
-import { useEditorStore } from '../../../state/store';
 import { cursors, shadows, z } from '../../design/styles';
 import { FRAME_INK, ACTIVE } from '../../design/tokens';
+import { ActionButton } from '../../primitives/ActionButton';
+import { useWindowDrag } from '../../primitives/use-window-drag';
+
+/** What a press on an end took hold of: its drag, and where on the handle the pointer landed. */
+interface EndGrab { drag: MeasureEndDrag; offset: { x: number; y: number } }
 
 /** The parent reprojects on camera, terrain, view and annotation changes. */
 export function MeasurementHandles({ note }: { note: MeasureNote }) {
   const t = useT();
-  const grab = useRef<{
-    pointer: number;
-    endpoint: 0 | 1;
-    original: MeasureNote;
-    expected: MeasureNote;
-    began: boolean;
-    offset: { x: number; y: number };
-  } | null>(null);
+  /** Follows the pointer to a cell; false once the drag refuses one, which ends it. */
+  const follow = (e: PointerEvent, g: EndGrab): boolean => {
+    const proj = getActiveView()?.projection;
+    if (!proj) return true;
+    const p = clientPoint(e);
+    const cell = noteStepCell(proj.screenToPoint(p.x - g.offset.x, p.y - g.offset.y));
+    if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) return true;
+    return g.drag.to(cell);
+  };
+  const grab = useWindowDrag<EndGrab>({
+    move: (e, g) => { if (!follow(e, g)) grab.stop(); },
+    end: (e, g) => { if (follow(e, g)) g.drag.end(); },
+    cancel: (_, g) => g.drag.end(),
+  });
   const projection = getActiveView()?.projection;
   if (!projection) return null;
   const anchors = note.points.map(p => { const c = zoneCellCentre(p); return projection.cellToScreen(c.x, c.y); });
@@ -30,60 +39,35 @@ export function MeasurementHandles({ note }: { note: MeasureNote }) {
     x: p.x + (i ? 1 : -1) * spread * (distance ? dx / distance : 1),
     y: p.y + (i ? 1 : -1) * spread * (distance ? dy / distance : 0),
   }));
-  const move = (event: PointerEvent<HTMLButtonElement>) => {
-    const g = grab.current;
-    const s = useEditorStore.getState();
-    const current = s.gridState?.annotations?.items.find(n => n.id === note.id);
-    if (!g || g.pointer !== event.pointerId) return;
-    if (current !== g.expected || !s.annotationSelection.includes(note.id) || s.gridState?.annotations?.locked) {
-      grab.current = null;
-      return;
-    }
-    const proj = getActiveView()?.projection;
-    if (!proj || !s.gridState) return;
-    const p = clientPoint(event);
-    const cell = noteStepCell(proj.screenToPoint(p.x - g.offset.x, p.y - g.offset.y));
-    if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) return;
-    if (moveMeasureEnd(g.original, g.endpoint, cell, !g.began)) {
-      g.began = true;
-      g.expected = useEditorStore.getState().gridState!.annotations!.items.find(n => n.id === note.id) as MeasureNote;
-    }
-  };
   return <>
     {spread > 0 && anchors.every(p => !p.behind) && <svg aria-hidden style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: z.canvasControls }}>
       {anchors.map((p, i) => <line key={i} x1={p.x} y1={p.y} x2={handles[i]!.x} y2={handles[i]!.y} stroke={FRAME_INK} strokeWidth={2} />)}
     </svg>}
-    {note.points.map((p, index) => {
+    {note.points.map((_, index) => {
     const at = handles[index]!;
     if (at.behind) return null;
-    return <button key={index} type="button" aria-label={t('annot.endpoint', { n: index + 1 })}
+    return <ActionButton key={index} interaction="tile" aria-label={t('annot.endpoint', { n: index + 1 })}
       {...helpTargetAttr('notes', 'notes-measure')} data-measure-endpoint={index}
       onPointerDown={event => {
-        if (event.button !== 0 || grab.current) return;
+        if (event.button !== 0 || grab.held()) return;
         event.preventDefault(); event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
+        const drag = measureEndDrag(note.id, index as 0 | 1);
+        if (!drag) return;
         const pointer = clientPoint(event);
-        grab.current = { pointer: event.pointerId, endpoint: index as 0 | 1, original: note, expected: note, began: false,
-          offset: { x: pointer.x - anchors[index]!.x, y: pointer.y - anchors[index]!.y } };
+        grab.start(event, { drag, offset: { x: pointer.x - anchors[index]!.x, y: pointer.y - anchors[index]!.y } });
       }}
-      onPointerMove={move}
-      onPointerUp={event => { move(event); grab.current = null; }}
-      onPointerCancel={() => { grab.current = null; }}
-      onLostPointerCapture={() => { grab.current = null; }}
       onClick={event => event.stopPropagation()}
       onKeyDown={event => {
-        // One press moves the end one note step, half a cell.
-        const step = 1 / HALVES;
-        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
         if (!delta) return;
         event.preventDefault(); event.stopPropagation();
-        moveMeasureEnd(note, index as 0 | 1, { x: p.x + delta[0]!, y: p.y + delta[1]! }, true);
+        nudgeMeasureEnd(note.id, index as 0 | 1, delta[0]!, delta[1]!);
       }}
       style={{ position: 'fixed', left: at.x - 18, top: at.y - 18, width: 36, height: 36,
         zIndex: z.canvasControls, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 0, border: 0, background: 'transparent', borderRadius: '50%', touchAction: 'none', cursor: cursors.clickable }}>
       <span style={{ width: 14, height: 14, borderRadius: '50%', background: ACTIVE,
         border: `2px solid ${FRAME_INK}`, boxShadow: shadows.float, pointerEvents: 'none' }} />
-    </button>;
+    </ActionButton>;
   })}</>;
 }

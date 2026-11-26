@@ -39,7 +39,7 @@ describe('map cards', () => {
 
   it('offer a restore with the saved map\'s notes', async () => {
     const state = noted();
-    render(<I18nProvider><RestoreShelf state={state} onRestore={() => {}} onDismiss={() => {}} /></I18nProvider>);
+    render(<I18nProvider><RestoreShelf state={state} /></I18nProvider>);
     expect(await notesPictured(state)).toBe(state.annotations);
   });
 

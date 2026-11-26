@@ -15,7 +15,7 @@ import { ActionButton } from '../../../primitives/ActionButton';
 import { MUTED } from '../../../design/tokens';
 import { currentNotes, notesLanguage } from './current';
 import { localeTag } from '../../../../i18n/locale-info';
-import { recordSeenVersion } from '../../../../io/storage/seen-version-facts';
+import { closeWhatsNew } from '../../../../editor/session/whats-new';
 
 const card: CSSProperties = { ...windowFrame, gap: 14 };
 const sections: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 };
@@ -23,7 +23,7 @@ const release: CSSProperties = { ...roleFont('chip'), fontFamily: font.family, c
 
 export function WhatsNewModal() {
   const t = useT();
-  const { open, close: closeWindow } = useWindow('whatsNew');
+  const { open } = useWindow('whatsNew');
   const locale = useLocale();
   const openAbout = useEditorStore((s) => s.openAbout);
   // Read as the window opens: closing records the version, after which a live reading is empty.
@@ -32,7 +32,7 @@ export function WhatsNewModal() {
   const lang = notesLanguage(locale);
   const zoom = useSurfaceZoom();
 
-  const close = () => { recordSeenVersion(); closeWindow(); };
+  const close = closeWhatsNew;
   const fullChangelog = () => { close(); openAbout('changelog'); };
 
   return (

@@ -17,7 +17,7 @@ function setup(state: GridState, eraserShape: EraserShape, autoEdgeCut: AutoEdge
   const registry = createDefaultRegistry();
   const executor = makeExecutor(state, registry);
   const whole = executor.beginStroke();
-  const ctx = makeToolCtx(state, executor, 1, 1, { eraserShape, autoEdgeCut });
+  const ctx = makeToolCtx(state, executor, 1, { eraserShape, autoEdgeCut });
   const tool = new EraserTool();
   const drag = (x1 = eraserShape === 'circle' ? 6 : 5, y1 = 4, x2 = eraserShape === 'circle' ? 6 : 5, y2 = 5) => {
     const from = { x: x1, y: y1 }, to = { x: x2, y: y2 };
@@ -39,7 +39,9 @@ const modes: AutoEdgeCut[] = ['off', 'round', 'rect'];
 describe.each(shapes)('%s eraser auto trim', shape => {
   it.each(modes)('exposes and trims a mountain edge with %s in one undo step', mode => {
     const state = makeState(12, 12);
-    for (let y = 4; y <= 5; y++) for (let x = 4; x <= 5; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
+    // A circle takes the layer at its centre, a cell right of the others' press.
+    const right = shape === 'circle' ? 6 : 5;
+    for (let y = 4; y <= 5; y++) for (let x = 4; x <= right; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     const baseline = cloneGridState(state);
     const { drag, executor, registry } = setup(state, shape, mode);
     drag();
@@ -167,7 +169,7 @@ describe('eraser trim boundaries', () => {
     setTerrain(state, 5, 4, TerrainType.Mountain, 1);
     const { drag, executor, registry } = setup(state, 'free', 'round');
     registry.register({
-      id: 'TEST-TRIM', phase: 'post-stroke',
+      id: 'TEST-TRIM', description: 'A rule this test registers.', phase: 'post-stroke',
       validate: grid => grid.cells.some(row => row.some(cell => cell.terrain?.corners))
         ? [{ ruleId: 'TEST-TRIM', message: 'trim refused', grid: 'object', cells: [] }] : [],
     });

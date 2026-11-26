@@ -7,15 +7,17 @@ import { useT } from '../../../../i18n/context';
 import { LoadingDots } from '../../../primitives/LoadingDots';
 import { btnReset, cursors, radii } from '../../../design/styles';
 import { ACTIVE, MUTED_INK, PLATE, PLATE_INK } from '../../../design/tokens';
-import { LOADING_DOT, SHELF_SCALE, TEXT } from '../../units';
+import { LOADING_DOT, SHELF_SCALE } from '../../units';
 import { BarText, Plate } from '../bar-atoms';
 import { SEED_DIGITS, TEXT_MAX_CHARS } from './generate-shelf';
-import { limitTextGraphemes } from '../../../../tools/generation/stencil';
+import { limitTextGraphemes } from '../../../../tools/generation/facts';
 import cardPlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-1.svg';
 import picturePlate from '../../../../assets/shell/shelf-generate/candidates/roundrect-2.svg';
 import { MOTIONS } from '../../../design/motion/registry';
+import { INPUT_NO_ZOOM } from '../../../design/text-weight';
 import { PaintedText } from './PaintedText';
 import { useGhostField } from './use-ghost-field';
+import { isComposingKey } from '../../../../platform/input/text-entry';
 import { BOX, ChosenPlate, FIELD_PAD, GIANT_SIZE, Landing, LINE, NoteText, PICTURE, PICTURE_CORNER } from './CandidateCard';
 /** The mark on the confirm pill: this frame draws no tick, and one glyph for one meaning is better
  *  than a word that does not fit a button this size in every language. */
@@ -110,7 +112,7 @@ export function CustomCard({
 
   return (
     <div style={{ ...BOX, pointerEvents: 'auto' }} data-testid="shell-candidate-custom">
-      {selected ? <ChosenPlate /> : null}
+      <ChosenPlate chosen={selected} />
       <Plate src={cardPlate} style={{ inset: 0, width: '100%', height: '100%' }} />
       <Plate src={picturePlate} style={PICTURE} />
 
@@ -137,7 +139,7 @@ export function CustomCard({
                 if (isGlyph) onDraft(limitTextGraphemes(e.currentTarget.value, TEXT_MAX_CHARS));
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !(isGlyph && (composing.current || e.nativeEvent.isComposing || e.keyCode === 229))) onCommit();
+                if (e.key === 'Enter' && !(isGlyph && (composing.current || isComposingKey(e.nativeEvent)))) onCommit();
               }}
               aria-label={name}
               // `pw-ghost-field` also hides the native selection highlight; `PaintedText` paints the real one.
@@ -146,8 +148,7 @@ export function CustomCard({
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
                 margin: 0, padding: 0, border: 'none', outline: 'none',
                 background: 'transparent', color: 'transparent', caretColor: 'transparent',
-                // 16: iOS Safari zooms the whole page in on focus for any input below this size.
-                fontSize: 16, borderRadius: PICTURE_CORNER, cursor: cursors.text,
+                fontSize: INPUT_NO_ZOOM, borderRadius: PICTURE_CORNER, cursor: cursors.text,
               }}
             />
 
@@ -163,7 +164,7 @@ export function CustomCard({
               {/* The rule stands on its own, so nothing the number does can move or resize it. */}
               <span style={SEED_RULE} />
               {/* The digits and the caret share one wrapper at the digits' size, since `CARET` is sized in em. */}
-              <BarText size={GIANT_SIZE} color={PLATE_INK} weight={900}>
+              <BarText role="lead" color={PLATE_INK} weight={900}>
                 <PaintedText
                   text={typed} start={ghost.start} end={ghost.end} focused={ghost.focused} moves={ghost.moves}
                   caret={CARET} paintRef={ghost.paintRef}
@@ -183,7 +184,7 @@ export function CustomCard({
                   onClick={() => { if (!composing.current) onCommit(); }}
                   style={{ ...btnReset, ...CONFIRM_PILL }}
                 >
-                  <BarText size={TEXT.small} color={PLATE_INK} weight={900}>{CONFIRM_MARK}</BarText>
+                  <BarText role="small" color={PLATE_INK} weight={900}>{CONFIRM_MARK}</BarText>
                 </ActionButton>
               ) : null}
             </AnimatePresence>
@@ -216,7 +217,7 @@ export function CustomCard({
 
       {/* The line: the way back to the field, drawn as one. Empty, it names what this card is. */}
       {typing ? (
-        <BarText size={TEXT.small} color={PLATE} style={LINE}>{name}</BarText>
+        <BarText role="small" color={PLATE} style={LINE}>{name}</BarText>
       ) : (
         <span style={{ ...LINE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ActionButton
@@ -229,7 +230,7 @@ export function CustomCard({
               display: 'flex', alignItems: 'center',
             }}
           >
-            <BarText size={TEXT.small} color={PLATE_INK}>
+            <BarText role="small" color={PLATE_INK}>
               {failed ? t('generate.failed') : `${isGlyph ? glyph : `#${seed}`} ${EDIT_MARK}`}
             </BarText>
           </ActionButton>

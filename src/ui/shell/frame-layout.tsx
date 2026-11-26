@@ -1,13 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { viewportSizeSnapshot } from '../../platform/device/viewport-space';
-import { liveScaleNow, onLiveScale, scaleMovingNow, useDockRef, useScaleSpan, useViewportSize } from '../design/scale';
+import { glideRemainingNow, liveScaleNow, onLiveScale, scaleMovingNow, useDockRef, useScaleMoving, useScaleSpan, useViewportSize } from '../design/scale';
 import { useSettledUiZoom } from '../design/ui-zoom-anim';
 import { useUiPreviewPose } from '../design/preview';
 import { useCurrentInputMode, useLayoutShape } from '../design/input-mode';
 import { cssMotion } from '../design/motion';
 import type { MotionId } from '../design/motion/registry';
 import { cornerArt, sessionModes, type LayerMode } from './frame';
-import { planFrame, railClearanceFor, type FrameLayout, type RailPlan } from './frame-plan';
+import { planFrame, railClearanceFor, railFoldOf, type FrameLayout, type RailFold, type RailPlan } from './frame-plan';
 import { useEditorStore } from '../../state/store';
 import { useFramePose } from '../session/use-frame-pose';
 import { useEffectEvent } from '../primitives/use-effect-event';
@@ -37,10 +37,11 @@ export interface LayoutState extends FrameLayout {
   /** The deepest share of the window's height the bottom dock may take under this plan
    *  (`panel-frame.ts:bottomDockCeiling`); 1 where the plan bounds nothing. */
   dockCeiling: number;
-  /** The rail this plan places in a frame `width` by `height` of its own px. */
-  railAt: (width: number, height: number) => RailPlan;
-  /** The frame's room this frame of a scale glide, or null at rest, during a dock slide and in a picture. */
-  liveRoom: () => { width: number; height: number } | null;
+  /** The rail this plan places in a frame `width` by `height` of its own px, in `fold` where given. */
+  railAt: (width: number, height: number, fold?: RailFold) => RailPlan;
+  /** The frame's room this frame of a scale glide, with its zoom then and the zoom of the plan the glide
+   *  lands on (`landing`), or null at rest, during a dock slide and in a picture. */
+  liveRoom: () => { width: number; height: number; zoom: number; landing: number } | null;
   /** The window's size changed since the plan last committed: what this plan moves, it moves with the
    *  window rather than gliding there (`usePlanGlide`). */
   byWindow: boolean;
@@ -72,10 +73,12 @@ export function useFrameLayout(): LayoutState | null {
 
 /** The CSS transition gliding the given properties of a surface the plan places on `id`, or none ('')
  *  in a commit the window's size re-planned, so a resize that keeps the arrangement moves it with the
- *  window (UI-28) while any other change of the plan glides. */
+ *  window (UI-28), and through a scale glide, which carries it on a line of its own
+ *  (`useScaleGlideLine`), while any other change of the plan glides. */
 export function usePlanGlide(id: MotionId): (properties: readonly string[]) => string {
   const byWindow = !!useFrameLayout()?.byWindow;
-  return (properties) => (byWindow ? '' : cssMotion(id, properties));
+  const zooming = useScaleMoving();
+  return (properties) => (byWindow || zooming ? '' : cssMotion(id, properties));
 }
 
 export function useRailClearance(bottom: number, height: number): number {
@@ -119,7 +122,7 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
   const planetSession = useEditorStore((s) => s.planetSession);
   const sessionPose = useFramePose();
   const modes = sessionModes(planetSession, sessionPose === 'repair').length;
-  const corner = cornerArt(sessionPose !== 'map');
+  const corner = cornerArt(sessionPose);
   let { width, height } = frameRoomBeside(viewport.w, viewport.h, zoom, dock);
   const held = useDockHeld() && edge === 'bottom' && aside >= 1;
   // Reserve the tightest end during a slide or a held seam's drag without subscribing React to its
@@ -145,11 +148,20 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
     open: layerMode !== 'pill', plateDepth: plateDepth(layerMode, inputMode === 'touch'), plateMinDepth: plateMinDepth(layerMode, inputMode === 'touch'), plateMinWidth: PLATE_MIN_WIDTH,
     modes, corner, shape, inputMode, panelDepth, panelLeast, rowOpen,
   }), [layerMode, modes, corner, shape, inputMode, panelDepth, panelLeast, rowOpen]);
+  // Through a scale glide the right-hand column takes more files where its room needs them but gives
+  // none back until the glide settles: a held key re-aims the glide at every repeat, and a column that
+  // refolded to each repeat's room would fold and unfold on the way. More files only shorten the stack,
+  // so it never runs past its room meanwhile.
+  const glideFold = useRef<RailFold | null>(null);
   // Remembers its last room, so the live rail's snapshot and its writer plan once a frame between them.
   const railAt = useMemo(() => {
-    let last: { w: number; h: number; rail: RailPlan } | null = null;
-    return (w: number, h: number) =>
-      (last && last.w === w && last.h === h ? last.rail : (last = { w, h, rail: planWithPlate(w, h, opts, layerMode).rail }).rail);
+    let last: { w: number; h: number; fold: string; rail: RailPlan } | null = null;
+    return (w: number, h: number, fold?: RailFold) => {
+      const held = fold ? `${fold.kit}:${fold.history}` : '';
+      if (last && last.w === w && last.h === h && last.fold === held) return last.rail;
+      last = { w, h, fold: held, rail: planWithPlate(w, h, fold ? { ...opts, railFold: fold } : opts, layerMode).rail };
+      return last.rail;
+    };
   }, [opts, layerMode]);
   // A slide keeps its tightest-end plan; a scale glide re-plans the rail on its own frames, and on until
   // the render that ends it, so the rail stands at the settled plan's place when that render lands.
@@ -160,10 +172,16 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
     const { touch: t, uiZoom: z } = liveScaleNow();
     const { width: vw, height: vh } = viewportSizeSnapshot();
     const room = frameRoomAt(at, vw, vh, z, { touch: t, upright, depth: edge === 'bottom' ? depth : undefined });
-    return { width: room.width, height: room.height };
-  }, [pose, glide, edge, depth, upright]);
+    return { width: room.width, height: room.height, zoom: room.zoom, landing: zoom };
+  }, [pose, glide, edge, depth, upright, zoom]);
   const value = useMemo(() => {
-    const plan = planWithPlate(width, height, opts, layerMode);
+    let plan = planWithPlate(width, height, opts, layerMode);
+    const was = glide ? glideFold.current : null;
+    if (was) {
+      const fold = { kit: Math.max(was.kit, plan.rail.kitFiles), history: Math.max(was.history, plan.rail.historyFiles) };
+      const kept = fold.kit !== plan.rail.kitFiles || fold.history !== plan.rail.historyFiles;
+      if (kept) plan = planWithPlate(width, height, { ...opts, railFold: fold }, layerMode);
+    }
     // The frame bounds the bottom dock by the least height it can stand in, drawn at the zoom it has
     // with no dock, which is never smaller than the docked one; through a scale glide, at its settled
     // end, as the plan, so the dock does not move when the glide ends.
@@ -171,7 +189,8 @@ export function FrameLayoutProvider({ children }: { children: ReactNode }) {
     // It yields down to its handle, so the panel on the bar never scrolls while the window has room.
     const dockCeiling = plan.leastHeight > 0 ? Math.max(bottomDockFloor(free, viewport.h), bottomDockCeiling(plan.leastHeight, free, viewport.h)) : 1;
     return { ...plan, layerMode, setLayerMode, barPanel, claimBarPanel, dockCeiling, railAt, liveRoom, byWindow };
-  }, [width, height, opts, layerMode, barPanel, claimBarPanel, viewport.w, viewport.h, uiZoom, touch, upright, railAt, liveRoom, byWindow]);
+  }, [width, height, opts, layerMode, glide, barPanel, claimBarPanel, viewport.w, viewport.h, uiZoom, touch, upright, railAt, liveRoom, byWindow]);
+  useLayoutEffect(() => { glideFold.current = railFoldOf(value.rail); });
   // The live plan hands its ceiling to the dock before the paint; a pictured frame bounds nothing.
   const { dockCeiling } = value;
   useLayoutEffect(() => { if (!pose) setDockCeiling(dockCeiling); }, [pose, dockCeiling]);
@@ -188,39 +207,100 @@ function railShape(rail: RailPlan): string {
   return `${rail.kitButtons}:${rail.steppers}:${rail.kitFiles}:${rail.historyFiles}:${rail.historyInset}:${rail.kitRows ?? ''}`;
 }
 
-/** The rail at the frame's live room during a scale glide, as the frame re-plans it each frame there:
- *  the rail re-renders only when its shape changes, and `useLiveRailWriter` moves it in between. At
- *  rest, during a dock slide and in a picture it is the plan's own. */
+/** The rail at the frame's live room during a scale glide, as the frame re-plans it each frame there,
+ *  in the fold of the plan the glide lands on: a refold the glide brings happens as it starts and rides
+ *  all of it, rather than wherever the live room crosses a fold. The rail re-renders only when its shape
+ *  changes, and `useLiveRailWriter` moves it in between. At rest, during a dock slide and in a picture
+ *  it is the plan's own. */
 export function useLiveRail(layout: LayoutState): RailPlan {
   const shape = useSyncExternalStore(onLiveScale, () => {
     const room = layout.liveRoom();
-    return room ? railShape(layout.railAt(room.width, room.height)) : '';
+    return room ? railShape(liveRailAt(layout, room)) : '';
   }, () => '');
   const room = shape ? layout.liveRoom() : null;
-  return room ? layout.railAt(room.width, room.height) : layout.rail;
+  return room ? liveRailAt(layout, room) : layout.rail;
 }
 
-/** The tops the live rail writer last drew the kit and history at, null where no glide has moved them. */
-export interface DrawnRail { kitTop: number | null; historyTop: number | null }
+/** The rail in the live `room`, held in the settled plan's fold. */
+const liveRailAt = (layout: LayoutState, room: { width: number; height: number }) =>
+  layout.railAt(room.width, room.height, railFoldOf(layout.rail));
 
-/** Writes the kit's and history's tops on each frame of a scale glide from the rail at the live room,
- *  while that rail has the shape the last render drew; a render re-applies them before the paint.
- *  `drawn` keeps what it wrote, so a refold's glide starts where the group stands. */
-export function useLiveRailWriter(
-  layout: LayoutState, shown: RailPlan, kit: { current: HTMLElement | null }, history: { current: HTMLElement | null }, drawn: { current: DrawnRail },
-): void {
+/** The lengths a plan places a piece by, in frame px: its edges' offsets and the gap between its parts. */
+type PlacedLengths = Partial<Record<'left' | 'top' | 'right' | 'bottom' | 'gap', number>>;
+
+/** One placed length through a scale glide, as a length at the live `zoom`: carried `along` of the way in
+ *  a straight line on screen from `stood`, its screen size where it stood as the line set off, to `to`
+ *  drawn at the `landing` zoom. The frame's screen origin, which a UI zoom leaves in place, is common to
+ *  both ends and cancels. */
+function glideLength(stood: number, to: number, landing: number, zoom: number, along: number): number {
+  return (stood + (to * landing - stood) * along) / zoom;
+}
+
+const always = () => true;
+
+/**
+ * Draws what the plan places on `ref` through a scale glide. The plan stands at the glide's settled end,
+ * so a length that follows the room, a centred row's start or a group kept off the foot, would set off
+ * from its new place drawn at the old zoom and travel back; instead each length travels in one straight
+ * line on screen from where it stood as the glide set off, or was re-aimed, to where the glide lands it,
+ * at the glide's progress. It writes on each frame of the glide while `ready` holds and in each render,
+ * before the paint; the glide's end hands the lengths back to the plan.
+ */
+export function useScaleGlideLine(ref: RefObject<HTMLElement | null>, place: PlacedLengths, ready: () => boolean = always): void {
+  const layout = useFrameLayout();
+  const restZoom = useFrameZoom();
+  const keys = Object.keys(place) as (keyof PlacedLengths)[];
+  /** Each length as last written during a glide, which the frame draws at its zoom of the moment, and
+   *  the line it travels from where it stood: how much of the glide was left as it set off, and at the
+   *  last write, whose rise says the glide was re-aimed. */
+  const written = useRef<PlacedLengths | null>(null);
+  const line = useRef<{ stood: PlacedLengths; left: number; last: number } | null>(null);
+  /** The lengths it stood at when last at rest. */
+  const rest = useRef<PlacedLengths>({});
   const write = useEffectEvent(() => {
-    const room = layout.liveRoom();
-    if (!room) { drawn.current = { kitTop: null, historyTop: null }; return; }
-    const rail = layout.railAt(room.width, room.height);
-    if (railShape(rail) !== railShape(shown)) return;
-    if (kit.current) kit.current.style.top = `${rail.kitTop}px`;
-    if (history.current) history.current.style.top = `${rail.historyTop}px`;
-    drawn.current = { kitTop: rail.kitTop, historyTop: rail.historyTop };
-    // The landing's tops are resolved now, before the render that turns the groups' `top` transitions
-    // back on, or the browser would play them from the glide's last frame to the landing.
-    if (!scaleMovingNow()) for (const el of [kit.current, history.current]) if (el) getComputedStyle(el).top;
+    const el = ref.current;
+    if (!el) return;
+    const room = layout?.liveRoom() ?? null;
+    if (!room) {
+      if (line.current) for (const k of keys) el.style[k] = `${place[k]}px`;
+      line.current = null;
+      written.current = null;
+      rest.current = { ...place };
+      return;
+    }
+    const left = glideRemainingNow() ?? 0;
+    // Set off from where it stood at rest, at the zoom the frame stood at; re-aimed, from where it is
+    // drawn now, the length last written at the zoom of this frame.
+    if (!line.current || left > line.current.last + 1e-3) {
+      const now = written.current, at = now ? room.zoom : restZoom, from = now ?? rest.current;
+      line.current = { stood: Object.fromEntries(keys.map((k) => [k, (from[k] ?? place[k]!) * at])), left, last: left };
+    }
+    line.current.last = left;
+    if (!ready()) return;
+    const { stood, left: before } = line.current;
+    const along = before > 0 ? 1 - left / before : 1;
+    for (const k of keys) {
+      const length = glideLength(stood[k] ?? place[k]! * room.zoom, place[k]!, room.landing, room.zoom, along);
+      el.style[k] = `${length}px`;
+      (written.current ??= {})[k] = length;
+    }
+    // The landing is resolved now, before the render that turns the piece's own transitions back on,
+    // or the browser would play them from the glide's last frame to the landing.
+    if (!scaleMovingNow()) getComputedStyle(el).top;
   });
   useEffect(() => onLiveScale(write), []);
   useLayoutEffect(() => { write(); });
+}
+
+/** Draws the kit and history through a scale glide (`useScaleGlideLine`) while the rail at the live
+ *  room has the shape the last render drew. */
+export function useLiveRailWriter(
+  layout: LayoutState, shown: RailPlan, kit: RefObject<HTMLElement | null>, history: RefObject<HTMLElement | null>,
+): void {
+  const ready = () => {
+    const room = layout.liveRoom();
+    return !!room && railShape(liveRailAt(layout, room)) === railShape(shown);
+  };
+  useScaleGlideLine(kit, { top: layout.rail.kitTop }, ready);
+  useScaleGlideLine(history, { top: layout.rail.historyTop }, ready);
 }

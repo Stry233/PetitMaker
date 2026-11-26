@@ -7,7 +7,8 @@ import type { Corners, MacroCoord } from '../../../core/model/types';
 import type { RoadConnSide } from '../../../core/domain/edge-cut/road-cut-states';
 import { roadShapePoints } from '../road/shape';
 import { cellGrid, type GridCellRef, type GridId } from '../../../core/grid/grids';
-import type { EdgeSegment } from '../../../core/grid/cell-spans';
+import { boundaryEdges, boundaryEdgesFromSpans, spanMembership, type EdgeSegment, type RowSpan } from '../../../core/grid/cell-spans';
+import { shapeOfSpans } from '../../../tools/trim';
 import { TERRAIN_GRID } from '../../../core/game/profile';
 import type { Side } from '../../../core/grid/directions';
 import { SIDES, SIDE_DELTA, OPPOSITE_SIDE } from '../../../core/grid/directions';
@@ -136,7 +137,7 @@ export function trimmedOutline(
 
 /** One road tile of a ghost whose shape auto-trim will cut, in the frame it is drawn in: canonical
  *  corners plus the side it connects on (see `view/shared/road/shape`). */
-export interface RoadTrimmedGhostCell { x: number; y: number; corners: Corners; road: RoadConnSide }
+interface RoadTrimmedGhostCell { x: number; y: number; corners: Corners; road: RoadConnSide }
 
 const ON_EDGE = 1e-9;
 
@@ -223,6 +224,24 @@ export function ghostPlan<C extends MacroCoord | GridCellRef, T extends GhostTri
   return { own, across, trim };
 }
 
+/**
+ * A ghost footprint's outer boundary, in its grid's cells: the trimmed silhouette when there is one,
+ * since a cut corner and the Γ patch filling a notch are part of the shape the click leaves, through
+ * the road polygons for a road (a ghost lays one surface, so its trim is all road or all terrain).
+ * A span ghost materialises only its rim, so the outline gets a membership test for its inside.
+ */
+export function ghostOutline(
+  shape: { spans: readonly RowSpan[] } | { cells: readonly { x: number; y: number }[] },
+  trim: readonly (TrimmedGhostCell & { road?: RoadConnSide })[],
+): EdgeSegment[] {
+  const spans = 'spans' in shape ? shape.spans : null;
+  if (trim.length === 0) return spans ? boundaryEdgesFromSpans(spans) : boundaryEdges('cells' in shape ? shape.cells : []);
+  const rim = spans ? shapeOfSpans(spans).rim : 'cells' in shape ? shape.cells : [];
+  const inShape = spans ? spanMembership(spans) : undefined;
+  const roadTrim = trim.filter((t): t is typeof t & RoadTrimmedGhostCell => !!t.road);
+  return roadTrim.length > 0 ? roadTrimmedOutline(rim, roadTrim, inShape) : trimmedOutline(rim, trim, inShape);
+}
+
 /** What a flashed cell should be drawn as. */
 interface FlashShape { x: number; y: number; corners: CornerList; patchOnly: boolean; grid: GridId }
 type CornerList = readonly string[];
@@ -254,4 +273,18 @@ export function splitFlashShapes(
     }
   }
   return { shaped, plain };
+}
+
+/** Which sides of an outline edge lie in the cells `inside` holds, read a quarter cell off its
+ *  midpoint along its unit normal (`nx`, `ny`, the edge's direction turned a quarter): a cut corner's
+ *  diagonal lies within one cell, so both sides read it. */
+export function edgeInsideSide(e: EdgeSegment, inside: (x: number, y: number) => boolean): { nx: number; ny: number; ahead: boolean; behind: boolean } {
+  const len = Math.hypot(e.bx - e.ax, e.by - e.ay) || 1;
+  const nx = -(e.by - e.ay) / len, ny = (e.bx - e.ax) / len;
+  const mx = (e.ax + e.bx) / 2, my = (e.ay + e.by) / 2;
+  return {
+    nx, ny,
+    ahead: inside(Math.floor(mx + nx * 0.25), Math.floor(my + ny * 0.25)),
+    behind: inside(Math.floor(mx - nx * 0.25), Math.floor(my - ny * 0.25)),
+  };
 }

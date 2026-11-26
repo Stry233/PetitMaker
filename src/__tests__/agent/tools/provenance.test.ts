@@ -71,19 +71,6 @@ describe('agent provenance (runStrokeBody tools)', () => {
     for (const id of ids) expect(tracker.objectAuthor(id)).toBe('ai');
   });
 
-  it('plant_forest (a director tool) names the AI as the author of its planting', async () => {
-    const { state, exec, deps: d } = setup(30, 30);
-    const r = await executeToolCall(
-      { id: 't3', name: 'plant_forest', input: { x: 2, y: 2, w: 24, h: 24, density: 0.8, seed: 7 } },
-      d,
-    );
-    expect(r.isError).toBe(false);
-    const ids = [...state.objects.keys()];
-    expect(ids.length).toBeGreaterThan(0);
-    const tracker = exec.getAuthorship();
-    for (const id of ids) expect(tracker.objectAuthor(id)).toBe('ai');
-  });
-
   it('a user-approved runStrokeBody write records AiAccepted, matching runStroke', async () => {
     const state = makeState(20, 20);
     const exec = makeExecutor(state);

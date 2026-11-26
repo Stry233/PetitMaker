@@ -3,12 +3,13 @@ import { activeTarget, type DeployTargetId } from '../platform/build/deploy-targ
 
 /** Shared facts for legal documents, About, filing rows and generated site metadata. */
 /** A person the About surfaces credit. `sort` is the lowercase romanization they are ordered by;
- *  `bilibili` is their Bilibili mid, which names both their space and their bundled avatar. */
-interface CreditedMember { name: string; sort: string; bilibili: string }
+ *  `profileId` is their Bilibili mid, which names both their space and their bundled avatar. Field names
+ *  ship in every Lite package, and the Xiaohongshu one names no other platform. */
+interface CreditedMember { name: string; sort: string; profileId: string }
 
 /** A credited member's Bilibili space. */
-export function memberUrl(member: Pick<CreditedMember, 'bilibili'>): string {
-  return `https://space.bilibili.com/${member.bilibili}`;
+export function memberUrl(member: Pick<CreditedMember, 'profileId'>): string {
+  return `https://space.bilibili.com/${member.profileId}`;
 }
 
 export type LegalConfig = {
@@ -48,6 +49,15 @@ export type LegalConfig = {
   repoUrl: string;
   sponsorship: { patreon: string; afdian: string };
 };
+
+/** What the responsibility notice before a download asks of its reader before it can be confirmed:
+ *  `readingMs` with the notice in view, and its text scrolled to its last line. */
+export const EXPORT_NOTICE = { readingMs: 7000 } as const;
+
+/** Whether a notice kept in view for `readMs`, showing its last line or not (`atEnd`), may be confirmed. */
+export function exportNoticeRead(readMs: number, atEnd: boolean): boolean {
+  return readMs >= EXPORT_NOTICE.readingMs && atEnd;
+}
 
 /** Each deployment's hosting and edge-delivery disclosures, as the privacy notice states them. */
 const PRIVACY_HOSTING: Readonly<Record<DeployTargetId, Pick<LegalConfig, 'privacyHostNetwork' | 'privacyEdgeDelivery'>>> = {
@@ -93,25 +103,25 @@ export const LEGAL: LegalConfig = {
   ...PRIVACY_HOSTING[TARGET.id],
 
   effectiveDates: {
-    privacy: '2026-10-02',
-    terms: '2026-09-13',
+    privacy: '2026-11-05',
+    terms: '2026-11-26',
   },
   policyVersions: {
-    privacy: '1.8',
-    terms: '1.3',
+    privacy: '1.9',
+    terms: '1.4',
   },
 
   // Each surface sorts this roster by `sort` before display.
   team: [
-    { name: '镜喵MirrorCat', sort: 'jingmiaomirrorcat', bilibili: '25599535' },
-    { name: '鱼松吃点吗', sort: 'yusongchidianma', bilibili: '3632319829116985' },
-    { name: '火山野牛王', sort: 'huoshanyeniuwang', bilibili: '16699168' },
-    { name: 'Selka', sort: 'selka', bilibili: '3546659724200757' },
+    { name: '镜喵MirrorCat', sort: 'jingmiaomirrorcat', profileId: '25599535' },
+    { name: '鱼松吃点吗', sort: 'yusongchidianma', profileId: '3632319829116985' },
+    { name: '火山野牛王', sort: 'huoshanyeniuwang', profileId: '16699168' },
+    { name: 'Selka', sort: 'selka', profileId: '3546659724200757' },
   ],
   acknowledgements: [
-    { name: '晶焰EXFire', sort: 'jingyanexfire', bilibili: '215541807' },
-    { name: '奕言君', sort: 'yiyanjun', bilibili: '397542864' },
-    { name: '星灭散落', sort: 'xingmiesanluo', bilibili: '671142687' },
+    { name: '晶焰EXFire', sort: 'jingyanexfire', profileId: '215541807' },
+    { name: '奕言君', sort: 'yiyanjun', profileId: '397542864' },
+    { name: '星灭散落', sort: 'xingmiesanluo', profileId: '671142687' },
   ],
   repoUrl: 'https://github.com/Stry233/PetitMaker',
   sponsorship: {

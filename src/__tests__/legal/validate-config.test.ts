@@ -23,9 +23,9 @@ function resolvedConfig(overrides: Partial<LegalConfig> = {}): LegalConfig {
     effectiveDates: { privacy: '2026-07-14', terms: '2026-07-14' },
     policyVersions: { privacy: '1.0', terms: '1.0' },
     team: [
-      { name: 'Jane Doe', sort: 'janedoe', bilibili: '101' },
+      { name: 'Jane Doe', sort: 'janedoe', profileId: '101' },
     ],
-    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', bilibili: '202' }],
+    acknowledgements: [{ name: 'Sam Roe', sort: 'samroe', profileId: '202' }],
     repoUrl: 'https://github.com/example/petitmaker',
     sponsorship: { patreon: 'https://www.patreon.com/c/example', afdian: 'https://afdian.com/a/example' },
     ...overrides,

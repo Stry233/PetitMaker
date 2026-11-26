@@ -23,7 +23,8 @@ function tap(tool: DrawingTool | EraserTool, ctx: ReturnType<typeof makeToolCtx>
 describe('a stroke the map rules refuse', () => {
   it('names the base rule with its own numbers when a lone block is laid too high', () => {
     const state = makeState(12, 12);
-    const ctx = makeToolCtx(state, makeExecutor(state), 1, 4, { t, notify });
+    setTerrain(state, 5, 5, TerrainType.Mountain, 3);
+    const ctx = makeToolCtx(state, makeExecutor(state), 1, { t, notify });
     tap(new DrawingTool(), ctx, 5, 5);
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).not.toMatch(/[{}]/);
@@ -34,7 +35,7 @@ describe('a stroke the map rules refuse', () => {
     const state = makeState(12, 12);
     for (let y = 4; y <= 6; y++) for (let x = 4; x <= 6; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     setTerrain(state, 5, 5, TerrainType.Mountain, 4);
-    const ctx = makeToolCtx(state, makeExecutor(state), 1, 1, { t, notify });
+    const ctx = makeToolCtx(state, makeExecutor(state), 1, { t, notify });
     tap(new EraserTool(), ctx, 4, 4);
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).not.toMatch(/[{}]/);

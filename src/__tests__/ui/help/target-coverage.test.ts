@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
-import { HELP_PAGES } from '../../../ui/help/catalog';
-import type { HelpPageId } from '../../../ui/help/page-schema';
+import { HELP_PAGES } from '../../../editor/help/catalog';
+import type { HelpPageId } from '../../../editor/help/page-schema';
 import { parseSource, repoFiles } from '../../_support/source-graph';
 
 const sources = (dir: string): string[] => repoFiles(dir, { accept: /\.tsx$/ });

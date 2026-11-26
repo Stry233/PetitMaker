@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildTerrainMeshes } from '../../../_support/terrain-meshes';
 import { layerToY, cellCornerWorld } from '../../../../view/map3d/geometry/coords';
 import { TerrainType } from '../../../../core/model/types';
 import { CellZone } from '../../../../core/game/zones';

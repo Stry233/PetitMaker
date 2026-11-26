@@ -6,7 +6,6 @@ import { type GridState, type MacroCoord } from '../../../core/model/types';
 import { type AutoEdgeCut } from '../../../state/editing/vocabulary';
 import { circleCells } from '../../../core/grid/shapes';
 import type { MacroContext } from '../context';
-import { cellsChanged } from '../runtime/measure';
 import { terraceRings } from './terrace';
 import { canBuildAt, isClean, isWaterAt, surfaceAt, trimWithin } from './terrain';
 import { TerrainDraft } from './terrain-draft';
@@ -59,7 +58,6 @@ interface RaiseInput {
 }
 
 interface RaiseResult {
-  changed: number;
   /** The tier this ground could carry, at or below the rung asked for. The ghost reports it and the
    *  hold stops climbing at it. */
   peak: number;
@@ -73,7 +71,6 @@ interface Planned { c: MacroCoord; target: number }
 
 export function raiseTerrain(ctx: MacroContext, input: RaiseInput): RaiseResult {
   const { state, executor } = ctx;
-  const laid = cellsChanged(state);
   const { at, radius, stage, steepness } = input;
   const { width: W, height: H } = state.template;
 
@@ -88,7 +85,7 @@ export function raiseTerrain(ctx: MacroContext, input: RaiseInput): RaiseResult 
   const rings = room > 0
     ? terraceRings({ base, peak: Math.min(ladderPeak(stage), room), inset: insetFor(steepness), width: W, height: H })
     : [];
-  if (rings.length === 0) return { changed: laid(), peak: 0, blocked: refused };
+  if (rings.length === 0) return { peak: 0, blocked: refused };
 
   const plan = planOf(rings, footing, W);
   const mark = executor.beginStroke();
@@ -118,7 +115,7 @@ export function raiseTerrain(ctx: MacroContext, input: RaiseInput): RaiseResult 
   const blocked = [...refused, ...plan.filter((p) => surfaceAt(state, p.c.x, p.c.y) < Math.min(p.target, kept)).map((p) => p.c)];
   let peak = 0;
   for (const p of plan) peak = Math.max(peak, surfaceAt(state, p.c.x, p.c.y) - footing);
-  return { changed: laid(), peak, blocked };
+  return { peak, blocked };
 }
 
 /**

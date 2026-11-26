@@ -11,19 +11,21 @@ import { buildToolOf } from '../../state/editing/edit-mode';
 import { useHelpTables, useT } from '../../i18n/context';
 import { pushCursorSurface } from '../../view/interaction/cursor-controller';
 import { roleFont, weightVars } from '../design/text-weight';
-import { INK, MAP_EDGE_ALPHA, MAP_TEXT, PLATE, FOCUS_RING, ON_DARK, rgbaOf } from '../design/tokens';
+import { INK, MAP_TEXT, PANEL_EDGE, PLATE, FOCUS_RING, ON_DARK, rgbaOf } from '../design/tokens';
 import { cursors, font, z, radii, shadows } from '../design/styles';
 import { useDenseScript, useDevicePixelRatio, useGlidingChromeScale, useViewportSize } from '../design/scale';
 import { useLayoutShape } from '../design/input-mode';
 import { bandCentre, bandMaxWidth } from '../chrome/floating/toast-band';
-import { HELP_PAGES } from './catalog';
-import type { HelpPageId } from './page-schema';
-import { openHelp, pageForEditState, helpTargetAt } from '../session/help-targets';
+import { HELP_PAGES } from '../../editor/help/catalog';
+import type { HelpPageId } from '../../editor/help/page-schema';
+import { pageForEditState } from '../../editor/help/mode-pages';
+import { openHelp, helpTargetAt } from '../session/help-targets';
 import { inheritedHelpTarget } from '../primitives/help-target';
 import { useOverlayLock } from '../primitives/use-overlay-lock';
 import { scrollsAlong } from '../primitives/scroll-geometry';
 import { visualRect, type VisualRect } from '../design/visual-rect';
 import { FLOATING_MARGIN, placeFloating } from '../primitives/floating-position';
+import { QuestionIcon } from '../primitives/line-glyphs';
 
 interface Hover {
   rect: VisualRect;
@@ -76,7 +78,7 @@ function NamePlate({ rect, title, reduced, viewportW }: {
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         background: PLATE,
-        border: `1px solid ${rgbaOf(INK, MAP_EDGE_ALPHA)}`,
+        border: PANEL_EDGE,
         borderRadius: radii.pill,
         padding: '4px 12px',
         ...roleFont('small'),
@@ -257,10 +259,7 @@ export function WhatsThisLayer() {
          >
             {/* The mark and the words wrap together; the exit answer drops under them where the row runs out. */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <svg width="16" height="16" style={{ flex: 'none' }} viewBox="0 0 24 24" fill="none" stroke={MAP_TEXT} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M8.6 9a3.6 3.6 0 1 1 5.2 3.2c-1.2.6-1.8 1.3-1.8 2.6" />
-                <circle cx="12" cy="18.6" r="1.1" fill={MAP_TEXT} stroke="none" />
-              </svg>
+              <span style={{ display: 'flex', flex: 'none', color: MAP_TEXT }}><QuestionIcon size={16} /></span>
               {t('help.whats_this_banner')}
             </span>
             <ActionButton

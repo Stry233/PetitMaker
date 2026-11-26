@@ -7,32 +7,29 @@
  */
 import { tourTargetAttr } from '../../../chrome/tour/steps';
 import { ActionButton } from '../../../primitives/ActionButton';
-import { motion } from 'framer-motion';
-import { useEffect, useRef, type RefObject } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useRef, type RefObject } from 'react';
 import type { RevealBind } from '../../../primitives/use-reveal';
 import { useTileReach } from '../CardNameBubble';
 import { iconUrl } from '../../../../assets/icon-urls';
 import type { CatalogItem } from '../../../../core/model/types';
-import { offerSmartBuild } from '../../../../editor/commands/smart-build';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
 import { usePx } from '../../../design/scale';
 import { btnReset, cursors } from '../../../design/styles';
-import { ACTIVE, ON_DARK, PLATE } from '../../../design/tokens';
+import { ACTIVE, PLATE } from '../../../design/tokens';
 import { GlyphIcon } from '../../GlyphIcon';
-import { TEXT } from '../../units';
-import { BarText, Plate } from '../bar-atoms';
+import { CardCount, Plate } from '../bar-atoms';
 import { CARD, ROW } from './object-shelf';
 import { SMART } from '../smart-menu';
 
 import cardPlate from '../../../../assets/shell/shelf-object/roundrect-1.svg';
-import badgePlate from '../../../../assets/shell/shelf-mountain/tools/roundrect-3.svg';
 import { useTransition } from '../../../design/motion/use-motion';
 import { MOTIONS } from '../../../design/motion/registry';
 import { useCardCarry } from './use-card-carry';
 import { useMorphPresence } from '../../../primitives/morph';
 
 /** How much a carried card grows as it rises off the row: the registry's own amplitude. */
-const LIFT_SCALE = 1 + MOTIONS['item.carry.lift'].amplitude;
+export const LIFT_SCALE = 1 + MOTIONS['item.carry.lift'].amplitude;
 
 type Reach = (at: { name: string; centre: number } | null) => void;
 
@@ -61,7 +58,6 @@ function useCardName(name: string, ref: RefObject<HTMLElement | null>, onReach: 
 }
 
 export function ItemCard({ item, placed, selected, onToggle, onReach, carries, pan = 'x', onCarry }: Props) {
-  const armedMotion = useTransition('item.armed');
   const liftMotion = useTransition('item.carry.lift');
   const { px } = usePx();
   const t = useT();
@@ -133,34 +129,37 @@ export function ItemCard({ item, placed, selected, onToggle, onReach, carries, p
         ) : null}
 
         {placed > 0 ? (
-          <span
-            aria-label={t('shelf.placed', { n: placed })}
-            style={{
-              position: 'absolute', right: px(CARD.badge.right), top: px(CARD.badge.y),
-              minWidth: px(CARD.badge.h), height: px(CARD.badge.h), padding: `0 ${px(12)}px`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
-            }}
-          >
-            <Plate src={badgePlate} style={{ inset: 0, width: '100%', height: '100%' }} />
-            <BarText size={TEXT.small} color={ON_DARK} weight={900} style={{ position: 'relative' }}>
-              {String(placed)}
-            </BarText>
-          </span>
+          <CardCount n={placed} label={t('shelf.placed', { n: placed })} height={px(CARD.badge.h)} pad={px(12)}
+            right={px(CARD.badge.right)} top={px(CARD.badge.y)} />
         ) : null}
 
-        {selected ? (
-          <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={armedMotion}
-            style={{
-              position: 'absolute', inset: 0, borderRadius: px(CARD.radius),
-              border: `${px(CARD.ring)}px solid ${ACTIVE}`, pointerEvents: 'none',
-            }}
-          />
-        ) : null}
+        <ArmedRing armed={selected} />
       </motion.span>
     </ActionButton>
+  );
+}
+
+/** The ring an armed card wears: it rises as the card is armed and fades as it is disarmed. */
+function ArmedRing({ armed }: { armed: boolean }) {
+  const motionOf = useTransition('item.armed');
+  const { px } = usePx();
+  return (
+    <AnimatePresence>
+      {armed ? (
+        <motion.span
+          key="ring"
+          data-testid="armed-ring"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={motionOf}
+          style={{
+            position: 'absolute', inset: 0, borderRadius: px(CARD.radius),
+            border: `${px(CARD.ring)}px solid ${ACTIVE}`, pointerEvents: 'none',
+          }}
+        />
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -170,15 +169,11 @@ export function SmartCard({ selected, onToggle, onReach }: {
   onToggle: () => void;
   onReach: Reach;
 }) {
-  const armedMotion = useTransition('item.armed');
   const { px } = usePx();
   const t = useT();
   const ref = useRef<HTMLButtonElement>(null);
   const name = t('smart.patch');
 
-  // The smart-build key arms this card while the shelf is up, the same press the terrain pills
-  // answer on their surfaces.
-  useEffect(() => offerSmartBuild(onToggle), [onToggle]);
   const reveal = useCardName(name, ref, onReach, true);
 
   return (
@@ -211,17 +206,7 @@ export function SmartCard({ selected, onToggle, onReach }: {
       >
         <GlyphIcon glyph={SMART.cellGlyph} size={px(CARD.icon.w) * 0.52} />
       </span>
-      {selected ? (
-        <motion.span
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={armedMotion}
-          style={{
-            position: 'absolute', inset: 0, borderRadius: px(CARD.radius),
-            border: `${px(CARD.ring)}px solid ${ACTIVE}`, pointerEvents: 'none',
-          }}
-        />
-      ) : null}
+      <ArmedRing armed={selected} />
     </ActionButton>
   );
 }

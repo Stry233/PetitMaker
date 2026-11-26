@@ -8,7 +8,7 @@ import { clearGenerated, generateCandidate, generateMap, type Candidate, type Ou
 import { __resetCandidateCache } from '../../../tools/generation/run/candidates';
 import { defaultConfig, type GenerateConfig, type Stencil, type StencilConfig } from '../../../tools/generation/recipe';
 import { serialize } from '../../../io/save/json-codec';
-import { standingViolations } from '../../../state/relocation-plan';
+import { standingViolations } from '../../../rules/legality';
 import { isLandmarkItem } from '../../../core/model/landmarks';
 import { objectRect } from '../../../state/object-geometry';
 import { isBuildableZone } from '../../../core/game/zones';

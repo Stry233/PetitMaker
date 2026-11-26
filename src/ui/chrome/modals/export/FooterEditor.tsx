@@ -7,11 +7,12 @@
 import { useRef, useLayoutEffect, useState, type ClipboardEvent, type CSSProperties } from 'react';
 import { font, radii, cursors } from '../../../design/styles';
 import { TILE_MODE_GREEN } from '../../../design/tokens';
-import { skin } from '../../../design/window-skin';
+import { skin, WINDOW_FIELD_BOX } from '../../../design/window-skin';
 import { roleFont, roleWeight, TEXT_ROLES } from '../../../design/text-weight';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { FloatMenu } from '../../../primitives/FloatMenu';
-import { FOOTER_TOKENS, FOOTER_FILL, parseFooter } from '../../../../io/export/facts';
+import { InfoLine } from '../../../primitives/InfoLine';
+import { FOOTER_TOKENS, FOOTER_FILL, footerTemplateOf, parseFooter, type FooterSeg } from '../../../../io/export/facts';
 import { ReviewIndicator } from './review/ReviewIndicator';
 import type { Translate } from '../../../../i18n/keys';
 
@@ -20,6 +21,14 @@ const ZW = '\u200B'; // zero-width space: an invisible, editable caret slot plac
 
 /** Menu order = the token list, then Fill last. */
 const MENU_IDS = [...FOOTER_TOKENS.map((tk) => tk.id), FOOTER_FILL];
+
+function tagLabel(t: Translate, id: string): string {
+  if (id === FOOTER_FILL) return t('export.footer_fill');
+  const token = FOOTER_TOKENS.find((tk) => tk.id === id);
+  return token ? t(token.labelKey) : id;
+}
+
+const chipText = (t: Translate, id: string) => (id === FOOTER_FILL ? `⇥ ${tagLabel(t, id)}` : tagLabel(t, id));
 
 export function FooterEditor({ value, onChange, samples, t, checking = false, refused = false, reviewLabel = '' }: {
   value: string;
@@ -38,16 +47,20 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
   const [menu, setMenu] = useState<{ fromSlash: boolean } | null>(null);
   const [menuIndex, setMenuIndex] = useState(0);
 
-  const labelFor = (id: string) => (id === FOOTER_FILL ? t('export.footer_fill') : (FOOTER_TOKENS.find((tk) => tk.id === id) ? t(FOOTER_TOKENS.find((tk) => tk.id === id)!.labelKey) : id));
-
   const makeChip = (id: string): HTMLSpanElement => {
     const span = document.createElement('span');
     span.dataset.tok = id;
     span.contentEditable = 'false';
     span.className = id === FOOTER_FILL ? 'ppfe-chip ppfe-fill' : 'ppfe-chip';
-    span.textContent = id === FOOTER_FILL ? `⇥ ${labelFor(id)}` : labelFor(id);
+    span.textContent = chipText(t, id);
     return span;
   };
+
+  // The chips are built once per template, so a translator arriving later (the locale's table loading
+  // after the window opened, a language switch) relabels them in place, which keeps the caret.
+  useLayoutEffect(() => {
+    ref.current?.querySelectorAll<HTMLElement>('[data-tok]').forEach((chip) => { chip.textContent = chipText(t, chip.dataset.tok!); });
+  }, [t]);
 
   // Rebuild the editable DOM only on external value changes (not our own edits) so the caret is kept.
   // Built with safe DOM node APIs (no innerHTML); a ZW text node sits before each chip (and after a
@@ -66,17 +79,19 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
     lastSerialized.current = value;
   }); // Runs after every render; the lastSerialized check stops repeats.
 
+  /** The line as segments: a chip is its token, and the caret slots are no text. */
   const serialize = (el: HTMLElement): string => {
-    let out = '';
+    const segs: FooterSeg[] = [];
+    const text = (v: string | null | undefined) => { segs.push({ t: 'text', v: (v ?? '').replace(/\u200B/g, '') }); };
     el.childNodes.forEach((node) => {
-      if (node.nodeType === Node.TEXT_NODE) out += (node.nodeValue ?? '').replace(/[{}\u200B]/g, '');
+      if (node.nodeType === Node.TEXT_NODE) text(node.nodeValue);
       else if (node instanceof HTMLElement) {
         const tok = node.dataset.tok;
-        if (tok) out += `{${tok}}`;
-        else if (node.tagName !== 'BR') out += node.textContent?.replace(/[{}\u200B]/g, '') ?? '';
+        if (tok) segs.push({ t: 'token', id: tok });
+        else if (node.tagName !== 'BR') text(node.textContent);
       }
     });
-    return out;
+    return footerTemplateOf(segs);
   };
 
   const sync = () => {
@@ -179,11 +194,11 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
           onBlur={sync}
           style={{ ...fieldStyle, paddingRight: 32 }}
         />
-        {checking && <ReviewIndicator label={reviewLabel} />}
+        {checking && <span style={reviewPlace}><ReviewIndicator label={reviewLabel} /></span>}
         </div>
         <ActionButton interaction="tile" onClick={() => (menu ? setMenu(null) : openMenu({ fromSlash: false }))} style={addBtn}>+ {t('export.footer_insert')}</ActionButton>
       </div>
-      <div style={hintStyle}>{t('export.footer_slash_hint')}</div>
+      <div style={hintStyle}><InfoLine>{t('export.footer_slash_hint')}</InfoLine></div>
 
       <FloatMenu
         row={null}
@@ -211,15 +226,19 @@ export function FooterEditor({ value, onChange, samples, t, checking = false, re
 // exactly that so it's precisely one line tall and aligns with the field.
 const FIELD_LINE = 26;
 const FIELD_PAD_Y = 8;
-const FIELD_BORDER = 1.5;
-// Single-line box height (border-box): the line + top/bottom padding + top/bottom border. The
-// border must be included — both the field and the button are border-box, so leaving it out makes
-// the field 3px taller than the button, which reads as the button sitting higher.
-const FIELD_BOX = FIELD_LINE + FIELD_PAD_Y * 2 + FIELD_BORDER * 2;
-const fieldStyle: CSSProperties = { flex: 1, minHeight: FIELD_BOX, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: `${FIELD_PAD_Y}px 10px`, fontFamily: font.family, ...roleFont('field'), color: skin.ink, lineHeight: `${FIELD_LINE}px`, outline: 'none', boxSizing: 'border-box', overflowWrap: 'anywhere' };
+const FIELD_PAD_X = 10;
+const FIELD_EDGE = 1.5;
+// The single-line box (border-box), shared with every one-line window field.
+const FIELD_BOX = WINDOW_FIELD_BOX;
+const fieldStyle: CSSProperties = { flex: 1, minHeight: FIELD_BOX, background: skin.inset, border: `${FIELD_EDGE}px solid ${skin.line}`, borderRadius: radii.md, padding: `${FIELD_PAD_Y}px ${FIELD_PAD_X}px`, fontFamily: font.family, ...roleFont('field'), color: skin.ink, lineHeight: `${FIELD_LINE}px`, outline: 'none', boxSizing: 'border-box', overflowWrap: 'anywhere' };
+// The check's spinner centred on the first line, as far in from the far edge as the text is from the near one.
+const reviewPlace: CSSProperties = {
+  position: 'absolute', top: FIELD_EDGE + FIELD_PAD_Y, right: FIELD_EDGE + FIELD_PAD_X, height: FIELD_LINE,
+  display: 'flex', alignItems: 'center', pointerEvents: 'none',
+};
 // Exactly one line tall — same box height as the field's collapsed state, so the button and the
 // input align at the top. The dash is the affordance (an edge that takes a tag), which is why this
 // control carries a border where the rest of the window carries none.
 const addBtn: CSSProperties = { flex: 'none', height: FIELD_BOX, display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', border: `1.5px dashed ${skin.line}`, background: 'transparent', cursor: cursors.clickable, borderRadius: radii.md, padding: '0 12px', fontFamily: font.family, ...roleFont('small'), color: skin.muted, whiteSpace: 'nowrap' };
-const hintStyle: CSSProperties = { ...roleFont('caption'), color: skin.muted };
+const hintStyle: CSSProperties = { ...roleFont('note'), color: skin.muted };
 const menuSample: CSSProperties = { fontVariantNumeric: 'tabular-nums', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };

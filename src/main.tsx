@@ -9,7 +9,7 @@ import { showToast } from './platform/channels/toast-bus';
 import { translate } from './i18n/context';
 import { useEditorStore } from './state/store';
 import { preloadScene3D } from './view/map3d/scene/preload';
-import { registerFontsIfWarm } from './ui/shell/splash/preload';
+import { registerFontsIfWarm } from './editor/session/boot-assets';
 
 // A chunk whose preload fails never reaches the boundary around its lazy site, because nothing
 // rendered it: the module loader raises this instead. Same message, from the one place that hears it.
@@ -34,5 +34,5 @@ printConsoleBanner();
 
 document.documentElement.style.fontFamily = APP_FONT_FAMILY;
 // A visit with this build's files cached registers the faces before the first render, decided while
-// the locale loads; a cold visit's splash registers them once its art has arrived.
+// the locale loads; a cold visit's asset run registers them once its art has arrived.
 mountApp(document.getElementById('root')!, <App />, registerFontsIfWarm());

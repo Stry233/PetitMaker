@@ -7,14 +7,14 @@
 import type { CameraAngle } from '../../state/view-camera';
 import type { GridState } from '../../core/model/types';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
-import { seedShots } from '../../view/map3d/capture/shot-list';
+import { shotsOf } from '../../state/shot-list';
 import type { MapCapturer } from '../../view/map-capture';
 import { needsBanding, renderBanded } from './banded';
 import { aspectOf, capture3dStills, captureMapBase, compositionAssets, type BaseMapSource, type MapCaptureHost, type StylizedCompose } from './composition-assets';
 import { CARD_3D_CELL_ASPECT } from './compose';
 import { paintComposition, type CompositionAssets } from './paint';
 import { exportComposition } from './render';
-import { CANVAS_LIMITS, clampedCaptureRequestPx, mapNativePx, type CanvasLimits } from './sizing';
+import { CANVAS_LIMITS, clampedCaptureRequestPx, mapNativePx, mapPictureAspect, type CanvasLimits } from './sizing';
 import { TiledMap } from './tiled-map';
 import type { DroppedRows, ExportComposition, ExportOptions } from './types';
 import type { I18nKey } from '../../i18n/keys';
@@ -60,7 +60,7 @@ export async function runImageExport(
   const { state, summary, options, stylized, limits } = request;
   const nativePx = mapNativePx(state.template);
   const wide = options.resolution === 'original' && !stylized
-    ? exportComposition(options, state, summary, { aspect: nativePx.w / nativePx.h, px: nativePx }, { limits: CANVAS_LIMITS })
+    ? exportComposition(options, state, summary, { aspect: mapPictureAspect(state.template), px: nativePx }, { limits: CANVAS_LIMITS })
     : null;
   // A GPU texture cap below the native size would otherwise shrink the Original.
   const tiled = wide !== null && (needsBanding(wide, limits) || Math.max(nativePx.w, nativePx.h) > host.capture2dTextureCap());
@@ -74,7 +74,7 @@ export async function runImageExport(
       nativePx.w, nativePx.h, (region) => host.capture2d({ tile: { region, resolution: 1 }, grid: options.grid, annotations: options.annotations }),
       tile,
     );
-    mapAspect = nativePx.w / nativePx.h;
+    mapAspect = mapPictureAspect(state.template);
     mapPx = nativePx;
   } else {
     // The Original asks for the largest native capture this device holds; presets a bounded one.
@@ -97,7 +97,7 @@ export async function runImageExport(
 
   let card3dAngles: HTMLImageElement[] = [];
   if (comp.card3d) {
-    const shots = request.shots.length ? request.shots : seedShots(state);
+    const shots = shotsOf(request.shots, state);
     card3dAngles = await capture3dStills(host, state, shots, Math.round(comp.card3d.h * CARD_3D_CELL_ASPECT));
     if (card3dAngles.length === 0) { dropped.card3d = true; comp = layout(); }
   }

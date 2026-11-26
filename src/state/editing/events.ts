@@ -14,8 +14,9 @@ export type EditorEvents = KernelEvents & {
   /** A planet-session ground stroke reached past the canvas edge, the planet's size limit. */
   'ground-clipped': Record<string, never>;
   /** Fired after the viewport pan/zoom transform is applied, so screen-anchored
-   *  React overlays (e.g. selection handles) can reposition. */
-  'viewport-changed': { zoom: number };
+   *  React overlays (e.g. selection handles) can reposition. `content`: the camera stood still and
+   *  what it shows changed under it (the 3D view re-anchors its chrome a frame after an object edit). */
+  'viewport-changed': { zoom: number; content?: true };
   /** The view was asked to fit the whole map (`editor/host/host.ts:host.camera.fit`), by Fit's
    *  button or its key, whether or not the camera moved. */
   'camera-fit': Record<string, never>;

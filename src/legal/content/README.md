@@ -12,7 +12,7 @@ Each of the following IS a repo file that exists for its own sake, so the app re
 
 | Document | Source | Why it lives there |
 |---|---|---|
-| License | `LICENSE` | Byte-exact upstream Apache-2.0 text, sha256-pinned. GitHub reads it at the repo root for license detection. |
+| License | `LICENSE` | The upstream FSL-1.1-ALv2 template with its year and licensor filled, pinned to the template's sha256. GitHub reads it at the repo root for license detection. |
 | Third-party notices | `docs/THIRD_PARTY_NOTICES.md` | **Generated** by `scripts/license-audit.mts` from the lockfile + shipped bundle. Never hand-edit; run `npm run legal:licenses`. |
 | Asset licenses (en) | `docs/ASSET_LICENSES.md` | Public doc, linked from both READMEs. |
 | Asset licenses (zh) | `docs/ASSET_LICENSES.zh-CN.md` | The zh mirror of the above. |

@@ -1,0 +1,36 @@
+{
+  "id": "flower-petunia-red",
+  "category": "flora",
+  "name": {
+    "en": "Red Petunia",
+    "zh": "红矮牵牛",
+    "ja": "レッドペチュニア",
+    "ru": "Красная петуния",
+    "th": "พิทูเนียแดง",
+    "id": "Petunia Merah",
+    "fr": "Pétunia rouge"
+  },
+  "aliases": [
+    "红",
+    "red"
+  ],
+  "icon": "flower-petunia-red",
+  "iconColor": "#f4863f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-petunia",
+    "colorFamily": "red"
+  }
+}

@@ -16,15 +16,14 @@ import { Icon, type IconId } from '../parts/sprite';
 import { inlineProseRuns, INLINE_PROSE_STYLE } from '../parts/model-prose';
 import { OpsList } from './OpRow';
 import { PlanRail } from './PlanRail';
-import type { LaneView } from './Lane';
+import type { LaneViews } from './Lane';
 import { edge, recede } from '../panel-skin';
-import type { Checkpoint } from './ticket-parts';
 import { ACTIVE, INSET, MUTED, PLATE, PLATE_INK } from '../../design/tokens';
 import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { cssMotion, framerMotion } from '../../design/motion';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
+import type { JobView, TakeBackFacts } from '../../../agent/panel';
 import type { Translate, I18nKey } from '../../../i18n/keys';
 
 /** Icon + i18n key for each side stamp a job can carry, as literal key strings (see OpRow.tsx's
@@ -132,14 +131,12 @@ interface JobTicketProps {
   /** The job is on hold: its own mark, and the two verbs that end the hold. */
   paused?: boolean;
   /** The live helper lane (`store.childLive`), for the delegate row that has one. */
-  lane?: LaneView;
+  lane?: LaneViews;
   /** The region vignette that stands beside "in the marked region"; the line renders without it. */
   regionVignette?: ReactNode;
-  /** A job is in flight, so the rail's per-stage take-back stands disabled and says why. */
-  busy?: boolean;
-  /** The live undo depth, so a stage's take-back can name what it would pop. */
-  undoDepth?: number;
-  onRewind?: (checkpoint: Checkpoint) => void;
+  /** The live facts the rail's per-stage take-backs are read against. */
+  takeBack?: TakeBackFacts;
+  onRewind?: (job: JobView, checkpointIndex: number) => void;
   onResume?: () => void;
   onStop?: () => void;
 
@@ -153,8 +150,7 @@ export function JobTicket({
   paused = false,
   lane,
   regionVignette,
-  busy = false,
-  undoDepth,
+  takeBack,
   onRewind,
   onResume,
   onStop,
@@ -336,12 +332,10 @@ export function JobTicket({
         {job.plan ? (
           <PlanRail
             key={job.plan.revision}
+            job={job}
             plan={job.plan}
-            ops={job.ops}
-            checkpoints={job.checkpoints}
             {...(lane ? { lane } : {})}
-            busy={busy}
-            {...(undoDepth !== undefined ? { undoDepth } : {})}
+            {...(takeBack ? { takeBack } : {})}
             {...(onRewind ? { onRewind } : {})}
           />
         ) : (

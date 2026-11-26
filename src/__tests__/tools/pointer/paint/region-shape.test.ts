@@ -93,3 +93,34 @@ describe('a region with a floor, drawn at a margin', () => {
     expect(clampCentre(3, 30, 40)).toBe(19);
   });
 });
+
+/** A box dragged from a fixed anchor out to `end` under a ceiling on its side, as the frame step asks. */
+describe('a region with a ceiling, dragged past it', () => {
+  const MAP = { w: 120, h: 120 };
+  const anchor = { x: 60, y: 60 };
+  const rect = (end: MacroCoord, maxSide: number | null, constrain = false) =>
+    bounds(regionShapeCells('rect', end, 1, { anchor, constrain, minSide: null, maxSide, map: MAP }));
+  const side = ({ anchor: a, end: e }: { anchor: MacroCoord; end: MacroCoord }) => ({ w: e.x - a.x + 1, h: e.y - a.y + 1 });
+
+  it('stops growing at the ceiling in every direction, the anchor held', () => {
+    for (const end of [{ x: 100, y: 95 }, { x: 20, y: 95 }, { x: 100, y: 25 }, { x: 20, y: 25 }]) {
+      const got = rect(end, 33);
+      expect(side(got), JSON.stringify(end)).toEqual({ w: 33, h: 33 });
+      expect([got.anchor.x, got.end.x], 'x').toContain(anchor.x);
+      expect([got.anchor.y, got.end.y], 'y').toContain(anchor.y);
+    }
+  });
+
+  it('limits each side on its own and leaves a box inside the ceiling as drawn', () => {
+    expect(side(rect({ x: 100, y: 64 }, 33))).toEqual({ w: 33, h: 5 });
+    expect(rect({ x: 80, y: 70 }, 33)).toEqual({ anchor, end: { x: 80, y: 70 } });
+  });
+
+  it('keeps a square square at the ceiling', () => {
+    expect(side(rect({ x: 110, y: 90 }, 33, true))).toEqual({ w: 33, h: 33 });
+  });
+
+  it('draws as far as the drag goes where nothing sets a ceiling', () => {
+    expect(side(rect({ x: 100, y: 95 }, null))).toEqual({ w: 41, h: 36 });
+  });
+});

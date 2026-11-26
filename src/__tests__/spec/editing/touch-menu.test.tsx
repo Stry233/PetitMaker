@@ -108,7 +108,7 @@ function scene(mode: InputMode = 'touch', over: ReactNode = null): Scene {
   canvas = render(
     <InputModeProvider inputMode={mode}>
       <I18nProvider>
-        <Shell onRestoreSession={() => {}}><Canvas /></Shell>
+        <Shell><Canvas /></Shell>
         <HoldRing />
         <ContextMenu />
         {over}
@@ -265,11 +265,25 @@ describe('the long-press menu', () => {
   it('publishes the text weights for the zoom a finger\'s menu is drawn at', () => {
     const { house } = scene();
     hold(house.position);
-    const menu = screen.getByRole('menu');
-    const zoom = Number(menu.style.zoom);
+    // The nearest box drawn at a zoom carries the weights its text reads at that zoom.
+    let layer: HTMLElement | null = screen.getByRole('menu');
+    while (layer && !layer.style.zoom) layer = layer.parentElement;
+    const zoom = Number(layer!.style.zoom);
+    expect(zoom).toBeGreaterThan(0);
     for (const [name, weight] of Object.entries(weightVars(zoom, 1, false))) {
-      expect(menu.style.getPropertyValue(name), name).toBe(String(weight));
+      expect(layer!.style.getPropertyValue(name), name).toBe(String(weight));
     }
+  });
+
+  spec('EDIT-32', 'a locked object\'s menu offers no turn, by mouse as by finger', () => {
+    const { w, house } = scene('pc');
+    w.state.objects.set(house.id, { ...house, locked: true });
+    pointer(canvas, 'pointerdown', house.position, { kind: 'mouse', button: 2 });
+    pointer(window, 'pointerup', house.position, { kind: 'mouse', button: 2 });
+    expect(menuRows()).toEqual([translate('context.delete')]);
+    act(() => { useEditorStore.getState().setContextMenu(null); });
+    hold(house.position);
+    expect(menuRows()).not.toContain(translate('a11y.rotate'));
   });
 
   spec('EDIT-42', 'the PC right-click menu offers the four facings and delete, with no head', () => {
@@ -285,12 +299,15 @@ describe('the long-press menu', () => {
 });
 
 describe('latched multi-select', () => {
+  /** The bar's count as it reads: its line, or the wide tile's name over its number. */
+  const countRead = () => { const el = screen.getByTestId('multi-select-count'); return el.getAttribute('aria-label') ?? el.textContent; };
+
   spec('EDIT-43', 'after multi-select, taps add and remove, a drag from empty map bands, a drag from a selected object moves the group, Done clears the latch', () => {
     const { w, ground, house, a, b } = scene();
     hold(house.position);
     fireEvent.click(screen.getByRole('menuitem', { name: translate('shortcut.multi_select') }));
     expect(selected()).toEqual([house.id]);
-    expect(screen.getByTestId('multi-select-plate').textContent).toContain(translate('selection.multi_count', { n: 1 }));
+    expect(countRead()).toContain(translate('selection.multi_count', { n: 1 }));
 
     tap(a.position);
     expect(selected(), 'a tap adds').toEqual([a.id, house.id].sort());
@@ -300,7 +317,7 @@ describe('latched multi-select', () => {
     drag({ x: ground.x + 5, y: ground.y }, { x: ground.x + 8, y: ground.y + 3 });
     expect(selected(), 'a drag from empty map bands').toEqual([a.id, b.id].sort());
     expect(pan).not.toHaveBeenCalled();
-    expect(screen.getByTestId('multi-select-plate').textContent).toContain(translate('selection.multi_count', { n: 2 }));
+    expect(countRead()).toContain(translate('selection.multi_count', { n: 2 }));
 
     drag(a.position, { x: a.position.x, y: a.position.y + 2 });
     expect(w.state.objects.get(a.id)?.position.y, 'the group moves').toBe(a.position.y + 2);

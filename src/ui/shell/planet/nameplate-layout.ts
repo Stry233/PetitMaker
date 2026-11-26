@@ -42,7 +42,7 @@ export function nameplateSpan(
   layout: Pick<FrameLayout, 'width' | 'edgeRight' | 'cornerTop' | 'modeRow'>, modes: number,
 ): NameplateSpan {
   const level = layout.cornerTop < nameplateBottom(frameZoom, plateZoom) * plateZoom / frameZoom;
-  const corner = level ? cornerWidth(cornerArt(true)) + RAIL.groupMin : 0;
+  const corner = level ? cornerWidth(cornerArt('planet')) + RAIL.groupMin : 0;
   return {
     // An upright window's row stands at the foot, which leaves the top line to the window's margin.
     left: (layout.modeRow.placement === 'top' ? modeRowRight(modes, layout.modeRow) + RAIL.groupMin : EDGE) * frameZoom,

@@ -30,6 +30,18 @@ describe('rebinding', () => {
       holder = id;
     }
   });
+
+  spec('UI-15', 'refuses a key the browser or the system takes, alone or under a modifier, and leaves the command on its key', () => {
+    const id = COMMAND_META.find((c) => c.defaultCombo !== null)!.id;
+    const before = bound(id);
+    for (const combo of ['enter', 'tab', 'f5', 'f12', 'capslock', 'ctrl+enter', 'shift+f5']) {
+      const result = useKeybinds.getState().rebind(id, combo);
+      expect(result, combo).toEqual({ ok: false, reason: 'unbindable-key' });
+      expect(bound(id), combo).toBe(before);
+    }
+    // The keypad's Enter is its own key, which the page hears.
+    expect(useKeybinds.getState().rebind(id, 'numenter').ok).toBe(true);
+  });
 });
 
 describe('a window in front of the map', () => {

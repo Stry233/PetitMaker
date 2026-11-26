@@ -11,11 +11,10 @@ import { bumpObjectsVersion } from '../../../../core/model/grid-model';
 import type { EditorEvents } from '../../../../state/editing/events';
 import { formatNumber, I18nProvider } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import { getMapStats } from '../../../../state/map-stats';
+import { chunkLoad, getMapStats } from '../../../../state/map-stats';
 import { ChunkLoadWindow } from '../../../../ui/chrome/modals/load/ChunkLoadWindow';
 import { TOP_RIGHT } from '../../../../ui/shell/frame';
 import { LoadMeter } from '../../../../ui/shell/controls/LoadMeter';
-import { chunkLoad } from '../../../../ui/chrome/modals/load/map-load';
 import { makeObject, makeState } from '../../../_support/map-state';
 import { CHUNK_LOAD_LIMIT, CHUNK_SIZE } from '../../../../core/game/profile';
 

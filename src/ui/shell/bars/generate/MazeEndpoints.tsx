@@ -8,7 +8,8 @@ import { clientPoint } from '../../../../platform/device/viewport-space';
 import { useCallback, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { readableWeight } from '../../../design/text-weight';
+import { motion } from 'framer-motion';
+import { mapMarkSize, readableWeight } from '../../../design/text-weight';
 import { useDenseScript, useDevicePixelRatio } from '../../../design/scale';
 import { getActiveView, onProjectionChange } from '../../../../view/active-view';
 import type { ViewProjection } from '../../../../tools/pointer/runtime';
@@ -22,6 +23,8 @@ import { ACTIVE, PLATE_INK } from '../../../design/tokens';
 import { PLACEMENT_GRID } from '../../../../core/game/profile';
 import { cellUnder } from '../../../../core/grid/pointer';
 import { cellKey } from '../../../../core/grid/rect';
+import { useWindowDrag } from '../../../primitives/use-window-drag';
+import { useInteractionProfiles } from '../../../design/input-mode';
 import type { I18nKey } from '../../../../i18n/keys';
 
 /** Smallest a mark may draw at, in css px: below this the character stops being readable and the
@@ -35,13 +38,13 @@ function gateMarkStyle(size: number, dpr = 1, dense = false): CSSProperties {
     background: ACTIVE,
     color: PLATE_INK,
     fontFamily: font.family,
-    fontWeight: readableWeight(900, size * 0.42, dense, dpr),
+    fontWeight: readableWeight(900, mapMarkSize(size), dense, dpr),
     lineHeight: 1,
     whiteSpace: 'nowrap',
     borderRadius: radii.pill,
     height: `${size}px`,
-    padding: `0 ${Math.round(size * 0.42)}px`,
-    fontSize: `${size * 0.42}px`,
+    padding: `0 ${Math.round(mapMarkSize(size))}px`,
+    fontSize: `${mapMarkSize(size)}px`,
   };
 }
 
@@ -72,25 +75,25 @@ function Marker({ end, text, testId, onMove, pictured }: {
   const eventBus = useEditorStore((s) => s.eventBus);
   const dpr = useDevicePixelRatio();
   const dense = useDenseScript();
+  const profile = useInteractionProfiles().pill;
 
   const place = useCallback(() => {
     const el = ref.current;
     const projection = pictured ? pictured.projection() : getActiveView()?.projection;
     if (!el) return;
     if (!projection) { el.style.display = 'none'; return; }
-    const tl = projection.cellToScreen(end.cell.x, end.cell.y);
-    const br = projection.cellToScreen(end.cell.x + 1, end.cell.y + 1);
-    const size = Math.max(MIN_PX, br.x - tl.x);
-    // A cell behind the camera projects through a negative divide: finite coordinates, mirrored.
-    if (tl.behind || !(br.x - tl.x > 0)) { el.style.display = 'none'; return; }
+    // The cell's centre and its side on screen, which hold at any turn of either view.
+    const centre = projection.cellToScreen(end.cell.x + 0.5, end.cell.y + 0.5);
+    if (centre.behind) { el.style.display = 'none'; return; }
+    const size = Math.max(MIN_PX, centre.scale);
     el.style.display = 'flex';
-    el.style.top = `${tl.y + (br.y - tl.y) / 2 - size / 2}px`;
+    el.style.top = `${centre.y - size / 2}px`;
     // A pill sized to the cell's height and the word's width, so a longer language reads whole.
     Object.assign(el.style, gateMarkStyle(size, dpr, dense));
     el.style.width = 'auto';
     // Measured after the text has its size, so the pill is centred on its cell by its own width.
     const w = el.offsetWidth;
-    el.style.left = `${tl.x + (br.x - tl.x) / 2 - w / 2}px`;
+    el.style.left = `${centre.x - w / 2}px`;
   }, [end.cell.x, end.cell.y, dpr, dense, pictured]);
 
   useEffect(() => {
@@ -98,43 +101,19 @@ function Marker({ end, text, testId, onMove, pictured }: {
     return pictured ? pictured.watch(place) : onProjectionChange(eventBus, place, { cells: false });
   }, [eventBus, place, pictured]);
 
-  /*
-   * The drag is followed on the window from the press: synthetic pointers cannot claim a capture, and a state
-   * flag would miss the first moves.
-   */
-  const latest = useRef(onMove);
-  latest.current = onMove;
-  const stop = useRef<(() => void) | null>(null);
-  useEffect(() => () => stop.current?.(), []);
-
-  const startDrag = useCallback((): void => {
-    stop.current?.();
-    const cellAt = (e: PointerEvent): MacroCoord | null => {
-      const view = getActiveView();
-      return view ? cellUnder(view.projection, clientPoint(e).x, clientPoint(e).y, PLACEMENT_GRID) : null;
-    };
-    const move = (e: PointerEvent): void => {
-      const cell = cellAt(e);
-      if (cell) latest.current(cell, false);
-    };
-    const up = (e: PointerEvent): void => {
-      stop.current?.();
-      const cell = cellAt(e);
-      if (cell) latest.current(cell, true);
-    };
-    stop.current = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-      stop.current = null;
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
-  }, []);
+  // A cancelled drag drops where the pointer last stood, as a release does.
+  const cellAt = (e: PointerEvent): MacroCoord | null => {
+    const view = getActiveView();
+    return view ? cellUnder(view.projection, clientPoint(e).x, clientPoint(e).y, PLACEMENT_GRID) : null;
+  };
+  const drag = useWindowDrag<null>({
+    move: (e) => { const cell = cellAt(e); if (cell) onMove(cell, false); },
+    end: (e) => { const cell = cellAt(e); if (cell) onMove(cell, true); },
+  });
 
   return (
-    <div
+    // Framer's scale owns `transform`, which `place()` never writes: it stands the mark by left and top.
+    <motion.div
       ref={ref}
       data-testid={testId}
       data-cell={cellKey(end.cell.x, end.cell.y)}
@@ -143,7 +122,8 @@ function Marker({ end, text, testId, onMove, pictured }: {
       role="button"
       aria-label={text}
       tabIndex={-1}
-      onPointerDown={pictured ? undefined : startDrag}
+      onPointerDown={pictured ? undefined : (e) => drag.start(e, null)}
+      {...profile}
       style={{
         // The face (fill, ink, font, size ratios) is `place()`'s to draw, from `gateMarkStyle`,
         // once it knows the cell's projected size; this is the shell before that first measurement.
@@ -153,7 +133,7 @@ function Marker({ end, text, testId, onMove, pictured }: {
       }}
     >
       {text}
-    </div>
+    </motion.div>
   );
 }
 

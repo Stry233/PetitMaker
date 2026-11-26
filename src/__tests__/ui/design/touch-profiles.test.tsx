@@ -113,14 +113,6 @@ describe('touch sizing', () => {
     }
   });
 
-  spec('UI-27', 'in touch mode each layer step carries a fingertip hit area', () => {
-    resizeTo(844, 390);
-    const { getByRole } = render(<LayerControl panelOpen={false} onOpen={() => {}} veiled={false} />, { wrapper: under('touch') });
-    for (const name of [/add a layer|添加图层|layer up|add layer/i, /remove a layer|删除图层|layer down|remove layer/i]) {
-      expect(getByRole('button', { name }).querySelector('[data-touch-reach]'), String(name)).not.toBeNull();
-    }
-  });
-
   spec('UI-27', 'in touch mode every control on the open layer panel answers a fingertip, and the file\'s rows stand a fingertip apart', () => {
     resizeTo(844, 390);
     useEditorStore.setState({ gridState: makeState() });

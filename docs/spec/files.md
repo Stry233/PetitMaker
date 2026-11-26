@@ -4,7 +4,7 @@ This area covers how a map leaves PetitMaker and comes back: JSON map files, the
 
 ## Map files
 
-- **FILE-01** A map exported as JSON opens again as the same map, with the same terrain, objects and planning annotations, and with its title and description when they were included. Source: file format.
+- **FILE-01** A map exported as JSON opens again as the same map, with the same terrain, objects, planning annotations and placed blueprint groups (BLUE-07), and with its title and description when they were included. Source: file format.
 - **FILE-02** A map on a built-in planet records only which planet it was made on, while a map on a custom planet carries the whole planet, so it opens without that planet in My planets. Source: file format.
 - **FILE-03** The JSON export always includes the map and writes only the optional sections the user chooses: planning annotations, title and description, generation recipe, provenance ledger, step history (all of it or the last steps), editor session, statistics and catalog info. A section the map cannot fill, such as the recipe of terrain that was not fully generated, is unavailable. Source: file format.
 - **FILE-04** Opening a JSON export restores the sections it carries, including a step history that can be undone and redone, the locked layers and the cameras; a section that cannot be restored is left out with a warning that names it as the export window does, in the user's language, and the map still opens.
@@ -43,12 +43,13 @@ This area covers how a map leaves PetitMaker and comes back: JSON map files, the
 
 ## Import
 
-- **FILE-28** Import decides what a file is from its content, whatever its name: a map file, a share image, a planet file or a game video. A planet file or video given to Import map, or a map file given to Import planet, is pointed to the window that reads it, and any other file is refused with a message saying it is neither a map file nor a Share Image.
+- **FILE-28** Import decides what a file is from its content, whatever its name: a map file, a share image, a planet file, a blueprint file or a game video. A planet file or video given to Import map, or a map file given to Import planet, is pointed to the window that reads it; a blueprint file given to either, or dropped on the page, goes to the blueprint library and opens Blueprint, and any other file is refused with a message saying it is neither a map file nor a Share Image.
 - **FILE-29** An imported map is shown with its picture, title and description before it replaces the open map, and the open map changes only when the user confirms, however the file arrived.
+- **FILE-34** While a planet is being edited in the planet editor or a map is being repaired by hand, no file is taken: a file dropped on the page is left unopened and shows no drop card, a map decoded before then is not installed, and the session with the map waiting behind it stays as it was; once the session ends files are taken again.
 
 ## Export
 
 - **FILE-30** An image export never comes out blank: on a device whose canvas cannot hold the whole composition, the image is composed in tiles or comes out smaller.
-- **FILE-31** Before every map image or map file download, Export first included, a notice of the user's responsibilities appears; the download starts only after the notice has been open for a few seconds, scrolled to its end and confirmed, and going back downloads nothing.
+- **FILE-31** Before every map image or map file download, Export first and the 3D preview's own picture included, a notice of the user's responsibilities appears; the download starts only after the notice has been open for a few seconds, scrolled to its end and confirmed, and going back downloads nothing.
 - **FILE-32** Exports show only approved text: a custom planning tag appears once the text check approves it and a custom planet's name shows as its default name until approved, while the autosave keeps every tag as entered.
 - **FILE-33** Erasing local data in Settings asks for confirmation, removes everything the editor stored in this browser (provider keys, the autosaved session, My planets and all preferences) and restarts the editor as new; an autosave pending at that moment is never written afterwards.

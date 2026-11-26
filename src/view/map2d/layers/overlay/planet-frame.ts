@@ -4,6 +4,7 @@ import { isMotionReduced } from '../../../../platform/channels/motion-state';
 import { CHUNK_GRID_STYLE, chunkStrokeCells, planetFrameRects } from '../../../shared/grid/reference-grid';
 import type { PlanetFrame } from '../../../../core/model/planet';
 import type { OverlayHost } from './host';
+import { timedBeat } from '../../../shared/viewport/frame-loop';
 import { GHOST_LOSS } from '../../../shared/viewport/view-constants';
 
 /** The custom planet's dashed frame and its warning flash. */
@@ -14,7 +15,7 @@ export class OverlayPlanetFrame {
   readonly planetFrameGraphics = new PIXI.Graphics();
   /** The same dashes in the warning tint, faded in and out over the ink by a flash. */
   readonly planetFrameFlash = new PIXI.Graphics();
-  private planetFlashAnim: number | null = null;
+  private stopFrameFlash: (() => void) | null = null;
 
   showFrame(frame: PlanetFrame | null): void {
     this.planetFrame = frame;
@@ -41,22 +42,19 @@ export class OverlayPlanetFrame {
    * Under reduced motion nothing runs: the frame itself still shows where the planet ends.
    */
   flashFrame(durationMs: number): void {
-    if (this.host.disposed || !this.planetFrame || this.planetFlashAnim !== null || isMotionReduced()) return;
-    const start = performance.now();
-    const step = () => {
-      this.host.requestRender();
-      const t = Math.min((performance.now() - start) / durationMs, 1);
+    if (this.host.disposed || !this.planetFrame || this.stopFrameFlash !== null || isMotionReduced()) return;
+    let ended = false;
+    const stop = this.host.play(timedBeat(durationMs, (t) => {
       this.planetFrameFlash.alpha = Math.sin(Math.PI * t);
-      if (t < 1) { this.planetFlashAnim = requestAnimationFrame(step); return; }
-      this.endFrameFlash();
-    };
-    this.planetFlashAnim = requestAnimationFrame(step);
+      if (t >= 1) { ended = true; this.endFrameFlash(); }
+    }));
+    if (!ended) this.stopFrameFlash = stop;
   }
 
   /** Ends a running frame flash. */
   endFrameFlash(): void {
-    if (this.planetFlashAnim !== null) cancelAnimationFrame(this.planetFlashAnim);
-    this.planetFlashAnim = null;
+    this.stopFrameFlash?.();
+    this.stopFrameFlash = null;
     this.planetFrameFlash.alpha = 0;
   }
 

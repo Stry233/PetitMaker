@@ -2,8 +2,8 @@
  * The one startup warm schedule: every lazy chunk and first-use file the normal flow would otherwise
  * load just in time, fetched once per page in priority order, at most two at a time.
  *
- * A cold visit runs it inside the splash, which counts its items; a warm visit (no splash) starts it
- * after the editor's first paint. Either way it is the same run: whichever asks first starts it and
+ * A cold visit runs it inside the boot's asset run (`editor/session/boot-assets.ts`, which states
+ * the run's shape and counts its items); a warm visit (no splash) starts it after the editor's first paint. Either way it is the same run: whichever asks first starts it and
  * the other joins. Code is loaded through the same memoized loaders its surfaces use; files only
  * reach the HTTP cache. `warmTier()` decides how much a device takes on, and the background files (the
  * content check's, then the illustration runtime's on the full tier) follow the counted items without
@@ -21,6 +21,7 @@ import { loadNewTagCard } from './loaders';
 import { warmFiles } from './files';
 import { decodeImage, prefetchIntoCache } from '../../../platform/async/http-cache';
 import { allIconUrls } from '../../../assets/icon-urls';
+import type { WarmItem, WarmRun } from '../../../editor/session/boot-assets';
 
 const CONCURRENCY = 2;
 /** How many catalog icons decode at once in the background. */
@@ -75,32 +76,10 @@ async function runLimited<T extends { run: Task }>(
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, lane));
 }
 
-/** One counted item of the run. */
-export interface WarmItem {
-  /** The file it fetches; a code item (a lazy chunk's loader) has none. */
-  readonly url?: string;
-}
-
 interface Job extends WarmItem { readonly run: Task }
 
 /** The item a job counts as, without its task. */
 const itemOf = ({ url }: Job): WarmItem => Object.freeze(url === undefined ? {} : { url });
-
-interface WarmRun {
-  /** The counted items, in order; known once `planned` resolves. */
-  items(): readonly WarmItem[];
-  /** The counted items settled so far, in the order they settled. */
-  settledItems(): readonly WarmItem[];
-  /** Resolves once the counted items are known. */
-  readonly planned: Promise<void>;
-  /** Resolves once every counted item has settled; never rejects. */
-  readonly settled: Promise<void>;
-  /** Called with each counted item as it settles; returns the unsubscribe. */
-  subscribe(listener: (item: WarmItem) => void): () => void;
-  /** Starts each counted item without waiting for an idle moment until the returned release, for a
-   *  screen that waits on them: an engine may grant idle time rarely (Zen: once a second). */
-  rush(): () => void;
-}
 
 function createRun(tier: WarmTier): WarmRun {
   const listeners = new Set<(item: WarmItem) => void>();

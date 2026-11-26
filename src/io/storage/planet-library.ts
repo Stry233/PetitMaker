@@ -13,7 +13,7 @@ import { jsonObject, jsonPref, readPref, writeJsonPref } from '../../platform/st
 import { decodeRecord, encodeRecord } from './record-codec';
 import { parseTemplate, serializeTemplate, type SerializedTemplate } from '../save/planet-codec';
 import { isInputRefusal } from '../save/import-error';
-import { generateId } from '../../core/model/object-id';
+import { generateRecordId } from '../../core/model/object-id';
 import { createSignal } from '../../core/base/signal';
 import { onTextVerdicts, textVerdictsVersion } from '../../state/text-verdicts';
 import { planetEntryAmong } from '../../state/planet-name-verdict';
@@ -54,11 +54,7 @@ export function onPlanetLibraryChange(fn: () => void): () => void {
   return () => { offLibrary(); offVerdicts(); };
 }
 
-function newEntryId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (typeof c?.randomUUID === 'function') return c.randomUUID();
-  return generateId('p');
-}
+const newEntryId = (): string => generateRecordId('p');
 
 /** The rim cells of `template` among `stored`, or undefined when `stored` is not such a list. */
 function rimSandFor(template: MapTemplate, stored: unknown): number[] | undefined {
@@ -108,7 +104,7 @@ function announce(): void {
   changed.emit();
 }
 
-function writeEntries(entries: PlanetEntry[]): boolean {
+function writeEntries(entries: readonly PlanetEntry[]): boolean {
   cached = null;
   const record: StoredLibrary = {
     v: 1,
@@ -151,9 +147,13 @@ interface SavePlanetOptions {
 
 /** Adds a planet, or replaces the planet, name and rim sand of `replaceEntryId` when that entry exists. */
 export function savePlanet(name: string, planet: MapTemplate, options: SavePlanetOptions = {}): SavePlanetResult {
+  return saveAmong(listPlanets(), name, planet, options);
+}
+
+/** `savePlanet` over `entries`, the library as its caller just read it. */
+function saveAmong(entries: readonly PlanetEntry[], name: string, planet: MapTemplate, options: SavePlanetOptions): SavePlanetResult {
   const { replaceEntryId, nameReviewed = true, rimSand } = options;
   const template = namedTemplate(planet, name);
-  const entries = readEntries();
   const now = Date.now();
   const at = replaceEntryId === undefined ? -1 : entries.findIndex((e) => e.entryId === replaceEntryId);
   const prior = at >= 0 ? entries[at]! : null;
@@ -161,8 +161,16 @@ export function savePlanet(name: string, planet: MapTemplate, options: SavePlane
     entryId: prior?.entryId ?? newEntryId(), name, nameReviewed, template, createdAt: prior?.createdAt ?? now, updatedAt: now,
     ...(rimSand ? { rimSand } : {}),
   };
-  if (at >= 0) entries[at] = entry; else entries.push(entry);
-  return writeEntries(entries) ? { ok: true, entry } : { ok: false, reason: 'quota' };
+  const next = at >= 0 ? entries.map((e, i) => (i === at ? entry : e)) : [...entries, entry];
+  return writeEntries(next) ? { ok: true, entry } : { ok: false, reason: 'quota' };
+}
+
+/** `entries` with the entry `entryId` replaced by what `change` makes of it, or null when no entry
+ *  is `entryId` or `change` declines it. */
+function withEntry(entries: readonly PlanetEntry[], entryId: string, change: (entry: PlanetEntry) => PlanetEntry | null): PlanetEntry[] | null {
+  const at = entries.findIndex((x) => x.entryId === entryId);
+  const changed = at >= 0 ? change(entries[at]!) : null;
+  return changed ? entries.map((e, i) => (i === at ? changed : e)) : null;
 }
 
 /**
@@ -170,9 +178,10 @@ export function savePlanet(name: string, planet: MapTemplate, options: SavePlane
  * write still returns the unsaved entry.
  */
 export function adoptPlanet(template: MapTemplate, name?: string): PlanetEntry {
-  const existing = readEntries().find((e) => e.template.id === template.id);
+  const entries = listPlanets();
+  const existing = entries.find((e) => e.template.id === template.id);
   if (existing) return existing;
-  const saved = savePlanet(name ?? template.name.en ?? '', template, { nameReviewed: false });
+  const saved = saveAmong(entries, name ?? template.name.en ?? '', template, { nameReviewed: false });
   if (saved.ok) return saved.entry;
   const now = Date.now();
   const unsaved = name ?? template.name.en ?? '';
@@ -185,14 +194,8 @@ export function adoptInstalledPlanet(state: Pick<GridState, 'template'>): void {
 }
 
 export function renamePlanet(entryId: string, name: string): boolean {
-  const entries = readEntries();
-  const e = entries.find((x) => x.entryId === entryId);
-  if (!e) return false;
-  e.name = name;
-  e.nameReviewed = true;
-  e.template = namedTemplate(e.template, name);
-  e.updatedAt = Date.now();
-  return writeEntries(entries);
+  const next = withEntry(listPlanets(), entryId, (e) => ({ ...e, name, nameReviewed: true, template: namedTemplate(e.template, name), updatedAt: Date.now() }));
+  return next !== null && writeEntries(next);
 }
 
 /**
@@ -200,23 +203,24 @@ export function renamePlanet(entryId: string, name: string): boolean {
  * entry takes `replacement` for good. Nothing changes when the entry's name is no longer `checked`.
  */
 export function settlePlanetName(entryId: string, checked: string, replacement: string | null): boolean {
-  const entries = readEntries();
-  const e = entries.find((x) => x.entryId === entryId);
-  if (!e || e.nameReviewed || e.name !== checked) return false;
-  e.nameReviewed = true;
-  if (replacement !== null) { e.name = replacement; e.template = namedTemplate(e.template, replacement); }
-  return writeEntries(entries);
+  const next = withEntry(listPlanets(), entryId, (e) => {
+    if (e.nameReviewed || e.name !== checked) return null;
+    if (replacement === null) return { ...e, nameReviewed: true };
+    return { ...e, nameReviewed: true, name: replacement, template: namedTemplate(e.template, replacement) };
+  });
+  return next !== null && writeEntries(next);
 }
 
 export function duplicatePlanet(entryId: string, name: string): PlanetEntry | null {
-  const source = readEntries().find((x) => x.entryId === entryId);
+  const entries = listPlanets();
+  const source = entries.find((x) => x.entryId === entryId);
   if (!source) return null;
-  const saved = savePlanet(name, source.template, source.rimSand ? { rimSand: source.rimSand } : {});
+  const saved = saveAmong(entries, name, source.template, source.rimSand ? { rimSand: source.rimSand } : {});
   return saved.ok ? saved.entry : null;
 }
 
 export function removePlanet(entryId: string): boolean {
-  const entries = readEntries();
+  const entries = listPlanets();
   const kept = entries.filter((x) => x.entryId !== entryId);
   if (kept.length === entries.length) return false;
   return writeEntries(kept);

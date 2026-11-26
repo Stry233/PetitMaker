@@ -9,6 +9,13 @@ export const isRecord = (v: unknown): v is Record<string, unknown> => v !== null
 
 export const isString = (v: unknown): v is string => typeof v === 'string';
 
+/** The longest id a file may give an object, a record, a group, a tag or a catalog item. */
+export const ID_MAX_LENGTH = 64;
+
+/** An id in the alphabet the app mints: letters, digits, `_` and `-`, at most `ID_MAX_LENGTH` long.
+ *  Ids can enter model context, so a decoder admits no other. */
+export const isValidId = (v: unknown): v is string => typeof v === 'string' && v.length <= ID_MAX_LENGTH && /^[A-Za-z0-9_-]+$/.test(v);
+
 export const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 
 /** A number that is neither NaN nor infinite. */

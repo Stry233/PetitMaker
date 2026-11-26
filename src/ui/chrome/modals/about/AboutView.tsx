@@ -3,15 +3,19 @@
  * grid About drills into, feedback, support, the filing numbers and the footer. Wide windows lay it
  * out as a brand band over two panes; narrow ones stack it in one column.
  */
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, ReactElement } from 'react';
 import { motion } from 'framer-motion';
 import { useLocale, useT } from '../../../../i18n/context';
 import { joinList } from '../../../../i18n/locale-info';
 import { EDITION_COPY, SUPPORTS_CLIPBOARD, SUPPORTS_EXTERNAL_LINKS, inEdition } from '../../../../platform/build/edition';
 import { APP_VERSION, BUILD_DATE, BUILD_NUMBER, BUILD_SHA, BUILD_YEAR } from '../../../../platform/build/build-info';
+import { copyText } from '../../../../platform/device/clipboard';
 import { APP_NAME } from '../../../../i18n/terms/brand';
 import { DOCS, qqChannelPageUrl, teamInReadingOrder, type DocId } from '../../../../legal/registry';
-import { DocIcon } from './doc-icons';
+import {
+  AboutIcon, ChevronRightIcon, ClockIcon, DocumentIcon, ExternalLinkIcon, HeartIcon, LockIcon, MailIcon, PackageIcon, PaletteIcon,
+  ScalesIcon, ShieldIcon,
+} from '../../../primitives/line-glyphs';
 import { LEGAL, memberUrl } from '../../../../legal/config';
 import { teamAvatarUrl } from '../../../../legal/team-avatars';
 import { cursors } from '../../../design/styles';
@@ -25,20 +29,22 @@ import {
 } from './about-styles';
 import { useInteractionProfiles } from '../../../design/input-mode';
 
-/** The documents About drills into, in reading order; the offline edition carries the licences only. */
-const DOC_ROWS: readonly { id: DocId; lite?: false }[] = [
-  { id: 'privacy', lite: false },
-  { id: 'terms', lite: false },
-  { id: 'license' },
-  { id: 'third-party' },
-  { id: 'asset-licenses' },
-  { id: 'security', lite: false },
-  { id: 'contact', lite: false },
-  { id: 'changelog', lite: false },
-];
-const GRID_DOCS: DocId[] = DOC_ROWS.filter(inEdition).map((row) => row.id);
+/** The documents About drills into, in reading order, of those the edition carries (`legal/registry.ts`). */
+const DOC_ROWS: readonly DocId[] = ['privacy', 'terms', 'license', 'third-party', 'asset-licenses', 'security', 'contact', 'changelog'];
 /** Whether About may drill into `id`: in the offline edition, only a document it carries. */
-export const opensDoc = (id: DocId): boolean => inEdition(DOC_ROWS.find((row) => row.id === id) ?? { lite: false });
+export const opensDoc = (id: DocId): boolean => inEdition(DOCS[id]);
+const GRID_DOCS: DocId[] = DOC_ROWS.filter(opensDoc);
+
+/** The mark each document's row leads with. */
+const DOC_ICONS: Record<DocId, (p: { size?: number }) => ReactElement> = {
+  privacy: ShieldIcon, terms: DocumentIcon, license: ScalesIcon, 'third-party': PackageIcon, 'asset-licenses': PaletteIcon,
+  about: AboutIcon, security: LockIcon, contact: MailIcon, changelog: ClockIcon,
+};
+
+function DocIcon({ id }: { id: DocId }) {
+  const Icon = DOC_ICONS[id];
+  return <Icon size={16} />;
+}
 
 interface AboutViewProps {
   wide: boolean;
@@ -108,7 +114,7 @@ export function AboutView({ wide, onOpenDoc, rowRefs }: AboutViewProps) {
 function VersionRow({ wide }: { wide: boolean }) {
   const t = useT();
   const press = useInteractionProfiles().action;
-  const { copied, copy } = useCopyFeedback<'build'>();
+  const { copied, copy } = useCopyFeedback<'build'>(copyText);
   const locale = useLocale();
   const versionText = joinList(locale, [
     t('about.version_number', { version: APP_VERSION }), t('about.build_number', { build: BUILD_NUMBER }), BUILD_SHA, BUILD_DATE,
@@ -145,10 +151,10 @@ function Roster({ members, wide, gridTestId, cardTestId }: { members: typeof LEG
   return (
     <div style={wide ? wideGrid : teamGrid} data-testid={gridTestId}>
       {teamInReadingOrder(members).map((m) => {
-        const avatar = teamAvatarUrl(m.bilibili);
+        const avatar = teamAvatarUrl(m.profileId);
         return (
           <Member
-            key={m.bilibili}
+            key={m.profileId}
             data-testid={cardTestId}
             style={{ ...(wide ? wideCard : memberCard), ...(!SUPPORTS_EXTERNAL_LINKS ? { cursor: cursors.default } : {}) }}
             {...(!SUPPORTS_EXTERNAL_LINKS ? {} : { href: memberUrl(m), target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('about.team_link', { name: m.name }), ...press })}
@@ -173,9 +179,9 @@ function LegalGrid({ onOpenDoc, rowRefs }: Pick<AboutViewProps, 'onOpenDoc' | 'r
       <div style={gridStyle} data-testid="legal-grid">
         {GRID_DOCS.map((id) => (
           <ActionButton key={id} data-testid={`legal-row-${id}`} ref={(el) => { rowRefs.current[id] = el; }} style={gridRow} onClick={() => onOpenDoc(id)}>
-            <span style={gridIcon}><DocIcon id={id} size={16} /></span>
+            <span style={gridIcon}><DocIcon id={id} /></span>
             <span style={gridLabel}>{t(DOCS[id].titleKey)}</span>
-            <span style={chevron} aria-hidden>›</span>
+            <span style={chevron} aria-hidden><ChevronRightIcon size={16} /></span>
           </ActionButton>
         ))}
       </div>
@@ -205,16 +211,16 @@ function Feedback() {
             <span>{t('about.qq_channel_name')}</span>
             <span style={{ ...teamNote, margin: 0 }}>{t('about.qq_channel_number', { number: LEGAL.qqFeedbackChannel })}</span>
           </span>
-          <span style={chevron} aria-hidden>↗</span>
+          <span style={chevron} aria-hidden><ExternalLinkIcon size={16} /></span>
         </motion.a>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }} data-testid="report-links">
           <motion.a href={`${LEGAL.repoUrl}/issues`} target="_blank" rel="noopener noreferrer" style={gridRow} {...press}>
             <span style={gridLabel}>{t('about.github_issues')}</span>
-            <span style={chevron} aria-hidden>↗</span>
+            <span style={chevron} aria-hidden><ExternalLinkIcon size={16} /></span>
           </motion.a>
           <motion.a href={`mailto:${LEGAL.privacyContactEmail}`} style={gridRow} {...press}>
             <span style={gridLabel}>{t('about.email_feedback')}</span>
-            <span style={chevron} aria-hidden>↗</span>
+            <span style={chevron} aria-hidden><ExternalLinkIcon size={16} /></span>
           </motion.a>
         </div>
       </div>
@@ -235,11 +241,9 @@ function Support() {
           { href: LEGAL.sponsorship.afdian, key: 'about.afdian' },
         ] as const).map(({ href, key }) => (
           <motion.a key={key} href={href} target="_blank" rel="noopener noreferrer" style={gridRow} {...press}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-              <path d="M12 20 4.5 12.5a5 5 0 0 1 7.5-6.6 5 5 0 0 1 7.5 6.6L12 20Z" />
-            </svg>
+            <span style={gridIcon}><HeartIcon size={16} /></span>
             <span style={gridLabel}>{t(key)}</span>
-            <span style={chevron} aria-hidden>↗</span>
+            <span style={chevron} aria-hidden><ExternalLinkIcon size={16} /></span>
           </motion.a>
         ))}
       </div>

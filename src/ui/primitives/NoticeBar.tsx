@@ -4,7 +4,7 @@
  * "this is a warning" without colouring the words. Its actions are `NoticeAction` pills. It draws at
  * the chrome's touch lift for `TOUCH_TARGET` controls (`useChromeLayer`), as the toasts do.
  */
-import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { forwardRef, type CSSProperties, type ReactNode } from 'react';
 import { motion, type HTMLMotionProps } from 'framer-motion';
 import { cursors, font, radii, z } from '../design/styles';
 import { roleFont, LINE_HEIGHT } from '../design/text-weight';
@@ -12,6 +12,8 @@ import { PANEL_EDGE, PLATE, FRAME_INK, ACCENT, SURFACE_SECONDARY } from '../desi
 import { presence } from '../design/motion';
 import { useChromeLayer, useChromeLayerZoom } from './chrome-layer';
 import { TOUCH_TARGET } from '../design/scale';
+import { useInteractionProfiles } from '../design/input-mode';
+import { ActionButton, type ActionButtonProps } from './ActionButton';
 
 const card: CSSProperties = {
   left: '50%',
@@ -25,7 +27,7 @@ const card: CSSProperties = {
   background: PLATE,
   color: FRAME_INK,
   fontFamily: font.family,
-  ...roleFont('caption'),
+  ...roleFont('label'),
   lineHeight: LINE_HEIGHT.snug,
 };
 
@@ -89,7 +91,7 @@ const action: CSSProperties = {
   background: SURFACE_SECONDARY,
   color: FRAME_INK,
   fontFamily: font.family,
-  ...roleFont('small'),
+  ...roleFont('action'),
   padding: '6px 10px',
   borderRadius: radii.pill,
   cursor: cursors.clickable,
@@ -99,11 +101,12 @@ const action: CSSProperties = {
 export const noticeActionStyle = action;
 
 /** A notice action as a button. */
-export function NoticeAction(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" {...props} style={{ ...action, ...props.style }} />;
+export function NoticeAction({ style, ...props }: ActionButtonProps) {
+  return <ActionButton {...props} style={{ ...action, ...style }} />;
 }
 
-/** A notice action as a link. */
-export function NoticeLink(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
-  return <a target="_blank" rel="noopener noreferrer" {...props} style={{ ...action, textDecoration: 'none', whiteSpace: 'nowrap', ...props.style }} />;
+/** A notice action as a link, answering a hover and a press as the action pill does. */
+export function NoticeLink({ style, ...props }: HTMLMotionProps<'a'>) {
+  const profile = useInteractionProfiles().action;
+  return <motion.a target="_blank" rel="noopener noreferrer" {...profile} {...props} style={{ ...action, textDecoration: 'none', whiteSpace: 'nowrap', ...style }} />;
 }

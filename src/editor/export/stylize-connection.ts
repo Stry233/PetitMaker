@@ -11,6 +11,7 @@ import {
   connectionStatus, connectionTarget, defaultListModels, fileStylizeConnection, readStylizeConnection,
   type DialectConfig, type StylizeDialect, type StylizeListModels, type StylizeStatus,
 } from './stylize';
+import { createSignal } from '../../core/base/signal';
 
 export type { StylizeListModels };
 
@@ -70,7 +71,7 @@ export function createStylizeConnection(listModels: StylizeListModels = defaultL
     booted: false, connected: false, probing: false, provider: DEFAULT_STYLIZE_PROVIDER,
     key: '', baseUrl: '', model: '', verifying: false, status: null,
   };
-  const listeners = new Set<() => void>();
+  const published = createSignal();
   let snap: StylizeConnectionState;
   /** What the standing probe asked, so an edit that changes none of it never re-asks. */
   let asked = '';
@@ -108,7 +109,7 @@ export function createStylizeConnection(listModels: StylizeListModels = defaultL
   }
   const publish = () => {
     snap = project();
-    for (const listener of [...listeners]) listener();
+    published.emit();
   };
   snap = project();
 
@@ -145,10 +146,7 @@ export function createStylizeConnection(listModels: StylizeListModels = defaultL
 
   return {
     get: () => snap,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
+    subscribe: (listener) => published.subscribe(listener),
     boot() {
       let alive = true;
       void readStylizeConnection().then((stored) => {

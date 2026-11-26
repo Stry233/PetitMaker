@@ -8,7 +8,8 @@ import { macroForShelfCategory } from '../../tools/macros';
 import { armedItemOf, armedMacroOf, armedPicksOf } from '../../state/editing/edit-mode';
 import { placesOneAtATime } from '../../state/object-geometry';
 import { getObjectIndex } from '../../state/object-index';
-import { startCarry, type Carry } from '../../view/interaction/pointer/carry';
+import type { Carry } from '../../view/interaction/pointer/carry';
+import { carryCard, type CardHold } from './card-carry';
 
 /** Puts down an armed item or planting card the shelf tab `category` does not hold, so no ghost outlives its card. */
 export function disarmOutsideCategory(category: CategoryId): void {
@@ -47,6 +48,23 @@ export function toggleArmedMacro(macro: MacroId): void {
   s.setEditMode({ mode: 'object', arm: armedMacroOf(s) === macro ? { kind: 'none' } : { kind: 'macro', macro } });
 }
 
+/** The planting card the live shelf's row shows; null where it shows none. */
+let shownPlanting: { macro: MacroId } | null = null;
+
+/** The live shelf says which planting card its row shows, the one the Smart Build key arms. The
+ *  returned function withdraws it, and only while it still stands: two shelves overlap for a frame
+ *  as the layout turns. */
+export function showPlanting(macro: MacroId): () => void {
+  const shown = { macro };
+  shownPlanting = shown;
+  return () => { if (shownPlanting === shown) shownPlanting = null; };
+}
+
+/** The Smart Build key over the object shelf: a press on the planting card its row shows, if any. */
+export function toggleShownPlanting(): void {
+  if (shownPlanting) toggleArmedMacro(shownPlanting.macro);
+}
+
 /** A press on an item card: arms the item alone, or puts it down when it is the one armed. */
 export function toggleArmedItem(itemId: string): void {
   const s = useEditorStore.getState();
@@ -69,43 +87,29 @@ export function toggleItemPick(itemId: string): void {
   s.setEditMode({ mode: 'object', arm: next.length === 1 ? { kind: 'item', itemId: next[0]! } : { kind: 'item', itemId: next[0]!, picks: next } });
 }
 
-/** The pointer carrying a card: its id, the element holding its capture, and what to tell the card
- *  when the carry ends, however it ends. */
-interface CardHold {
-  pointerId: number;
-  surface: HTMLElement | null;
-  onEnd: () => void;
-  /** A held finger or pen lifted the card: let go without reaching the map, it picks the card
-   *  beside the armed ones (EDIT-70). */
-  picksOnReturn?: boolean;
-}
-
 /**
- * A press that carries an item card onto the map. The item is armed for the carry, so the drop is
- * the placer's own click, with its rules, refusal and undo step, and it stays armed after a release
+ * A press that carries an item card onto the map (`card-carry.ts:carryCard`). The drop is the
+ * placer's own click, with its rules, refusal and undo step, and the item stays armed after a release
  * on the map, as a click on its card leaves it, unless that placement used the last of its cap
- * (`watchCappedArming`). A carry that ends anywhere else (off the map, Escape,
- * a cancelled pointer) puts back what was armed before with its pending rotation; a held lift let go
- * without reaching the map then picks the card (`toggleItemPick`). Carrying the one armed item changes
- * nothing armed. Null when the item cannot be armed here.
+ * (`watchCappedArming`). Any other ending puts back what was armed before with its pending rotation;
+ * a held lift (`picksOnReturn`) let go without reaching the map then picks the card
+ * (`toggleItemPick`). Carrying the one armed item changes nothing armed. Null when the item cannot be
+ * armed here.
  */
-export function carryItem(itemId: string, hold: CardHold): Carry | null {
+export function carryItem(itemId: string, hold: CardHold & { picksOnReturn?: boolean }): Carry | null {
   const s = useEditorStore.getState();
   const before = { editMode: s.editMode, rotation: s.placementRotation };
   const kept = armedItemOf(s) === itemId && armedPicksOf(s).length === 1;
-  if (!kept) s.setEditMode({ mode: 'object', arm: { kind: 'item', itemId } });
-  if (armedItemOf(useEditorStore.getState()) !== itemId) return null;
-  return startCarry({
-    pointerId: hold.pointerId,
-    surface: hold.surface,
-    end: (dropped, stayed) => {
-      if (!kept && !dropped) {
-        const now = useEditorStore.getState();
-        now.restoreEditMode(before.editMode);
-        now.setPlacementRotation(before.rotation);
-      }
-      if (stayed && hold.picksOnReturn) toggleItemPick(itemId);
-      hold.onEnd();
+  return carryCard(itemId, hold, {
+    arm: () => {
+      if (!kept) useEditorStore.getState().setEditMode({ mode: 'object', arm: { kind: 'item', itemId } });
+      return armedItemOf(useEditorStore.getState()) === itemId;
     },
+    giveBack: () => {
+      if (kept) return;
+      useEditorStore.getState().restoreEditMode(before.editMode);
+      useEditorStore.getState().setPlacementRotation(before.rotation);
+    },
+    stayed: () => { if (hold.picksOnReturn) toggleItemPick(itemId); },
   });
 }

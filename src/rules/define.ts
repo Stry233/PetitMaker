@@ -29,6 +29,9 @@ export function failFor(ruleId: string): Fail {
 
 interface PreRuleSpec<T extends CommandType, Id extends string> {
   id: Id;
+  /** What the rule requires, stated for any reader in plain English, with its numbers read from
+   *  the profile. Every reader of the rule derives from it, so it changes with `validate`. */
+  description: string;
   appliesTo: readonly T[];
   /** The command as it lands, for a rule whose subject decides its own footprint: `cmd` itself
    *  when nothing changes, else a copy; never writes to `cmd`, and resolves a resolved command to
@@ -47,6 +50,7 @@ export function definePreRule<T extends CommandType, Id extends string>(spec: Pr
   const { resolve } = spec;
   return {
     id: spec.id,
+    description: spec.description,
     phase: 'pre-command',
     appliesTo: [...spec.appliesTo],
     ...(resolve ? { resolve: (cmd: Command, state: GridState): Command => (narrowed(cmd) ? resolve(cmd, state) : cmd) } : {}),
@@ -56,6 +60,8 @@ export function definePreRule<T extends CommandType, Id extends string>(spec: Pr
 
 interface PostRuleSpec<Id extends string> {
   id: Id;
+  /** What the rule requires, as `PreRuleSpec.description`. */
+  description: string;
   validate(state: GridState, opts: { firstOnly?: boolean } | undefined, fail: Fail): ValidationError[];
 }
 
@@ -64,6 +70,7 @@ export function definePostRule<Id extends string>(spec: PostRuleSpec<Id>): PostS
   const fail = failFor(spec.id);
   return {
     id: spec.id,
+    description: spec.description,
     phase: 'post-stroke',
     validate: (state, opts) => spec.validate(state, opts, fail),
   };

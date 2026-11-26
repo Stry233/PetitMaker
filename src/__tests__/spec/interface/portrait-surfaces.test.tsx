@@ -24,8 +24,8 @@ import { UPRIGHT_EDGE_LEFT_VAR, UPRIGHT_EDGE_RIGHT_VAR } from '../../../ui/chrom
 import { MultiSelectBar } from '../../../ui/shell/bars/selection/MultiSelectBar';
 import { TOUCH_TARGET } from '../../../ui/design/scale';
 import type { InputMode } from '../../../platform/device/input-mode';
-import { __resetArrivals, announceArrival } from '../../../ui/session/arrival-bus';
-import { __resetRestoreOffer } from '../../../ui/session/restore-offer';
+import { __resetArrivals, announceArrival } from '../../../editor/session/arrival';
+import { __setRestoreOffer } from '../../../editor/session/restore';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { TOUCH_UI_ZOOM_DEFAULT, UI_ZOOM_DEFAULT } from '../../../platform/storage/prefs';
 import { __resetUiZoomAnim } from '../../../ui/design/ui-zoom-anim';
@@ -59,7 +59,7 @@ function painted(color: string): string {
 
 beforeEach(() => {
   __resetArrivals();
-  __resetRestoreOffer();
+  __setRestoreOffer(null);
   localStorage.setItem(TOUR_SEEN_KEY, TOUR_OFFERED);
   setStoreState({ locale: 'en', assistantOpen: false, tourRunning: false });
   useEditorStore.getState().setEditMode({ mode: null });
@@ -81,7 +81,7 @@ describe('the welcome-back offer on an upright window', () => {
     localStorage.setItem(AUTOSAVE_STORAGE_KEY, serialize(workingMap()));
     render(
       <InputModeProvider inputMode="touch" shape="portrait">
-        <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+        <I18nProvider><Shell><div /></Shell></I18nProvider>
       </InputModeProvider>,
     );
     const panel = screen.getByTestId('restore-card').closest<HTMLElement>('[data-bar-panel="dark"]')!;
@@ -107,11 +107,11 @@ describe('the screens standing in the bar on an upright window', () => {
   spec('UI-28', 'generation\'s scope screen in portrait stands on the dark surface the bar raises', async () => {
     render(
       <InputModeProvider inputMode="touch" shape="portrait">
-        <I18nProvider><Shell onRestoreSession={() => {}}><div /></Shell></I18nProvider>
+        <I18nProvider><Shell><div /></Shell></I18nProvider>
       </InputModeProvider>,
     );
     act(() => { useEditorStore.getState().setEditMode({ mode: 'generate' }); });
-    act(() => { useEditorStore.getState().setSelectingRegion(true); });
+    act(() => { useEditorStore.getState().setSelectingRegion(true, 'generator'); });
     const scope = await screen.findByTestId('shell-scope-screen');
     expect(scope.closest('[data-bar-panel="dark"]')).toBeTruthy();
     expect(screen.getByTestId('shell-mode-band').style.background).toBe(painted(DARK_PLATE));
@@ -155,7 +155,7 @@ describe('the arrival notice', () => {
     expect(name?.title).toBe(name?.textContent);
   });
 
-  spec('UI-27', 'on a phone the arrival answers and the multi-select plate draw a fingertip tall at touch mode\'s default scale and at the chrome zoom in PC mode', () => {
+  spec('UI-27', 'on a phone the arrival answers and multi-select\'s Done draw a fingertip tall at touch mode\'s default scale, and the answers at the chrome zoom in PC mode', () => {
     const drawn = (inputMode: InputMode) => {
       atDefaultScale(inputMode);
       const band = mountArrival(inputMode);
@@ -164,18 +164,20 @@ describe('the arrival notice', () => {
       cleanup();
       act(() => { useEditorStore.setState({ multiSelectLatched: true }); });
       render(<InputModeProvider inputMode={inputMode} shape="portrait"><I18nProvider><MultiSelectBar /></I18nProvider></InputModeProvider>);
-      const plate = Number(screen.getByTestId('multi-select-plate').style.zoom);
-      const done = parseFloat(screen.getByTestId('multi-select-done').style.height) * plate;
+      const doneButton = screen.getByTestId('multi-select-done');
+      const done = parseFloat(doneButton.style.height || doneButton.style.minHeight);
+      const reach = doneButton.querySelector('[data-touch-reach]') !== null;
       cleanup();
       act(() => { useEditorStore.setState({ multiSelectLatched: false }); });
-      return { zoom, answers, plate, done };
+      return { zoom, answers, done, reach };
     };
     const touch = drawn('touch');
     for (const answer of touch.answers) expect(answer).toBeGreaterThanOrEqual(TOUCH_TARGET);
     expect(touch.done).toBeGreaterThanOrEqual(TOUCH_TARGET);
+    expect(touch.reach).toBe(true);
     const pc = drawn('pc');
     expect(pc.zoom).toBeLessThan(1);
-    expect(pc.plate).toBeCloseTo(pc.zoom);
+    expect(pc.reach).toBe(false);
     expect(pc.answers).toEqual([0, 0]);
   });
 

@@ -1,23 +1,27 @@
 import { EDITION_COPY } from '../../../../../platform/build/edition';
 import { WindowBody, WindowFooter, WindowHeader, windowFrame } from '../../../../primitives/Window';
 import { ActionButton } from '../../../../primitives/ActionButton';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { useT } from '../../../../../i18n/context';
 import { timedHint } from '../../../timed-hint';
 import { ModalShell } from '../../../../primitives/ModalShell';
 import { TimedButton } from '../../../../primitives/TimedButton';
 import { readScrollGeometry, scrollTravel, type ScrollGeometry } from '../../../../primitives/scroll-geometry';
-import { cursors, UNAVAILABLE } from '../../../../design/styles';
+import { cursors, UNAVAILABLE, z } from '../../../../design/styles';
 import { skin, windowFooterPrimary } from '../../../../design/window-skin';
 import { roleFont } from '../../../../design/text-weight';
+import { EXPORT_NOTICE, exportNoticeRead } from '../../../../../legal/config';
 
-const READING_MS = 7000;
+const READING_MS = EXPORT_NOTICE.readingMs;
 
 /** Whether a laid-out scroller shows its last line, within the tolerance its fades use. */
 const showsEnd = (g: ScrollGeometry): boolean => g.height > 0 && scrollTravel(g, 'y').end === 0;
 
-function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean }) {
+/** The backdrop of a notice asked from a full-screen surface that stands on the takeover rung. */
+const OVER_TAKEOVER: CSSProperties = { zIndex: z.takeover };
+
+function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = false, over }: { open: boolean; onDecision: (accepted: boolean) => void; format?: 'image' | 'json'; hasPetitGlyph?: boolean; over?: 'takeover' }) {
   const t = useT();
   const reduced = useReducedMotionConfig();
   const [entered, setEntered] = useState(false);
@@ -60,10 +64,10 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
   }, [open, entered, t, format, hasPetitGlyph, checkEnd]);
 
   const seconds = Math.ceil((READING_MS - elapsed) / 1000);
-  const ready = open && entered && seconds === 0 && atEnd;
+  const ready = open && entered && exportNoticeRead(elapsed, atEnd);
   return (
     <ModalShell helpTarget={{ page: 'share', anchor: 'share-confirm' }} open={open} onClose={() => onDecision(false)} onEntered={onEntered} size="panel" width={530}
-      cardStyle={{ ...windowFrame, minHeight: 0 }} ariaLabel={t('export.notice.title')}>
+      backdropStyle={over === 'takeover' ? OVER_TAKEOVER : undefined} cardStyle={{ ...windowFrame, minHeight: 0 }} ariaLabel={t('export.notice.title')}>
       <WindowHeader title={t('export.notice.title')} reserve
         close={{ label: t('hint.close'), onPress: () => onDecision(false) }} style={{ marginBottom: 16, flex: '0 0 auto' }} />
       <WindowBody ref={content} onGeometry={(g) => setAtEnd(showsEnd(g))} tabIndex={0} role="region" aria-label={t('export.notice.title')}
@@ -94,8 +98,9 @@ function ExportNotice({ open, onDecision, format = 'image', hasPetitGlyph = fals
   );
 }
 
-/** One acknowledgement per attempt; closing or changing its inputs retires pending consent. */
-export function useExportNotice(open: boolean, revision: unknown, map: unknown, format: 'image' | 'json' = 'image') {
+/** One acknowledgement per attempt; closing or changing its inputs retires pending consent. `over`
+ *  names the rung of the surface asking when that is not a window's. */
+export function useExportNotice(open: boolean, revision: unknown, map: unknown, format: 'image' | 'json' = 'image', over?: 'takeover') {
   const [showing, setShowing] = useState(false);
   const [hasPetitGlyph, setHasPetitGlyph] = useState(false);
   const pending = useRef<((accepted: boolean) => void) | null>(null);
@@ -114,5 +119,5 @@ export function useExportNotice(open: boolean, revision: unknown, map: unknown, 
     setHasPetitGlyph(containsPetitGlyph);
     return new Promise(resolve => { pending.current = resolve; setShowing(true); });
   }, [open]);
-  return { request, notice: <ExportNotice open={open && showing} onDecision={decide} format={format} hasPetitGlyph={hasPetitGlyph} /> };
+  return { request, notice: <ExportNotice open={open && showing} onDecision={decide} format={format} hasPetitGlyph={hasPetitGlyph} over={over} /> };
 }

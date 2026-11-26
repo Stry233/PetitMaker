@@ -5,6 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { host } from '../../../../../editor/host/host';
+import { stopPlanetEditing } from '../../../../../editor/session/planet-editing';
 import { I18nProvider, translate } from '../../../../../i18n/context';
 import { setToastPresenter } from '../../../../../platform/channels/toast-bus';
 import { useEditorStore } from '../../../../../state/store';
@@ -25,7 +27,8 @@ vi.mock('../../../../../pipelines/planet-scan/import-video', async (actual) => (
 
 afterEach(() => {
   cleanup();
-  act(() => { useEditorStore.getState().setPlanetSession(null); useEditorStore.getState().setModal('planetImport', false); });
+  act(() => { stopPlanetEditing({ discard: true }); useEditorStore.getState().setModal('newProject', false); });
+  host.camera.takeQueued();
 });
 
 describe('a partly covered scan', () => {
@@ -33,17 +36,14 @@ describe('a partly covered scan', () => {
     newMap(editorPort, 'hexia');
     const toasts: string[] = [];
     const stop = setToastPresenter((text) => toasts.push(text));
-    // The planet editor opens as the app's would, by starting a session.
-    const onEditPlanet = vi.fn(() => {
-      useEditorStore.getState().setPlanetSession({ entryId: null, name: '', nameReviewed: true } as never);
-    });
+    useEditorStore.getState().setTourRunning(false);
     try {
-      render(<I18nProvider><ChangePlanetModal open onSwitch={() => {}} onClose={() => {}} onEditPlanet={onEditPlanet} canEditPlanet /></I18nProvider>);
+      render(<I18nProvider><ChangePlanetModal open onSwitch={() => {}} onClose={() => {}} canEditPlanet /></I18nProvider>);
       fireEvent.click(screen.getByTestId('planet-import'));
       fireEvent.click(await screen.findByTestId('planet-import-video'));
       const input = await screen.findByTestId('scan-file');
       fireEvent.change(input, { target: { files: [new File([new Uint8Array(4)], 'scan.mp4', { type: 'video/mp4' })] } });
-      await waitFor(() => expect(onEditPlanet).toHaveBeenCalled(), { timeout: 3000 });
+      await waitFor(() => expect(useEditorStore.getState().planetSession?.review).toBeTruthy(), { timeout: 3000 });
       expect(toasts).toContain(translate('planet.scan_partial', { percent: 80 }));
     } finally {
       stop();

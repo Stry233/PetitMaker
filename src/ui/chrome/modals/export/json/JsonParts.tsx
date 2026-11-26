@@ -5,13 +5,14 @@ import { NOTE_LIMITS } from '../../../../../core/model/notes';
 import type { MapNotes } from '../../../../../core/model/types';
 import { useT } from '../../../../../i18n/context';
 import { framerMotion, seconds } from '../../../../design/motion';
-import { font, radii, UNAVAILABLE } from '../../../../design/styles';
+import { font } from '../../../../design/styles';
 import { skin } from '../../../../design/window-skin';
 import { LINE_HEIGHT, roleFont } from '../../../../design/text-weight';
 import { SIZE_GROWS, SIZE_SHRINKS } from '../../../../design/tokens';
 import { Switch } from '../../../../primitives/Switch';
 import { HelpBubble } from '../HelpBubble';
-import { ReviewIndicator } from '../review/ReviewIndicator';
+import { ReviewSlot } from '../review/ReviewIndicator';
+import { TextField } from '../../../../primitives/TextField';
 
 /** B under 1 KB, KB under 1 MB, else MB, with one decimal above bytes. */
 function formatBytes(bytes: number): string {
@@ -20,16 +21,9 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const enc = new TextEncoder();
-/** The notes measured on their own, so typing never serializes the history. */
-export function notesByteLen(n: MapNotes | undefined, pretty: boolean): number {
-  return n ? enc.encode(JSON.stringify(n, null, pretty ? 2 : undefined)).length : 0;
-}
-
 const rowLabel: CSSProperties = { ...roleFont('label'), color: skin.ink };
 export const rowDesc: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, opacity: 0.8, lineHeight: LINE_HEIGHT.snug };
 const chipStyle: CSSProperties = { fontFamily: font.family, ...roleFont('small'), color: skin.plateInk, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-const inputStyle: CSSProperties = { fontFamily: font.family, ...roleFont('field'), color: skin.ink, background: skin.inset, border: `1.5px solid ${skin.line}`, borderRadius: radii.md, padding: '8px 32px 8px 10px', display: 'block', resize: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const fieldCaption: CSSProperties = { ...roleFont('caption'), color: skin.plateInk, marginBottom: 2, display: 'block' };
 
 export function SectionRow({ name, desc, hint, checked, disabled, onToggle, bytes }: {
@@ -68,23 +62,15 @@ export function NotesFields({ notes, onChange, titleLocked, descriptionLocked, c
   onComposing: (composing: boolean) => void;
 }) {
   const t = useT();
-  const field = (key: 'title' | 'description', locked: boolean, label: string) => {
-    const props = {
-      disabled: locked, value: notes[key] ?? '', maxLength: NOTE_LIMITS[key], placeholder: t('export.optional'), 'aria-label': label,
-      'aria-busy': checking(key), 'aria-invalid': refused.includes(key),
-      onChange: (e: { target: { value: string } }) => onChange({ ...notes, [key]: e.target.value }),
-    };
-    const style: CSSProperties = { ...inputStyle, ...(key === 'description' ? { minHeight: 44 } : null), opacity: locked ? UNAVAILABLE : 1 };
-    return (
-      <div style={{ display: 'block' }}>
-        <span style={fieldCaption}>{label} {locked && <HelpBubble text={t('export.attribution_locked')} />}</span>
-        <span style={{ display: 'block', position: 'relative' }}>
-          {key === 'title' ? <input {...props} style={style} /> : <textarea {...props} style={style} />}
-          {checking(key) && <ReviewIndicator label={t('export.review.checking')} />}
-        </span>
-      </div>
-    );
-  };
+  const field = (key: 'title' | 'description', locked: boolean, label: string) => (
+    <div style={{ display: 'block' }}>
+      <span style={fieldCaption}>{label} {locked && <HelpBubble text={t('export.attribution_locked')} />}</span>
+      <TextField rows={key === 'description' ? 2 : undefined} disabled={locked} value={notes[key] ?? ''} maxLength={NOTE_LIMITS[key]}
+        placeholder={t('export.optional')} label={label} aria-busy={checking(key)} aria-invalid={refused.includes(key)}
+        onChange={(text) => onChange({ ...notes, [key]: text })}
+        trailing={<ReviewSlot label={t('export.review.checking')} checking={checking(key)} />} />
+    </div>
+  );
   return (
     <div onCompositionStartCapture={() => onComposing(true)} onCompositionEndCapture={() => onComposing(false)} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0 2px' }}>
       {field('title', titleLocked, t('export.field_title'))}

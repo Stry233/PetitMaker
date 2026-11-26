@@ -40,11 +40,11 @@ describe('the folded mode row', () => {
     expect(screen.getByRole('group', { name: 'Modes' }), 'in the group of modes').toBeTruthy();
     expect(screen.getByRole('button', { name: 'Show modes' }).hasAttribute('aria-expanded'), 'an action, not a state it never leaves').toBe(false);
     const order = [...document.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
-    expect(order, 'the row\'s own order, the first in front').toEqual(['Show modes', 'Roads', 'Mountains', 'Water', 'Generate']);
+    expect(order, 'the row\'s own order, the first in front').toEqual(['Show modes', 'Roads', 'Mountains', 'Water', 'Blueprint', 'Generate']);
     expect(screen.queryByText('Mountains'), 'the stack shows its tiles without words').toBeNull();
     act(() => { fireEvent.click(screen.getByRole('button', { name: 'Show modes' })); });
     expect(useEditorStore.getState().modeRowOpen).toBe(true);
-    expect(reachable(), 'unfolded in place, in the same order').toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Generate']);
+    expect(reachable(), 'unfolded in place, in the same order').toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Blueprint', 'Generate']);
     expect(screen.getByText('Mountains'), 'unfolded, the open mode is named under its tile').toBeTruthy();
     act(() => { fireEvent.click(screen.getByRole('button', { name: 'Water' })); });
     expect(onPick).toHaveBeenCalledWith('water');
@@ -65,12 +65,12 @@ describe('the folded mode row', () => {
     render(<ModeRow modes={MODES} mode="mountain" swap={{} as ChromeSwap} onPick={() => {}} />, { wrapper: wide });
     const tiles = () => [...document.querySelectorAll('button')];
     const row = tiles();
-    expect(reachable()).toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Generate']);
+    expect(reachable()).toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Blueprint', 'Generate']);
     act(() => { useEditorStore.getState().setUiZoom(1.8); resizeTo(700, 600); });
     expect(reachable(), 'folded').toEqual(['Show modes']);
     expect(tiles(), 'each tile travels into the stack rather than being replaced by another').toEqual(row);
     act(() => { useEditorStore.getState().setUiZoom(1); resizeTo(1280, 600); });
-    expect(reachable(), 'unfolded by the wider window').toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Generate']);
+    expect(reachable(), 'unfolded by the wider window').toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Blueprint', 'Generate']);
     expect(tiles(), 'and out of it again').toEqual(row);
     expect(useEditorStore.getState().modeRowOpen, 'a row the window holds whole is not left open').toBe(false);
   });
@@ -95,7 +95,7 @@ describe('the folded mode row', () => {
     );
     const view = render(at('landscape'));
     act(() => { fireEvent.click(screen.getByRole('button', { name: 'Show modes' })); });
-    expect(reachable()).toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Generate']);
+    expect(reachable()).toEqual(['Objects', 'Roads', 'Mountains', 'Water', 'Blueprint', 'Generate']);
     act(() => { resizeTo(600, 900); view.rerender(at('portrait')); });
     expect(useEditorStore.getState().modeRowOpen, 'the upright row holds every mode, so nothing stands unfolded').toBe(false);
     act(() => { resizeTo(700, 600); view.rerender(at('landscape')); });

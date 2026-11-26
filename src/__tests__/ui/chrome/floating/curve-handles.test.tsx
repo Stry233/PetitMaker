@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-/** Curve-handle projection, drag behavior, and zoom-scaled hit targets. */
+/** Curve-handle projection, drag behavior, and zoom-scaled hit targets. What ends an open curve and
+ *  where its footprint draws are the session's (`editor/session/curve-watch.test.ts`). */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, act, screen, waitFor } from '@testing-library/react';
+import { render, act, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 import { CurveHandles } from '../../../../ui/chrome/floating/CurveHandles';
 import { I18nProvider } from '../../../../i18n/context';
 import {
@@ -24,7 +26,6 @@ const view = {
     cellToScreen: (x: number, y: number) => ({ x: x * SCALE, y: y * SCALE, scale: SCALE }),
     screenToPoint: (sx: number, sy: number) => ({ x: sx / SCALE, y: sy / SCALE }),
   },
-  overlay: { showCurveFootprint: vi.fn(), clearCurveFootprint: vi.fn() } as unknown as ActiveView['overlay'],
   camera: { pan: () => {}, zoomStep: () => {}, zoomBy: () => {} },
 } as unknown as ActiveView;
 
@@ -74,20 +75,6 @@ afterEach(() => {
 });
 
 describe('what is on screen', () => {
-  it('keeps an eraser footprint with its anchors and moves it to the active view', () => {
-    render(<I18nProvider><CurveHandles /></I18nProvider>);
-    act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 3, grid: 'terrain', footprint: true }, { preview, repaint, finalize }));
-    expect(view.overlay.showCurveFootprint).toHaveBeenLastCalledWith({ grid: 'terrain', cells: expect.arrayContaining([{ x: 5, y: 1 }, { x: 5, y: 3 }]) });
-    const other = { ...view, overlay: { showCurveFootprint: vi.fn(), clearCurveFootprint: vi.fn() } } as unknown as ActiveView;
-    act(() => setActiveView(other));
-    expect(view.overlay.clearCurveFootprint).toHaveBeenCalled();
-    expect(other.overlay.showCurveFootprint).toHaveBeenCalled();
-    drag(screen.getByLabelText('Curve point 2'), { x: 8, y: 8 });
-    expect(other.overlay.showCurveFootprint).toHaveBeenLastCalledWith({ grid: 'terrain', cells: expect.arrayContaining([{ x: 8, y: 8 }]) });
-    act(() => endCurveSession());
-    expect(other.overlay.clearCurveFootprint).toHaveBeenCalled();
-  });
-
   it('routed roads show only their endpoints and follow a corrected worker result', () => {
     render(<I18nProvider><CurveHandles /></I18nProvider>);
     act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 2, grid: 'object', tangents: false }, { preview, repaint, finalize }));
@@ -96,31 +83,6 @@ describe('what is on screen', () => {
     const before = screen.getByLabelText('Curve point 2').style.left;
     act(() => resetCurveAnchors([{ x: 2, y: 2 }, { x: 10, y: 2 }]));
     expect(screen.getByLabelText('Curve point 2').style.left).not.toBe(before);
-  });
-
-  it('closes eraser handles when the shape or surface changes', () => {
-    act(() => { useEditorStore.getState().setEditMode({ mode: 'mountain', arm: { kind: 'erase' } }); useEditorStore.getState().setEraserShape('curve'); });
-    render(<I18nProvider><CurveHandles /></I18nProvider>);
-    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
-    act(() => useEditorStore.getState().setEraserShape('line'));
-    expect(getCurveSession()).toBeNull();
-    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
-    act(() => useEditorStore.getState().setEditMode({ mode: 'water' }));
-    expect(getCurveSession()).toBeNull();
-  });
-
-  it('closes Smart Build handles when the armed tool changes', () => {
-    render(<I18nProvider><CurveHandles /></I18nProvider>);
-    act(() => beginCurveSession([{ x: 2, y: 2 }, { x: 8, y: 2 }], { width: 2, grid: 'object', armingKey: armedKey() }, { preview, repaint, finalize }));
-    act(() => useEditorStore.setState(s => ({ armingEpoch: s.armingEpoch + 1 })));
-    expect(getCurveSession()).toBeNull(); expect(finalize).toHaveBeenCalledOnce();
-  });
-
-  it('closes adjustment handles when undo or redo applies', () => {
-    render(<I18nProvider><CurveHandles /></I18nProvider>);
-    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
-    act(() => useEditorStore.getState().eventBus.emit('history-applied', { cells: [] }));
-    expect(getCurveSession()).toBeNull(); expect(repaint).not.toHaveBeenCalled();
   });
 
   it('nothing at all when no curve has been drawn', () => {
@@ -248,6 +210,26 @@ describe('dragging', () => {
     act(() => { screen.getByLabelText('Curve point 1').dispatchEvent(pointer('pointerdown')); });
     window.removeEventListener('pointerdown', seen);
     expect(seen).not.toHaveBeenCalled();
+  });
+});
+
+describe('pointer feedback', () => {
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 80)));
+  /** The scale a settled transform draws at, 1 where it draws none. */
+  const scaleOf = (el: HTMLElement): number => Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
+
+  it.each(['Curve point 1', 'Outgoing direction at curve point 1'])('%s grows under a hover and gives while grabbed', async (label) => {
+    render(<MotionConfig reducedMotion="always"><I18nProvider><CurveHandles /></I18nProvider></MotionConfig>);
+    openSession([{ x: 2, y: 2 }, { x: 8, y: 2 }]);
+    const handle = screen.getByLabelText(label) as HTMLElement;
+    fireEvent.pointerEnter(handle, { pointerType: 'pen' });
+    await settle();
+    expect(scaleOf(handle)).toBeGreaterThan(1);
+    fireEvent.pointerLeave(handle, { pointerType: 'pen' });
+    fireEvent.pointerDown(handle, { pointerType: 'pen', isPrimary: true, button: 0 });
+    await settle();
+    expect(scaleOf(handle)).toBeLessThan(1);
+    act(() => { window.dispatchEvent(pointer('pointerup', { clientX: 20, clientY: 20 })); });
   });
 });
 

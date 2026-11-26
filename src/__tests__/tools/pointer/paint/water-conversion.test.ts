@@ -19,9 +19,9 @@ import { cell, point } from '../../../_support/grid';
 
 const exec = (s: GridState) => makeExecutor(s);
 
-/** The one ToolContext field planPaint reads, plus the build floor. */
-const ctxFor = (state: GridState, elevation: number): ToolContext =>
-  ({ state, arming: testArming({ floor: elevation }) } as unknown as ToolContext);
+/** The ToolContext fields planPaint reads. */
+const ctxFor = (state: GridState): ToolContext =>
+  ({ state, arming: testArming() } as unknown as ToolContext);
 
 /** A tier-3 pool: a 5x5 mountain@3 block whose two centre cells hold water@3. */
 function pool(): GridState {
@@ -76,7 +76,7 @@ describe('the water eraser converts', () => {
 describe('the mountain brush converts water in place', () => {
   it('paints mountain AT the water\'s elevation, never a block above it', () => {
     const state = pool();
-    const { commands } = planPaint([{ x: 4, y: 4 }], ctxFor(state, 1), 'mountain', new Set());
+    const { commands } = planPaint([{ x: 4, y: 4 }], ctxFor(state), 'mountain', new Set());
     const paints = commands.filter((c): c is Extract<Command, { type: CommandType.PaintTerrain }> => c.type === CommandType.PaintTerrain);
     expect(paints.length).toBe(1);
     expect(paints[0]!.elevation, 'conversion, not a stack on a water floor').toBe(3);
@@ -87,18 +87,11 @@ describe('the mountain brush converts water in place', () => {
     expect(state.cells[4]![4]!.terrain).toMatchObject({ type: TerrainType.Mountain, elevation: 3 });
   });
 
-  it('converts and keeps filling when the build floor is higher', () => {
-    const state = pool();
-    const { commands } = planPaint([{ x: 4, y: 4 }], ctxFor(state, 4), 'mountain', new Set());
-    const levels = commands.map((c) => (c.type === CommandType.PaintTerrain ? c.elevation : -1));
-    expect(levels).toEqual([3, 4]);
-  });
-
   it('a second click on the converted cell stacks normally', () => {
     const state = pool();
     const ex = exec(state);
-    for (const c of planPaint([{ x: 4, y: 4 }], ctxFor(state, 1), 'mountain', new Set()).commands) ex.execute(c);
-    const { commands } = planPaint([{ x: 4, y: 4 }], ctxFor(state, 1), 'mountain', new Set());
+    for (const c of planPaint([{ x: 4, y: 4 }], ctxFor(state), 'mountain', new Set()).commands) ex.execute(c);
+    const { commands } = planPaint([{ x: 4, y: 4 }], ctxFor(state), 'mountain', new Set());
     expect(commands.map((c) => (c.type === CommandType.PaintTerrain ? c.elevation : -1))).toEqual([4]);
   });
 });
@@ -108,7 +101,7 @@ describe('the eraser erases its own surface', () => {
     const ex = exec(state);
     const issued: Command[] = [];
     const tool = new EraserTool();
-    const ctx = makeToolCtx(state, ex, 1, 1, {
+    const ctx = makeToolCtx(state, ex, 1, {
       contentType: mode,
       execute: (c: Command) => { issued.push(c); return ex.execute(c); },
     });

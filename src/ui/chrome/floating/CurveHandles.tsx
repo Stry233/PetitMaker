@@ -20,25 +20,23 @@ import { cursors, shadows, z } from '../../design/styles';
 import { framerMotion, NO_MOTION, staggerDelay } from '../../design/motion';
 import { helpTargetAttr } from '../../session/help-targets';
 import { clientPoint } from '../../../platform/device/viewport-space';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { getActiveView, onActiveViewChange, onProjectionChange } from '../../../view/active-view';
 import type { ActiveView } from '../../../tools/pointer/runtime';
 import type { CurveSessions } from '../../../tools/pointer/paint';
-import { curveArmingKeyOf, editorCurves, endCurveOnHistory } from '../../../editor/session/tool-wiring';
-import { useMapRevision } from '../../session/use-map-revision';
-import { splineCells } from '../../../core/grid/shapes';
+import { editorCurves } from '../../../editor/session/tool-wiring';
 import { anchorHandles } from '../../../core/base/spline';
 import { isCommandHeld } from '../../../state/keymap/held';
 import { useEditorStore } from '../../../state/store';
 import { useChromeScale } from '../../design/scale';
 import { useT } from '../../../i18n/context';
 import { TILE_SIZE } from '../../../view/map2d/geometry/world';
-import { cellAtPoint, halfPoint } from '../../../core/grid/pointer';
-import { gridCellCentre, cellSet } from '../../../core/grid/grids';
+import { gridCellCentre } from '../../../core/grid/grids';
 import { GRIDS } from '../../../core/game/profile';
 import { FRAME_INK, ACTIVE, PLATE } from '../../design/tokens';
 import { useInteractionProfiles } from '../../design/input-mode';
+import { useWindowDrag } from '../../primitives/use-window-drag';
 
 /**
  * Anchor grab and tangent knob at full map zoom, in css px — around the size of the selection's
@@ -73,7 +71,7 @@ interface ScreenAnchor {
 }
 
 /** What is being dragged: an anchor body, or one end of its direction line. */
-type Grab = { index: number; kind: 'anchor' | 'out' | 'into' } | null;
+type Grab = { index: number; kind: 'anchor' | 'out' | 'into' };
 
 /** The transparent target, centred on the point: bigger than the dot it holds. */
 const hitBox = (face: number): CSSProperties => {
@@ -110,16 +108,15 @@ const face = (size: number, fill: string): CSSProperties => ({
   pointerEvents: 'none',
 });
 
-/** Where a handle layer reads its curve and map: the curve sessions, the view whose overlay draws the
- *  footprint and whose projection places the handles, and when to place them again. The live layer
- *  reads the editor's; a Help figure hands in its own world's and renderer's. */
+/** Where a handle layer reads its curve and map: the curve sessions, the view whose projection
+ *  places the handles, and when to place them again. The live layer reads the editor's; a Help
+ *  figure hands in its own world's and renderer's. What ends a session and where its footprint
+ *  draws are its host's (`editor/session/tool-wiring.ts:watchCurveSession`). */
 export interface CurveHandleSource {
   sessions: CurveSessions;
-  view: () => Pick<ActiveView, 'overlay' | 'projection'> | null;
+  view: () => Pick<ActiveView, 'projection'> | null;
   /** Calls `tell` whenever the view may have moved or been swapped; returns the unsubscribe. */
   watch: (tell: () => void) => () => void;
-  /** Bumps when the map under the footprint changed, so it repaints. */
-  revision: string | number;
   /** The zoom the layer stands under, which projected screen px are divided by. */
   zoom: number;
 }
@@ -127,26 +124,17 @@ export interface CurveHandleSource {
 export function CurveHandles() {
   const chrome = useChromeScale();
   const eventBus = useEditorStore((s) => s.eventBus);
-  const armingKey = useEditorStore(curveArmingKeyOf);
-  useEffect(() => () => editorCurves.end(), []);
   const [, bump] = useState(0);
   useEffect(() => editorCurves.subscribe(() => bump((n) => n + 1)), []);
-  const session = editorCurves.get();
-  useEffect(() => {
-    if (session?.armingKey !== undefined && session.armingKey !== armingKey) editorCurves.end();
-  }, [session?.armingKey, armingKey]);
-  useEffect(() => endCurveOnHistory(eventBus), [eventBus]);
-  // The footprint repaints once in the frame after the map changes under it.
-  const revision = useMapRevision(!!session?.footprint, 'frame');
-  const anchored = (session?.anchors.length ?? 0) > 0;
+  const anchored = (editorCurves.get()?.anchors.length ?? 0) > 0;
   const watch = useCallback((tell: () => void) => {
     const offView = onActiveViewChange(tell);
     const offProjection = anchored ? onProjectionChange(eventBus, tell) : () => {};
     return () => { offView(); offProjection(); };
   }, [eventBus, anchored]);
   const source = useMemo<CurveHandleSource>(
-    () => ({ sessions: editorCurves, view: getActiveView, watch, revision, zoom: chrome }),
-    [watch, revision, chrome],
+    () => ({ sessions: editorCurves, view: getActiveView, watch, zoom: chrome }),
+    [watch, chrome],
   );
   return <CurveHandleLayer source={source} />;
 }
@@ -157,34 +145,16 @@ export function CurveHandleLayer({ source, pictured = false }: { source: CurveHa
   const t = useT();
   const profiles = useInteractionProfiles();
   const reduced = useReducedMotionConfig();
-  const { sessions, view, watch, revision, zoom } = source;
+  const { sessions, view, watch, zoom } = source;
   const [, bump] = useState(0);
   const [screen, setScreen] = useState<ScreenAnchor[]>([]);
   const [zoomK, setZoomK] = useState(1);
-  const grab = useRef<Grab>(null);
 
   // The session is owned by the tool, not by React, so re-render on its revision rather than holding
   // a copy that could go stale mid-drag.
   useEffect(() => sessions.subscribe(() => bump((n) => n + 1)), [sessions]);
 
   const session = sessions.get();
-  const cells = useMemo(() => (session?.footprint ? splineCells(session.anchors, session.width) : null), [session]);
-  useEffect(() => {
-    if (!session?.footprint || !cells) return;
-    let overlay = view()?.overlay;
-    const draw = () => {
-      const next = view()?.overlay;
-      if (next !== overlay) overlay?.clearCurveFootprint();
-      overlay = next;
-      overlay?.showCurveFootprint(cellSet(session.grid, cells));
-    };
-    draw();
-    const off = watch(draw);
-    return () => {
-      off();
-      overlay?.clearCurveFootprint();
-    };
-  }, [session, cells, revision, view, watch]);
 
   /** Project every anchor, and the two ends of its direction line, into screen px. */
   const reproject = useCallback(() => {
@@ -210,62 +180,35 @@ export function CurveHandleLayer({ source, pictured = false }: { source: CurveHa
   useEffect(() => { reproject(); }, [session, reproject]);
   useEffect(() => watch(reproject), [watch, reproject]);
 
-  // One window-level drag: the pointer routinely leaves a 18px target, and a capture on the button
-  // would fight the canvas underneath for the same events. A pictured layer takes no input.
-  useEffect(() => {
-    if (pictured) return undefined;
-    // A free-coord session reads the drag at the half-cell precision its anchors live on.
-    const cellOf = (e: PointerEvent) => {
-      const proj = view()?.projection;
-      if (!proj) return undefined;
-      const live = sessions.get();
-      if (!live) return undefined;
-      const point = proj.screenToPoint(clientPoint(e).x, clientPoint(e).y);
-      return live.freeCoords ? halfPoint(point) : cellAtPoint(point, live.grid);
-    };
-    const apply = (e: PointerEvent, commit: boolean) => {
-      const g = grab.current;
-      const live = sessions.get();
-      if (!g || !live) return;
-      const cell = cellOf(e);
-      if (!cell) return;
-      if (g.kind === 'anchor') { sessions.moveAnchor(g.index, cell.x, cell.y, commit); return; }
-      const a = live.anchors[g.index];
-      if (!a) return;
-      // The knob's offset from its anchor is that side of the handle. Read the break key from the
-      // event rather than at press time: pressing or releasing it mid-drag takes effect there and
-      // then, the way it does in a drawing app.
-      sessions.setHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
-        commit, mirror: !isCommandHeld('tool.break_handle'),
-      });
-    };
-    const onMove = (e: PointerEvent) => { if (grab.current) { e.preventDefault(); apply(e, false); reproject(); } };
-    const onUp = (e: PointerEvent) => {
-      if (!grab.current) return;
-      apply(e, true);
-      grab.current = null;
-      reproject();
-    };
-    const onCancel = () => {
-      if (!grab.current) return;
-      grab.current = null; sessions.end(); reproject();
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onCancel);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onCancel);
-    };
-  }, [reproject, pictured, sessions, view]);
+  // The pointer routinely leaves an 18px target, so a grab follows it on the window.
+  const apply = (e: PointerEvent, g: Grab, commit: boolean) => {
+    const live = sessions.get();
+    const proj = view()?.projection;
+    if (!live || !proj) return;
+    const cell = sessions.anchorAt(proj.screenToPoint(clientPoint(e).x, clientPoint(e).y));
+    if (!cell) return;
+    if (g.kind === 'anchor') { sessions.moveAnchor(g.index, cell.x, cell.y, commit); return; }
+    const a = live.anchors[g.index];
+    if (!a) return;
+    // The knob's offset from its anchor is that side of the handle. Read the break key from the
+    // event rather than at press time: pressing or releasing it mid-drag takes effect there and
+    // then, the way it does in a drawing app.
+    sessions.setHandle(g.index, g.kind, cell.x - a.x, cell.y - a.y, {
+      commit, mirror: !isCommandHeld('tool.break_handle'),
+    });
+  };
+  const drag = useWindowDrag<Grab>({
+    move: (e, g) => { e.preventDefault(); apply(e, g, false); reproject(); },
+    end: (e, g) => { apply(e, g, true); reproject(); },
+    cancel: () => { sessions.end(); reproject(); },
+  });
 
   const start = (index: number, kind: 'anchor' | 'out' | 'into') => (e: React.PointerEvent) => {
     // Stop the press reaching the canvas: down there means "dismiss the handles", which is exactly
-    // what grabbing one must not do.
+    // what grabbing one must not do. A pictured layer takes no input.
     e.preventDefault();
     e.stopPropagation();
-    grab.current = { index, kind };
+    if (!pictured) drag.start(e, { index, kind });
   };
 
   return (
@@ -307,41 +250,45 @@ export function CurveHandleLayer({ source, pictured = false }: { source: CurveHa
           </svg>
 
           {/* The grabs. The pop is on each dot, so it scales about its own centre and lands where it
-              belongs; one after another rather than together, which reads as the curve's direction. */}
+              belongs; one after another rather than together, which reads as the curve's direction.
+              Hover and press scale the target around it, on their own spring and free of the pop's
+              stagger delay. */}
           {screen.map((s, i) => {
             const grabPx = GRAB * zoomK;
             const knobPx = KNOB * zoomK;
-            const pop = (extra: number) => (reduced
-              ? NO_MOTION
-              : { ...framerMotion('surface.pop'), delay: staggerDelay('curve.fade', i) + extra / 1000 });
+            // A handle pops one stagger after the anchor it belongs to.
+            const dot = (size: number, fill: string, handle: boolean) => (
+              <motion.span
+                style={face(size, fill)}
+                initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }}
+                transition={reduced ? NO_MOTION : { ...framerMotion('surface.pop'), delay: staggerDelay('curve.fade', handle ? i + 1 : i) }}
+              />
+            );
             return (
               <div key={i}>
                 <motion.button
                   type="button" aria-label={t('a11y.curve_anchor', { n: i + 1 })}
                   onPointerDown={start(i, 'anchor')}
-                  whileHover={profiles.curveVertex.whileHover}
-                  initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(0)}
+                  {...profiles.curveVertex}
                   style={{ ...hitBox(grabPx), left: s.x, top: s.y }}
                 >
-                  <span style={face(grabPx, ACTIVE)} />
+                  {dot(grabPx, ACTIVE, false)}
                 </motion.button>
                 {session?.tangents && <><motion.button
                   type="button" aria-label={t('a11y.curve_out', { n: i + 1 })}
                   onPointerDown={start(i, 'out')}
-                  whileHover={profiles.curveHandle.whileHover}
-                  initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
+                  {...profiles.curveHandle}
                   style={{ ...hitBox(knobPx), left: s.out.x, top: s.out.y }}
                 >
-                  <span style={face(knobPx, PLATE)} />
+                  {dot(knobPx, PLATE, true)}
                 </motion.button>
                 <motion.button
                   type="button" aria-label={t('a11y.curve_in', { n: i + 1 })}
                   onPointerDown={start(i, 'into')}
-                  whileHover={profiles.curveHandle.whileHover}
-                  initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }} transition={pop(40)}
+                  {...profiles.curveHandle}
                   style={{ ...hitBox(knobPx), left: s.into.x, top: s.into.y }}
                 >
-                  <span style={face(knobPx, PLATE)} />
+                  {dot(knobPx, PLATE, true)}
                 </motion.button></>}
               </div>
             );

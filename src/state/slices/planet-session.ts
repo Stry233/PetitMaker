@@ -13,11 +13,12 @@ import type { BuildMode, EditModeInputs } from '../editing/edit-mode';
 import type { ViewMode } from '../../platform/storage/prefs';
 import type { CameraAngle, View2dCamera } from '../view-camera';
 import type { EditSlice } from './edit';
+import type { Regions } from '../editing/region';
 import type { AnnotationsSlice } from './annotations';
 
 /** The live editor fields a parked map carries and gets back: its layer choices and annotation lanes.
  *  Its layer locks stay on its own `GridState`. */
-const PARKED_FIELDS = ['activeLayer', 'layerPinned', 'layerVisibility', 'annotationUndoLane', 'annotationRedoLane'] as const;
+const PARKED_FIELDS = ['layerVisibility', 'annotationUndoLane', 'annotationRedoLane'] as const;
 type ParkedFields = Pick<EditSlice & AnnotationsSlice, typeof PARKED_FIELDS[number]>;
 
 /** `PARKED_FIELDS` read off `source`. */
@@ -30,8 +31,8 @@ export interface ParkedEditor extends ParkedFields {
   gridState: GridState;
   executor: CommandExecutor;
   selection: BlockRef[];
-  /** The painted generation region, a scope that belongs to this map. */
-  region: MacroCoord[];
+  /** The painted regions, which belong to this map. */
+  regions: Regions;
   editMode: EditModeInputs;
   /** Null when that view had no camera to read. */
   camera2d: View2dCamera | null;

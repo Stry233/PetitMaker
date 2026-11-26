@@ -3,6 +3,7 @@ import { surfaceImage } from './surface-image';
 import { applySurfaceGrain } from './surface-grain';
 import { drawRoadPaving } from './paving-texture';
 import { ROAD_TEXTURE_SIZE } from './tile-texture';
+import { makeRng } from '../../../core/base/rng';
 
 const textures = new Map<RoadMaterialPattern, HTMLCanvasElement>();
 
@@ -16,10 +17,9 @@ export function roadMaterialTexture(pattern: RoadMaterialPattern, onReady?: () =
   const ctx = canvas.getContext('2d')!;
   if (typeof pattern !== 'object' || pattern.kind === 'inlay') {
     const pixels = ctx.createImageData(canvas.width, canvas.height);
-    let seed = 0x7a3c921;
+    const rng = makeRng(0x7a3c921);
     for (let i = 0; i < pixels.data.length; i += 4) {
-      seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
-      const value = 232 + (seed >>> 0) % 24;
+      const value = 232 + rng.int(24);
       pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = value;
       pixels.data[i + 3] = 255;
     }

@@ -20,6 +20,7 @@ export const AREAS = {
   generation: /^GEN-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
   interface: /^UI-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
   assistant: /^ASST-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
+  blueprints: /^BLUE-(?:\d{2}|NEW-[A-Z0-9-]+)$/,
 } as const;
 export type Area = keyof typeof AREAS;
 

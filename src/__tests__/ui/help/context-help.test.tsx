@@ -5,11 +5,12 @@ import { useContextHelp } from '../../../ui/help/use-context-help';
 import { helpTargetAt } from '../../../ui/session/help-targets';
 import { inheritedHelpTarget } from '../../../ui/primitives/help-target';
 import { COMMAND_META, PRESETS } from '../../../state/keymap/registry';
-import { effectiveCombo, presetBinds } from '../../../state/keymap/resolve';
+import { effectiveCombo, currentBinds, overridesFor } from '../../../state/keymap/resolve';
 import { useKeybinds } from '../../../state/keymap/store';
 import { KEY_ROWS, comboFor } from '../../../ui/chrome/modals/keyboard/layout';
 import { useEditorStore } from '../../../state/store';
 import { setStoreState } from '../../_support/store';
+import { watchBackKey } from '../../../editor/back/back-out';
 
 function Harness() {
   useContextHelp();
@@ -27,7 +28,7 @@ describe('context help shortcut', () => {
   it('has a distinct default and appears on the Shift layer', () => {
     expect(COMMAND_META.filter(c => c.defaultCombo === 'shift+h').map(c => c.id)).toEqual(['app.whats_this']);
     for (const preset of PRESETS) {
-      expect([...presetBinds(preset)].filter(([, combo]) => combo === 'shift+h').map(([id]) => id)).toEqual(['app.whats_this']);
+      expect([...currentBinds(overridesFor(preset.binds))].filter(([, combo]) => combo === 'shift+h').map(([id]) => id)).toEqual(['app.whats_this']);
     }
     const key = KEY_ROWS.flat().find(k => k.base === 'h')!;
     expect(comboFor(key, { ctrl: false, alt: false, shift: false })).toBe('h');
@@ -44,6 +45,8 @@ describe('context help shortcut', () => {
     expect((input as HTMLInputElement).value).toBe('My island');
   });
   it('cancels only the picker and stops other keyboard handlers', () => {
+    // The back key as the shell holds it, which ends the mode as the newest state.
+    const release = watchBackKey();
     render(<Harness />);
     const dismiss = vi.fn(); window.addEventListener('keydown', dismiss);
     helpKey();
@@ -52,6 +55,7 @@ describe('context help shortcut', () => {
     expect(useEditorStore.getState().whatsThis).toBe(false);
     expect(useEditorStore.getState().modals.settings).toBe(true);
     window.removeEventListener('keydown', dismiss);
+    release();
   });
   it('does not toggle repeatedly while held, and the shortcut toggles off', () => {
     render(<Harness />); helpKey();

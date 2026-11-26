@@ -4,7 +4,7 @@ import { useEditorStore } from '../../../state/store';
 import { newMap } from '../../../editor/operations/map';
 import { editorPort } from '../../../editor/session/context';
 import { host } from '../../../editor/host/host';
-import { readAutosave } from '../../../io/storage/autosave';
+import { readRestorableAutosave } from '../../../io/storage/autosave';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { autosave } from '../../../editor/session/autosave';
 import { listPlanets, savePlanet, settlePlanetName, shownAs } from '../../../io/storage/planet-library';
@@ -12,17 +12,11 @@ import { defaultPlanetName, shownPlanetName } from '../../../editor/session/plan
 import { PREFS } from '../../../platform/storage/prefs';
 import { CommandType, TerrainType, type MacroCoord } from '../../../core/model/types';
 import { CellZone, type GroundZone } from '../../../core/game/zones';
-import { finishPlanetEditing as finishWithShown, startPlanetEditing as start, stopPlanetEditing } from '../../../editor/session/planet-editing';
-import { useSessionPlanetName } from '../../../ui/shell/planet/use-planet-session';
-import { renderHook } from '@testing-library/react';
+import { finishPlanetEditing, sessionPlanetName, startPlanetEditing as start, stopPlanetEditing } from '../../../editor/session/planet-editing';
 import { planetFixture } from '../../_support/planet';
 
 const store = () => useEditorStore.getState();
-/** The name the nameplate shows the session planet under. */
-const sessionPlanetName = (): string => renderHook(() => useSessionPlanetName()).result.current;
 const startPlanetEditing = (source: Parameters<typeof start>[0]): boolean => start(source, false);
-/** Finishes as the nameplate does, against the name it shows. */
-const finishPlanetEditing = (name: string, asCopy: boolean) => finishWithShown(name, asCopy, sessionPlanetName());
 
 function paint(cells: MacroCoord[], ground = true): void {
   store().commandExecutor!.execute(ground
@@ -48,7 +42,7 @@ function island(): MacroCoord[] {
 
 describe('planet editing', () => {
   beforeEach(() => { localStorage.clear(); newMap(editorPort, 'hexia'); });
-  afterEach(() => { stopPlanetEditing(); host.camera.takeQueued(); vi.useRealTimers(); vi.restoreAllMocks(); });
+  afterEach(() => { stopPlanetEditing({ discard: true }); host.camera.takeQueued(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it('a failed entry resumes autosave over the parked map', () => {
     const grid = store().gridState!;
@@ -80,15 +74,15 @@ describe('planet editing', () => {
     expect(autosave.isSuspended()).toBe(true);
     const flushed = localStorage.getItem(PREFS.autosave.key);
     expect(flushed).not.toBeNull();
-    expect(readAutosave()!.state.template.id).toBe(grid.template.id);
-    expect(readAutosave()!.state.cells[40]![80]!.terrain?.elevation).toBe(1);
+    expect(readRestorableAutosave()!.state.template.id).toBe(grid.template.id);
+    expect(readRestorableAutosave()!.state.cells[40]![80]!.terrain?.elevation).toBe(1);
 
     paint(island());
     autosave.schedule(store().gridState!);
     vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS * 2);
     expect(localStorage.getItem(PREFS.autosave.key)).toBe(flushed);
 
-    stopPlanetEditing();
+    stopPlanetEditing({ discard: true });
     expect(autosave.isSuspended()).toBe(false);
     expect(store().gridState).toBe(grid);
   });
@@ -97,7 +91,7 @@ describe('planet editing', () => {
     const camera = { x: 3, y: 4, zoom: 2 };
     vi.spyOn(host.camera, 'get2d').mockReturnValue(camera);
     startPlanetEditing(null);
-    stopPlanetEditing();
+    stopPlanetEditing({ discard: true });
     expect(host.camera.takeQueued()).toEqual({ view2d: camera });
   });
 
@@ -111,10 +105,34 @@ describe('planet editing', () => {
   it('resumes autosave when leaving fails', () => {
     startPlanetEditing(null);
     vi.spyOn(store(), 'restoreParkedEditor').mockImplementation(() => { throw new Error('broken'); });
-    expect(() => stopPlanetEditing()).toThrow('broken');
+    expect(() => stopPlanetEditing({ discard: true })).toThrow('broken');
     expect(autosave.isSuspended()).toBe(false);
     vi.restoreAllMocks();
-    stopPlanetEditing();
+    stopPlanetEditing({ discard: true });
+  });
+
+  it('[PLAN-18] leaving a session with edits keeps it unless told to discard', () => {
+    const grid = store().gridState;
+    startPlanetEditing(null);
+    expect(stopPlanetEditing()).toBe(true);
+    expect(store().gridState).toBe(grid);
+
+    startPlanetEditing(null);
+    paint(island());
+    const canvas = store().gridState;
+    expect(stopPlanetEditing()).toBe(false);
+    expect(store().planetSession).not.toBeNull();
+    expect(store().gridState).toBe(canvas);
+    expect(autosave.isSuspended()).toBe(true);
+    expect(stopPlanetEditing({ discard: true })).toBe(true);
+    expect(store().planetSession).toBeNull();
+    expect(store().gridState).toBe(grid);
+  });
+
+  it('[PLAN-18] a planet read from a recording is not left unsaved without the discard word', () => {
+    startPlanetEditing({ template: planetFixture(), review: { cells: [], landmark: false } });
+    expect(stopPlanetEditing()).toBe(false);
+    expect(store().planetSession).not.toBeNull();
   });
 
   it('[PLAN-09, PLAN-17] finish saves the cropped planet and leaves the map untouched', () => {

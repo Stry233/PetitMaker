@@ -12,6 +12,7 @@ import type { MazeEnd } from '../../tools/generation/maze';
 import { host } from '../host/host';
 import type { Outcome } from '../operations';
 import { defaultGatesOn, mazeFootprintOn, mazeMarks, snapMazeEnd, type MazeMarks } from './generate-batch';
+import { createSignal } from '../../core/base/signal';
 
 type MazeEndId = 'entrance' | 'exit';
 
@@ -35,6 +36,8 @@ interface MazeEndsController {
   version(): number;
   /** The view for this render's inputs; the marks re-derive from the grid edited in place. */
   view(inputs: MazeEndsInputs): MazeEndsView;
+  /** The gates a run over these inputs receives, as `view` gives them, without drawing the marks. */
+  gates(inputs: MazeEndsInputs): ResolvedMazeGates | null;
   setShowWay(on: boolean): void;
   /** Turns choosing the ends on, adopting a landed run's pair, or off with the way switch. */
   toggleEnds(): void;
@@ -59,7 +62,7 @@ export function createMazeEnds(): MazeEndsController {
   let version = 0;
   let started = false;
   let draped = false;
-  const listeners = new Set<() => void>();
+  const published = createSignal();
   let footprint: { key: readonly unknown[]; value: ReturnType<typeof mazeFootprintOn> } | null = null;
   let last: { inputs: MazeEndsInputs; view: MazeEndsView } | null = null;
 
@@ -72,7 +75,7 @@ export function createMazeEnds(): MazeEndsController {
   const changed = () => {
     version += 1;
     drape();
-    for (const listener of [...listeners]) listener();
+    published.emit();
   };
 
   function footprintOf({ maze, gridState, scope, corridorWidth }: MazeEndsInputs) {
@@ -83,15 +86,20 @@ export function createMazeEnds(): MazeEndsController {
     return footprint.value;
   }
 
+  function gatesOf(inputs: MazeEndsInputs): ResolvedMazeGates | null {
+    if (!inputs.maze || !customEnds) return null;
+    if (chosen) return chosen;
+    const fp = footprintOf(inputs);
+    return fp ? defaultGatesOn(fp) : null;
+  }
+
   return {
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
+    subscribe: (listener) => published.subscribe(listener),
     version: () => version,
+    gates: gatesOf,
     view(inputs) {
       const fp = footprintOf(inputs);
-      const gates = inputs.maze && customEnds ? (chosen ?? (fp ? defaultGatesOn(fp) : null)) : null;
+      const gates = gatesOf(inputs);
       const marks = gates && fp && inputs.gridState ? mazeMarks(inputs.gridState, fp, gates) : null;
       const shown = marks && dragging ? { ...marks, [dragging.which]: dragging.end } : marks;
       const view = { customEnds, gates, shown, showWay };

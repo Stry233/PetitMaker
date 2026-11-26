@@ -15,11 +15,14 @@ import type { GridState, MacroCoord, PlacedObject } from '../../core/model/types
 import { getCatalogItem } from '../../state/catalog';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { getObjectIndex, objectAtPoint } from '../../state/object-index';
+import type { BlockRef } from '../../state/selection';
 import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../../core/game/profile';
 import { gridCell, mapPoint, type GridCell, type GridId, type MapPoint } from '../../core/grid/grids';
 import { anchorCell } from './press/press-plan';
 import { cellAtPoint, halfPoint } from '../../core/grid/pointer';
 import { getCell } from '../../core/model/grid-model';
+import type { Rect } from '../../core/grid/rect';
+import { groupUnder, type GroupProbe } from '../../state/placed-groups';
 
 /** What a press with nothing armed lands on at a map point. */
 export interface PointerTarget {
@@ -47,9 +50,13 @@ function pickAt(gs: GridState, point: MapPoint, terrain: MacroCoord): GridCell<t
   return gridCell(PLACEMENT_GRID, anchorCell(cellAtPoint(point, PLACEMENT_GRID)));
 }
 
-export function pointerTarget(gs: GridState, point: MapPoint, meshHitId?: string): PointerTarget {
-  const meshHit = meshHitId && (!gs.unsettled || gs.unsettled.has(meshHitId)) ? gs.objects.get(meshHitId) : undefined;
-  const hit = meshHit ?? objectAtPoint(getObjectIndex(gs), point, gs.unsettled);
+/** What a press with nothing armed lands on at `point`; `shown` passes what stands on a shown floor
+ *  (`state/selection.ts:shownOn`), so an object on a hidden one is never hit. */
+export function pointerTarget(gs: GridState, point: MapPoint, meshHitId?: string, shown?: (ref: BlockRef) => boolean): PointerTarget {
+  const admits = shown && ((obj: PlacedObject) => shown({ kind: 'object', id: obj.id }));
+  const mesh = meshHitId && (!gs.unsettled || gs.unsettled.has(meshHitId)) ? gs.objects.get(meshHitId) : undefined;
+  const meshHit = mesh && (!admits || admits(mesh)) ? mesh : undefined;
+  const hit = meshHit ?? objectAtPoint(getObjectIndex(gs), point, gs.unsettled, admits);
   const centre = halfPoint(point);
   const terrain = cellAtPoint(mapPoint(centre), TERRAIN_GRID);
   const pick = hit ? null : pickAt(gs, point, terrain);
@@ -82,14 +89,27 @@ function targetBox(gs: GridState, target: PointerTarget): HoverBox | null {
   return { x: target.centre.x - 0.5 - offset.x, y: target.centre.y - 0.5 - offset.y, w: 1, h: 1, grid: PLACEMENT_GRID };
 }
 
+/** Where a press on `target` at object-grid cell `at` asks for a placed blueprint. */
+export const groupProbeOf = (target: PointerTarget, at: MacroCoord): GroupProbe =>
+  (target.hit ? { object: target.hit.id, at } : { cell: target.terrain, at });
+
+/** The frame of the placed blueprint the pointer is over at object-grid cell `at`, which Blueprint
+ *  mode selects whole: the group a press there selects, the same answer the press reads. Null
+ *  outside Blueprint mode. */
+export function groupHoverFrame(store: Parameters<typeof groupUnder>[0], target: PointerTarget, at: MacroCoord): Rect | null {
+  return groupUnder(store, groupProbeOf(target, at))?.group.frame ?? null;
+}
+
+/** `group`, the frame of the placement the pointer is over, takes the box over any one member. */
 export function selectionHoverBox(
   gs: GridState,
   target: PointerTarget,
   selectMode: boolean,
   selectingRegion: boolean,
+  group: Rect | null = null,
 ): HoverBox | null {
   if (!selectMode || selectingRegion) return null;
-  return targetBox(gs, target);
+  return group ? { ...group, grid: PLACEMENT_GRID } : targetBox(gs, target);
 }
 
 /**

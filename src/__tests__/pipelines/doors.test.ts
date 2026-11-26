@@ -1,7 +1,8 @@
 /**
  * Callers outside a pipeline reach it through its documented entry points: its `index.ts`, its light
  * facts modules (a `facts.ts` or `<name>-facts.ts`), which carry constants without pulling the pipeline
- * into the eager bundle, and a `loaders.ts` of lazy loaders for the same reason. Files inside a
+ * into the eager bundle, and a `loaders.ts` of lazy loaders for the same reason; moderation also has
+ * `text-check.ts`, its text check without the map check's worker. Files inside a
  * pipeline import its implementation files directly and are not checked. No pipeline imports another.
  */
 import { describe, it, expect } from 'vitest';
@@ -14,7 +15,8 @@ const indexAndFacts = (pipeline: string) => (module: string): boolean =>
 
 /** Each pipeline, and whether a module path inside it is one of its doors. */
 const PIPELINES: Readonly<Record<string, (module: string) => boolean>> = {
-  'pipelines/moderation': indexAndFacts('pipelines/moderation'),
+  // Moderation also opens its text check alone, for editions whose bundle must not reach the map check's worker.
+  'pipelines/moderation': (module) => indexAndFacts('pipelines/moderation')(module) || module === 'pipelines/moderation/text-check',
   'pipelines/planet-scan': indexAndFacts('pipelines/planet-scan'),
   'pipelines/stylize': indexAndFacts('pipelines/stylize'),
 };

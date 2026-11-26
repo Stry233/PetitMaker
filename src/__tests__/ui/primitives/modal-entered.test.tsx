@@ -32,7 +32,7 @@ describe('useModalEntered', () => {
     act(() => result.current.onEntered());
     rerender({ open: true, section: 'keep' });
     expect(result.current.entered).toBe(true);
-    rerender({ open: true, section: 'game' });
+    rerender({ open: true, section: 'stats' });
     expect(result.current.entered).toBe(false);
     rerender({ open: true, section: 'friend' });
     expect(result.current.entered).toBe(true);

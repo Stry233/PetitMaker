@@ -24,15 +24,24 @@ import type { MapNotes } from '../../core/model/types';
 import { limitNotes } from '../../core/model/notes';
 import { attributedNotes } from '../notes-attribution';
 import { editModeFields, type EditSlice } from './edit';
-import { activeToolOf, holdsSelection, isBrushTool, nextEditMode } from '../editing/edit-mode';
+import { activeToolOf, holdsSelection, nextEditMode } from '../editing/edit-mode';
 import { parkedFields, type ParkedEditor } from './planet-session';
-import { ANNOTATION_SESSION_RESET, type AnnotationsSlice } from './annotations';
+import type { ANNOTATION_SESSION_RESET, AnnotationsSlice } from './annotations';
+import { mapSessionReset, type ShellSlice } from './shell';
+import { cancelEditsInFlight } from '../edits-in-flight';
+import type { BlueprintSlice, BlueprintUi } from './blueprint';
+import { leftBehindFields, selectionHeld, selectionWrite, type SelectionSurfaces } from '../editing/intent';
+import type { MapStandIn } from '../map-stand-in';
 
 export interface EngineSlice {
   loadLimitNotice: boolean;
   setLoadEnforced: (enabled: boolean) => void;
   dismissLoadLimitNotice: () => void;
   gridState: GridState | null;
+  /** A map the views draw in place of `gridState`, which stays the map everything else works on
+   *  (`map-stand-in.ts:shownMap`); null for none. */
+  mapStandIn: MapStandIn | null;
+  setMapStandIn: (next: MapStandIn | null) => void;
   eventBus: EventBus<EditorEvents>;
   commandExecutor: CommandExecutor | null;
   /** How long the undo stack was when the map was last exported — an image or a JSON, either
@@ -40,6 +49,12 @@ export interface EngineSlice {
    *  Everything after that point exists only here, which is what "New map" has to warn about. */
   exportedAt: number | null;
   markExported: () => void;
+  /** The Generate card whose run stands on the map, which a moved maze end lands again, with the
+   *  history depth its landing left; null for none. Undoing that landing ends it, and so does
+   *  another map (`mapSessionReset`). */
+  generateApplied: { card: number; depth: number } | null;
+  /** Marks `card` as the one whose run the newest map step landed, or none. */
+  setGenerateApplied: (card: number | null) => void;
   /** Writes the title and description onto the live map as typed, within the limits; blank fields
    *  clear the record. The map's `notes` is a new object on every write, so a selector over
    *  `gridState.notes` sees the change. */
@@ -59,8 +74,15 @@ export interface EngineSlice {
    *  selects as its result, which the edit's step carries. */
   setSelection: (next: BlockRef[], opts?: SelectionWrite) => void;
   toggleSelection: (ref: BlockRef) => void;
-  /** Clears the selection and the picked block (Escape, Done, a map swap). */
+  /** Puts down the selection, the picked block and the touch latches (`editing/intent.ts:leftBehindFields`),
+   *  as Escape and Done do. */
   clearSelection: (opts?: SelectionWrite) => void;
+  /** A press that acts on the map is starting: the unfolded explorer, whose own selection would
+   *  otherwise stand beside the map's, folds. A press that only moves the camera calls nothing. */
+  beginMapPress: () => void;
+  /** Writes back a selection that stood before, as no step and without the objects the map no longer
+   *  holds: an undo's, or the one a carry or a frame step put down when it was backed out of. */
+  restoreSelection: (refs: readonly BlockRef[]) => void;
   /**
    * The picked block: the placement cell the last plain click or tap on open ground, mountain or
    * water landed on, where the paste key puts a copy's top-left (EDIT-54). It is no selection and no
@@ -81,62 +103,61 @@ interface SelectionWrite {
   pick?: MacroCoord;
 }
 
-type Deps = EditSlice
-  & Pick<AnnotationsSlice, 'annotationsEpoch' | keyof typeof ANNOTATION_SESSION_RESET>;
+type Deps = EditSlice & { blueprint: Pick<BlueprintUi, 'armed'> } & Pick<BlueprintSlice, 'blueprintStep' | 'foldBlueprintExplorer'> & SelectionSurfaces
+  & Pick<AnnotationsSlice, 'annotationsEpoch' | keyof typeof ANNOTATION_SESSION_RESET>
+  & Pick<ShellSlice, 'contextMenu' | 'deletePopover'>;
 
-/**
- * The update a selection write makes, or null for none. On a map that limits presses
- * (`GridState.unsettled`) only those objects are kept. A selection stands only under a tool that
- * holds one (`editing/edit-mode.ts:holdsSelection`): written while a terrain brush is up, it puts
- * the brush away for the Hand tool in the same update, keeping the build surface (`tool: 'none'`);
- * under any other such tool the write is dropped.
- */
+/** The update a selection write makes, or null for none (`editing/intent.ts:selectionWrite`); a
+ *  write that puts a brush away arms none in the same update, keeping the build surface. */
 function selectionFields(s: EngineSlice & Deps, requested: BlockRef[]): Partial<EngineSlice & Deps> | null {
-  const unsettled = s.gridState?.unsettled;
-  const next = unsettled ? requested.filter((r) => r.kind === 'object' && unsettled.has(r.id)) : requested;
-  const tool = activeToolOf(s);
-  // Any selection write spends the move latch.
-  const latch = s.moveLatched ? { moveLatched: false } : null;
-  // Any selection write drops the picked block; `pickCell` sets it after.
-  const unpick = s.pickedCell ? { pickedCell: null } : null;
-  if (next.length === 0 || holdsSelection(tool)) return { selection: next, ...latch, ...unpick };
-  if (isBrushTool(tool)) return { ...editModeFields(s, nextEditMode(s.editMode, { arm: { kind: 'none' } })), selection: next, ...latch, ...unpick };
-  return null;
+  const write = selectionWrite(s, activeToolOf(s), requested);
+  if (!write) return null;
+  return write.brushAway ? { ...editModeFields(s, nextEditMode(s.editMode, { arm: { kind: 'none' } })), ...write.fields } : write.fields;
 }
 
-/** What every map swap resets: no display floor and a fresh annotation session (the bump tells the
- *  annotation views the data under them was swapped, not edited). */
-const swappedSession = (s: Deps) => ({
-  displayLayer: null,
-  ...ANNOTATION_SESSION_RESET,
-  annotationsEpoch: s.annotationsEpoch + 1,
-});
+/** The selection as a map's history carries it, read by `read`: an undo or redo writes it back
+ *  through `restore`, and only while `shows` (a tool that holds one is up), since under any other
+ *  every selection shows the same nothing. */
+export function selectionAside(read: () => BlockRef[], restore: (refs: BlockRef[]) => void, shows: () => boolean): HistoryAside<BlockRef[]> {
+  return {
+    read,
+    write: (value) => { if (shows()) restore(value); },
+    same: (a, b) => !shows() || sameSelection(a, b),
+  };
+}
+
+/** What every map swap resets: every map-owned transient (`mapSessionReset`), with the bump that
+ *  tells the annotation views the data under them was swapped, not edited. Edits still landing on
+ *  the map it replaces are cancelled first, while that map is still the live one. */
+const swappedSession = (s: Deps) => {
+  cancelEditsInFlight();
+  return { ...mapSessionReset(), annotationsEpoch: s.annotationsEpoch + 1 };
+};
 
 export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineSlice> = (set, get, api) => {
-  /** Writes `next` as `selectionFields` allows; a recorded write that changed it is an undo step. */
+  /** Writes `next` as `selectionFields` allows; a recorded write that changed it is an undo step.
+   *  Every selection write passes here, so a map selection landing while Blueprint's explorer stands
+   *  folds it first, ending its own selection and giving back the one it set aside, which the write
+   *  then replaces: one selection is ever live. */
   const writeSelection = (next: BlockRef[], record: boolean, picked: MacroCoord | null = null): void => {
+    if (get().blueprintStep.at === 'explorer' && (selectionFields(get(), next)?.selection?.length ?? 0) > 0) get().foldBlueprintExplorer();
     const s = get();
     const fields = selectionFields(s, next);
     if (!fields) return;
     set(picked && fields.selection?.length === next.length ? { ...fields, pickedCell: picked } : fields);
     if (record && fields.selection) s.commandExecutor?.recordAside(s.selection);
   };
-  /** Whether a selection shows under the tool up now: under any other, every selection shows the
-   *  same nothing, so an undo or redo neither writes one nor puts the tool away for one. */
-  const showsSelection = (): boolean => holdsSelection(activeToolOf(get()));
-  /** The selection as the map's history carries it: an undo or redo writes it back unrecorded,
-   *  without the objects the map no longer holds. */
-  const selectionAside: HistoryAside<BlockRef[]> = {
-    read: () => get().selection,
-    write: (value) => {
-      if (!showsSelection()) return;
-      const grid = get().gridState;
-      writeSelection(grid ? standingRefs(grid, value) : value, false);
-    },
-    same: (a, b) => !showsSelection() || sameSelection(a, b),
-  };
-  // Whichever executor the store holds carries the selection, however it was installed.
-  api.subscribe((s, prev) => { if (s.commandExecutor !== prev.commandExecutor) s.commandExecutor?.attachAside(selectionAside); });
+  // Whichever executor the store holds carries the selection, written back unrecorded and without the
+  // objects the map no longer holds; an undo or redo under a tool that holds none neither writes one
+  // nor puts the tool away for one.
+  const aside = selectionAside(() => get().selection, (refs) => get().restoreSelection(refs), () => holdsSelection(activeToolOf(get())));
+  api.subscribe((s, prev) => { if (s.commandExecutor !== prev.commandExecutor) s.commandExecutor?.attachAside(aside); });
+  const eventBus = new EventBus<EditorEvents>();
+  // The applied card's landing is undone once the history holds fewer map steps than it left.
+  eventBus.on('history-changed', () => {
+    const { generateApplied: applied, commandExecutor } = get();
+    if (applied && (commandExecutor?.historyDepth() ?? 0) < applied.depth) set({ generateApplied: null });
+  });
   return {
     loadLimitNotice: false,
     dismissLoadLimitNotice: () => set({ loadLimitNotice: false }),
@@ -148,10 +169,17 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       set({ loadLimitNotice: false });
     },
     gridState: null,
-    eventBus: new EventBus<EditorEvents>(),
+    mapStandIn: null,
+    setMapStandIn: (next) => set({ mapStandIn: next }),
+    eventBus,
     commandExecutor: null,
     exportedAt: null,
     markExported: () => set({ exportedAt: get().commandExecutor?.historyDepth() ?? 0 }),
+    generateApplied: null,
+    setGenerateApplied: (card) => {
+      const depth = get().commandExecutor?.historyDepth();
+      set({ generateApplied: card === null || depth === undefined ? null : { card, depth } });
+    },
     setMapNotes: (notes) => {
       const gridState = get().gridState;
       if (!gridState) return;
@@ -168,30 +196,22 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
       gridState.ignoreChunkLoad = overloaded || !readPref('enforceChunkLoad');
       gridState.lockedLayers = new Set();
       const { eventBus } = get();
+      const swapped = swappedSession(get());
       const executor = createExecutor(gridState, registry, eventBus);
-      set((s) => ({
-        gridState,
-        commandExecutor: executor,
-        loadLimitNotice: overloaded,
-        pickedCell: null,
-        // Per-map layer state: a new map opens with Ground selected, automatic and all shown.
-        activeLayer: 0,
-        layerPinned: false,
-        layerVisibility: {},
-        ...swappedSession(s),
-      }));
+      set({ gridState, commandExecutor: executor, loadLimitNotice: overloaded, ...swapped });
     },
 
     // The parked map keeps its own policy: the planet session offers no load switch.
     restoreParkedEditor: (parked) => {
-      set((s) => ({
+      const swapped = swappedSession(get());
+      set({
         gridState: parked.gridState,
         commandExecutor: parked.executor,
+        ...swapped,
         selection: parked.selection,
-        pickedCell: null,
-        ...swappedSession(s),
+        regions: parked.regions,
         ...parkedFields(parked),
-      }));
+      });
     },
 
     selection: [],
@@ -204,13 +224,15 @@ export const createEngineSlice: StateCreator<EngineSlice & Deps, [], [], EngineS
     },
     // Guarded so clearing an already-empty selection publishes no store update: subscribers to
     // `selection` would otherwise see a fresh `[]` identity on every menu navigation and tool switch.
-    // Clearing ends the touch latches too, so Escape leaves multi-select as Done does.
     clearSelection: (opts) => {
       const s = get();
-      if (s.selection.length > 0 || s.pickedCell || s.multiSelectLatched || s.moveLatched) {
-        set({ selection: [], pickedCell: null, multiSelectLatched: false, moveLatched: false });
-      }
+      if (selectionHeld(s)) set(leftBehindFields(s));
       if (opts?.record ?? true) s.commandExecutor?.recordAside(s.selection);
+    },
+    beginMapPress: () => { if (get().blueprintStep.at === 'explorer') get().foldBlueprintExplorer(); },
+    restoreSelection: (refs) => {
+      const grid = get().gridState;
+      writeSelection(grid ? standingRefs(grid, refs) : [...refs], false);
     },
     pickedCell: null,
     pickCell: (cell) => {

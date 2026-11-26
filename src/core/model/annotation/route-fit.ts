@@ -134,11 +134,3 @@ function withCorners(points: readonly MacroCoord[]): CurveAnchor[] {
     return turn >= limit ? { x: p.x, y: p.y, hx: 0, hy: 0, ihx: 0, ihy: 0 } : { x: p.x, y: p.y };
   });
 }
-
-/** A whole sampled path through the same fit, as a drag over it would draw it. */
-export function fitRoutePath(points: readonly MacroCoord[], cellPixels: number = ROUTE_FIT.referenceCellPx): CurveAnchor[] {
-  if (points.length === 0) return [];
-  const fit = startRouteFit(points[0]!, cellPixels);
-  for (const p of points.slice(1)) extendRouteFit(fit, p);
-  return routeFitAnchors(fit);
-}

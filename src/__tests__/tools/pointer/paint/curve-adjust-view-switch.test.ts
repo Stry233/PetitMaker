@@ -16,7 +16,7 @@ const overlay = () => ({ showGhost: vi.fn(), showGhostSpans: vi.fn(), clearGhost
 describe('a curve adjusted after switching between the 2D and 3D views', () => {
   it('previews in the view on screen', () => {
     const state = makeState(24, 20);
-    const ctx = makeToolCtx(state, makeExecutor(state), 1, 1, { overlay: overlay() });
+    const ctx = makeToolCtx(state, makeExecutor(state), 1, { overlay: overlay() });
     const tool = new DrawingTool();
     arm(ctx, { shape: 'curve' });
     for (const at of [{ x: 4, y: 8 }, { x: 10, y: 4 }, { x: 16, y: 8 }, { x: 16, y: 8 }]) {

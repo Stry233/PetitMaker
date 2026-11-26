@@ -5,4 +5,4 @@
  */
 export { MAX_TURNS_DEFAULT, SUBAGENT_MAX_TURNS } from './core/governor';
 export { MAX_TURN_ATTEMPTS } from './core/retry';
-export { BETWEEN_EVENT_IDLE_MS, FIRST_EVENT_IDLE_MS } from './core/stream-idle';
+export { BETWEEN_EVENT_IDLE_MS, FIRST_EVENT_IDLE_MS, STALL_NOTICE_MS } from './core/stream-idle';

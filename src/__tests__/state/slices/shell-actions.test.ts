@@ -26,6 +26,25 @@ describe('About', () => {
   });
 });
 
+describe('Change planet', () => {
+  it('takes its import window and its place to return to with it as it closes', () => {
+    s().returnToPlanets('saved-1');
+    s().setModal('planetImport', true);
+    s().setModal('settings', true);
+    s().setModal('newProject', false);
+    expect(s().modals).toMatchObject({ newProject: false, planetImport: false, settings: true });
+    expect(s().planetReturn).toBeNull();
+  });
+
+  it('leaves its import window alone while it stays open', () => {
+    s().setModal('newProject', true);
+    s().setModal('planetImport', true);
+    s().setModal('settings', false);
+    s().setModal('newProject', true);
+    expect(s().modals).toMatchObject({ newProject: true, planetImport: true });
+  });
+});
+
 describe('Help', () => {
   it('opens at a target and ends the pick', () => {
     setStoreState({ whatsThis: true });
@@ -56,6 +75,37 @@ describe('the tour', () => {
     expect(s().tourRunning).toBe(false);
   });
 
+  it('[UI-45] moves over its deck: Next ends on the recap, Back stops at the first card, Show me opens only where a card has steps', () => {
+    const deck = [0, 2, 0];
+    s().startTour(2);
+    s().moveTour({ kind: 'back' }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'deck', card: 0 });
+    s().moveTour({ kind: 'showMe' }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'deck', card: 0 });
+    s().moveTour({ kind: 'go', card: 9 }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'deck', card: 2 });
+    s().moveTour({ kind: 'next' }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'recap' });
+    s().moveTour({ kind: 'go', card: 1 }, deck);
+    s().moveTour({ kind: 'showMe' }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'show', card: 1, step: 0 });
+  });
+
+  it('[UI-47] a Show me moves on once per step it stands on, and back to its card after the last', () => {
+    const deck = [0, 2];
+    s().startTour(2);
+    s().moveTour({ kind: 'go', card: 1 }, deck);
+    s().moveTour({ kind: 'showMe' }, deck);
+    s().moveTour({ kind: 'stepOn', from: 0 }, deck);
+    s().moveTour({ kind: 'stepOn', from: 0 }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'show', card: 1, step: 1 });
+    s().moveTour({ kind: 'stepOn', from: 1 }, deck);
+    expect(s().tourPhase).toEqual({ kind: 'deck', card: 1 });
+    s().finishTour();
+    s().moveTour({ kind: 'next' }, deck);
+    expect([s().tourRunning, s().tourPhase]).toEqual([false, { kind: 'deck', card: 0 }]);
+  });
+
   it('[UI-47] a Show me gives back the mode, view, window and the assistant the visitor opened, however the run ends', () => {
     s().setViewMode('2d');
     s().setEditMode({ mode: null });
@@ -81,12 +131,12 @@ describe('what a Show me borrows', () => {
   const editing = () => {
     const st = s();
     return {
-      editMode: st.editMode, selection: st.selection, region: st.region, regionUndoLane: st.regionUndoLane, placementRotation: st.placementRotation,
-      activeLayer: st.activeLayer, layerPinned: st.layerPinned,
+      editMode: st.editMode, selection: st.selection, regions: st.regions, regionUndoLane: st.regionUndoLane, placementRotation: st.placementRotation,
+      displayLayer: st.displayLayer,
     };
   };
 
-  it('[UI-47] gives back the armed tool, the painted region with its undo lane, the turn and the layer exactly', () => {
+  it('[UI-47] gives back the armed tool, the painted region with its undo lane, the turn and the layer shown exactly', () => {
     s().setEditMode({ mode: 'mountain', arm: { kind: 'shape', shape: 'rect' } });
     s().commitRegion([{ x: 1, y: 1 }]);
     s().setPlacementRotation(90);
@@ -94,7 +144,7 @@ describe('what a Show me borrows', () => {
     inShowMe();
     s().poseTour({ mode: 'object' });
     s().poseTour({ mode: null, view: '3d' });
-    s().setActiveLayer(3);
+    s().setDisplayLayer(3);
     s().leaveShowMe();
     expect(editing()).toEqual(before);
   });

@@ -13,7 +13,7 @@ import type { Rect } from '../../../../core/grid/rect';
 import { MAP_TEXT, MAP_INK } from '../../../../assets/brand-palette';
 import { PLACEMENT_GRID } from '../../../../core/game/profile';
 import type { OverlayHost3D } from './host';
-import { toGeo } from './paint';
+import { toPlainGeometry } from '../../draw/mesh-upload';
 import { footprintMark } from '../../geometry/object-marks';
 
 /** A selected terrain cell's box: the map-label ink. */
@@ -200,7 +200,7 @@ export class Boxes3D {
  *  edge at each piece's height: the ground mark of a hovered, selected or flagged object. */
 export function footprintShadow(drape: DecalMesh, lift = DECAL_LIFT): { fill: THREE.BufferGeometry; rim: THREE.BufferGeometry } {
   const p = drape.positions.map((v, i) => (i % 3 === 1 ? v + lift : v));
-  const fill = toGeo({ positions: p, index: drape.index });
+  const fill = toPlainGeometry({ positions: p, index: drape.index });
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
     x0 = Math.min(x0, p[i]!); x1 = Math.max(x1, p[i]!);
@@ -218,7 +218,5 @@ export function footprintShadow(drape: DecalMesh, lift = DECAL_LIFT): { fill: TH
       if (along) edges.push(ax, p[a + 1]!, az, bx, p[b + 1]!, bz);
     }
   }
-  const rim = new THREE.BufferGeometry();
-  rim.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3));
-  return { fill, rim };
+  return { fill, rim: toPlainGeometry({ positions: edges }) };
 }

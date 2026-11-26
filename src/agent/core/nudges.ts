@@ -11,9 +11,13 @@ import { BUDGET_WARN_AT } from './governor';
 import { PROTOCOL } from './protocol';
 import type { GuideTools } from './tool-facts';
 
+/** What a loop-authored note opens with. A result made of one is filed through
+ *  `tool-result.ts:loopNoteResult`, so readers tell it by `detail.loopNote`, never by this mark. */
+export const NOTE_MARK = '(system)';
+
 /** The result of a refused byte-identical retry; its first line is the op's summary in the panel. */
 export function repeatRefusal(tools: GuideTools, streak: { error?: string; repeats: number }): string {
-  const base = '(system) Not run: this exact call just failed with:\n'
+  const base = NOTE_MARK + ' Not run: this exact call just failed with:\n'
     + `${streak.error ?? 'the same refusal as before'}\n`
     + 'Change the arguments or the approach; sending it again unchanged will not run.';
   if (streak.repeats < 2) return base;
@@ -24,7 +28,7 @@ export function repeatRefusal(tools: GuideTools, streak: { error?: string; repea
 
 /** Sent once at a zero-edit close; an impossible or unspecified request may correctly leave no edits. */
 export function deliveryNudge(): string {
-  return '(system) No edit has landed. Check whether that is appropriate for this request. '
+  return NOTE_MARK + ' No edit has landed. Check whether that is appropriate for this request. '
     + 'If the user asked for advice, gave no buildable subject, needs to choose an alternative, '
     + 'or requested something that cannot be done, make no substitute edits. Give the answer, '
     + 'explain the constraint, or ask one short question ending in a question mark. Otherwise, '
@@ -35,17 +39,16 @@ export function deliveryNudge(): string {
 /** One review pass scoped to the order, sent once in place of a landed build's first close. It
  *  names the view tool, never the score tool, whose whole-map scorecard invites edits beyond the order. */
 export function reviewNudge(tools: GuideTools): string {
-  return '(system) Verify the result against the user request and preserved work. Use the existing '
-    + `tool results; use a focused ${tools.view} or read only if something is uncertain. If all requested `
-    + 'outcomes are satisfied, close now. Otherwise make only the smallest necessary correction '
-    + 'and verify it once. Do not add features, clear and rebuild completed work, or chase '
-    + 'whole-map scores. Intentional planting is not an error. State any unmet constraint '
-    + 'honestly; ask the user only when their decision is needed. Your next close is final.';
+  return NOTE_MARK + ' Filled is not finished. Before this closes, hold the work once to the standard of a skilled builder who would sign it: '
+    + 'compare what stands with the design you set out to build and name what is missing or was reduced to something plainer. '
+    + `Use the tool results you have; use a focused ${tools.view} or read only where they leave you unsure. `
+    + 'Correct what falls short in place and keep what is right; do not clear and rebuild finished work. '
+    + 'Then close, stating plainly anything a skilled builder would still find wanting. Your next close is final.';
 }
 
 /** Sent once in place of a close after planning annotations were drawn and no plan was filed. */
 export function unfiledSketchNudge(tools: GuideTools): string {
-  return '(system) Planning annotations stand on the map, but no plan was filed. If this order calls '
+  return NOTE_MARK + ' Planning annotations stand on the map, but no plan was filed. If this order calls '
     + `for a plan or a build, read the drawing back with ${tools.sketch} and compare it with every item `
     + 'the order names: repair a missing item, zones no path reaches, or ground the order wanted planned '
     + `and left empty. Then file the plan with ${PROTOCOL.plan}, stages naming the zone numbers; its `
@@ -60,7 +63,7 @@ export function unfinishedPlanNudge(
 ): string | undefined {
   if (!plan || plan.current >= plan.stageCount) return undefined;
   const remaining = plan.stageCount - plan.current;
-  return `(system) The plan records ${remaining} of ${plan.stageCount} stages as unfinished (current: `
+  return NOTE_MARK + ` The plan records ${remaining} of ${plan.stageCount} stages as unfinished (current: `
     + `"${plan.nextLabel}"). Check their requested outcomes against the work already present. `
     + `Report completed stages with ${PROTOCOL.plan} completedStages; do not rebuild them or run `
     + `${tools.score} to move the plan. Finish only missing requested work, or explain what is `
@@ -70,7 +73,7 @@ export function unfinishedPlanNudge(
 /** Escalates once a call has failed with these exact arguments before in this job; successes do not reset it. */
 export function verbatimRetryNudge(tools: GuideTools, failures: number): string | undefined {
   if (failures < 1) return undefined;
-  return '(system) This exact call has already failed once with these same arguments, so repeating '
+  return NOTE_MARK + ' This exact call has already failed once with these same arguments, so repeating '
     + `it again will not help. Look before acting with a ${tools.search} tool, ${tools.skill} for a relevant `
     + 'technique, or ask the user instead of retrying it verbatim.';
 }
@@ -80,11 +83,11 @@ export function revertNudge(tools: GuideTools, toolName: string, reverts: number
   if (reverts < 1) return undefined;
   // Four reverts make inspection a precondition for another call.
   if (reverts >= 4) {
-    return `(system) STOP: ${reverts} ${toolName} edits have reverted in this job. Do not call it `
+    return NOTE_MARK + ` STOP: ${reverts} ${toolName} edits have reverted in this job. Do not call it `
       + `again until you have LOOKED — ${tools.inspect} or ${tools.view} the exact target — and are acting `
       + 'on ground the look confirmed clear. Repeating the probe builds nothing.';
   }
-  return `(system) ${toolName}'s edits keep reverting, which points at the approach rather than `
+  return NOTE_MARK + ` ${toolName}'s edits keep reverting, which points at the approach rather than `
     + `where it is aimed. Change strategy: look at the map with a ${tools.search} tool, ${tools.skill} for the `
     + 'relevant technique, or ask the user before trying again.';
 }
@@ -93,7 +96,7 @@ export function revertNudge(tools: GuideTools, toolName: string, reverts: number
 export function budgetWarning(turnsUsed: number, maxTurns: number): string | undefined {
   const remaining = maxTurns - turnsUsed;
   if (remaining !== BUDGET_WARN_AT) return undefined;
-  return `(system) ${remaining} turns remain before the iteration limit ends this job. Wrap up `
+  return NOTE_MARK + ` ${remaining} turns remain before the iteration limit ends this job. Wrap up `
     + 'now, or ask the user for more room if the job genuinely needs it.';
 }
 
@@ -103,14 +106,14 @@ export const NUDGE_RETRIES = 2;
 /** A bounded nudge for a turn with no text, no tool call and no reasoning. */
 export function emptyTurnNudge(consecutiveEmpty: number): string | undefined {
   if (consecutiveEmpty < 1 || consecutiveEmpty > NUDGE_RETRIES) return undefined;
-  return '(system) That turn produced no text and no tool calls. Continue the job, or ask the '
+  return NOTE_MARK + ' That turn produced no text and no tool calls. Continue the job, or ask the '
     + 'user a clarifying question if something is blocking it.';
 }
 
 /** The same bound for a turn that reasoned but sent no text and no call; it asks for the missing half. */
 export function reasoningOnlyNudge(consecutiveSilent: number): string | undefined {
   if (consecutiveSilent < 1 || consecutiveSilent > NUDGE_RETRIES) return undefined;
-  return '(system) That turn was all reasoning: no message and no tool call reached the user. '
+  return NOTE_MARK + ' That turn was all reasoning: no message and no tool call reached the user. '
     + 'State your conclusion as text, or call a tool.';
 }
 
@@ -118,20 +121,22 @@ export function reasoningOnlyNudge(consecutiveSilent: number): string | undefine
  *  without it the next request would repeat the one that truncated. */
 export function lengthStopNudge(streak: number): string | undefined {
   if (streak < 1 || streak > NUDGE_RETRIES) return undefined;
-  return '(system) Your last turn was cut off by the output limit before it finished, and its tool '
-    + 'calls were not run. Do not repeat the same call: issue smaller calls (fewer cells, a smaller '
-    + 'area) or give a shorter answer.';
+  return NOTE_MARK + ' Your last turn was cut off by the output limit before it finished, and its tool '
+    + 'calls were not run. The limit covers your thinking as well as your calls. If it went on thinking, '
+    + 'decide less in one turn: think briefly, then act, and write a drawing or a long argument straight '
+    + 'into the call instead of working it out first. If it went on the call, issue smaller calls (fewer '
+    + 'cells, a smaller area, a large drawing in parts) or give a shorter answer.';
 }
 
 /** The final turn appended at the iteration limit, handing the rest back to the user. */
 export function capMessage(): string {
-  return '(system) The iteration limit is reached and this job is ending now. Summarize what was '
+  return NOTE_MARK + ' The iteration limit is reached and this job is ending now. Summarize what was '
     + 'done and ask the user how to continue.';
 }
 
 /** The result for a call whose arguments a truncated turn left incomplete. */
 export function reissueMessage(): string {
-  return '(system) The turn was cut off before the arguments were complete. '
+  return NOTE_MARK + ' The turn was cut off before the arguments were complete. '
     + 'Reissue the calls with complete arguments.';
 }
 
@@ -148,20 +153,28 @@ export function planProgressRefusal(): string {
 
 /** The result of a plan filing whose stages do not parse. */
 export function planMalformed(): string {
-  return `(system) ${PROTOCOL.plan} needs a non-empty "stages" array of objects, each with a label. `
+  return NOTE_MARK + ` ${PROTOCOL.plan} needs a non-empty "stages" array of objects, each with a label. `
     + 'Example: stages: [{"label":"terrace the north hills"}]. Reissue the call with a valid plan.';
 }
 
 /** The result of a plan filing past the job's one revision. */
 export function planRevisionLimit(): string {
-  return '(system) The plan has already been revised once; the stage list is a commitment the '
+  return NOTE_MARK + ' The plan has already been revised once; the stage list is a commitment the '
     + 'user is reading, not a scratchpad. Keep building the current plan\'s remaining stages, and '
     + 'put any leftover ideas in your closing summary instead of a new plan.';
 }
 
-/** The result of an accepted plan filing. */
-export function planSet(): string {
-  return 'Plan set.';
+/** A plan of this many stages or more is built region by region by helpers. */
+const HELPER_PLAN_STAGES = 3;
+
+/** The result of an accepted plan filing: a plan of several stages is told to hand its regions to helpers. */
+export function planSet(stageCount = 0, guides?: Pick<GuideTools, 'helper'>): string {
+  if (!guides || stageCount < HELPER_PLAN_STAGES) return 'Plan set.';
+  return `Plan set, ${stageCount} stages. Build in this order. First the ground of the whole area: the levels, `
+    + 'then the routes that join them. Then hand every place to a helper, all in one turn so they work at the same '
+    + `time: one ${guides.helper} per place with its box as the bounds, the idea of the whole and of this place, what `
+    + 'to include, the ground level and the cell where a path enters it. Calm places are handed over too, with their '
+    + 'one rule. Build a place yourself only when it takes a call or two.';
 }
 
 /** The result acknowledging a reply suggestion in place. */
@@ -169,39 +182,149 @@ export function replyNoted(): string {
   return 'Noted.';
 }
 
+/** The result of a helper's call that was waiting its turn at the map when the job was stopped. */
+export function stoppedBeforeRun(): string {
+  return NOTE_MARK + ' The job was stopped before this call ran. Nothing was changed.';
+}
+
 /** The result for a delegated helper a reload interrupted; its child log is not resumable. */
 export function helperInterrupted(): string {
-  return '(system) The helper run was interrupted by a reload. Edits it already made are on the map; '
-    + 'look at the map, then delegate a fresh task for what remains.';
+  return NOTE_MARK + ' The helper run was interrupted by a reload. Edits it already made are on the map; '
+    + 'look at the map, then hand what remains to a new helper.';
 }
 
-/** A finished helper's result when its last turn said nothing. */
+/** A finished helper's report when its last turn said nothing. */
 export function helperNoSummary(): string {
-  return '(the helper task finished with no summary)';
+  return '(the helper closed without a report)';
 }
 
-/** What the parent model is told when a child job ended in an incident, in the child's own terms:
- *  the error class it ended on (so an 'auth' failure is not laundered into a generic "something went
- *  wrong" the model answers by delegating the same task again) plus the first line of its detail,
- *  already redacted by its producer per the `TurnError` contract. Later lines are a provider's own
- *  advice to whoever holds the key and say nothing the model can act on. A `TurnError` detail may or
- *  may not end in a period, so the trailing one is stripped before this sentence supplies its own. */
-export function helperFailed(incident?: { cls: string; detail: string }): string {
-  const tail = 'Delegate a fresh task or ask the user.';
-  if (!incident) return `(system) The helper run failed before it finished. ${tail}`;
-  const first = (incident.detail.split('\n')[0] ?? '').trim().replace(/\.+$/, '');
-  const said = first.length > 0 ? `(${incident.cls}): ${first}. ` : `(${incident.cls}). `;
-  return `(system) The helper run failed ${said}${tail}`;
+/** Inclusive corners of a map rectangle, as a helper's brief and result name its bounds. */
+export interface HelperBounds { x1: number; y1: number; x2: number; y2: number }
+
+const boundsText = (b: HelperBounds): string => `(${b.x1},${b.y1})-(${b.x2},${b.y2})`;
+
+/** One region's brief as the lead model fills it in. `bounds` and `cells` are the region the harness
+ *  enforces, which is the brief's rectangle cut to the map and to the user's painted region. */
+interface HelperBrief {
+  label: string;
+  bounds: HelperBounds;
+  cells: number;
+  goal: string;
+  include?: readonly string[];
+  preserve?: readonly string[];
+  interfaces?: string;
+  skills?: readonly string[];
+  done?: readonly string[];
 }
 
-/** The result of a helper job the user's stop aborted. */
-export function helperAborted(): string {
-  return '(system) The delegated task was aborted before it finished.';
+const briefList = (title: string, items: readonly string[] | undefined): string[] =>
+  (items && items.length > 0 ? [title, ...items.map((item) => `- ${item}`)] : []);
+
+/** A helper's order, rendered from its brief in one fixed layout; an empty section is left out. */
+export function helperOrder(tools: GuideTools, brief: HelperBrief): string {
+  return [
+    `Helper brief: ${brief.label}`,
+    `Bounds: ${boundsText(brief.bounds)}, ${brief.cells} cells. These cells are your selection; an edit outside them is refused.`,
+    `Goal: ${brief.goal}`,
+    ...briefList('Include:', brief.include),
+    ...briefList('Preserve:', brief.preserve),
+    ...(brief.interfaces ? [`Interfaces: ${brief.interfaces}`] : []),
+    ...(brief.skills && brief.skills.length > 0 ? [`Skills: ${tools.skill} each of these first: ${brief.skills.join(', ')}`] : []),
+    ...briefList('Done when:', brief.done),
+    'Build this place and only this place, inside the bounds, as your instructions for building a place say: design '
+      + 'the whole of it, draw it, check it, report.',
+  ].join('\n');
 }
 
-/** The result of a delegation with no task text. */
-export function delegateNeedsTask(): string {
-  return `${PROTOCOL.delegate} needs a non-empty "task" string.`;
+/** The order a district lead starts from: the brief, and that it leads the building of this area as its own job. */
+export function districtOrder(tools: GuideTools, brief: HelperBrief): string {
+  return [
+    `District brief: ${brief.label}`,
+    `Bounds: ${boundsText(brief.bounds)}, ${brief.cells} cells. These cells are your selection; an edit outside them is refused.`,
+    `Goal: ${brief.goal}`,
+    ...briefList('Include:', brief.include),
+    ...briefList('Preserve:', brief.preserve),
+    ...(brief.interfaces ? [`Interfaces: ${brief.interfaces}`] : []),
+    ...(brief.skills && brief.skills.length > 0 ? [`Skills: ${tools.skill} each of these first: ${brief.skills.join(', ')}`] : []),
+    ...briefList('Done when:', brief.done),
+    'Lead the building of this district and only this district, inside the bounds, as your instructions for leading a '
+      + 'district say: plan it, shape its whole ground, lay its paths, hand its places to helpers, finish it, report.',
+  ].join('\n');
+}
+
+/** How a helper's run ended, as the harness reads it off the run. */
+export type HelperStatus = 'done' | 'partial' | 'capped' | 'failed';
+
+/** What the harness measured of a helper's run. `objects` and `terrain` are the net change inside
+ *  the bounds; `fault` is the incident a failed run ended on, absent when the user stopped it. */
+export interface HelperReport {
+  label: string;
+  status: HelperStatus;
+  bounds: HelperBounds;
+  landed: number;
+  refused: number;
+  objects: number;
+  terrain: number;
+  report: string;
+  fault?: { cls: string; detail: string };
+}
+
+const signed = (n: number): string => (n > 0 ? `+${n}` : String(n));
+
+/** Only the first line of a fault's detail: later lines are a provider's advice to whoever holds the
+ *  key. The detail is already redacted by its producer per the `TurnError` contract. */
+function faultText(fault: HelperReport['fault']): string {
+  if (!fault) return 'it was stopped';
+  const first = (fault.detail.split('\n')[0] ?? '').trim().replace(/\.+$/, '');
+  return first.length > 0 ? `${fault.cls}: ${first}` : fault.cls;
+}
+
+function helperState(r: HelperReport): string {
+  const unfinished = 'The region is unfinished, and the work the helper landed remains on the map. '
+    + 'Look at the region before deciding what remains.';
+  switch (r.status) {
+    case 'done': return 'The helper finished its brief. Read this result; do not inspect the region again.';
+    case 'partial': return 'The helper finished, but some of its edits were refused or rolled back, so part of the brief may be missing. Look only where the report names a gap.';
+    case 'capped': return `The helper ran out of turns before it finished. ${unfinished}`;
+    case 'failed': return `The helper did not finish (${faultText(r.fault)}). ${unfinished}`;
+  }
+}
+
+/** A helper's result as the lead model reads it: the harness's own measurements in one fixed
+ *  layout, then the helper's closing words. */
+export function helperResult(r: HelperReport): string {
+  return [
+    `Helper result: ${r.label}`,
+    `Status: ${r.status}`,
+    `Bounds: ${boundsText(r.bounds)}`,
+    `Write calls: ${r.landed} landed, ${r.refused} refused or reverted`,
+    `Region change: objects ${signed(r.objects)}, cells with terrain ${signed(r.terrain)}`,
+    `State: ${helperState(r)}`,
+    `Report: ${r.report}`,
+  ].join('\n');
+}
+
+/** The refusal of a brief whose required text field is blank. */
+export function helperBriefBlank(field: string): string {
+  return `${field} must not be empty.`;
+}
+
+/** The refusal of a brief whose rectangle is more than its builder takes: `district` is the side a district lead takes, absent where the brief comes from one. */
+export function helperBoundsLarge(bounds: HelperBounds, limits: { cells: number; side: number; district?: number }): string {
+  const wide = bounds.x2 - bounds.x1 + 1, tall = bounds.y2 - bounds.y1 + 1;
+  const size = `the bounds (${bounds.x1},${bounds.y1})-(${bounds.x2},${bounds.y2}) are ${wide} by ${tall} cells; `;
+  const place = `one place of at most ${limits.cells} cells and ${limits.side} on a side`;
+  return limits.district === undefined
+    ? `${size}a helper builds ${place}. Divide this area into places and brief each, in the same turn.`
+    : `${size}a district is at most ${limits.district} on a side and a single place is ${place.slice(4)}. Divide this area into districts and brief each, in the same turn.`;
+}
+
+/** The refusal of a brief whose rectangle holds no cell the helper may edit: `region` is the user's
+ *  painted region when that is what the rectangle misses, absent when it misses the map. */
+export function helperBoundsEmpty(bounds: HelperBounds, region?: HelperBounds): string {
+  return region
+    ? `the bounds ${boundsText(bounds)} hold no cell of the user's region, which lies within ${boundsText(region)}. Choose bounds inside it. No helper was started.`
+    : `the bounds ${boundsText(bounds)} hold no cell of the map. No helper was started.`;
 }
 
 /** The result of a call naming a tool this executor does not offer. */
@@ -222,12 +345,22 @@ export function lengthStreakOverflow(): string {
 /** What the model is told when a tool throws, with key-shaped tokens redacted. */
 export function toolCrashed(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
-  return `(system) The tool crashed: ${redactSecrets(message)}. Try a different approach or ask the user.`;
+  return NOTE_MARK + ` The tool crashed: ${redactSecrets(message)}. Try a different approach or ask the user.`;
 }
 
 /** The result of a call the user's gate skipped; a user choice, not a tool failure. */
 export function skippedCallResult(): string {
   return 'The user chose not to run this call. Continue without it, or ask what they would prefer.';
+}
+
+/** What stands in for the map context of an order the session has moved past. */
+export function earlierMapContext(): string {
+  return 'Omitted: this was the map when an earlier order was given. The latest order carries the current map.';
+}
+
+/** What stands in for a long read from an earlier order, whose ground later edits may have changed. */
+export function earlierRead(): string {
+  return 'Omitted: a read from an earlier order. The map may have changed since; read again if the current order needs it.';
 }
 
 /** The result replayed for a call whose result the log never recorded. */

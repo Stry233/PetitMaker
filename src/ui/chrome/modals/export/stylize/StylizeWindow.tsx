@@ -22,7 +22,7 @@ type Page = 'hero' | 'studio';
  *  that side, the departing one goes out the other. */
 const swapTravel = amplitude('stylize.page.swap');
 
-interface StylizeWindowProps extends Pick<WindowProps, 'onClose'> {
+interface StylizeWindowProps extends WindowProps {
   /** Injected for tests; the default asks the chosen dialect. */
   listModels?: StylizeListModels;
   /** The map a Help figure pictures the studio over, where it is not the live one. */
@@ -33,17 +33,18 @@ interface StylizeWindowProps extends Pick<WindowProps, 'onClose'> {
  *  the same box. */
 export const STUDIO_CARD = { width: 880, height: 672 } as const;
 
-export function StylizeWindow({ onClose, listModels, subject }: StylizeWindowProps) {
+export function StylizeWindow({ open: shown = true, onClose, listModels, subject }: StylizeWindowProps) {
   const t = useT();
-  // Its host mounts it only while the flag is on, the lazy chunk with it.
-  const { open, close } = useWindow('stylize', { open: true, onClose });
+  // The shell hands the store's flag and keeps the window mounted through its exit; a figure or a test
+  // that hands nothing pictures it open.
+  const { open, close } = useWindow('stylize', { open: shown, onClose });
   const [page, setPage] = useState<Page | null>(null);
   // Whether the connection form was walked into from the create page, which is what its dismiss
   // means: back to the page it was opened over, not out of the window.
   const [openedOverStudio, setOpenedOverStudio] = useState(false);
   const conn = useStylizeConnection({
     ...(listModels ? { listModels } : {}),
-    probing: page === 'hero',
+    probing: open && page === 'hero',
   });
 
   useEffect(() => {

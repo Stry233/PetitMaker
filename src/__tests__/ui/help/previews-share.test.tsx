@@ -13,7 +13,8 @@ import {
   SearchPreview,
 } from '../../../ui/help/figures/previews/share';
 import { CANDIDATES } from '../../../ui/shell/bars/generate/generate-shelf';
-import { SEARCH_EXAMPLE_IDS, searchExamples } from '../../../ui/help/search-examples';
+import { SEARCH_EXAMPLE_IDS } from '../../../config/help-examples';
+import { searchExamples } from '../../../editor/help/search-examples';
 
 vi.mock('../../../view/map2d/capture/thumbnail', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../view/map2d/capture/thumbnail')>()),

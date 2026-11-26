@@ -33,6 +33,9 @@ export interface ToolHost extends CommandSink {
   /** Begin a stroke group at the current history depth: a gesture's commands commit, roll back or
    *  fold into one undo step through the handle. */
   beginStroke: () => Stroke;
+  /** Runs `body` as one executor transaction, so the objects it places and removes reach the map's
+   *  listeners as one change (`PasteDoor.hold`). */
+  hold: <T>(body: () => T) => T;
   validateCommand: (cmd: Command) => ValidationError[];
   /** The pre-command rules themselves, for asking about a hypothetical grid rather than the live
    *  one: the auto-trim ghost runs the trim pass over a scratch copy before the click.
@@ -132,6 +135,10 @@ export interface Tool<G extends GridId = GridId, C extends ToolContext = ToolCon
   /** Whether the press here is a click that uses no drag, so a hand that then pulls is asking to
    *  move the map rather than the tool. */
   clickOnly?(coord: MacroCoord, ctx: C): boolean;
+  /** What one press of this tool places when it is armed with something other than a catalog item
+   *  (the armed blueprint's id), or null: the pointer layer reads it as it reads an armed item, so a
+   *  finger's press waits to be a tap and its drag carries the ghost. */
+  armedPlacement?(arming: ToolArming): string | null;
   /** Whether an armed placement under this arming draws a stroke rather than placing once: its press
    *  acts on the way down, as a brush's does, and its drag is the stroke, even from over an object. */
   strokes?(ctx: Pick<C, 'arming'>): boolean;

@@ -25,13 +25,15 @@ import { OverlayLayer3D } from '../layers/overlay-layer';
 import { AnnotationLayer3D, type AnnotationLayer3DOpts } from '../layers/annotation-layer';
 import type { AnnotationsState } from '../../../core/model/annotations';
 import { Projection3D } from '../camera/projection';
-import type { ActiveView, ViewCamera } from '../../../tools/pointer/runtime';
+import type { ActiveView, GhostPrior, ScreenBox, ViewCamera } from '../../../tools/pointer/runtime';
+import { scratchGrid } from '../../../core/model/grid-model';
 import { cellsAffectedByLayerToggle, hiddenSetFrom } from '../../shared/terrain/layer-visibility';
 import type { PassiveOverlays, ViewSettingsTarget } from '../../shared/viewport/view-settings';
 import type { EventBus } from '../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../state/editing/events';
 import { leaseModelCaches } from '../models/cache-lease';
 import type { CameraAngle } from '../../../state/view-camera';
+import type { SeenView } from '../camera/camera-pose';
 import { islandBounds } from '../camera/controls';
 import { SceneCamera, maxHeight } from '../camera/scene-camera';
 import { layerToY, mapCenterOffset } from '../geometry/coords';
@@ -90,6 +92,8 @@ export class MapRenderer3D implements ViewSettingsTarget {
    *  set no longer matches the map and `resume()` rebuilds it whole (see `resetObjects`). */
   private objectsStale = false;
   private viewCache: GridState | null = null;
+  /** The map with a turning placement's cells as they stood before it, while the turn plays. */
+  private turnHold: GridState | null = null;
   private overlayLayer: OverlayLayer3D | null = null;
   private editorView: ActiveView | null = null;
   private bus: EventBus<EditorEvents> | null = null;
@@ -102,7 +106,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
   private objectDirty = new DirtyFlags<'roads' | 'icons' | 'chrome'>([
     ['roads', () => this.roads.rebuild()],
     ['icons', () => this.instances.refineIconColors()],
-    ['chrome', () => this.emitViewportChanged()],
+    ['chrome', () => this.emitViewportChanged(true)],
   ]);
   /** Whether the buildable drape needs re-baking against the terrain as it now stands. */
   private buildableDirty = false;
@@ -139,9 +143,11 @@ export class MapRenderer3D implements ViewSettingsTarget {
   onUnrecoverableLoss: (() => void) | null = null;
   private unwatchContext: () => void = () => {};
 
-  /** The camera moved: the pointer machine re-samples and the chrome re-anchors. */
-  private emitViewportChanged(): void {
-    this.bus?.emit('viewport-changed', { zoom: this.cam.zoomPercent() / 100 });
+  /** The camera moved, or with `content` what it shows changed under it: the pointer machine
+   *  re-samples and the chrome re-anchors. */
+  private emitViewportChanged(content = false): void {
+    const zoom = this.cam.zoomPercent() / 100;
+    this.bus?.emit('viewport-changed', content ? { zoom, content: true } : { zoom });
   }
 
   private onContextLost = (e: Event): void => {
@@ -161,7 +167,9 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.requestRender();
   };
 
-  constructor(private container: HTMLElement, private liveState: GridState, bus?: EventBus<EditorEvents>) {
+  /** `bus` makes this a view on the editor: it tells camera moves there, and mirrors the map's edits
+   *  unless `still` (a stand-in, `state/map-stand-in.ts`, whose map the edits are not). */
+  constructor(private container: HTMLElement, private liveState: GridState, bus?: EventBus<EditorEvents>, opts?: { still?: boolean }) {
     const w = container.clientWidth || 1, h = container.clientHeight || 1;
     // On a software rasterizer (glQuality 'lite') every pixel is CPU work, which shadow maps and the
     // MSAA target multiply; lite drops both and renders at 1x.
@@ -214,15 +222,17 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.buildTerrain(this.liveState);
     this.scene.add(this.arrows.group);
     this.scene.add(this.annotationLayer.group);
-    this.rebuildWaterfallArrows();
-    if (bus) {
-      this.bus = bus;
+    this.arrows.flush(this.meshState(), this.hiddenLayers);
+    if (bus) this.bus = bus;
+    if (bus && !opts?.still) {
       // Live edit sync: an edit dirties its chunks (+1-cell ring — neighbors'
       // exposed faces and backing change too); the render loop remeshes them.
       const onCells = (data: EditorEvents['cells-changed']) => {
         this.viewCache = null;
         const { width, height } = this.liveState.template;
-        for (const k of dirtyChunksFor(cellsOn(data.cells, TERRAIN_GRID), width, height)) this.terrain.dirty.add(k);
+        const terrainCells = cellsOn(data.cells, TERRAIN_GRID);
+        for (const k of dirtyChunksFor(terrainCells, width, height)) this.terrain.dirty.add(k);
+        this.arrows.cellsChanged(terrainCells, this.liveState);
         // The buildable drape is baked at each cell's surface height, so terrain moving under a
         // painted region leaves it describing ground that is gone — a generation's old elevations,
         // standing until the region happened to be shown again.
@@ -342,6 +352,32 @@ export class MapRenderer3D implements ViewSettingsTarget {
     return this.captureImage();
   }
 
+  /** What this view shows inside the client box `box` (`stills.ts:SeenView`); null before its canvas is laid out. */
+  seenIn(box: ScreenBox): SeenView | null {
+    const rect = viewportRect(this.renderer.domElement);
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      ...this.cam.pose(), aspect: rect.width / rect.height,
+      part: { x: (box.left - rect.left) / rect.width, y: (box.top - rect.top) / rect.height, w: box.width / rect.width, h: box.height / rect.height },
+    };
+  }
+
+  /** Captures exactly the part of a view `seen` holds (`seenIn`), from this scene of the same map. */
+  captureSeen(seen: SeenView): string {
+    const undo = this.cam.showSeen(seen);
+    try { return this.captureImage(); } finally { undo(); }
+  }
+
+  /** Takes `other`'s camera exactly: a scene of the same template drawn in its place keeps the view. */
+  adoptCamera(other: MapRenderer3D): void {
+    this.cam.adopt(other.cam);
+  }
+
+  /** Shows or hides this scene's canvas, for a paused scene kept under another drawn in its place. */
+  setShown(on: boolean): void {
+    this.renderer.domElement.style.display = on ? '' : 'none';
+  }
+
   /** Pose the camera at a CameraAngle without capturing (`SceneCamera.applyCameraAngle`). */
   applyCameraAngle(angle: CameraAngle): void {
     this.cam.applyCameraAngle(angle);
@@ -360,10 +396,10 @@ export class MapRenderer3D implements ViewSettingsTarget {
     this.renderFrame();
   }
 
-  private loop = (): void => {
+  private loop = (now: number): void => {
     this.raf = 0;
     if (!this.running || this.contextLost) return;
-    if (!this.frames.advance()) return;
+    if (!this.frames.advance(now)) return;
     const follow = this.cam.followControls();
     if (follow?.more) this.frames.keepOpen(MOVE_WINDOW_FRAMES);
     if (follow?.moving) this.emitViewportChanged();
@@ -416,9 +452,28 @@ export class MapRenderer3D implements ViewSettingsTarget {
   /** The state the terrain mesher consumes: the live state, or (with layers
    *  hidden) its cached visibility view — 2D peel semantics via clampNeighbor. */
   private meshState(): GridState {
-    if (this.hiddenLayers.size === 0) return this.liveState;
+    if (this.hiddenLayers.size === 0) return this.turnHold ?? this.liveState;
     if (!this.viewCache) this.viewCache = visibilityView(this.liveState, this.hiddenLayers);
     return this.viewCache;
+  }
+
+  /** Meshes `prior` cells as they stood before a placement until the returned release, which remeshes
+   *  the map's own. */
+  private holdTerrain(prior: readonly GhostPrior[]): () => void {
+    const held = scratchGrid(this.liveState, prior);
+    for (const p of prior) {
+      const cell = held.cells[p.y]?.[p.x];
+      if (cell) cell.terrain = p.terrain;
+    }
+    const { width, height } = this.liveState.template;
+    const remesh = (): void => {
+      for (const k of dirtyChunksFor(prior, width, height)) this.terrain.dirty.add(k);
+      this.arrows.cellsChanged(prior, this.liveState);
+      this.requestRender();
+    };
+    this.turnHold = held;
+    remesh();
+    return () => { if (this.turnHold === held) this.turnHold = null; remesh(); };
   }
 
   /** Apply a layer-visibility change: remesh the affected chunks under the new
@@ -439,7 +494,10 @@ export class MapRenderer3D implements ViewSettingsTarget {
     }
     this.instances.applyLayerToggle(changed, hidden);
     this.roads.rebuild();
-    this.rebuildWaterfallArrows();
+    // The arrows are scanned from the meshed map, which a toggle peels anew.
+    this.arrows.invalidate();
+    this.arrows.flush(this.meshState(), this.hiddenLayers);
+    this.requestRender();
     this.recastShadows();
     this.requestRender();
   }
@@ -502,7 +560,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
   private flushTerrainDirty(): void {
     const remeshed = [...this.terrain.dirty];
     if (!this.terrain.flush()) return;
-    this.rebuildWaterfallArrows();
+    this.arrows.flush(this.meshState(), this.hiddenLayers);
     // Re-baked here, with the terrain flush, so the drape and the ground under it are one frame's
     // worth of the same map. Coalesced with it too: a generation fires thousands of cells-changed.
     if (this.buildableDirty) { this.buildableDirty = false; this.overlayLayer?.refreshBuildable(); }
@@ -511,11 +569,6 @@ export class MapRenderer3D implements ViewSettingsTarget {
       for (const key of remeshed) this.annotationsTerrainDirty.add(key);
     }
     this.recastShadows();
-  }
-
-  private rebuildWaterfallArrows(): void {
-    this.arrows.rebuild(this.meshState(), this.hiddenLayers);
-    this.requestRender();
   }
 
   /**
@@ -596,6 +649,7 @@ export class MapRenderer3D implements ViewSettingsTarget {
         camera: this.camera,
         viewport: () => viewportRect(this.renderer.domElement),
         modelQuality: this.modelQuality,
+        holdTerrain: (prior) => this.holdTerrain(prior),
       });
       this.scene.add(overlay.group);
       this.overlayLayer = overlay;

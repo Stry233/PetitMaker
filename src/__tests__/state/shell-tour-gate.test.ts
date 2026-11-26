@@ -4,10 +4,20 @@
  * refuse to close one: whatever was open when the tour started still has to go away, and both
  * work again once the tour ends.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { useEditorStore } from '../../state/store';
+import { makeState, setTerrain } from '../_support/map-state';
+import { createDefaultRegistry } from '../../rules';
+import { TerrainType } from '../../core/model/types';
 
 const ref = { kind: 'terrain', x: 1, y: 1 } as const;
+
+// Both surfaces stand over a map that holds their target: a mountain cell.
+beforeEach(() => {
+  const state = makeState(8, 8);
+  setTerrain(state, 1, 1, TerrainType.Mountain, 1);
+  useEditorStore.getState().loadMap(state, createDefaultRegistry());
+});
 
 afterEach(() => {
   useEditorStore.getState().setTourRunning(false);

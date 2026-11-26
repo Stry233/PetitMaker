@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotionConfig } from 'framer-motion';
 import { radii, font } from '../../../design/styles';
 import { skin } from '../../../design/window-skin';
-import { roleFont } from '../../../design/text-weight';
+import { roleFont, roleSize } from '../../../design/text-weight';
 import { Spinner } from '../../../primitives/Spinner';
 import { useLocale, useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
-import type { ExportOptions } from '../../../../io/export/types';
+import type { PictureChoices } from '../../../../io/export/types';
+import type { MapNotes } from '../../../../core/model/types';
 import type { MapProvenanceSummary } from '../../../../core/provenance/types';
 import { captureBaseMap, captureCard3dAngles, loadBrandLockup, paintPreview, type BaseMapSource } from '../../../../editor/export/preview';
+import type { HostMark } from '../../../../editor/export/brand';
 import { LEGAL } from '../../../../legal/config';
 import { CodeWarn } from './ExportControls';
 import type { ShareCodeIssue } from './use-share-code';
 import { angleKey } from '../../../../view/map3d/capture/stills';
+import { shotsOf } from '../../../../state/shot-list';
 import { usePanZoom } from '../../../primitives/use-pan-zoom';
 import { PanZoomResetHint, stageOutline } from '../../../primitives/pan-zoom-stage';
 import { useStylizeVersions } from './stylize/use-stylize-versions';
@@ -26,9 +29,16 @@ import { useEffectEvent } from '../../../primitives/use-effect-event';
  *
  *  `open` gates every capture and resets the view, and is a prop rather than a store read: the
  *  window this preview sits in is not always the one the `modals.export` flag describes. */
-export function ExportPreview({ open, preparing = open, checkingMap = false, options, summary, codeImg, codePending, codeIssue, footerTokens }: {
-  open: boolean; preparing?: boolean; checkingMap?: boolean; options: ExportOptions; summary: MapProvenanceSummary | null;
+export function ExportPreview({
+  open, preparing = open, checkingMap = false, options, words, summary, codeImg, codePending, codeIssue, footerTokens, mark = null,
+}: {
+  open: boolean; preparing?: boolean; checkingMap?: boolean; options: PictureChoices;
+  /** The title and description the picture may show, or null to paint it without its words. */
+  words: MapNotes | null;
+  summary: MapProvenanceSummary | null;
   codeImg?: HTMLCanvasElement | null; codePending?: boolean; codeIssue?: ShareCodeIssue | null; footerTokens?: Record<string, string>;
+  /** The footer QR the deployment's host made, in place of the site's. */
+  mark?: HostMark | null;
 }) {
   const t = useT();
   const statusTransition = useTransition('export.preview.status');
@@ -37,11 +47,26 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
   const [baseMap, setBaseMap] = useState<BaseMapSource | null>(null);
   const [brandLockup, setBrandLockup] = useState<HTMLImageElement | null>(null);
   const [card3d, setCard3d] = useState<HTMLImageElement[]>([]);
-  const [picture, setPicture] = useState<HTMLCanvasElement | null>(null);
-  const displayPicture = useCallback((canvas: HTMLCanvasElement | null) => {
-    if (canvas && picture) canvas.getContext('2d')?.drawImage(picture, 0, 0);
-  }, [picture]);
   const [loading, setLoading] = useState(true);
+  const busy = checkingMap || (preparing && loading);
+  const hidden = !open || busy;
+  // The pictures on the stage, oldest first: each fades in over those before it, which leave once it
+  // has landed, so a run of quick changes ends on the newest without the stage showing through.
+  const [pictures, setPictures] = useState<Picture[]>([]);
+  const picture = pictures[pictures.length - 1] ?? null;
+  const reduced = useReducedMotionConfig();
+  const shown = reduced ? pictures.slice(-1) : pictures;
+  const nextPicture = useRef(0);
+  // A picture replaces the ones before at once under reduced motion, as no landing comes to retire
+  // them, and on a hidden stage, which shows it again without a fade.
+  const addPicture = useEffectEvent((canvas: HTMLCanvasElement) => {
+    const next = { id: nextPicture.current++, canvas };
+    setPictures((all) => (reduced || hidden ? [next] : [...all, next]));
+  });
+  const landed = useCallback((id: number) => {
+    setPictures((all) => { const at = all.findIndex((p) => p.id === id); return at > 0 ? all.slice(at) : all; });
+  }, []);
+  useEffect(() => { if (hidden) setPictures((all) => (all.length > 1 ? all.slice(-1) : all)); }, [hidden]);
   // Drag/wheel/double-click and the transient reset hint, shared with the stylize studio's canvas.
   const pz = usePanZoom();
 
@@ -74,7 +99,7 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
     // add/expand spring settles (~400ms), so building the throwaway scene never stalls that
     // animation mid-flight (a stall snaps the layout on the final frame).
     const id = setTimeout(() => {
-      captureCard3dAngles(state, shots.length ? shots : undefined).then((imgs) => { if (alive) setCard3d(imgs); }).catch(() => undefined);
+      captureCard3dAngles(state, shotsOf(shots, state)).then((imgs) => { if (alive) setCard3d(imgs); }).catch(() => undefined);
     }, 480);
     return () => { alive = false; clearTimeout(id); };
   }, [open, state, options.card3d, shots]);
@@ -95,16 +120,18 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
     if (!open || !baseMap || !state) return;
     if (codePending) { if (!hasPicture.current) setLoading(true); return; }
     const id = setTimeout(() => {
-      setPicture(paintPreview(
-        { options, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup, footerTokens,
-          site: LEGAL.canonicalOrigin },
-      ));
+      const painted = paintPreview(
+        { options, words, summary: summaryRef.current ?? null, state, locale, baseMap, card3dAngles: card3d, codeImg: codeImg ?? null, brandLockup,
+          footerTokens, site: mark ?? LEGAL.canonicalOrigin },
+      );
+      // A canvas the browser refuses a context leaves the picture before it standing.
+      if (painted) addPicture(painted);
       hasPicture.current = true;
       setLoading(false);
     }, 50);
     return () => clearTimeout(id);
     // The summary is read from a ref.
-  }, [open, options, state, locale, baseMap, card3d, codeImg, codePending, brandLockup, footerTokens]);
+  }, [open, options, words, state, locale, baseMap, card3d, codeImg, codePending, brandLockup, footerTokens, mark]);
 
   const resetView = useEffectEvent(pz.reset);
   useEffect(() => { resetView(); }, [open, baseMap]);
@@ -117,7 +144,6 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
     return () => { live = false; };
   }, [open, locale]);
 
-  const busy = checkingMap || (preparing && loading);
   const statusLabel = t(checkingMap ? 'export.map_check.checking' : 'export.load_t');
 
   return (
@@ -131,11 +157,17 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
             </AnimatePresence>
           </div>
         </div>}
-        {open && picture && !busy && (
-          <canvas ref={displayPicture} width={picture.width} height={picture.height} data-export-preview aria-hidden
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: radii.chip, userSelect: 'none', ...pz.viewStyle }} />
+        {!hidden && picture && (
+          // The moved layer holds every picture of a swap, so a zoomed view carries through it.
+          <div style={{ position: 'absolute', inset: 0, ...pz.viewStyle }}>
+            <AnimatePresence initial={false}>
+              {shown.map((p) => (
+                <PreviewPicture key={p.id} canvas={p.canvas} current={p === picture} onLanded={() => landed(p.id)} />
+              ))}
+            </AnimatePresence>
+          </div>
         )}
-        {open && !busy && !picture && <div style={hintStyle}><div style={{ fontSize: 28 }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
+        {!hidden && !picture && <div style={hintStyle}><div style={{ fontSize: roleSize('title') }}>🗺️</div><div>{t('export.fail_t')}</div></div>}
         <PanZoomResetHint show={pz.showResetHint} label={t('export.preview_reset_hint')} />
         <div style={stageOutline} aria-hidden />
       </div>
@@ -144,5 +176,20 @@ export function ExportPreview({ open, preparing = open, checkingMap = false, opt
   );
 }
 
+interface Picture { id: number; canvas: HTMLCanvasElement }
+
+/** One composed picture on the stage; only the newest is the preview `data-export-preview` names. */
+function PreviewPicture({ canvas, current, onLanded }: { canvas: HTMLCanvasElement; current: boolean; onLanded: () => void }) {
+  const swap = useTransition('export.preview.swap');
+  const reduced = useReducedMotionConfig();
+  const draw = useCallback((el: HTMLCanvasElement | null) => { el?.getContext('2d')?.drawImage(canvas, 0, 0); }, [canvas]);
+  return (
+    <motion.canvas ref={draw} width={canvas.width} height={canvas.height} data-export-preview={current ? '' : undefined} aria-hidden
+      initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={swap}
+      onAnimationComplete={onLanded} style={pictureStyle} />
+  );
+}
+
+const pictureStyle: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: radii.chip, userSelect: 'none' };
 const stage: CSSProperties = { position: 'relative', flex: 1, minHeight: 0, borderRadius: radii.lg, background: skin.inset, display: 'grid', placeItems: 'center', overflow: 'hidden' };
 const hintStyle: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: skin.muted, fontFamily: font.family, ...roleFont('label') };

@@ -5,6 +5,7 @@ import { animConfig, easeOutQuad } from '../../../shared/motion/anim-config';
 import { NOTE_GHOST_ALPHA } from '../../../shared/overlay/ghost-geometry';
 import { TILE_SIZE } from '../../geometry/world';
 import { AnnotationLayer } from '../annotation-layer';
+import { settleAtOnce, timedBeat } from '../../../shared/viewport/frame-loop';
 import type { OverlayHost } from './host';
 
 /** What the note ghost reads beyond the overlay host: the map's `annotationInkScale`. */
@@ -23,10 +24,10 @@ export class OverlayNoteGhost {
   /** The latest ask: a note and its label, or null to take the ghost down. */
   private pending: { note: MapAnnotation; label: string } | null | undefined;
   private raf = 0;
-  private fadeRaf = 0;
+  private stopFade: () => void = () => {};
 
   constructor(private readonly host: NoteGhostHost) {
-    this.notes = new AnnotationLayer(() => host.requestRender(), 0);
+    this.notes = new AnnotationLayer(() => host.requestRender(), settleAtOnce, 0);
     this.noteSlot.addChild(this.notes.container);
     this.noteSlot.visible = false;
   }
@@ -48,8 +49,8 @@ export class OverlayNoteGhost {
 
   dispose(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
-    if (this.fadeRaf) cancelAnimationFrame(this.fadeRaf);
-    this.raf = this.fadeRaf = 0;
+    this.raf = 0;
+    this.endFade();
     this.notes.destroy();
   }
 
@@ -77,19 +78,14 @@ export class OverlayNoteGhost {
   private arrive(): void {
     this.noteSlot.visible = true;
     if (isMotionReduced()) { this.noteSlot.alpha = NOTE_GHOST_ALPHA; return; }
-    const start = performance.now();
     this.noteSlot.alpha = 0;
-    const step = () => {
-      const t = Math.min(1, (performance.now() - start) / animConfig.noteGhost.fadeInMs);
+    this.stopFade = this.host.play(timedBeat(animConfig.noteGhost.fadeInMs, (t) => {
       this.noteSlot.alpha = NOTE_GHOST_ALPHA * easeOutQuad(t);
-      this.host.requestRender();
-      this.fadeRaf = t < 1 ? requestAnimationFrame(step) : 0;
-    };
-    this.fadeRaf = requestAnimationFrame(step);
+    }));
   }
 
   private endFade(): void {
-    if (this.fadeRaf) cancelAnimationFrame(this.fadeRaf);
-    this.fadeRaf = 0;
+    this.stopFade();
+    this.stopFade = () => {};
   }
 }

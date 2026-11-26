@@ -10,6 +10,7 @@ const downloaded: Blob[] = [];
 vi.mock('../../../../../io/export/download', async (original) => ({
   ...await original<typeof import('../../../../../io/export/download')>(),
   downloadBlob: (blob: Blob) => { downloaded.push(blob); },
+  downloadJSON: (json: string) => { downloaded.push(new Blob([json], { type: 'application/json' })); },
 }));
 
 // jsdom's Blob has no `text()`, which both Export and Import use; FileReader backs it here.
@@ -121,6 +122,18 @@ describe('the keyboard window', () => {
 });
 
 describe('the keyboard window on a small screen', () => {
+  it('[UI-70] finds a command by its name whatever the case, accents and character width', () => {
+    renderWindow();
+    const field = screen.getByPlaceholderText('Search commands');
+    const found = (query: string) => {
+      fireEvent.change(field, { target: { value: query } });
+      return [...screen.queryAllByRole('menuitem'), ...screen.queryAllByRole('menuitemradio')].map((item) => item.textContent);
+    };
+    const plain = found('undo');
+    expect(plain.length).toBeGreaterThan(0);
+    expect(found('ＵＮＤÓ')).toEqual(plain);
+  });
+
   it('offers a close button of its own, since a phone has no Escape and little backdrop', () => {
     const onClose = vi.fn();
     render(<I18nProvider><KeyboardModal open onClose={onClose} /></I18nProvider>);

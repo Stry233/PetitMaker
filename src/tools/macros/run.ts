@@ -3,12 +3,13 @@ import { isInBounds } from '../../core/grid/rect';
 import { hashJSON } from '../../core/base/hash';
 import type { CategoryId, MacroCoord } from '../../core/model/types';
 import { itemRole } from '../../state/catalog';
+import type { ContentType } from '../../state/editing/edit-mode';
 import { type AutoEdgeCut } from '../../state/editing/vocabulary';
 import { ProvSource } from '../../core/provenance/types';
 import { circleCells } from '../../core/grid/shapes';
 import { layRoadLink } from './roads/road-link';
 import type { MacroContext } from './context';
-import { cellsChanged, objectsChanged } from './runtime/measure';
+import { objectsChanged, terrainChanged } from './runtime/measure';
 import { plantScopedPatch, type Planting } from './planting/patch';
 import { raiseTerrain, type RaiseSteepness } from './terrain/raise';
 import { layRoadNetwork } from './roads/roads';
@@ -37,16 +38,18 @@ interface MacroSpec {
   /** What a planting card plants, or null for every other macro. Its lead names the object shelf tab
    *  whose card the macro is. */
   planting: Planting | null;
+  /** What the interface and Help call the action, or null for a macro no surface offers. */
+  labelKey: I18nKey | null;
 }
 
 /** Available operations, including programmatic networks and category-specific planting. */
 export const MACROS = {
-  raise: { grid: TERRAIN_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a rise', planting: null },
-  stream: { grid: TERRAIN_GRID, aimed: true, adjustable: true, emptyCode: 'river-blocked', emptyReason: 'no complete river can be built here', planting: null },
-  'road-link': { grid: PLACEMENT_GRID, aimed: true, adjustable: true, emptyCode: 'no-route', emptyReason: 'no route could be planned between these points', planting: null },
-  roads: { grid: PLACEMENT_GRID, aimed: false, adjustable: false, emptyCode: 'nothing-to-connect', emptyReason: 'nothing on the map to connect', planting: null },
-  'patch-tree': { grid: PLACEMENT_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', planting: { lead: 'canopy', floor: 'groundcover' } },
-  'patch-flora': { grid: PLACEMENT_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', planting: { lead: 'groundcover' } },
+  raise: { grid: TERRAIN_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a rise', planting: null, labelKey: 'smart.raise' },
+  stream: { grid: TERRAIN_GRID, aimed: true, adjustable: true, emptyCode: 'river-blocked', emptyReason: 'no complete river can be built here', planting: null, labelKey: 'smart.stream' },
+  'road-link': { grid: PLACEMENT_GRID, aimed: true, adjustable: true, emptyCode: 'no-route', emptyReason: 'no route could be planned between these points', planting: null, labelKey: 'smart.road_link' },
+  roads: { grid: PLACEMENT_GRID, aimed: false, adjustable: false, emptyCode: 'nothing-to-connect', emptyReason: 'nothing on the map to connect', planting: null, labelKey: null },
+  'patch-tree': { grid: PLACEMENT_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', planting: { lead: 'canopy', floor: 'groundcover' }, labelKey: 'smart.patch' },
+  'patch-flora': { grid: PLACEMENT_GRID, aimed: true, adjustable: false, emptyCode: 'terrain-blocked', emptyReason: 'no ground here would take a planting', planting: { lead: 'groundcover' }, labelKey: 'smart.patch' },
 } as const satisfies Record<string, MacroSpec>;
 
 export type MacroId = keyof typeof MACROS;
@@ -59,8 +62,21 @@ export function macroForShelfCategory(category: CategoryId): MacroId | null {
   return role === undefined ? null : MACRO_IDS.find((id) => plantingOf(id)?.lead === role) ?? null;
 }
 
+/** The macro Smart Build arms on each terrain surface. */
+const SURFACE_MACRO: Readonly<Record<ContentType, MacroId>> = { mountain: 'raise', water: 'stream', road: 'road-link' };
+
+/** The macro Smart Build arms on the terrain surface `surface`. */
+export function macroForSurface(surface: ContentType): MacroId {
+  return SURFACE_MACRO[surface];
+}
+
 /** The macros the object shelf offers as cards. */
 export const SHELF_MACRO_IDS: readonly MacroId[] = MACRO_IDS.filter((id) => plantingOf(id) !== null);
+
+/** What the interface calls the macro's action, or null for a macro no surface offers. */
+export function macroLabel(id: MacroId): I18nKey | null {
+  return MACROS[id].labelKey;
+}
 
 /** What a planting card plants, or null for every other macro. */
 export function plantingOf(id: MacroId): Planting | null {
@@ -390,7 +406,6 @@ export function landMacroRun(
   const { executor } = ctx;
   if (!trustBase && mapFingerprint(ctx.state) !== built.run.base) return null;
   const atomic = 'from' in opts && opts.from !== undefined;
-  const countCells = cellsChanged(ctx.state, atomic);
   const countObjects = objectsChanged(ctx.state);
   const source = {
     source: ProvSource.Procedural,
@@ -409,7 +424,7 @@ export function landMacroRun(
       return { changes: 0, reason: 'the complete build could not be replayed', code: built.report?.code ?? 'blocked' };
     }
     const violations = tx.commit({ atomic });
-    const changes = countCells() + countObjects();
+    const changes = terrainChanged(ctx.state, tx.entries(), atomic).length + countObjects();
     const report = built.report;
     const narrated: Pick<MacroOutcome, 'code' | 'at' | 'blocked' | 'narrowedByPlanting' | 'offers' | 'ownedIds' | 'peak' | 'ends'> = {
       ...(report?.ends ? { ends: report.ends } : {}),
@@ -440,12 +455,8 @@ export function retireOn(err: unknown, retire: () => void): void {
   if (err instanceof MacroRunnerUnavailable) retire();
 }
 
-/** Whether presses on `ctx` can build off-thread (`MacroContext.offThread`): what the tool forks its
- *  sync/async plumbing on. */
-export function hasMacroBuildRunner(ctx: MacroContext): boolean { return !!ctx.offThread?.build; }
-
 /** Build without landing, so a gesture can cancel an outstanding worker request. */
-export async function prepareMacro<K extends MacroId>(ctx: MacroContext, id: K, opts: MacroOpts<K>): Promise<MacroBuild | null> {
+async function prepareMacro<K extends MacroId>(ctx: MacroContext, id: K, opts: MacroOpts<K>): Promise<MacroBuild | null> {
   const port = ctx.offThread;
   if (port?.build) {
     try {
@@ -456,38 +467,29 @@ export async function prepareMacro<K extends MacroId>(ctx: MacroContext, id: K, 
   return buildMacroRun(ctx, id, opts);
 }
 
-/** `applyMacro`, with the expensive build off-thread when `ctx` carries a runner. Without one the whole
- *  body runs synchronously before the returned promise settles, so the no-worker path (tests, headless)
- *  behaves exactly as the synchronous call does. */
-export async function applyMacroAsync<K extends MacroId>(ctx: MacroContext, id: K, opts: MacroOpts<K>): Promise<MacroOutcome> {
-  const guarded = guardMacro(ctx, id, opts);
-  if (guarded) return guarded;
-  const port = ctx.offThread;
-  if (port?.build) {
-    const cv = ctx.state.cellsVersion;
-    const ov = ctx.state.objectsVersion;
-    const ignoreLoad = !!ctx.state.ignoreChunkLoad;
-    let built: MacroBuild | null;
-    // Only the build is guarded, and only an unavailable runner retires. The landing below stays
-    // outside the guard: it runs on the main thread against the live map, and it rethrows after
-    // rolling itself back (`landMacroRun`), so catching it here would read a rule or executor fault
-    // as a failed build and re-run the whole macro in-process on the way past.
-    try {
-      built = await port.build(ctx.state, id, opts, ctx.registry);
-    } catch (err) {
-      retireOn(err, () => { port.build = null; });
-      built = null;
-    }
-    if (built) {
-      // Version counters unmoved since the state left for the builder ⇒ the map is the map the
-      // build ran over, and the fingerprint compare has nothing left to ask.
-      const trustBase = ctx.state.cellsVersion === cv && ctx.state.objectsVersion === ov && !!ctx.state.ignoreChunkLoad === ignoreLoad;
-      const landed = landMacroRun(ctx, id, opts, built, { trustBase });
-      if (landed) return landed;
-      // Stale base: the map moved while the worker built. Rebuild in-process below.
-    }
+/**
+ * Builds `id` on `ctx` and hands the build to `land`, a throw from either reaching `failed`. Without
+ * an off-thread runner (`MacroContext.offThread`) it all runs before this returns, as tests and
+ * headless callers expect, and the answer is null; with one the build runs on the worker, after
+ * `queue` settles when one is given, and the answer is the promise that settles after `land` or
+ * `failed`. `fresh` says the map `ctx` holds has not moved since the build read it, so a landing on
+ * that same map can trust its base (`landMacroRun`).
+ */
+export function buildMacroThen<K extends MacroId>(ctx: MacroContext, id: K, opts: MacroOpts<K>, { land, failed, queue }: {
+  land: (built: MacroBuild | null, fresh: boolean) => void;
+  failed: (error: unknown) => void;
+  queue?: Promise<unknown> | undefined;
+}): Promise<void> | null {
+  if (!ctx.offThread?.build) {
+    try { land(buildMacroRun(ctx, id, opts), true); } catch (error) { failed(error); }
+    return null;
   }
-  return applyMacro(ctx, id, opts);
+  const run = async (): Promise<void> => {
+    const { cellsVersion, objectsVersion } = ctx.state, ignoreLoad = !!ctx.state.ignoreChunkLoad;
+    const built = await prepareMacro(ctx, id, opts);
+    land(built, ctx.state.cellsVersion === cellsVersion && ctx.state.objectsVersion === objectsVersion && !!ctx.state.ignoreChunkLoad === ignoreLoad);
+  };
+  return (queue ? queue.then(run) : run()).catch(failed);
 }
 
 export function applyMacro<K extends MacroId>(ctx: MacroContext, id: K, opts: MacroOpts<K>): MacroOutcome {

@@ -2,9 +2,13 @@
  * Selection helpers. The selection is an ordered array, in the order the user built it;
  * `[]` means nothing is selected.
  */
-import type { GridState, PlacedObject } from '../core/model/types';
+import { TerrainType, type GridState, type PlacedObject } from '../core/model/types';
+import { liveMembers, type PlacedGroup } from '../core/model/placed-group';
 import { catalogLoadValue, getCatalogItem } from './catalog';
-import { getPlacedObjectSize, objectRect } from './object-geometry';
+import { getPlacedObjectSize, objectElevation, objectRect } from './object-geometry';
+import { rectsBounds } from '../core/grid/rect';
+import { getCell } from '../core/model/grid-model';
+import { surfaceElevation } from '../core/domain/terrain/terrain-surface';
 import { getObjectIndex } from './object-index';
 
 /** Equality by value: a `BlockRef` is rebuilt on every hover, so `===` never matches. */
@@ -23,6 +27,22 @@ export function sameSelection(a: readonly BlockRef[], b: readonly BlockRef[]): b
 /** The refs of `sel` whose object still stands on `state`; terrain refs pass. */
 export function standingRefs(state: GridState, sel: readonly BlockRef[]): BlockRef[] {
   return sel.filter((r) => r.kind !== 'object' || state.objects.has(r.id));
+}
+
+/** The build floor `ref` stands on: an object's by where it stands, a cell's by its top; null for
+ *  an object the map no longer holds. */
+function floorOf(state: GridState, ref: BlockRef): number | null {
+  if (ref.kind === 'terrain') return surfaceElevation(getCell(state.cells, ref.x, ref.y)?.terrain);
+  const obj = state.objects.get(ref.id);
+  return obj ? objectElevation(state, obj) : null;
+}
+
+/** Whether `ref` stands on a shown floor of the live map (`layerVisibility`): what the pointer,
+ *  select-all and every selection write take, since a hidden floor's members are acted on by none. */
+export function shownOn(s: { gridState: GridState | null; layerVisibility: Record<number, boolean> }): (ref: BlockRef) => boolean {
+  const { gridState: state, layerVisibility: shown } = s;
+  if (!state || !Object.values(shown).includes(false)) return () => true;
+  return (ref) => { const floor = floorOf(state, ref); return floor === null || shown[floor] !== false; };
 }
 
 /** The one member, or null. A plural selection returns null, never an arbitrary member. */
@@ -58,13 +78,8 @@ export function groupMembers(state: GridState, ids: readonly string[]): PlacedOb
  *  group's geometric centre (what a rotation turns the body about, and what the chrome anchors its
  *  control row to) is this box's centre, so both read it from here. */
 export function groupBounds(members: readonly PlacedObject[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const obj of members) {
-    const r = objectRect(obj);
-    minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
-    maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
-  }
-  return { minX, minY, maxX, maxY };
+  const box = rectsBounds(members.map((obj) => objectRect(obj)));
+  return box ? { minX: box.x, minY: box.y, maxX: box.x + box.w, maxY: box.y + box.h } : { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
 }
 
 /** The selection narrowed to the objects of one catalog item, in order. */
@@ -79,6 +94,17 @@ interface GroupSummary {
   load: number;
   /** Whether a member's load price is not known. */
   loadUnknown: boolean;
+}
+
+/** The terrain cells a placed blueprint laid that still stand as it laid them, by kind. */
+export function placedTerrainCounts(state: GridState, group: PlacedGroup): { mountain: number; water: number } {
+  let mountain = 0;
+  let water = 0;
+  for (const c of liveMembers(state, group).cells) {
+    if (c.laid.type === TerrainType.Mountain) mountain += 1;
+    else if (c.laid.type === TerrainType.Water) water += 1;
+  }
+  return { mountain, water };
 }
 
 export function groupSummary(state: GridState, ids: readonly string[]): GroupSummary {

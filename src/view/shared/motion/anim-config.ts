@@ -69,6 +69,12 @@ export const animConfig = {
    *  the beat — the single spin's 2.4 on a swinging arm reads as a wobble. */
   groupRotation: { durationMs: 280, overshoot: 1.2 },
 
+  /** Group flip: the body squashes along the flip's axis to nothing and opens out again, mirrored,
+   *  like a card turning over, on the group rotation's clock and curve (`group-arc.ts:groupEase`), so
+   *  it opens a little past flat and settles as a turn swings a little past its quarter.
+   *  `minScale` keeps a squashed body's matrix invertible at the turn. */
+  groupFlip: { minScale: 0.04 },
+
   /** Selection ring pop: a constant pixel travel, not a constant scale fraction. A fixed fraction
    *  moves a large footprint's edges many times as far as a single cell's, so one easing would read
    *  as a tick on a tree and a bounce on a landmark. `maxAmp` caps the travel on a sub-tile box. */
@@ -109,6 +115,6 @@ export const animConfig = {
     delete: { countBase: 5, countPerArea: 1 / 3, countCap: 10, spreadMul: 1.7, lifetimeMs: 340, gravity: 14, arcSpread: 6.28, risePx: 6, maxRadiusPx: 13 },
   },
 
-  /** The 2D canvas's one-time reveal on first mount (Framer, under the editor's MotionConfig). */
-  canvasReveal: { durationMs: 600, ease: [0.2, 0, 0, 1] as [number, number, number, number] },
+  /** A body outline (a moved object's origin) fading in or out. */
+  outlineFade: { durationMs: 160 },
 };

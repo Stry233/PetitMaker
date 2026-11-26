@@ -1,6 +1,7 @@
 // The versioned gzip envelope of a stored record (the autosave, the planet library): a record past
 // `COMPRESS_RECORD_AT` characters is gzipped under the envelope prefix, a shorter one stays plain JSON.
 import { gzipSync, Gunzip } from 'fflate';
+import { base64ToBytes, bytesToBase64 } from '../../core/base/bytes';
 import { crc32 } from '../../core/base/crc32';
 import { ImportError } from '../save/import-error';
 
@@ -13,11 +14,7 @@ export function fitsRecordRestoreLimit(json: string): boolean {
 }
 
 export function packRecordBytes(bytes: Uint8Array): string {
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 8192) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-  }
-  return PREFIX + btoa(binary);
+  return PREFIX + bytesToBase64(bytes);
 }
 
 export function encodeRecord(json: string): string {
@@ -37,8 +34,7 @@ export function decodeRecord(record: string): string {
 }
 
 function inflateRecord(base64: string): string {
-  const binary = atob(base64);
-  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  const bytes = base64ToBytes(base64);
   if (bytes.length < 18) throw new ImportError('corrupt', 'Invalid autosave compression');
   const trailer = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const expectedSize = trailer.getUint32(bytes.length - 4, true);

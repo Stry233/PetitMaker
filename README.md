@@ -11,7 +11,7 @@ _A browser-based map planner for **[Petit Planet](https://planet.hoyoverse.com/e
 
 [![Play at petitmaker.cc](https://img.shields.io/badge/%E2%96%B6%20Play-petitmaker.cc-FFB347?style=flat-square&labelColor=43413F)](https://petitmaker.cc/)
 &nbsp;![Release](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&color=8CC9A1&labelColor=43413F)
-&nbsp;[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](./LICENSE)
+&nbsp;[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-97E1FF?style=flat-square&labelColor=43413F)](./LICENSE)
 
 [![Support on Patreon](https://img.shields.io/badge/Patreon-Support-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
 &nbsp;[![Support on Afdian](https://img.shields.io/badge/Afdian-Support-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
@@ -55,7 +55,7 @@ Other tools provide more detailed control. The edge-cut tool changes individual 
 The layer readout opens a panel with three display sizes, including a grid of all layers. Each layer shows its cell count and has separate visibility and lock controls, allowing upper layers to be hidden or completed terrain to be protected from further editing.
 
 <div align="center">
-<img src="./docs/media/layer-panel.gif" alt="Animated editor view: selecting the elevation count at the top right opens a column of layer rows, each with a cell count, visibility control, and lock; selecting an arrow changes it to a grid of all layers with Ground highlighted, then two further selections return it to the compact count" width="440">
+<img src="./docs/media/layer-panel.gif" alt="Animated editor view: selecting the layer readout at the top right opens a column of layer rows, each with a cell count, visibility control, and lock; selecting an arrow changes it to a grid of all layers with Layer 1 highlighted, then two further selections return it to the readout" width="440">
 
 <sub>The layer panel switches between a compact readout, a single-column list, and a grid containing every layer.</sub>
 </div>
@@ -204,7 +204,7 @@ npm run build        # Production build
 
 ## Contributing
 
-Contributions are welcome. Code contributions are accepted **inbound = outbound** under Apache-2.0 with a **Developer Certificate of Origin** sign-off (`git commit -s`); art and other non-code assets need a separate written permission record first. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full process.
+Contributions are welcome. Code contributions are accepted **inbound = outbound** under FSL-1.1-ALv2 with a **Developer Certificate of Origin** sign-off (`git commit -s`); art and other non-code assets need a separate written permission record first. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full process.
 
 ## Affiliation & licensing
 
@@ -212,7 +212,7 @@ PetitMaker is an independent, unofficial fan project, **not affiliated** with, e
 
 Code, artwork, branding and third-party material in this repository have separate licenses. **Check the applicable permissions before using or redistributing each category:**
 
-1. **Code**: licensed **Apache-2.0** (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)).
+1. **Code**: licensed **FSL-1.1-ALv2**, the Functional Source License: any use except a competing commercial product or service, and each version becomes available under Apache-2.0 two years after it is made available. Versions up to and including v2.0.916 stay licensed Apache-2.0 (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)).
 2. **Brand, logo, and original art**: the PetitMaker name (and its Chinese name 谷地工坊), logo, and original artwork are **All Rights Reserved** unless a specific file states otherwise.
 3. **Third-party assets and fonts**: keep **their own licenses**. See [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md) for bundled software and shipped fonts.
 4. **User maps**: maps and other content you create in the editor belong to **you**, subject to any third-party material they incorporate. Sharing the screenshots and export images the editor produces of your maps is expressly permitted, even though they embed our art; the details are in [ASSET_LICENSES.md](./docs/ASSET_LICENSES.md).
@@ -252,7 +252,7 @@ You can support PetitMaker’s ongoing development on [Patreon](https://www.patr
 
 | Document | Purpose |
 |---|---|
-| [LICENSE](./LICENSE) | Apache-2.0 code license |
+| [LICENSE](./LICENSE) | FSL-1.1-ALv2 code license |
 | [ASSET_LICENSES.md](./docs/ASSET_LICENSES.md) ([中文](./docs/ASSET_LICENSES.zh-CN.md)) | Four-way ownership scope: code / brand & art / third-party / user maps |
 | [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md) | Bundled software dependencies and shipped fonts |
 | [SECURITY.md](./SECURITY.md) ([中文](./docs/SECURITY.zh-CN.md)) | Vulnerability reporting policy |
@@ -268,5 +268,5 @@ For general questions, IP requests, or contribution/credit arrangements, email *
 <br>
 <img src="./docs/media/logo.png" width="28" alt="">
 
-<sub>© 2026 PetitMaker contributors · Apache-2.0 · an unofficial fan project, not affiliated with miHoYo / HoYoverse</sub>
+<sub>© 2026 PetitMaker contributors · FSL-1.1-ALv2 · an unofficial fan project, not affiliated with miHoYo / HoYoverse</sub>
 </div>

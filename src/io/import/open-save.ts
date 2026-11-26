@@ -3,9 +3,8 @@
 // (autosave restore, JSON and share import, `openSave`) goes through it.
 import { decodeSave } from '../save/json-codec';
 import { parseSave, type ParsedSave } from '../save/parse';
-import { clearUnderLandmarks, type LandmarkClearance } from '../../state/landmark-clearance';
+import { applyRelocation, clearUnderLandmarks, type LandmarkClearance } from '../../tools/repair';
 import { createDefaultRegistry } from '../../rules';
-import { applyRelocation } from '../../state/relocation-plan';
 import { createExecutor } from '../../state/executor';
 import type { GridState, MapTemplate } from '../../core/model/types';
 

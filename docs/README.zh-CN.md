@@ -11,7 +11,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 
 [![立即体验 petitmaker.com.cn](https://img.shields.io/badge/%E2%96%B6%20%E7%AB%8B%E5%8D%B3%E4%BD%93%E9%AA%8C-petitmaker.com.cn-FFB347?style=flat-square&labelColor=43413F)](https://petitmaker.com.cn/)
 &nbsp;![版本](https://img.shields.io/github/v/release/Stry233/PetitMaker?style=flat-square&label=%E7%89%88%E6%9C%AC&color=8CC9A1&labelColor=43413F)
-&nbsp;[![许可证 Apache-2.0](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-Apache--2.0-97E1FF?style=flat-square&labelColor=43413F)](../LICENSE)
+&nbsp;[![许可证 FSL-1.1-ALv2](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-FSL--1.1--ALv2-97E1FF?style=flat-square&labelColor=43413F)](../LICENSE)
 
 [![通过 Patreon 支持项目](https://img.shields.io/badge/Patreon-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-FFB347?style=flat-square&labelColor=43413F)](https://www.patreon.com/c/PetitMaker)
 &nbsp;[![通过爱发电支持项目](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-C6B5E5?style=flat-square&labelColor=43413F)](https://afdian.com/a/PetitMaker)
@@ -55,7 +55,7 @@ _为《[星布谷地](https://planet.mihoyo.com/home)》设计的地图规划工
 点击图层读数可展开图层面板。面板有三种显示大小，最大尺寸会同时列出全部图层。每层均显示格数，并提供显示和锁定开关；例如，编辑地面时可以暂时隐藏上层内容，也可以锁定已经完成的台地以防误改。
 
 <div align="center">
-<img src="./media/layer-panel.zh.gif" alt="编辑器动图：点击右上角的图层读数后，面板展开为单列图层列表，每行显示格数、显示开关和锁定开关；再次点击放大箭头后，面板切换为图层网格并高亮「地面」；连续点击缩小箭头后，面板逐级缩小至图层读数" width="440">
+<img src="./media/layer-panel.zh.gif" alt="编辑器动图：点击右上角的图层读数后，面板展开为单列图层列表，每行显示格数、显示开关和锁定开关；再次点击放大箭头后，面板切换为图层网格并高亮「1 层」；连续点击缩小箭头后，面板逐级缩小至图层读数" width="440">
 
 <sub>图层面板可在图层读数、单列列表与完整图层网格三种大小之间切换。</sub>
 </div>
@@ -204,7 +204,7 @@ npm run build        # 生产构建
 
 ## 参与贡献
 
-欢迎贡献。代码贡献与项目的对外分发均采用 **Apache-2.0** 许可（inbound = outbound），并需要 **Developer Certificate of Origin** 签署（`git commit -s`）；美术等非代码素材的贡献则需要先建立单独的书面许可记录。完整流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)（英文）。
+欢迎贡献。代码贡献与项目的对外分发均采用 **FSL-1.1-ALv2** 许可（inbound = outbound），并需要 **Developer Certificate of Origin** 签署（`git commit -s`）；美术等非代码素材的贡献则需要先建立单独的书面许可记录。完整流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)（英文）。
 
 ## 隶属关系与授权
 
@@ -212,7 +212,7 @@ npm run build        # 生产构建
 
 本仓库中的代码、美术、品牌和第三方素材分别适用各自的许可。**使用或再分发时，请按以下类别确认授权范围：**
 
-1. **代码**：采用 **Apache-2.0** 授权（见 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE)）。
+1. **代码**：采用 **FSL-1.1-ALv2**（Functional Source License）授权：除了做与本项目竞争的商业产品或服务以外，任何用途都允许；每个版本在发布满两年后改按 Apache-2.0 授权。v2.0.916 及以前发布的版本按 Apache-2.0 授权（见 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE)）。
 2. **品牌、Logo 与原创美术**：谷地工坊（PetitMaker）的名称、Logo 及原创美术作品，除非特定文件另有声明，均为 **保留所有权利（All Rights Reserved）**。
 3. **第三方素材与字体**：保留**其自身的授权条款**。详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)（英文）中列出的依赖库与内置字体。
 4. **用户地图**：您在编辑器中创作的地图及其他内容归**您**所有，但其中包含的任何第三方素材仍受各自条款约束。编辑器为您的地图生成的截图与导出图片，虽然嵌入了我们的美术素材，但明确允许您直接分享；详见[素材许可](./ASSET_LICENSES.zh-CN.md)。
@@ -252,7 +252,7 @@ npm run build        # 生产构建
 
 | 文件 | 用途 |
 |---|---|
-| [LICENSE](../LICENSE) | Apache-2.0 代码授权（英文） |
+| [LICENSE](../LICENSE) | FSL-1.1-ALv2 代码授权（英文） |
 | [ASSET_LICENSES.md](./ASSET_LICENSES.md)（[中文版](./ASSET_LICENSES.zh-CN.md)） | 四类权属划分：代码 / 品牌与美术 / 第三方 / 用户地图 |
 | [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) | 内置依赖库与字体清单（英文） |
 | [SECURITY.md](../SECURITY.md)（[中文版](./SECURITY.zh-CN.md)） | 安全漏洞报告政策 |
@@ -268,5 +268,5 @@ npm run build        # 生产构建
 <br>
 <img src="./media/logo.png" width="28" alt="">
 
-<sub>© 2026 PetitMaker contributors · Apache-2.0 · 非官方粉丝项目，与米哈游 / HoYoverse 无关</sub>
+<sub>© 2026 PetitMaker contributors · FSL-1.1-ALv2 · 非官方粉丝项目，与米哈游 / HoYoverse 无关</sub>
 </div>

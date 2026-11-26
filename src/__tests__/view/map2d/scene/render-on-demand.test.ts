@@ -12,6 +12,7 @@ import { MapRenderer } from '../../../../view/map2d/scene/map-renderer';
 import { rendererLayers } from '../../../_support/renderer-layers';
 import { EventBus } from '../../../../core/commands/event-bus';
 import type { EditorEvents } from '../../../../state/editing/events';
+import { timedBeat } from '../../../../view/shared/viewport/frame-loop';
 
 const renderers: MapRenderer[] = [];
 
@@ -35,8 +36,9 @@ describe('render-on-demand loop', () => {
       expect(r.app.renderer.screen.width).toBe(160);
       expect(r.app.renderer.screen.height).toBe(180);
       expect(r.viewport.worldAtCentre()).toEqual(centre);
-      expect(rendererLayers(r).worldContainer.position.x).toBe(-r.viewport.getOffset().x);
-      expect(rendererLayers(r).worldContainer.position.y).toBe(-r.viewport.getOffset().y);
+      const drawn = rendererLayers(r).worldContainer.toGlobal(centre);
+      expect(drawn.x).toBeCloseTo(80, 6);
+      expect(drawn.y).toBeCloseTo(90, 6);
     });
     const painted = vi.fn();
     r.onNextPaint(painted);
@@ -89,5 +91,29 @@ describe('render-on-demand loop', () => {
     expect(painted).toHaveBeenCalledOnce();
     tick(1);
     expect(r.app.ticker.started).toBe(false);
+  });
+});
+
+describe('the canvas beats on the 2D frame loop', () => {
+  it('steps a beat with each drawn frame and keeps drawing until it lands', () => {
+    const r = makeRenderer();
+    vi.spyOn(r.app.renderer, 'render').mockImplementation(() => undefined);
+    const seen: number[] = [];
+    r.play(timedBeat(100, (t) => { seen.push(t); }));
+    // Each resize draws one frame synchronously, at the clock's time.
+    const now = vi.spyOn(performance, 'now');
+    for (const at of [1000, 1050, 1100]) { now.mockReturnValue(at); r.resize(200, 200); }
+    expect(seen).toEqual([0, 0.5, 1]);
+  });
+
+  it('lands every live beat on its end state when the view goes off screen, and any played there at once', () => {
+    const r = makeRenderer();
+    const ends: string[] = [];
+    r.play(timedBeat(100, (t) => { if (t === 1) ends.push('timed'); }));
+    r.play({ step: () => true, settle: () => { ends.push('open-ended'); } });
+    r.setPresenting(false);
+    expect(ends).toEqual(['timed', 'open-ended']);
+    r.play(timedBeat(100, (t) => { if (t === 1) ends.push('hidden'); }));
+    expect(ends).toEqual(['timed', 'open-ended', 'hidden']);
   });
 });

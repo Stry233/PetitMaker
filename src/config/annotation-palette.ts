@@ -1,7 +1,8 @@
 /** The colours a plan note can wear. */
+import { MAP_TEXT } from '../assets/brand-palette';
 
-/** Cream annotation color rendered with white outlines and neutral number badges. */
-const ANNOTATION_INK = '#FFFEE3';
+/** Cream annotation colour, the map's lettering, rendered with white outlines and neutral number badges. */
+const ANNOTATION_INK = MAP_TEXT;
 
 /** The neutral number badge an ink zone wears in place of its own colour. */
 export const INK_ZONE_DISC = '#8A9BAE';

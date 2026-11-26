@@ -402,11 +402,6 @@ function recoverCurrent(
   return recovery.read(bytesToSymbols(stream, 2), Array(plan.streamBytes * 4).fill(1), budget);
 }
 
-/** Decode a v1, v2, or v3 PetitGlyph from a larger RGBA image. */
-export function decodeGlyph(rgba: Uint8Array, width: number, height: number): Uint8Array | null {
-  return readGlyph(rgba, width, height).payload;
-}
-
 /** Read a PetitGlyph from a larger RGBA image, saying why when there is no payload. */
 export function readGlyph(rgba: Uint8Array, width: number, height: number): GlyphRead {
   const evidence: HeaderEvidence = { known: false, newer: false };

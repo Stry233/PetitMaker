@@ -68,6 +68,13 @@ export function cellsCaptureFrame(box: MapFrame): MapFrame {
   return { x, y, width: box.x + box.width - x, height: box.y + box.height - y };
 }
 
+/** The box whose capture (`cellsCaptureFrame`) is exactly `frame`: the terrain bleed left out of it. */
+export function cellsCapturing(frame: MapFrame): MapFrame {
+  const along = (at: number, offset: number): number => (at >= offset ? at - offset : at);
+  const x = along(frame.x, TERRAIN_GRID_OFFSET.x), y = along(frame.y, TERRAIN_GRID_OFFSET.y);
+  return { x, y, width: frame.x + frame.width - x, height: frame.y + frame.height - y };
+}
+
 /** Keep terrain's half-cell bleed where the surrounding sea does not already cover it. */
 export function mapCaptureFrame(template: ChunkMap): MapFrame {
   return cellsCaptureFrame(mapFrame(template));

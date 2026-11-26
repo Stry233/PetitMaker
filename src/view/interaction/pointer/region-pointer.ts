@@ -9,7 +9,7 @@
 import type { MacroCoord } from '../../../core/model/types';
 import { TERRAIN_GRID } from '../../../core/game/profile';
 import { useEditorStore } from '../../../state/store';
-import { cancelRegionStroke, finishRegionStroke, paintRegionCell, previewRegionCell } from '../../../tools/pointer/region';
+import { cancelRegionStroke, finishRegionStroke, paintRegionCell, previewRegionCell } from './region-channel';
 import { cellUnder } from '../../../core/grid/pointer';
 import { getActiveView } from '../../active-view';
 

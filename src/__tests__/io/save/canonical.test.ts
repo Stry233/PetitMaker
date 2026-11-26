@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalize, canonicalBytes, toSaveJSON } from '../../../io/save/canonical';
+import { canonicalize, canonicalBytes, toSaveFile } from '../../../io/save/canonical';
 import { deserialize } from '../../_support/save-file';
 import { getMapTemplate } from '../../../config/maps';
 import { readFileSync } from 'node:fs';
@@ -18,7 +18,7 @@ describe('canonicalize', () => {
   it('round-trips through deserialize and re-canonicalizes identically (exactness anchor)', () => {
     const s = loadFixture();
     const c = canonicalize(s);
-    const reloaded = deserialize(toSaveJSON(c), getMapTemplate(c.templateId));
+    const reloaded = deserialize(JSON.stringify(toSaveFile(c)), getMapTemplate(c.templateId));
     expect(canonicalBytes(canonicalize(reloaded))).toEqual(canonicalBytes(c));
   });
   it('normalizes object ids to o0,o1,... in sorted order', () => {

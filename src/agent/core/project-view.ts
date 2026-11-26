@@ -1,4 +1,5 @@
 import type { SessionLog } from './log';
+import { answerSource } from './gates';
 import { eventsOf } from './log';
 import { PROTOCOL } from './protocol';
 import { sanitizeSuggestion } from './reply-suggestion';
@@ -122,6 +123,8 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; fac
           if (ask) {
             ask.verdict = GATE_VERDICT.skip;
             delete ask.words;
+            delete ask.answeredBy;
+            delete ask.picked;
           }
           const callId = e.gateId !== undefined ? currentJob.gateIdToCallId.get(e.gateId) : undefined;
           if (callId !== undefined) {
@@ -155,7 +158,12 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; fac
           const ask = currentJob.asks.find((a) => a.gateId === e.gateId);
           if (ask) {
             ask.verdict = GATE_VERDICT[e.answer];
-            if (e.words !== undefined) ask.words = e.words;
+            if (e.words !== undefined) {
+              ask.words = e.words;
+              const source = answerSource(ask, e.words);
+              ask.answeredBy = source.by;
+              if (source.by === 'option') ask.picked = source.picked;
+            }
           }
           const callId = currentJob.gateIdToCallId.get(e.gateId);
           if (callId !== undefined) {
@@ -222,7 +230,7 @@ export function deriveView(log: SessionLog, opts?: { live?: readonly Part[]; fac
         vitals.jobs += 1;
         if (currentJob) {
           jobs.push(settle(
-            currentJob, { outcome: e.outcome, summary: e.summary, question: e.question, undoIndex: e.undoIndex },
+            currentJob, { outcome: e.outcome, summary: e.summary, question: e.question, undoIndex: e.undoIndex, stoppedBy: e.stoppedBy },
             { recalled: recalledSteerSeqs, steerBySeq }, { facts: opts?.facts },
           ));
           currentJob = undefined;

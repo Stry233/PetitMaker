@@ -7,7 +7,8 @@
  */
 import type { ReactElement } from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { I18nProvider } from '../../../i18n/context';
 import { en } from '../../../i18n/locales/en';
 import { setStoreState } from '../../_support/store';
@@ -38,9 +39,28 @@ describe('the floating-surface previews', () => {
     renderPreview(ContextMenuPreview);
     // Both menus stand: four facings from the object's, and one Delete row each.
     for (const angle of [0, 90, 180, 270]) {
-      expect(screen.getByText(label(`context.rotate_${angle}`), { selector: 'button' })).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: label(`context.rotate_${angle}`), hidden: true })).toBeTruthy();
     }
-    expect(screen.getAllByText(label('context.delete'), { selector: 'button' })).toHaveLength(2);
+    expect(screen.getAllByRole('menuitem', { name: label('context.delete'), hidden: true })).toHaveLength(2);
+  });
+
+  it('lets the page holding the menu leave, so Help can turn to the next page', async () => {
+    setStoreState({ locale: 'en' });
+    // Help turns pages in a waiting presence, as `HelpModal`'s reader does.
+    const page = (id: string) => (
+      <I18nProvider>
+        <MotionConfig reducedMotion="never">
+          <AnimatePresence mode="wait" initial={false}>
+            {id === 'touch'
+              ? <motion.div key="touch" exit={{ opacity: 0 }}><ContextMenuPreview /></motion.div>
+              : <motion.div key="tour">The next page</motion.div>}
+          </AnimatePresence>
+        </MotionConfig>
+      </I18nProvider>
+    );
+    const { rerender } = render(page('touch'));
+    rerender(page('tour'));
+    await waitFor(() => expect(screen.getByText('The next page')).toBeTruthy());
   });
 
   it('asks the confirmation in the app\'s own words, naming the piece', () => {

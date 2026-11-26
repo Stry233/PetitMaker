@@ -1,14 +1,13 @@
 import { useRef, type ReactNode, type RefObject } from 'react';
-import type { JobView, PanelView } from '../../../agent/panel';
+import type { JobView, PanelView, RepairAct, TakeBackFacts } from '../../../agent/panel';
 import { useT } from '../../../i18n/context';
 import type { RegionBounds } from '../../../core/grid/rect';
 import { Pill } from '../../primitives/Pill';
 import { Banner } from '../desk/Banner';
 import { HistoryStrip } from './HistoryStrip';
 import { JobTicket, pausedWhere } from './JobTicket';
-import type { LaneView } from './Lane';
+import type { LaneViews } from './Lane';
 import { PHASE } from '../derive/phase';
-import type { RepairAct } from '../derive/repair';
 import type { SessionLayout } from '../derive/session-layout';
 import { HoldActions } from '../parts/HoldActions';
 import { TICKET_VIGNETTE } from '../composer/region-chip';
@@ -29,7 +28,7 @@ export function SessionRecord({
   pinned: boolean;
   sketchbook?: ReactNode;
   modelName?: string;
-  lane?: LaneView;
+  lane?: LaneViews;
   regionShot?(bounds: RegionBounds, width: number, height: number): ReactNode;
   undoDepth?: number;
   rolledBack: ReadonlySet<number>;
@@ -56,6 +55,13 @@ export function SessionRecord({
   // The hold's verbs follow the ask that produced the hold.
   const holdAfterAsk = PHASE[view.phase].onHold && hasAsk && offered === undefined;
   const current = view.current;
+  /** What every take-back in the record is read against. */
+  const takeBack: TakeBackFacts = {
+    running: busy,
+    ...(undoDepth !== undefined ? { undoDepth } : {}),
+    ...(otherMap ? { otherMap } : {}),
+    ...(unknownMap ? { unknownMap } : {}),
+  };
   return (
     <>
       {/* Discard clears corrupt bytes; export keeps both the bytes and their notice. */}
@@ -79,10 +85,7 @@ export function SessionRecord({
         rolledBack={rolledBack}
         open={historyOpen}
         onOpenChange={onHistoryOpen}
-        {...(otherMap ? { otherMap } : {})}
-        {...(unknownMap ? { unknownMap } : {})}
-        {...(undoDepth !== undefined ? { undoDepth } : {})}
-        busy={busy}
+        takeBack={takeBack}
         onOpen={onOpenRecord}
         {...(onRollBack ? { onRollBack } : {})}
       />
@@ -98,8 +101,7 @@ export function SessionRecord({
           {...(current.region && regionShot
             ? { regionVignette: regionShot(current.region, TICKET_VIGNETTE.width, TICKET_VIGNETTE.height) }
             : {})}
-          busy={busy}
-          {...(undoDepth !== undefined ? { undoDepth } : {})}
+          takeBack={takeBack}
           {...(verbs.onRewind ? { onRewind: verbs.onRewind } : {})}
           {...(hold.onResume && !holdAfterAsk ? { onResume: hold.onResume } : {})}
           {...(holdAfterAsk ? {} : { onStop: hold.onStop })}
@@ -109,9 +111,8 @@ export function SessionRecord({
         <TerminalCard
           view={view}
           settled={settled}
-          rewindable={layout.settledBlocked === undefined}
           rolledBack={rolledBack.has(settled.job.orderSeq)}
-          {...(undoDepth !== undefined ? { undoDepth } : {})}
+          takeBack={takeBack}
           {...(recordShot ? { recordShot } : {})}
           {...(recordStamp ? { recordStamp } : {})}
           verbs={verbs}
@@ -127,7 +128,12 @@ export function SessionRecord({
       )}
       {holdAfterAsk && <HoldActions ids="hold" {...(hold.onResume ? { onResume: hold.onResume } : {})} onStop={hold.onStop} />}
       {incident && !keyCleared && (
-        <Banner cls={incident.cls} {...(modelName !== undefined ? { model: modelName } : {})} standing={standingTrouble} onAction={onRepair} />
+        <Banner
+          cls={layout.incidentCls ?? incident.cls}
+          {...(modelName !== undefined ? { model: modelName } : {})}
+          standing={standingTrouble}
+          onAction={onRepair}
+        />
       )}
       {/* The idle sketch seat stays nearest the composer, a tall docked zone included. */}
       {layout.dressed && (

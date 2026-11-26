@@ -124,6 +124,6 @@ describe('provider facts read from the quirks', () => {
   });
 
   it('probes vision only where the model id is no authority', () => {
-    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].vision.probe)).toEqual(['openrouter', 'doubao', 'perplexity', 'custom']);
+    expect(PROVIDER_IDS.filter((id) => QUIRKS[id].vision.probe)).toEqual(['openrouter', 'doubao', 'perplexity', 'modelscope', 'custom']);
   });
 });

@@ -15,7 +15,7 @@ import type { TextKey } from '../../../i18n/keys';
 
 /** One operation row as every list draws it: a single-row `OpsList`. */
 function OpRow({ op, lane }: { op: OpRowData; lane?: LaneView }) {
-  return <OpsList ops={[op]} {...(lane ? { lane } : {})} />;
+  return <OpsList ops={[op]} {...(lane ? { lane: { [op.callId]: lane } } : {})} />;
 }
 
 const backing = new Map<string, string>();
@@ -31,7 +31,7 @@ function renderWithI18n(node: React.ReactElement) {
 }
 
 function makeLane(over: Partial<LaneView> = {}): LaneView {
-  return { task: 'planting the grove', ops: 4, opName: 'plant_forest', ...over };
+  return { task: 'planting the grove', ops: 4, opName: 'scatter_objects', ...over };
 }
 
 const t = (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params);
@@ -106,8 +106,8 @@ describe('Lane: the line', () => {
   it('draws the tool in flight with its own glyph and phrase', () => {
     const { getByTestId } = renderWithI18n(<Lane lane={makeLane()} />);
     const line = getByTestId('lane-line');
-    expect(line.querySelector('use')?.getAttribute('href')).toBe('#pw-forest');
-    expect(line.textContent).toContain('Planting a forest');
+    expect(line.querySelector('use')?.getAttribute('href')).toBe('#pw-scatter');
+    expect(line.textContent).toContain(translateFor('en', 'agent.verb_scatter_objects'));
   });
 
   it('falls back to the task before the helper has run anything', () => {
@@ -152,25 +152,39 @@ describe('the delegate row and its lane', () => {
   it('draws no lane for a settled call, and rolls its record onto the row', () => {
     const op = delegateOp({
       status: 'ok',
-      detail: { childOps: [{ name: 'plant_forest', status: 'ok' }, { name: 'place_object', status: 'ok' }] },
+      detail: { childOps: [{ name: 'scatter_objects', status: 'ok' }, { name: 'place_object', status: 'ok' }] },
     });
     const { queryByTestId, getByTestId } = renderWithI18n(<OpRow op={op} />);
     expect(queryByTestId('lane')).toBeNull();
     expect(getByTestId('op-chip').textContent).toBe('2 steps');
   });
 
-  /** `OpsList` hands the one live lane to every row; a job that delegated twice has a settled delegate
-   *  row beside the running one, which keeps its own rollup instead. */
+  /** A session saved before briefs holds calls with free text under `task` and no bounds. */
+  it('names a settled row from a brief, and from a call recorded before briefs', () => {
+    const detail = { childOps: [{ name: 'scatter_objects', status: 'ok' as const }] };
+    const brief = renderWithI18n(<OpRow op={delegateOp({
+      status: 'ok', detail, input: { label: 'north grove', x1: 10, y1: 12, x2: 30, y2: 24, goal: 'An oak grove.' },
+    })} />);
+    expect(brief.getByTestId('op-target').textContent).toBe(t('agent.dc_helper', { label: 'north grove', area: '(10,12)→(30,24)' }));
+    brief.unmount();
+
+    const recorded = renderWithI18n(<OpRow op={delegateOp({ status: 'ok', detail, input: { task: 'plant the grove' } })} />);
+    expect(recorded.getByTestId('op-target').textContent).toBe('plant the grove');
+    expect(recorded.getByTestId('op-chip').textContent).toBe(t('units.steps', { n: 1 }));
+  });
+
+  /** A job that delegated twice has a settled delegate row beside the running one, which keeps its
+   *  own rollup instead. */
   it('draws the live lane on the row that is still running, and rolls up the settled one beside it', () => {
     const ops: OpRowData[] = [
       delegateOp({
         callId: 'c1', status: 'ok',
-        detail: { childOps: [{ name: 'plant_forest', status: 'ok' }] },
+        detail: { childOps: [{ name: 'scatter_objects', status: 'ok' }] },
       }),
       delegateOp({ callId: 'c2', status: 'run' }),
     ];
     const { getAllByTestId, queryAllByTestId } = renderWithI18n(
-      <OpsList ops={ops} lane={makeLane()} />,
+      <OpsList ops={ops} lane={{ c2: makeLane() }} />,
     );
     // One lane only, and it stands under the running row (c2), not the settled one (c1).
     expect(queryAllByTestId('lane')).toHaveLength(1);
@@ -182,11 +196,31 @@ describe('the delegate row and its lane', () => {
     // The settled row keeps its own rollup chip rather than going quiet under someone else's lane.
     expect(getAllByTestId('op-chip').map((c) => c.textContent)).toContain('1 step');
   });
+
+  /** Helpers of one turn work at the same time; each row shows the helper it started. */
+  it('draws each running row its own helper when several work at once', () => {
+    const ops: OpRowData[] = [
+      delegateOp({ callId: 'c1', status: 'run' }),
+      delegateOp({ callId: 'c2', status: 'run' }),
+    ];
+    const { getAllByTestId } = renderWithI18n(
+      <OpsList
+        ops={ops}
+        lane={{ c1: makeLane({ label: 'north grove', ops: 1 }), c2: makeLane({ label: 'pool court', ops: 4 }) }}
+      />,
+    );
+    const lanes = getAllByTestId('lane');
+    expect(lanes).toHaveLength(2);
+    expect(lanes[0]!.textContent).toContain('north grove');
+    expect(lanes[0]!.textContent).not.toContain('pool court');
+    expect(lanes[1]!.textContent).toContain('pool court');
+    expect(lanes[1]!.textContent).not.toContain('north grove');
+  });
 });
 
 describe('laneRollup: what a finished helper leaves on the row', () => {
   it('names an incident over anything else it did', () => {
-    expect(laneRollup({ childError: 'network', childOps: [{ name: 'plant_forest', status: 'ok' }] }, t))
+    expect(laneRollup({ childError: 'network', childOps: [{ name: 'scatter_objects', status: 'ok' }] }, t))
       .toEqual({ text: 'the helper stopped', tone: 'bad' });
   });
 

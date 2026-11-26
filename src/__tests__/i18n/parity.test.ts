@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { HELP_TABLES, translations } from '../_support/locale-tables';
-import { RESOLVED_TOKENS } from '../../i18n/context';
+import { translatorFills } from '../_support/resolved-tokens';
 import type { Locale } from '../../core/model/locale';
 import { localeTag } from '../../i18n/locale-info';
 import { pluralBase } from '../_support/plural-keys';
@@ -36,7 +36,7 @@ const OMITS_LANDMARK: Readonly<Record<string, readonly Locale[]>> = {
  *  sentence names it. */
 const placeholders = (s: string, omitLandmark = false): string[] => {
   const all = (s.match(/\{[a-zA-Z0-9_]+\}/g) ?? []).filter((t) => t !== '{glyph}');
-  const resolved = (t: string) => t.slice(1, -1) in RESOLVED_TOKENS;
+  const resolved = (t: string) => translatorFills(t.slice(1, -1));
   const kept = new Set(all.filter((t) => resolved(t) && !(omitLandmark && t === '{landmark}')));
   return [...all.filter((t) => !resolved(t)), ...kept].sort();
 };

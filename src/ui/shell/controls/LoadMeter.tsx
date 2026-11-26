@@ -15,19 +15,18 @@ import { useEffect, useSyncExternalStore, type CSSProperties } from 'react';
 import { helpTargetAttr } from '../../session/help-targets';
 import { useUiPreview } from '../../design/preview';
 import { formatNumber, useLocale, useT } from '../../../i18n/context';
-import { getMapStats} from '../../../state/map-stats';
+import { chunkLoad, getMapStats } from '../../../state/map-stats';
 import { useEditorStore } from '../../../state/store';
 import { btnReset, cursors, radii } from '../../design/styles';
 import { topRightHeight, type FrameArt } from '../frame';
-import {
-  chunkLoad, CHUNK_LOAD_MAX, getPointerRegion, setPointerRegion,
-  subscribePointerRegion,
-} from '../../chrome/modals/load/map-load';
+import { getPointerRegion, setPointerRegion, subscribePointerRegion } from '../../chrome/modals/load/map-load';
+import { CHUNK_LOAD_LIMIT } from '../../../core/game/profile';
 import { mapChunkAt } from '../../../core/grid/map-chunks';
 import { chunkAtClient } from '../../../editor/host/map-pointer';
 import { INK, LOAD_FILL, MASK_CUT, MASK_KEEP } from '../../design/tokens';
 import { useMapRevision } from '../../session/use-map-revision';
 import type { GridState } from '../../../core/model/types';
+import { useRunCommand } from '../use-shell-commands';
 
 /** The control in a 100-unit box, measured off the game's: disc, hole, and a round-capped arc from twelve o'clock. */
 const DISC = { r: 50, hole: 10, arc: 30, band: 30 } as const;
@@ -57,7 +56,7 @@ export function LoadMeter({ art, reading }: { art: FrameArt; reading?: LoadReadi
   // map that arrives after the frame is mounted has to be read once without waiting for an edit.
   const liveState = useEditorStore((s) => s.gridState);
   const gridState = reading ? reading.state : liveState;
-  const setModal = useEditorStore((s) => s.setModal);
+  const run = useRunCommand();
   const zoom = useFrameZoom();
   /** The region under the pointer, held in `map-load.ts` because the window reads it too. Null
    *  until the pointer has been over the map at all. */
@@ -92,7 +91,7 @@ export function LoadMeter({ art, reading }: { art: FrameArt; reading?: LoadReadi
   // Its own height, the one that puts a disc filling its box at the size a rail button reads. The
   // three in the corner are one reading, not one box.
   const size = topRightHeight(art);
-  const filled = Math.min(1, Math.max(0, load.value / CHUNK_LOAD_MAX));
+  const filled = Math.min(1, Math.max(0, load.value / CHUNK_LOAD_LIMIT));
   return (
     <ActionButton
       {...helpTargetAttr('load')}
@@ -102,9 +101,9 @@ export function LoadMeter({ art, reading }: { art: FrameArt; reading?: LoadReadi
       // The reading is in the name too, since the disc carries no text.
       aria-label={t('load.aria', {
         label: t(art.labelKey), region: load.name,
-        value: formatLoad(locale, load.value, load.unknownLoads > 0), max: formatNumber(locale, CHUNK_LOAD_MAX),
+        value: formatLoad(locale, load.value, load.unknownLoads > 0), max: formatNumber(locale, CHUNK_LOAD_LIMIT),
       })}
-      onClick={() => setModal('regionLoad', true)}
+      onClick={() => run('window.open', { window: 'regionLoad' })}
       style={{
         ...btnReset, position: 'relative', width: size, height: size, flex: 'none',
         // The disc fills its box, so a round button is the shape a focus ring should follow.

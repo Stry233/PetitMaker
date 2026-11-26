@@ -1,11 +1,10 @@
 /* The one-face card of a stopped job: what it kept, and the take-back or filing. */
 import { Pill } from '../../primitives/Pill';
-import { editCount } from '../derive/job-stats';
+import { editCount, type JobView, type TakeBackFacts, takeBackStanding } from '../../../agent/panel';
 import { Icon } from '../parts/sprite';
-import { rewindConfirmCopy, rollbackCost } from '../derive/rollback';
+import { AT_REST, rewindConfirmCopy, takeBackControl } from '../derive/rollback';
 import { ConfirmPill } from '../parts/ConfirmPill';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
 import { FOOT, HEAD_STAMP, HEADLINE, OutcomeStamp, SPACER, SUMMARY, TICKET } from './ticket-parts';
 
 /* ── the stop card: one face, two answers ─────────────────── */
@@ -15,7 +14,7 @@ export function StopCard({
   job,
   clock,
   rolledBack = false,
-  undoDepth,
+  takeBack = AT_REST,
   unanswered = false,
   onRewindAll,
   onFileAway,
@@ -27,17 +26,15 @@ export function StopCard({
   unanswered?: boolean;
   /** The job's edits are already off the map, so there is nothing left to take back. */
   rolledBack?: boolean;
-  /** Live undo depth used to calculate rollback confirmation copy. */
-  undoDepth?: number;
+  /** The live facts the take-back is read against. */
+  takeBack?: TakeBackFacts;
   onRewindAll?: () => void;
   onFileAway?: (orderSeq: number) => void;
 }) {
   const t = useT();
   const edits = editCount(job);
-  const canRewind = Boolean(onRewindAll) && !rolledBack && job.checkpoints.length > 0;
-  const copy = rewindConfirmCopy(t, job.checkpoints[0]
-    ? rollbackCost(job.checkpoints[0].undoIndex, undoDepth, job.endUndoIndex)
-    : null);
+  const whole = onRewindAll ? takeBackControl(takeBackStanding(job, 'whole', takeBack)) : null;
+  const copy = rewindConfirmCopy(t, whole?.cost ?? null);
 
   return (
     <div data-testid="stop-card" style={TICKET}>
@@ -59,16 +56,20 @@ export function StopCard({
         <div data-testid="stop-fact" style={HEADLINE}>{t('agent.ticket_rewound_sum')}</div>
       )}
 
+      {job.stoppedBy === 'map-left' && (
+        <div data-testid="stop-map-left" style={SUMMARY}>{t('agent.ticket_map_left')}</div>
+      )}
       {unanswered && (
         <div data-testid="stop-lapsed" style={SUMMARY}>{t('agent.ticket_question_lapsed')}</div>
       )}
 
-      {canRewind && <div data-testid="stop-note" style={SUMMARY}>{t('agent.ticket_ctrlz_note')}</div>}
+      {whole && <div data-testid="stop-note" style={SUMMARY}>{t('agent.ticket_ctrlz_note')}</div>}
 
       <div style={FOOT}>
-        {canRewind && onRewindAll && (
+        {whole && onRewindAll && (
           <ConfirmPill
             testId="stop-rewind"
+            disabled={whole.busy}
             title={copy.confirmLabel}
             {...(copy.question !== copy.confirmLabel ? { message: copy.question } : {})}
             actLabel={t('agent.ticket_rewind_all')}

@@ -24,7 +24,7 @@ describe('RuleRegistry', () => {
   it('runs pre-command rules that match the command type', () => {
     const registry = new RuleRegistry();
     const rule: PreCommandRule = {
-      id: 'test-rule', phase: 'pre-command',
+      id: 'test-rule', description: 'A rule this test registers.', phase: 'pre-command',
       appliesTo: [CommandType.PaintTerrain],
       validate: () => [{ ruleId: 'test-rule', message: 'blocked', cells: [], grid: 'object' }],
     };
@@ -37,7 +37,7 @@ describe('RuleRegistry', () => {
   it('skips pre-command rules that do not match the command type', () => {
     const registry = new RuleRegistry();
     const rule: PreCommandRule = {
-      id: 'place-only', phase: 'pre-command',
+      id: 'place-only', description: 'A rule this test registers.', phase: 'pre-command',
       appliesTo: [CommandType.PlaceObject],
       validate: () => [{ ruleId: 'place-only', message: 'x', cells: [], grid: 'object' }],
     };
@@ -48,7 +48,7 @@ describe('RuleRegistry', () => {
   it('runs all post-stroke rules', () => {
     const registry = new RuleRegistry();
     const rule: PostStrokeRule = {
-      id: 'post-rule', phase: 'post-stroke',
+      id: 'post-rule', description: 'A rule this test registers.', phase: 'post-stroke',
       validate: () => [{ ruleId: 'post-rule', message: 'bad', cells: [], grid: 'object' }],
     };
     registry.register(rule);
@@ -58,8 +58,8 @@ describe('RuleRegistry', () => {
 
   it('collects errors from multiple rules', () => {
     const registry = new RuleRegistry();
-    registry.register({ id: 'A', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain], validate: () => [{ ruleId: 'A', message: 'a', cells: [], grid: 'terrain' }] });
-    registry.register({ id: 'B', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain], validate: () => [{ ruleId: 'B', message: 'b', cells: [], grid: 'terrain' }] });
+    registry.register({ id: 'A', description: 'A rule this test registers.', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain], validate: () => [{ ruleId: 'A', message: 'a', cells: [], grid: 'terrain' }] });
+    registry.register({ id: 'B', description: 'A rule this test registers.', phase: 'pre-command', appliesTo: [CommandType.PaintTerrain], validate: () => [{ ruleId: 'B', message: 'b', cells: [], grid: 'terrain' }] });
     expect(registry.validatePreCommand(makeCmd(), dummyState)).toHaveLength(2);
   });
 

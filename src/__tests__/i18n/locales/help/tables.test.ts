@@ -2,7 +2,7 @@
  *  and paired bold markers. They load as an overlay, so the main i18n suites do not see them. */
 import { describe, expect, it } from 'vitest';
 import { HELP_TABLES } from '../../../_support/locale-tables';
-import { RESOLVED_TOKENS } from '../../../../i18n/context';
+import { translatorFills } from '../../../_support/resolved-tokens';
 
 describe('the Help tables', () => {
   const LOCALES = Object.keys(HELP_TABLES) as (keyof typeof HELP_TABLES)[];
@@ -13,7 +13,7 @@ describe('the Help tables', () => {
   // `{glyph}` is a fixed name each locale writes where its own sentence names it.
   const placeholders = (v: string, skipResolved = false) => {
     const all = (v.match(/\{[a-zA-Z0-9_]+\}/g) ?? []).filter((t) => t !== '{glyph}');
-    const resolved = (t: string) => t.slice(1, -1) in RESOLVED_TOKENS;
+    const resolved = (t: string) => translatorFills(t.slice(1, -1));
     return [...all.filter((t) => !resolved(t)), ...(skipResolved ? [] : new Set(all.filter(resolved)))].sort();
   };
 

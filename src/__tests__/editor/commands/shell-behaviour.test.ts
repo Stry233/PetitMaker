@@ -2,13 +2,14 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { RUN, type CommandContext } from '../../../editor/commands/commands';
 import { ACTION_BY_ID, runTileAction } from '../../../editor/commands/actions';
-import { offerSmartBuild } from '../../../editor/commands/smart-build';
+import { showPlanting } from '../../../editor/editing/object-shelf';
+import { getRoadMaterials } from '../../../state/catalog';
 import { useEditorStore } from '../../../state/store';
 import { resetStore, setStoreState } from '../../_support/store';
 import { makeState } from '../../_support/map-state';
 import type { DesignMode } from '../../../state/editing/vocabulary';
 import type { RunCommandId } from '../../../state/keymap/registry';
-import { activeToolOf, designModeOf, buildShapeOf, holdsSelection, type BuildMode } from '../../../state/editing/edit-mode';
+import { activeToolOf, armedMacroOf, designModeOf, buildShapeOf, holdsSelection, type BuildMode } from '../../../state/editing/edit-mode';
 
 function fakeCtx(): CommandContext & { toggleMenu: Mock<CommandContext['toggleMenu']> } {
   return { toggleMenu: vi.fn() };
@@ -166,17 +167,41 @@ describe('repeated mode and terrain tool shortcuts', () => {
   });
 });
 
-describe('the smart-build key reaches the cell, and only while one is showing', () => {
-  it('presses whatever cell is mounted', () => {
-    const pressed = vi.fn();
-    const withdraw = offerSmartBuild(pressed);
+describe('the smart-build key has a body of its own, with no control on screen', () => {
+  it.each([['mountain', 'raise'], ['water', 'stream'], ['road', 'road-link']] as const)('arms the %s surface\'s macro, and puts the smart tool down on a second press', (surface, macro) => {
+    useEditorStore.getState().setEditMode({ mode: surface, arm: { kind: 'brush' } });
     RUN['tool.smart'](fakeCtx());
-    expect(pressed).toHaveBeenCalledOnce();
-    withdraw();
+    expect(armedMacroOf(useEditorStore.getState())).toBe(macro);
+    RUN['tool.smart'](fakeCtx());
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+    expect(useEditorStore.getState().editMode.mode).toBe(surface);
   });
 
-  it('does nothing with no tool row on screen', () => {
-    expect(() => RUN['tool.smart'](fakeCtx())).not.toThrow();
+  it('leaves the tool in hand where the surface offers no Smart Build: a road with a print armed', () => {
+    const s = useEditorStore.getState();
+    s.setEditMode({ mode: 'road', arm: { kind: 'erase' } });
+    s.setTileMaterial(getRoadMaterials(true)[0]!.id);
+    const before = useEditorStore.getState().editMode;
+    RUN['tool.smart'](fakeCtx());
+    expect(useEditorStore.getState().editMode).toEqual(before);
+  });
+
+  it('arms the planting card the object shelf\'s row shows, and nothing once the row shows none', () => {
+    useEditorStore.getState().setEditMode({ mode: 'object' });
+    const withdraw = showPlanting('patch-tree');
+    RUN['tool.smart'](fakeCtx());
+    expect(armedMacroOf(useEditorStore.getState())).toBe('patch-tree');
+    RUN['tool.smart'](fakeCtx());
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+    withdraw();
+    RUN['tool.smart'](fakeCtx());
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+  });
+
+  it('does nothing at rest', () => {
+    const before = useEditorStore.getState().editMode;
+    RUN['tool.smart'](fakeCtx());
+    expect(useEditorStore.getState().editMode).toEqual(before);
   });
 });
 

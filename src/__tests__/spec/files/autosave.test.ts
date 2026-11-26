@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { spec } from '../../_support/spec';
-import { createAutosave } from '../../../io/storage/autosave';
+import { createAutosave, readRestorableAutosave } from '../../../io/storage/autosave';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../../io/storage/facts';
 import { listPlanets } from '../../../io/storage/planet-library';
-import { readRestoreOffer, restoreSession } from '../../../editor/session/restore';
+import { restoreSession } from '../../../editor/session/restore';
 import { useEditorStore } from '../../../state/store';
 import { PREFS } from '../../../platform/storage/prefs';
 import { CURRENT_VERSION } from '../../../io/save/format';
@@ -34,7 +34,7 @@ const autosaveOf = (w: SpecWorld) => createAutosave({
 
 /** Resumes the offered session as the start offer's Resume does; the editor it installs. */
 function resume() {
-  const offer = readRestoreOffer();
+  const offer = readRestorableAutosave();
   if (!offer) throw new Error('no session offered');
   restoreSession(offer);
   const { gridState, commandExecutor } = useEditorStore.getState();
@@ -86,17 +86,17 @@ describe('the autosaved session', () => {
     const autosave = autosaveOf(w);
     autosave.schedule(w.state);
     hide();
-    expect(seen(readRestoreOffer()!.state)).toBe(seen(w.state));
+    expect(seen(readRestorableAutosave()!.state)).toBe(seen(w.state));
 
     localStorage.clear();
     w.stroke(rect(w.openGround(3, 3), 3, 3), TerrainType.Mountain, 1);
     autosave.schedule(w.state);
     window.dispatchEvent(new Event('pagehide'));
-    expect(seen(readRestoreOffer()!.state)).toBe(seen(w.state));
+    expect(seen(readRestorableAutosave()!.state)).toBe(seen(w.state));
   });
 
   spec('FILE-17', 'is offered at start and resumes with its map, cameras and undo, never overwritten by the empty starting map', () => {
-    expect(readRestoreOffer()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
     const w = builtMap();
     autosaveOf(w).schedule(w.state);
     vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
@@ -123,18 +123,18 @@ describe('the autosaved session', () => {
 
     save();
     localStorage.setItem(PREFS.autosave.key, stored()!.slice(0, Math.floor(stored()!.length / 2)));
-    expect(readRestoreOffer()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
 
     save();
     rewrite((record) => { record.version = CURRENT_VERSION + 1; });
-    expect(readRestoreOffer()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
 
     save();
     rewrite((record) => {
       const { after: _after, ...cut } = (record.history as { entries: Record<string, unknown>[] }).entries[0]!;
       (record.history as { entries: unknown[] }).entries[0] = cut;
     });
-    const damaged = readRestoreOffer()!;
+    const damaged = readRestorableAutosave()!;
     expect(seen(damaged.state)).toBe(seen(w.state));
     expect(damaged.history).toBeUndefined();
 
@@ -144,7 +144,7 @@ describe('the autosaved session', () => {
       const step = entries.find((e) => e.after.length > 0)!;
       step.after[0]!.coord = { x: 9999, y: 9999 };
     });
-    const misfit = readRestoreOffer()!;
+    const misfit = readRestorableAutosave()!;
     expect(seen(misfit.state)).toBe(seen(w.state));
     expect(misfit.history).toBeUndefined();
   });
@@ -166,8 +166,8 @@ describe('the autosaved session', () => {
     autosave.schedule(w.state);
     vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     full.mockRestore();
-    expect(seen(readRestoreOffer()!.state)).toBe(before);
-    expect(readRestoreOffer()!.history?.length).toBeGreaterThan(0);
+    expect(seen(readRestorableAutosave()!.state)).toBe(before);
+    expect(readRestorableAutosave()!.history?.length).toBeGreaterThan(0);
   });
 
   spec('FILE-20', 'restores a session on a custom planet that My planets does not hold', () => {
@@ -180,7 +180,7 @@ describe('the autosaved session', () => {
     vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
 
     expect(listPlanets()).toEqual([]);
-    const offer = readRestoreOffer()!;
+    const offer = readRestorableAutosave()!;
     expect(offer.state.template.id).toBe(planet.id);
     expect(offer.state.template.zones).toEqual(planet.zones);
     expect(seen(offer.state)).toBe(seen(state));
@@ -189,7 +189,7 @@ describe('the autosaved session', () => {
   spec('FILE-14', 'restores an autosave holding retired roads with the items that replaced them', () => {
     const text = gunzipSync(readFileSync('src/__tests__/fixtures/saves/release-0.4.149-tafa-complex.json.gz')).toString('utf8');
     localStorage.setItem(PREFS.autosave.key, text);
-    const offer = readRestoreOffer()!;
+    const offer = readRestorableAutosave()!;
     const objects = [...offer.state.objects.values(), ...(offer.cleared?.report?.objects ?? []).map((o) => o.object)];
     expect(objects.some((o) => Object.hasOwn(RETIRED_CATALOG_IDS, o.catalogId))).toBe(false);
     expect(objects.filter((o) => Object.values(RETIRED_CATALOG_IDS).includes(o.catalogId)).length).toBeGreaterThan(100);

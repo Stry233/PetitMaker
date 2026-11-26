@@ -14,7 +14,7 @@ function setup(state: GridState) {
   const registry = createDefaultRegistry();
   const executor = makeExecutor(state, registry);
   const whole = executor.beginStroke();
-  const ctx = makeToolCtx(state, executor, 1, 1, { eraserShape: 'curve' });
+  const ctx = makeToolCtx(state, executor, 1, { eraserShape: 'curve' });
   const tool = new EraserTool();
   const click = (x: number, y: number) => {
     const p = { x, y };
@@ -187,18 +187,18 @@ describe('curve adjustment transactions', () => {
     setTerrain(state, 8, 8, TerrainType.Mountain, 1);
     const { executor, drag } = setup(state);
     const baseline = cloneGridState(state);
-    drag([4, 8], [16, 8]);
+    drag([8, 8], [16, 8]);
     expect(state.cells[8]![8]!.terrain).toBeNull();
     const erased = cloneGridState(state);
-    moveCurveAnchor(1, 16, 16, true);
-    expect(getCurveSession()?.anchors[1]).toMatchObject({ x: 16, y: 16 });
+    moveCurveAnchor(0, 8, 16, true);
+    expect(getCurveSession()?.anchors[0]).toMatchObject({ x: 8, y: 16 });
     expect(getCurveSession()?.footprint).toBe(true);
     expect(state.cells).toEqual(baseline.cells);
     expect(executor.historyDepth()).toBe(2);
-    moveCurveAnchor(1, 16, 17, true);
-    expect(getCurveSession()?.anchors[1]).toMatchObject({ x: 16, y: 17 });
+    moveCurveAnchor(0, 8, 17, true);
+    expect(getCurveSession()?.anchors[0]).toMatchObject({ x: 8, y: 17 });
     expect(executor.historyDepth()).toBe(2);
-    moveCurveAnchor(1, 16, 8, true);
+    moveCurveAnchor(0, 8, 8, true);
     expect(state.cells).toEqual(erased.cells);
     executor.undo(); expect(state.cells).toEqual(baseline.cells);
     executor.undo(); expect(state.cells).toEqual(erased.cells);
@@ -230,19 +230,19 @@ describe('curve adjustment transactions', () => {
     expect(registry.validatePostStroke(state)).toEqual([]);
   });
 
-  it('rolls back a partially refused baseline restoration and resets the handles', () => {
+  it('rolls back a refused baseline restoration and resets the handles', () => {
     const { state, ctx, executor, drag } = flatWorld();
     setTerrain(state, 3, 3, TerrainType.Mountain, 3);
     let refuse = false, calls = 0;
     ctx.execute = (command: Command) => {
-      if (refuse && ++calls === 2) return { success: false, errors: [] };
+      if (refuse && ++calls === 1) return { success: false, errors: [] };
       return executor.execute(command);
     };
-    drag([3, 3], [12, 10]);
+    drag([4, 3], [12, 10]);
     const held = cloneGridState(state), anchors = structuredClone(getCurveSession()!.anchors);
     refuse = true;
     moveCurveAnchor(1, 12, 6, true);
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect(state.cells).toEqual(held.cells);
     expect(getCurveSession()?.anchors).toEqual(anchors);
     expect(executor.historyDepth()).toBe(1);

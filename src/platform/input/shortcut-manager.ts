@@ -7,7 +7,8 @@
  */
 
 import { anyOverlayOpen } from '../channels/overlay-state';
-import { eventKeyToken } from './key-token';
+import { insideOpenSurface } from './back-stack';
+import { eventKeyTokens } from './key-token';
 import { splitCombo } from './combo';
 import { isTextEntry } from './text-entry';
 
@@ -38,24 +39,26 @@ export class ShortcutManager {
   /**
    * Handle a keydown event: match against registered bindings and fire
    * the action if a match is found. Calls e.preventDefault() on match, unless the binding keeps it.
-   * Ignores events whose target is a form field or editable content.
+   * A press is matched by each of its readings in turn (`key-token.ts:eventKeyTokens`), the typed one first.
+   * Ignores events whose target is a form field or editable content, or sits inside an open menu
+   * or question, whose keys act on it and never on the map.
    */
   handleKeyDown(e: KeyboardEvent): void {
     if (anyOverlayOpen()) return; // a modal owns the foreground — tool shortcuts are suppressed
-    if (isTextEntry(e.target)) return;
+    if (isTextEntry(e.target) || insideOpenSurface(e.target)) return;
 
-    const pressedKey = eventKeyToken(e);
-
-    for (const binding of this.bindings) {
-      if (
-        binding.key === pressedKey &&
-        binding.ctrl === (e.ctrlKey || e.metaKey) &&
-        binding.shift === e.shiftKey &&
-        binding.alt === e.altKey
-      ) {
-        if (!binding.keepDefault) e.preventDefault();
-        binding.action();
-        return;
+    for (const pressedKey of eventKeyTokens(e)) {
+      for (const binding of this.bindings) {
+        if (
+          binding.key === pressedKey &&
+          binding.ctrl === (e.ctrlKey || e.metaKey) &&
+          binding.shift === e.shiftKey &&
+          binding.alt === e.altKey
+        ) {
+          if (!binding.keepDefault) e.preventDefault();
+          binding.action();
+          return;
+        }
       }
     }
   }

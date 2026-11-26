@@ -8,17 +8,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
 import { getCatalogItem } from '../../../../state/catalog';
-import { useTransition } from '../../../design/motion/use-motion';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
 import { ScaleProvider, TOUCH_TARGET, usePx } from '../../../design/scale';
 import { cursors } from '../../../design/styles';
 import { ON_DARK } from '../../../design/tokens';
-import { MOTIONS } from '../../../design/motion/registry';
 import { mapEdgeAttr } from '../../../primitives/map-edge';
 import { SCROLL_FADE, useScrollFade } from '../../../primitives/scroll-fade';
 import { withinStop } from '../../../primitives/scroll-geometry';
 import { useWheelToHorizontal } from '../../../primitives/wheel-horizontal';
-import { useSwapClip } from '../../../primitives/use-swap-clip';
+import { useSwapReel } from '../../../primitives/use-swap-clip';
 import { MORPH_PIECE_ATTR, MORPHING_ATTR, morphScope, type MorphFirst } from '../../../primitives/morph';
 import { MorphOnChange } from '../../../primitives/MorphOnChange';
 import { useUiPreview } from '../../../design/preview';
@@ -27,7 +25,8 @@ import { createSignal } from '../../../../core/base/signal';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { useFrameLayout } from '../../frame-layout';
 import { useFrameReadableWeight, useFrameZoom } from '../../use-frame-zoom';
-import { EDGE, SHELF_SCALE, TEXT, UPRIGHT_SPACE } from '../../units';
+import { roleSize } from '../../../design/text-weight';
+import { EDGE, SHELF_SCALE, UPRIGHT_SPACE } from '../../units';
 import { BAR_LINE_HEIGHT, BarText } from '../bar-atoms';
 import { PanelTone, UPRIGHT_FOOT, useBarSurface } from '../bar-panel';
 import { CarryCancel } from './CarryCancel';
@@ -37,11 +36,9 @@ import { ShelfSearchPill, underOpenSearch } from './ShelfSearchPill';
 import { ShelfBrushButton } from './ShelfBrushButton';
 import { centreIn } from '../row-scroll';
 import { TAB_MARK_DEPTH } from '../ShelfTabs';
-import { BAR_PANEL_DRAG_VAR } from '../ShelfBand';
+import { useHandleFollow } from '../use-handle-follow';
 import { NoMatch, ShelfCategoryTabs, type ObjectShelfModel } from './use-object-shelf';
 
-/** How far a fresh grid of cards comes in from: the registry's own amplitude, as the row's. */
-const CARD_ARRIVE_X = MOTIONS['shelf.category.swap'].amplitude;
 
 /** The planting card's key where an item's catalog id stands. */
 const PATCH = 'patch';
@@ -51,12 +48,12 @@ const UPRIGHT_HEAD_H = TOUCH_TARGET;
 
 /** One grid cell's depth: the card and the name under it, in frame px at the shelf's scale. */
 function uprightCellH(px: (n: number) => number): number {
-  return px(ROW.card) + UPRIGHT_GRID.gap / 2 + TEXT.small * BAR_LINE_HEIGHT;
+  return px(ROW.card) + UPRIGHT_GRID.gap / 2 + roleSize('small') * BAR_LINE_HEIGHT;
 }
 
-/** What the upright object panel stands around its grid of cards: its handle, its head, the row gap
+/** What an upright shelf panel stands around what its handle sizes: its handle, its head, the row gap
  *  and its foot, in frame px. */
-const GRID_SURROUND = SEAM_HANDLE.h + UPRIGHT_HEAD_H + UPRIGHT_SPACE.row + UPRIGHT_FOOT;
+export const GRID_SURROUND = SEAM_HANDLE.h + UPRIGHT_HEAD_H + UPRIGHT_SPACE.row + UPRIGHT_FOOT;
 
 /**
  * The upright object grid's height and the most a handle may draw it to, in frame px. A height the
@@ -141,9 +138,8 @@ export function __resetUprightGrid(): void {
 export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
   const { items, counts, query, patch, isSelected, revealing, revealed: onRevealed } = model;
   const gridRef = useRef<HTMLDivElement>(null);
-  const swapMotion = useTransition('shelf.category.swap');
   const swapKey = model.searching ? 'search' : model.category;
-  const swap = useSwapClip(swapKey);
+  const swap = useSwapReel(swapKey);
   /** The armed item, which the folded panel shows; a chooser's shelf never folds and carries nothing. */
   const armedItem = !model.pick && model.selectedItemId ? getCatalogItem(model.selectedItemId) ?? null : null;
   const folds = !model.pick;
@@ -160,15 +156,35 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const reduced = useReducedMotionConfig();
   const under = underOpenSearch(searchOpen, reduced);
-  /** Whether a held handle drives the grid's height, which it writes past React on each move. */
-  const [following, setFollowing] = useState(false);
-  const followingNow = useRef(false);
   const gridBoxRef = useRef<HTMLDivElement>(null);
   /** A card of this panel is in the hand. */
   const [carrying, setCarrying] = useState(false);
   /** The catalog id of the card the pointer or keyboard is on. */
   const [reachedId, setReachedId] = useState<string | null>(null);
   const isFolded = folded && folds && (!!armedItem || !!patch?.selected);
+  const asked = useSyncExternalStore(watchAskedGrid, readAskedGrid, readAskedGrid);
+  const zoom = useFrameZoom();
+  const nameH = roleSize('small') * BAR_LINE_HEIGHT;
+  const cellH = uprightCellH(px);
+  const gridLeast = uprightGridLeast(px);
+  const turnAt = uprightGridTurn(px);
+  const { most: gridMost, height: settledGrid, kept: keptGrid, step: stepGrid } = uprightGridHeight({
+    asked, least: gridLeast, turn: turnAt, resting: UPRIGHT_GRID.rows * (cellH + UPRIGHT_GRID.gap), room: layout.bar.room, reach: layout.bar.reach,
+  });
+  /** A held handle drives the grid's height, which it writes past React on each move; React hears the
+   *  drag only where the cards turn, and the commit re-arranges them at the live height those writes
+   *  left, since the heights it renders have not changed. */
+  const { following, follow } = useHandleFollow({
+    settled: settledGrid, kept: keptGrid, zoom, boxes: () => [gridBoxRef.current, gridRef.current],
+    onMove: (live) => {
+      const row = shownRow.current ? live < turnAt + TURN_SLACK : live < turnAt - TURN_SLACK;
+      if (!carrying && row !== shownRow.current) {
+        shownRow.current = row;
+        setHeldRow(row);
+      }
+    },
+    onEnd: () => setHeldRow(null),
+  });
   // Open, the panel needs its head and a row of cards; folded to the armed card, all of it, measured.
   // The grid caps its own height, so the root does not scroll.
   // Open, the handle stands in the panel's top padding.
@@ -177,8 +193,6 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
     ...(isFolded ? {} : { top: 0 }), scroll: false,
     following,
   });
-  const asked = useSyncExternalStore(watchAskedGrid, readAskedGrid, readAskedGrid);
-  const zoom = useFrameZoom();
 
   const fold = () => { setReachedId(null); setFolded(true); };
   const unfold = () => setFolded(false);
@@ -208,13 +222,6 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
   // A fresh grid holds no reached card.
   useEffect(() => setReachedId(null), [swapKey]);
 
-  const nameH = TEXT.small * BAR_LINE_HEIGHT;
-  const cellH = uprightCellH(px);
-  const gridLeast = uprightGridLeast(px);
-  const turnAt = uprightGridTurn(px);
-  const { most: gridMost, height: settledGrid, kept: keptGrid, step: stepGrid } = uprightGridHeight({
-    asked, least: gridLeast, turn: turnAt, resting: UPRIGHT_GRID.rows * (cellH + UPRIGHT_GRID.gap), room: layout.bar.room, reach: layout.bar.reach,
-  });
   const gridMax = settledGrid;
   // Room for less than the grid's turn: the cards stand in one row that scrolls sideways, each in the column
   // width the grid would give it, with the grid's gap, so a switch keeps every card's size. A carry
@@ -235,7 +242,8 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
   // The cards travel between the arrangements; the card first in view before a turn leads the view after it.
   const preview = useUiPreview();
   const still = reduced === true || preview;
-  const [morph] = useState(morphScope);
+  // Cards turning between the row and the grid cross the grid's own scrolling edges, so they travel lifted.
+  const [morph] = useState(() => morphScope({ lift: true }));
   useEffect(() => () => morph.stop(), [morph]);
   const arrangement = oneRow ? 'row' : 'grid';
   /** A fresh grid (another category or the search) has painted; a turn before that has nothing seen to
@@ -282,32 +290,6 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
     if (grid && !carrying && (next < turnAt) !== oneRow) released.current = measureTurn(grid);
     askedGrid.emit(next);
   };
-  /** A held handle's drag of `dy` visual px: the grid's box and the bar's band take the height at once,
-   *  and React hears only that the hold began and ended. */
-  const follow = (dy: number | null) => {
-    if (dy === null) {
-      // Back to the settled height, which a release's new height then replaces in React's commit.
-      for (const el of [gridBoxRef.current, gridRef.current]) if (el) el.style.height = `${settledGrid}px`;
-      followingNow.current = false;
-      setFollowing(false);
-      setHeldRow(null);
-      return;
-    }
-    if (!followingNow.current) { followingNow.current = true; setFollowing(true); }
-    // Moves before React has committed the hold write nothing, so the panel's size is claimed as it
-    // stood before the hold.
-    if (!following) return;
-    const live = keptGrid(settledGrid - dy / zoom);
-    for (const el of [gridBoxRef.current, gridRef.current]) if (el) el.style.height = `${live}px`;
-    document.documentElement.style.setProperty(BAR_PANEL_DRAG_VAR, `${live - settledGrid}px`);
-    // React hears the drag only where the cards turn: the commit re-arranges them at the live height
-    // the writes above left, since the heights it renders have not changed.
-    const row = shownRow.current ? live < turnAt + TURN_SLACK : live < turnAt - TURN_SLACK;
-    if (!carrying && row !== shownRow.current) {
-      shownRow.current = row;
-      setHeldRow(row);
-    }
-  };
   /** A drag of `dy` visual px kept to what leaves the grid between its least and most. */
   const clampDrag = (dy: number) => Math.min((settledGrid - gridLeast) * zoom, Math.max((settledGrid - gridMost) * zoom, dy));
   const nameShown = (id: string, selected: boolean) => (reachedId ? reachedId === id : selected);
@@ -321,7 +303,7 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
         title={shown ? name : undefined}
         style={{
           display: 'block', width: '100%', height: nameH, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textAlign: 'center', fontSize: TEXT.small, lineHeight: BAR_LINE_HEIGHT, fontWeight: weightAt(800, TEXT.small),
+          textAlign: 'center', fontSize: roleSize('small'), lineHeight: BAR_LINE_HEIGHT, fontWeight: weightAt(800, roleSize('small')),
           color: ON_DARK, pointerEvents: 'none',
         }}
       >
@@ -384,7 +366,7 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
                   <SmartCard selected onToggle={unfold} onReach={quiet} />
                 )}
               </ScaleProvider>
-              <BarText size={TEXT.label} onMap>{armedItem ? localizedName(armedItem.name, locale) : t('smart.patch')}</BarText>
+              <BarText role="chip" onMap>{armedItem ? localizedName(armedItem.name, locale) : t('smart.patch')}</BarText>
               {/* The brush button stands with the folded card, so Paint shows and opens without unfolding. */}
               {model.brushes ? (
                 <span onClick={(e) => e.stopPropagation()} style={{ marginLeft: 'auto', display: 'flex' }}>
@@ -427,10 +409,7 @@ export function UprightObjectPanel({ model }: { model: ObjectShelfModel }) {
                       data-testid="shell-shelf-grid"
                       data-arrangement={arrangement}
                       className="pw-noscroll"
-                      initial={{ opacity: 0, x: CARD_ARRIVE_X }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={swapMotion}
-                      onAnimationComplete={swap.settle}
+                      {...swap.reel}
                       style={{
                         position: 'relative', display: 'grid', gap: UPRIGHT_GRID.gap, height: gridMax, overscrollBehavior: 'contain',
                         ...(oneRow

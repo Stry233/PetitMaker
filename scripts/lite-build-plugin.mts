@@ -3,9 +3,12 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
 import sharp from 'sharp';
-import { LITE_CSP } from '../security/lite-policy.ts';
+import { liteCsp } from '../security/lite-policy.ts';
+import type { LiteHost } from '../src/platform/build/lite-hosts.ts';
+import { REMOTE_FILE, REMOTE_FOLDER } from './lite-validation.mts';
+import { editionWording } from '../src/legal/edition-wording.ts';
 
-/** Images at or below this size share the script; each separate file counts against the ZIP's 200-entry upload limit. */
+/** Images at or below this size share the script; each separate file counts against the ZIP's 200-file limit (`lite-package-core.mts`). */
 const INLINE_IMAGE_BYTES = 8 * 1024;
 const webpCache = new Map<string, Promise<Buffer>>();
 
@@ -36,11 +39,25 @@ function liteInlineWebpPlugin(): Plugin {
   };
 }
 
-export function liteBuildPlugin(): Plugin[] {
-  return [liteInlineWebpPlugin(), liteShellPlugin()];
+/** Loads each document in the offline edition's own words, so the web edition's never reach the package. */
+function liteDocumentWordingPlugin(): Plugin {
+  return {
+    name: 'petit-lite-document-wording',
+    enforce: 'pre',
+    load(id) {
+      const file = /^([^?\0]+\.md)\?raw$/.exec(id)?.[1];
+      return file ? `export default ${JSON.stringify(editionWording(readFileSync(file, 'utf8'), true))};` : null;
+    },
+  };
 }
 
-function liteShellPlugin(): Plugin {
+export function liteBuildPlugin(host: LiteHost): Plugin[] {
+  return [liteInlineWebpPlugin(), liteDocumentWordingPlugin(), liteShellPlugin(host)];
+}
+
+function liteShellPlugin(host: LiteHost): Plugin {
+  // A host's SDK runs ahead of the app, so its bridge stands before the app's first line.
+  const sdk = host.sdkScript ? `<script src="${host.sdkScript}"></script>` : '';
   let development = false;
   let preview = false;
   const assets = new Map<string, Buffer>();
@@ -49,10 +66,18 @@ function liteShellPlugin(): Plugin {
     config(_config, env) {
       // ResolvedConfig does not carry isPreview; the config hook's environment does.
       preview = env.isPreview === true;
-      return { build: { assetsInlineLimit(filePath: string, content: Buffer) {
-        // Fonts remain local files.
-        return /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filePath) && content.length <= INLINE_IMAGE_BYTES;
-      } } };
+      return { build: {
+        assetsInlineLimit(filePath: string, content: Buffer) {
+          // Fonts remain local files.
+          return /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filePath) && content.length <= INLINE_IMAGE_BYTES;
+        },
+        // Pictures go where the container may serve them from afar; the entry script, its stylesheet and the clipper stay in the root.
+        rolldownOptions: { output: {
+          entryFileNames: '[name]-[hash].js',
+          chunkFileNames: '[name]-[hash].js',
+          assetFileNames: ({ names }: { names: string[] }) => `${REMOTE_FILE.test(names[0] ?? '') ? REMOTE_FOLDER : ''}[name]-[hash][extname]`,
+        } },
+      } };
     },
     configResolved(config) {
       development = config.command === 'serve' && !preview;
@@ -96,11 +121,11 @@ function liteShellPlugin(): Plugin {
     // Vite discovers the entry as a module; the emitted bundle is a single classic IIFE.
     writeBundle(options) {
       const path = join(options.dir!, 'index.html');
-      writeFileSync(path, readFileSync(path, 'utf8').replace('<body>', '<body><script src="./compat.js"></script>').replace(/ type="module"/g, ' defer').replace(/ crossorigin/g, '').replace(/<link rel="modulepreload"[^>]*>/g, ''));
+      writeFileSync(path, readFileSync(path, 'utf8').replace('<body>', '<body><script src="./compat.js"></script>').replace(/ type="module"/g, ' defer').replace(/ crossorigin/g, '').replace(/<link rel="modulepreload"[^>]*>/g, '').replace(/<script\b/, `${sdk}<script`));
     },
     transformIndexHtml: {
       order: 'pre',
-      handler: () => `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${development ? `<meta http-equiv="Content-Security-Policy" content="${LITE_CSP.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'").replace("connect-src 'none'", "connect-src 'self' ws: wss:")}">` : ''}<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%2374914a%27/%3E%3Cpath d=%27M8 24V8h9a6 6 0 0 1 0 12h-4v4zM13 12v4h4a2 2 0 0 0 0-4z%27 fill=%27%23fdfbe0%27/%3E%3C/svg%3E"><title>PetitMaker (Lite)</title><style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:#dfe7b5}button:disabled{opacity:.5;cursor:default}#root{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%}[data-lite-focus-fallback][data-focus-source="keyboard"] :focus{outline:3px solid var(--focus-ring,#fb923c)!important;outline-offset:2px!important;box-shadow:0 0 0 7px var(--focus-halo,transparent)}[data-lite-focus-fallback][data-focus-source="pointer"] :focus,[data-lite-focus-fallback][data-focus-source="program"] :focus{outline:none!important}</style></head><body><div id="root"></div><script type="module" src="/src/lite/main.tsx"></script></body></html>`,
+      handler: () => `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${development ? `<meta http-equiv="Content-Security-Policy" content="${liteCsp(host.sdkScript).replace("script-src 'self'", "script-src 'self' 'unsafe-inline'").replace("connect-src 'none'", "connect-src 'self' ws: wss:")}">${sdk}` : ''}<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%2374914a%27/%3E%3Cpath d=%27M8 24V8h9a6 6 0 0 1 0 12h-4v4zM13 12v4h4a2 2 0 0 0 0-4z%27 fill=%27%23fdfbe0%27/%3E%3C/svg%3E"><title>PetitMaker (Lite)</title><style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:#dfe7b5}button:disabled{opacity:.5;cursor:default}img[data-art-missing]{background:rgba(128,128,128,.16);color:transparent}#root{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%}[data-lite-focus-fallback][data-focus-source="keyboard"] :focus{outline:3px solid var(--focus-ring,#fb923c)!important;outline-offset:2px!important;box-shadow:0 0 0 7px var(--focus-halo,transparent)}[data-lite-focus-fallback][data-focus-source="pointer"] :focus,[data-lite-focus-fallback][data-focus-source="program"] :focus{outline:none!important}</style></head><body><div id="root"></div><script type="module" src="/src/lite/main.tsx"></script></body></html>`,
     },
   };
 }

@@ -107,15 +107,15 @@ describe('the deck face: the newest verdict, refined the way the card refines it
     expect(faceMark(answered({ verdict: 'declined' }))?.mark).toBe('declined');
   });
 
-  it('reads a words answer matching a quick pill as a quick answer, with the word', () => {
-    const mark = faceMark(ask({ verdict: 'words', words: 'Two lanes', quickAnswers: ['Two lanes', 'One lane'] }));
+  it('reads a words answer that took a quick pill as a quick answer, with the word', () => {
+    const mark = faceMark(ask({ verdict: 'words', words: 'Two lanes', answeredBy: 'quick', quickAnswers: ['Two lanes', 'One lane'] }));
     expect(mark?.mark).toBe('quick');
     expect(mark?.text).toContain('Two lanes');
   });
 
-  it('reads a words answer matching an option caption as picked', () => {
+  it('reads a words answer that took an option as picked', () => {
     const mark = faceMark(ask({
-      verdict: 'words', words: 'The cove',
+      verdict: 'words', words: 'The cove', answeredBy: 'option', picked: 0,
       options: [{ cap: 'The cove', rect: { x1: 0, y1: 0, x2: 1, y2: 1 } }],
     }));
     expect(mark?.mark).toBe('picked');

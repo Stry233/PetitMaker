@@ -280,7 +280,7 @@ describe('agent stroke runners', () => {
       w.executor.execute(refused());
       return 'done';
     });
-    expect(res).toEqual({ result: 'done', detail: { cells: 1 } });
+    expect(res).toEqual({ result: 'done', detail: { cells: 1 }, ground: [{ x: 5, y: 5 }] });
     expect(after(w, sources)).toMatchInlineSnapshot(`
       {
         "events": "cells-changed history-changed",

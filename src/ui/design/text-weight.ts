@@ -44,80 +44,83 @@ export function readableWeight(nominal: number, screenPx: number, dense = false,
 }
 
 /**
- * The smallest size any chrome text is set at, and the rung every stray under it was lifted onto.
- *
- * It is the interface's small-print size in both ladders — `shell/units.ts:TEXT.small` for the frame
- * and `styles.ts:font.caption` for the chrome — so the floor is a number the design already had
- * rather than a new one. Without it a modal reaches 10 px where the frame's own floor paints at 15
- * device px (the frame draws at `units.ts:ZOOM` 1.25 times the chrome's factor), so the frame reads
- * well while the modal text does not. Lifting the strays onto this rung closes most of that gap; the
- * rest is the 1.25 itself, which cannot move without re-laying every modal out.
+ * The interface's type sizes, in authored css px: the closed set every rendered size is drawn from.
+ * Windows and menus draw them as written; the frame draws the same numbers under `shell/units.ts:ZOOM`,
+ * so a role is one size on each surface and the two surfaces stay 1.25 apart. A kind of text that
+ * needs more rank than its neighbours takes it from weight, never from a size between these.
  */
-const TEXT_FLOOR = 12;
+export const TYPE_SIZES = {
+  title: 24,
+  lead: 20,
+  head: 16,
+  label: 14,
+  chip: 13,
+  /** The floor: no interface text is set smaller. */
+  small: 12,
+} as const;
+
+type TypeSize = (typeof TYPE_SIZES)[keyof typeof TYPE_SIZES];
 
 /*
  * ── The roles, and the custom properties that carry them ──
  *
  * A weight adapts to a size and a token cannot read a hook, so the type inventory is declared once
  * here as (size, weight) pairs; a surface publishes one resolved custom property per role and every
- * token inside it inherits by naming its role. Each `px` is the size the tokens are authored at; a
- * site drawing a role at another size uses `useReadableWeight`. This is the whole inventory:
- * a type size under `ui/` names a role. Rungs sharing a size differ
- * by weight (`body`/`field`/`label`/`menu` at 14, `subhead` 13/900 against `chip` 13/800); `note`
- * keeps prose off the `caption`/`small` pair, which is for figures and asides.
+ * token inside it inherits by naming its role. Each `px` is a `TYPE_SIZES` rung; a site drawing a role
+ * under a zoom of its own uses `useReadableWeight`. This is the whole inventory: a type size under
+ * `ui/` names a role (`__tests__/ui/design/type-sizes.test.ts`). Roles sharing a size differ by
+ * weight (`label`/`action`/`menu`/`body`/`field` at 14, `subhead`/`chip`/`note` at 13,
+ * `small`/`caption` at 12).
  */
 export const TEXT_ROLES = {
-  /** A modal or window title. */
-  title: { px: 24, weight: 900 },
-  /** The one bigger line a panel gets. */
-  lead: { px: 20, weight: 700 },
+  /** A window title, a shelf's category names, and the layer count read across the window. */
+  title: { px: TYPE_SIZES.title, weight: 900 },
+  /** The one bigger line a panel gets, and the chosen mode's name. */
+  lead: { px: TYPE_SIZES.lead, weight: 700 },
   /** A section heading, and a settings row's own label. */
-  head: { px: 16, weight: 700 },
+  head: { px: TYPE_SIZES.head, weight: 700 },
   /**
    * Long-form prose read at length: the Help Center's sentences. `body` is a line or two inside a
    * control surface; a page someone sits down to read earns the next size up, and it ranks under
    * its own `head`ings by weight alone, the same size-sharing the 14px rungs already practice.
    */
-  reading: { px: 16, weight: 500 },
-  /** A footer or confirm button. */
-  action: { px: 15, weight: 800 },
+  reading: { px: TYPE_SIZES.head, weight: 500 },
+  /** Every button's words: a window footer, a bar's action, a toast's or a notice's. */
+  action: { px: TYPE_SIZES.label, weight: 800 },
   /** The chosen row of a menu. */
-  menu: { px: 14, weight: 800 },
-  /** A row label beside a control. */
-  label: { px: 14, weight: 700 },
+  menu: { px: TYPE_SIZES.label, weight: 800 },
+  /** A row label beside a control, a field's caption, and a control's name shown on hover. */
+  label: { px: TYPE_SIZES.label, weight: 700 },
   /**
    * A sentence of prose: a menu row's own words, a confirm question, a note that is not small print.
    *
    * Body copy starts at medium weight; stronger emphasis uses the label role.
    */
-  body: { px: 14, weight: 500 },
+  body: { px: TYPE_SIZES.label, weight: 500 },
   /** The text inside an input, which the reader both reads and edits. */
-  field: { px: 14, weight: 600 },
+  field: { px: TYPE_SIZES.label, weight: 600 },
   /**
-   * A sentence in the receding ink: what a surface says in its own voice rather than as a label —
-   * the assistant's live line, a card's closing words, a note under a question, the detail behind
-   * an op row.
+   * A sentence in the receding ink, what a surface says in its own voice rather than as a label: a
+   * hint line, the assistant's live line, a card's closing words, a note under a question.
    *
-   * It is a rank of its own and not small print, which is exactly what it had become: with no home
-   * for it, every prose site in the agent panel landed on `caption` — the rung reserved for a
-   * tabular count, and the ladder's own floor — so the panel's most-read text and its smallest
-   * figures were drawn at one size and told apart by nothing. Half a pixel above `chip` rather than
-   * a whole one because prose and a pill sit side by side in the same row and must not step.
+   * It is a rank of its own and not small print: `caption` and `small` are for asides and figures.
+   * It shares `chip`'s size, because prose and a pill sit side by side in one row and must not step,
+   * and ranks under it by weight.
    */
-  note: { px: 13.5, weight: 700 },
-  /** A pill naming a choice. */
-  chip: { px: 13, weight: 800 },
+  note: { px: TYPE_SIZES.chip, weight: 700 },
+  /** A pill naming a choice, and a control's caption on the frame. */
+  chip: { px: TYPE_SIZES.chip, weight: 800 },
   /**
    * A heading inside a section: a card's own header, the cap over a group of controls.
    *
    * It ranks above its own rows on weight rather than on size, which is the only lever left once a
    * heading sits a couple of px from the rows under it — at 16 it would read as a second section.
    */
-  subhead: { px: 13, weight: 900 },
-  /** Small print in its quiet form: a caption, a note. */
-  caption: { px: TEXT_FLOOR, weight: 700 },
-  /** Small print carrying a figure: a count, a byte size, a reading. */
-  small: { px: TEXT_FLOOR, weight: 800 },
+  subhead: { px: TYPE_SIZES.chip, weight: 900 },
+  /** Small print in its quiet form: a tag, a credit, a key's legend. */
+  caption: { px: TYPE_SIZES.small, weight: 700 },
+  /** Small print carrying a figure: a count, a byte size, a reading, an item's name under its card. */
+  small: { px: TYPE_SIZES.small, weight: 800 },
 } as const;
 
 export type TextRole = keyof typeof TEXT_ROLES;
@@ -139,10 +142,25 @@ export function roleWeight(role: TextRole): string {
   return `var(${weightVar(role)}, ${TEXT_ROLES[role].weight})`;
 }
 
+/** The least size an input may take: iOS Safari zooms the whole page in on focus for any input
+ *  below 16 css px, so a field the reader never sees the type of still takes this. */
+export const INPUT_NO_ZOOM = TYPE_SIZES.head;
+
+/** A mark standing on the map grows and shrinks with the map rather than with the interface, so its
+ *  word is drawn at this share of the mark's height (`markPx`, css px) instead of at a role. */
+export function mapMarkSize(markPx: number): number {
+  return markPx * 0.42;
+}
+
+/** A role's size in css px, for a site that sets the size alone or does arithmetic with it. */
+export function roleSize(role: TextRole): TypeSize {
+  return TEXT_ROLES[role].px;
+}
+
 /** A role's size and its adapting weight together, for a token that is that role. Taking both from
  *  the table is what keeps the size the weight was measured against and the size on the glass the
  *  same number. */
-export function roleFont(role: TextRole): { fontSize: number; fontWeight: string } {
+export function roleFont(role: TextRole): { fontSize: TypeSize; fontWeight: string } {
   return { fontSize: TEXT_ROLES[role].px, fontWeight: roleWeight(role) };
 }
 

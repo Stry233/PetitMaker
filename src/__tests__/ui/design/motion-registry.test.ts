@@ -6,7 +6,9 @@ import ts from 'typescript';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { isTween } from '../../../ui/design/motion/curves';
-import { CURVES, MOTIONS, type Motion } from '../../../ui/design/motion/registry';
+import { DURATIONS, STAGGERS } from '../../../ui/design/motion/durations';
+import { CURVES, MOTIONS, type Motion, type MotionId } from '../../../ui/design/motion/registry';
+import { motionVar } from '../../../ui/design/motion/css-vars';
 import { parseSource, repoFiles } from '../../_support/source-graph';
 
 function sources(dir: string): { path: string; text: string }[] {
@@ -36,9 +38,11 @@ describe('the motion registry', () => {
     expect(MOTIONS['panel.dock.flip'].tier).toBe('inform');
   });
 
-  it('gives every motion a curve from the closed set', () => {
+  /** A follow closes on a target that can move every frame, so a curve would never be read. */
+  it('gives every motion a curve from the closed set, and a follow none', () => {
     for (const [id, m] of entries) {
-      expect(CURVES[m.curve], `${id} names an unknown curve`).toBeDefined();
+      if (m.follow !== undefined) expect(m.curve, `${id} is a follow declaring a curve`).toBeUndefined();
+      else expect(m.curve && CURVES[m.curve], `${id} names an unknown curve`).toBeDefined();
     }
   });
 
@@ -69,11 +73,46 @@ describe('the motion registry', () => {
     }
   });
 
+  /** `accel` is still gaining speed when it ends, so it can only hand over to a second half; `settle`
+   *  only follows an overshoot keyframe, which is where its gentle approach belongs. */
+  it('keeps the segment curves to their segments', () => {
+    for (const [id, m] of entries) {
+      expect(m.curve, `${id} moves on accel, which never arrives`).not.toBe('accel');
+      expect(m.curve, `${id} moves on settle, which only lands an overshoot`).not.toBe('settle');
+      if (m.landCurve !== undefined) expect(m.overshootAt, `${id} lands with no overshoot to land from`).toBeDefined();
+      if (m.outCurve === 'accel') expect(m.outShare, `${id} departs on accel with no arrival after it`).toBeDefined();
+    }
+  });
+
   /** A bezier has no length of its own, and a spring carries its timing in its physics. */
   it('gives a duration to every tween and to no spring', () => {
     for (const [id, m] of entries) {
+      if (m.curve === undefined) continue;
       if (isTween(m.curve)) expect(m.duration, `${id} is a tween with no length`).toBeGreaterThan(0);
       else expect(m.duration, `${id} is a spring carrying a duration`).toBeUndefined();
+    }
+  });
+
+  /** One job takes one length wherever it plays; a loop's cycle, a sampled track or a long wait says
+   *  in its own entry why its length is its own. */
+  it('times every tween on the duration scale or says why not', () => {
+    const tiers = new Set<number>(Object.values(DURATIONS));
+    for (const [id, m] of entries) {
+      if (m.duration === undefined) continue;
+      if (m.lengthFrom !== undefined) {
+        expect(m.lengthFrom.trim().length, `${id} keeps its own length without a reason`).toBeGreaterThan(0);
+        expect(tiers.has(m.duration), `${id} is on the scale and needs no lengthFrom`).toBe(false);
+      } else {
+        expect(tiers.has(m.duration), `${id} lasts ${m.duration}s, which is no tier`).toBe(true);
+      }
+    }
+  });
+
+  it('staggers a group by a set interval, and a loop by a phase of its own cycle', () => {
+    const staggers = new Set<number>(Object.values(STAGGERS));
+    for (const [id, m] of entries) {
+      if (m.stagger === undefined || m.loop) continue;
+      expect(staggers.has(m.stagger), `${id} staggers by ${m.stagger}s, which is not in STAGGERS`).toBe(true);
     }
   });
 });
@@ -126,37 +165,104 @@ describe('setting samples and the reduced-motion gate', () => {
   });
 });
 
-/** Drawing-specific choreography owns its timings; shared controls use named declarations. */
+/**
+ * Motion timing is declared in its homes and named everywhere else: the DOM registry and its curve set
+ * and scale (`ui/design/motion/`) and the canvas registry (`view/shared/motion/anim-config.ts`). A
+ * scripted timeline (a pose, an idle dressing, a Help demo) times its beats against each other and says
+ * so by passing through `design/motion/timeline.ts:timeline`, whose lengths are data; its curves still
+ * come from the set.
+ */
 describe('motion call sites', () => {
-  const tables = [
-    '/ui/design/styles.ts', '/ui/design/motion/',
-    '/ui/agent/character/poses.ts', '/ui/agent/sketchbook/sketch-motion.ts',
-    '/ui/chrome/modals/keyboard/motion.ts',
-    // The Help figures' drawn timelines: the demo player's pointer and the caption's press pulse.
-    '/ui/help/figures/HelpDemo.tsx', '/ui/help/figures/caption.tsx',
-  ];
+  const HOMES = ['src/ui/design/motion/', 'src/view/shared/motion/anim-config.ts'];
+  const home = (path: string) => HOMES.some((h) => path.startsWith(h));
+  const TIMING_KEY = /^(duration|delay|delayChildren|staggerChildren|stagger|bounce|stiffness|damping|mass|repeatDelay|visualDuration)$/;
+  const EASING_KEY = /^(ease|easing|transitionTimingFunction|animationTimingFunction)$/;
+  const PRESS_KEY = /^(scale|x|y|rotate|opacity)$/;
+  /** A length and curve written into a transition or animation string. */
+  const CSS_TIMING = /\d*\.?\d+m?s\s+(?:ease|linear|cubic-bezier|steps)|(?:^|[\s,])(?:ease(?:-in|-out|-in-out)?|linear)\s+\d*\.?\d+m?s/;
+  /** A template that writes a length into a transition: `${…}ms` or `${…}s` followed by a curve slot or keyword. */
+  const TEMPLATE_TIMING = /\$\{[^}]*\}m?s(?:\s|$|,)/;
 
-  it('uses declared timings and interaction profiles across every UI owner', () => {
+  /** Whether `expr` is fixed by the file itself: a literal, arithmetic over literals, or a name bound
+   *  in this file to one, rather than a value read from a registry or from data. */
+  function literalTiming(expr: ts.Expression, consts: ReadonlyMap<string, ts.Expression>, seen = new Set<string>()): boolean {
+    if (ts.isNumericLiteral(expr)) return Number(expr.text) !== 0;
+    if (ts.isParenthesizedExpression(expr)) return literalTiming(expr.expression, consts, seen);
+    if (ts.isPrefixUnaryExpression(expr)) return literalTiming(expr.operand, consts, seen);
+    if (ts.isBinaryExpression(expr)) {
+      const parts = [expr.left, expr.right];
+      return parts.some((p) => literalTiming(p, consts, seen)) && parts.every((p) => ts.isNumericLiteral(p) || literalTiming(p, consts, seen));
+    }
+    if (ts.isIdentifier(expr) && consts.has(expr.text) && !seen.has(expr.text)) {
+      seen.add(expr.text);
+      return literalTiming(consts.get(expr.text)!, consts, seen);
+    }
+    return false;
+  }
+
+  function scan(path: string, text: string): string[] {
+    const file = parseSource(path, text);
+    const found: string[] = [];
+    const at = (node: ts.Node) => `${path}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${node.getText(file).slice(0, 120)}`;
+    const consts = new Map<string, ts.Expression>();
+    const collect = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && (node.parent.flags & ts.NodeFlags.Const)) consts.set(node.name.text, node.initializer);
+      ts.forEachChild(node, collect);
+    };
+    collect(file);
+    const visit = (node: ts.Node, scripted: boolean) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'timeline') scripted = true;
+      if (ts.isPropertyAssignment(node) && !ts.isComputedPropertyName(node.name)) {
+        const key = node.name.getText(file).replace(/['"]/g, '');
+        const owner = node.parent;
+        const timed = ts.isObjectLiteralExpression(owner) && owner.properties.some((p) => ts.isPropertyAssignment(p) && EASING_KEY.test(p.name.getText(file)));
+        if (!scripted && (TIMING_KEY.test(key) || (key === 'dur' && timed)) && literalTiming(node.initializer, consts)) found.push(at(node));
+        const bare = ts.isStringLiteralLike(node.initializer) || ts.isArrayLiteralExpression(node.initializer);
+        if (!scripted && EASING_KEY.test(key) && bare) found.push(at(node));
+      }
+      if (ts.isStringLiteralLike(node) && (node.text.includes('cubic-bezier(') || CSS_TIMING.test(node.text))) found.push(at(node));
+      if (ts.isTemplateExpression(node)) {
+        const whole = node.getText(file);
+        if (whole.includes('cubic-bezier(') || CSS_TIMING.test(whole) || TEMPLATE_TIMING.test(whole)) found.push(at(node));
+      }
+      if (ts.isJsxAttribute(node) && /^(whileHover|whileTap)$/.test(node.name.getText(file)) && node.initializer) {
+        const press = (part: ts.Node) => {
+          if (ts.isPropertyAssignment(part) && PRESS_KEY.test(part.name.getText(file))
+            && (ts.isNumericLiteral(part.initializer) || ts.isPrefixUnaryExpression(part.initializer))) found.push(at(part));
+          ts.forEachChild(part, press);
+        };
+        press(node.initializer);
+      }
+      ts.forEachChild(node, (child) => visit(child, scripted));
+    };
+    visit(file, false);
+    return found;
+  }
+
+  /** Text every file `scan` could flag contains: a timing, easing or press key, a curve or length in a
+   *  string or template. Parsing only these keeps the scan within the fast tier. */
+  const MAY_TIME = /\b(?:duration|delay|delayChildren|staggerChildren|stagger|bounce|stiffness|damping|mass|repeatDelay|visualDuration|ease|easing|transitionTimingFunction|animationTimingFunction|dur|whileHover|whileTap)['"]?\s*[:=]|cubic-bezier\(|\d\s*m?s\s+(?:ease|linear|cubic-bezier|steps)|(?:ease(?:-in|-out|-in-out)?|linear)\s+\d|\}m?s(?:\s|$|,|`)/m;
+
+  it('names a registry motion or a curve wherever motion is timed, in every layer', () => {
+    const failures = sources('src').filter(({ path }) => !path.startsWith('src/__tests__/') && !home(path))
+      .filter(({ text }) => MAY_TIME.test(text))
+      .flatMap(({ path, text }) => scan(path, text));
+    expect(failures).toEqual([]);
+  });
+
+  /** A stylesheet's animation reads its length and curve from the custom properties the registry
+   *  writes on the root (`design/motion/css-vars.ts`). Under a millisecond is the reduced-motion gate's
+   *  "no time at all", not a length. */
+  it('times every stylesheet animation and transition through the registry\'s properties', () => {
     const failures: string[] = [];
-    for (const { path, text } of sources('src/ui')) {
-      if (tables.some((table) => `/${path}`.includes(table))) continue;
-      const file = parseSource(path, text);
-      const fail = (node: ts.Node) => failures.push(`${path}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${node.getText(file)}`);
-      const visit = (node: ts.Node) => {
-        if (ts.isPropertyAssignment(node) && /^(duration|stiffness|damping|mass)$/.test(node.name.getText(file))
-          && ts.isNumericLiteral(node.initializer) && Number(node.initializer.text) !== 0) fail(node);
-        if (ts.isStringLiteralLike(node) && /(?:[a-z-]+)\s+[.\d]+m?s\s+(?:ease|linear|cubic-bezier)/.test(node.text)) fail(node);
-        if (ts.isJsxAttribute(node) && /^(whileHover|whileTap)$/.test(node.name.getText(file)) && node.initializer) {
-          const scan = (part: ts.Node) => {
-            if (ts.isPropertyAssignment(part) && /^(scale|x|y|rotate|opacity)$/.test(part.name.getText(file))
-              && (ts.isNumericLiteral(part.initializer) || ts.isPrefixUnaryExpression(part.initializer))) fail(part);
-            ts.forEachChild(part, scan);
-          };
-          scan(node.initializer);
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(file);
+    for (const path of repoFiles('src', { accept: /\.css$/ })) {
+      readFileSync(path, 'utf8').split('\n').forEach((line, i) => {
+        const values = [...line.matchAll(/(?:^|[{;\s])(?:animation|transition)(?:-duration|-delay|-timing-function)?\s*:([^;}]*)/g)].map((m) => m[1]!);
+        const lengths = values.flatMap((v) => [...v.matchAll(/(\d*\.?\d+)(m?s)\b/g)]).map((m) => Number(m[1]) / (m[2] === 'ms' ? 1000 : 1));
+        if (line.includes('cubic-bezier(') || lengths.some((t) => t >= 0.001)
+          || values.some((v) => /\b(ease(-in|-out|-in-out)?|linear|steps\()/.test(v))) failures.push(`${path}:${i + 1} ${line.trim()}`);
+      });
     }
     expect(failures).toEqual([]);
   });
@@ -164,7 +270,8 @@ describe('motion call sites', () => {
 
 /**
  * Every declared motion is played somewhere: production code names its id as a string, or builds it
- * from a template whose static head ends at a dot and starts it (a family such as `tour.${step}`).
+ * from a template whose static head ends at a dot and starts it (a family such as `tour.${step}`), or
+ * a stylesheet reads its custom property (`design/motion/css-vars.ts`).
  */
 describe('the registry declares only motions that play', () => {
   const named = new Set<string>();
@@ -179,7 +286,9 @@ describe('the registry declares only motions that play', () => {
     };
     visit(file);
   }
-  const unplayed = Object.keys(MOTIONS).filter((id) => !named.has(id) && !families.some((head) => id.startsWith(head))).sort();
+  const sheets = repoFiles('src', { accept: /\.css$/ }).map((path) => readFileSync(path, 'utf8')).join('\n');
+  const unplayed = (Object.keys(MOTIONS) as MotionId[])
+    .filter((id) => !named.has(id) && !families.some((head) => id.startsWith(head)) && !sheets.includes(`var(${motionVar(id)}`)).sort();
 
   it('names every motion id in production code', () => {
     expect(unplayed, 'play the motion or delete its entry').toEqual([]);

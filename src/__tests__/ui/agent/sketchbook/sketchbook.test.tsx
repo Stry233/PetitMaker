@@ -3,17 +3,18 @@
  * the suite installs an `Element.prototype.animate` spy to observe whether animation was requested. */
 import { useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { cleanup, fireEvent, render, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 
 import type { PanelView } from '../../../../agent/core/project-view';
 import { I18nProvider, translateFor } from '../../../../i18n/context';
 import { translations } from '../../../../i18n/translations';
 import { useEditorStore } from '../../../../state/store';
-import { DreamOffice } from '../../../../ui/agent/desk/DreamOffice';
+import { DreamOffice, DREAMS } from '../../../../ui/agent/desk/DreamOffice';
 import { PanelShell } from '../../../../ui/agent/PanelShell';
 import { Character } from '../../../../ui/agent/character/Character';
 import { Sketchbook } from '../../../../ui/agent/sketchbook/Sketchbook';
+import { DREAM, SKETCH } from '../../../../ui/agent/sketchbook/sketch-motion';
 import type { SketchIdea } from '../../../../ui/agent/sketchbook/propose';
 import { makeState } from '../../../_support/map-state';
 import type { GridState } from '../../../../core/model/types';
@@ -146,6 +147,35 @@ describe('the figure', () => {
   it('gives a grove one pip per tree, standing or offered', () => {
     const { getByTestId } = mount([GROVE]);
     expect(getByTestId('sketch-figure').querySelectorAll('path[mask]')).toHaveLength(3);
+  });
+});
+
+describe('the card turns over on its beat', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  /** Whether a wipe (the figure fading out in place) has been asked for. */
+  const wiped = () => animate.mock.calls.some(([frames]) => (frames as Keyframe[])[1]?.opacity === 0 && (frames as Keyframe[])[0]?.opacity === 1);
+
+  it('wipes the idea at its erase cue and brings the next one at the cycle', () => {
+    const { getByTestId } = mount([LANE, POND, GROVE]);
+    const kind = () => getByTestId('sketch-card').getAttribute('data-kind');
+    act(() => { vi.advanceTimersByTime(SKETCH.erase - 100); });
+    expect(kind()).toBe('lane');
+    expect(wiped()).toBe(false);
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(wiped()).toBe(true);
+    act(() => { vi.advanceTimersByTime(SKETCH.cycle - SKETCH.erase); });
+    expect(kind()).toBe('pond');
+    act(() => { vi.advanceTimersByTime(SKETCH.cycle); });
+    expect(kind()).toBe('grove');
+  });
+
+  it('holds one idea alone still', () => {
+    const { getByTestId } = mount([LANE]);
+    act(() => { vi.advanceTimersByTime(SKETCH.cycle * 2); });
+    expect(getByTestId('sketch-card').getAttribute('data-kind')).toBe('lane');
+    expect(wiped()).toBe(false);
   });
 });
 
@@ -310,7 +340,7 @@ describe('the dreaming office', () => {
       expect(row.querySelector('button')).toBeNull();
       expect(row.tagName).not.toBe('BUTTON');
     }
-    expect(getByTestId('dream-connect').textContent).toBe(translations.en['agent.dream_connect']);
+    expect(getByTestId('dream-connect').textContent).toBe(translations.en['agent.dream_use_key']);
   });
 
   it('answers Connect and nothing else', () => {
@@ -327,13 +357,37 @@ describe('the dreaming office', () => {
     expect(plume()).toBe('off');
   });
 
+  it('dreams the arriving order between its cues and turns the board over once a cycle', () => {
+    vi.useFakeTimers();
+    try {
+      const { getAllByTestId } = dream();
+      const order = () => getAllByTestId('dream-row').map((row) => row.getAttribute('data-order'));
+      const first = order();
+      expect(plume()).toBe('zzz');
+      act(() => { vi.advanceTimersByTime(DREAM.glyphIn + 50); });
+      expect(plume()).toBe(DREAMS[0]!.icon);
+      act(() => { vi.advanceTimersByTime(DREAM.glyphOut - DREAM.glyphIn); });
+      expect(plume()).toBe('zzz');
+      act(() => { vi.advanceTimersByTime(DREAM.cycle - DREAM.glyphOut); });
+      expect(order()).not.toEqual(first);
+      // From the second cycle she dreams the order that just arrived at the foot of the board.
+      act(() => { vi.advanceTimersByTime(DREAM.glyphIn); });
+      expect(plume()).toBe(DREAMS[3]!.icon);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('runs no loop under reduced motion, and wears the first order\'s glyph', () => {
     const raf = vi.spyOn(window, 'requestAnimationFrame');
+    const interval = vi.spyOn(window, 'setInterval');
     const { unmount } = dream(true);
     expect(raf).not.toHaveBeenCalled();
+    expect(interval).not.toHaveBeenCalled();
     expect(plume()).toBe('pw-object-place');
     unmount();
     raf.mockRestore();
+    interval.mockRestore();
   });
 
 });

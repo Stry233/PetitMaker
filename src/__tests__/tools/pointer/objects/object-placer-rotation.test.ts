@@ -90,7 +90,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
     try {
       const state = makeState(30, 30);
       const ex = exec(state);
-      const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: HOUSE, placementRotation: 90 });
+      const ctx = makeToolCtx(state, ex, 1, { armedItem: HOUSE, placementRotation: 90 });
 
       new ObjectPlacerTool().onPointerDown(cell(m(10, 10)), point(m(10, 10)), ctx);
 
@@ -110,7 +110,7 @@ describe('ObjectPlacerTool: rotating the ghost before placement', () => {
       const state = makeState(40, 40);
       const ex = exec(state);
       useEditorStore.setState({ placementRotation: 90 });
-      const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: STALL, placementRotation: 90 });
+      const ctx = makeToolCtx(state, ex, 1, { armedItem: STALL, placementRotation: 90 });
 
       new ObjectPlacerTool().onPointerDown(cell(m(5, 5)), point(m(5, 5)), ctx);
       expect(useEditorStore.getState().placementRotation).toBe(90);

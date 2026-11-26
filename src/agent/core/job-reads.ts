@@ -8,14 +8,20 @@ import { thoughtSize, type GateAnswer, type SessionEvent } from './types';
 
 export type AssistantEvent = Extract<SessionEvent, { kind: 'assistant' }>;
 
+/** The latest `jobEvents` answer per log, valid while the log keeps the length it was read at:
+ *  the log only grows, and erasing history adopts a new log. */
+const jobEventsRead = new WeakMap<SessionLog, { length: number; events: readonly SessionEvent[] }>();
+
 /** Events since the current job's own `order`: the scope of every job-local count. */
 export function jobEvents(log: SessionLog): readonly SessionEvent[] {
   const events = eventsOf(log);
-  const lastOrder = events.reduce(
-    (found, ev, i) => (ev.kind === 'order' ? i : found),
-    -1,
-  );
-  return lastOrder < 0 ? events : events.slice(lastOrder + 1);
+  const read = jobEventsRead.get(log);
+  if (read?.length === events.length) return read.events;
+  let lastOrder = events.length - 1;
+  while (lastOrder >= 0 && events[lastOrder]!.kind !== 'order') lastOrder--;
+  const job = lastOrder < 0 ? events : events.slice(lastOrder + 1);
+  jobEventsRead.set(log, { length: events.length, events: job });
+  return job;
 }
 
 /** Events after the assistant turn that emitted a particular tool-call occurrence. */

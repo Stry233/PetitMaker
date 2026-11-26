@@ -31,7 +31,7 @@ function rectStroke(
     },
   };
   const tool = new DrawingTool();
-  const ctx = makeToolCtx(state, exec(state), 1, 1, { autoEdgeCut, overlay: overlay as never });
+  const ctx = makeToolCtx(state, exec(state), 1, { autoEdgeCut, overlay: overlay as never });
   arm(ctx, { contentType: 'mountain', shape: 'rect' });
   tool.onPointerDown(cell(from), point(from), ctx);
   tool.onPointerMove(cell(to), point(to), ctx);

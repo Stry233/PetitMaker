@@ -9,15 +9,15 @@ const selectMode = (type: ToolType, item: string | null) => toolDeclares(type).s
 
 describe('the two selection-mode gates', () => {
   it('separates "a click selects" from "a selection can exist"', () => {
-    // They differ on exactly one state: an armed placer, where a plain click places but Ctrl-click
-    // (and a click on an existing object) still selects.
+    // They differ on the armed placing tools: an armed placer or blueprint, where a plain click places
+    // but Ctrl-click (and a click on an existing object) still selects.
     expect(selectMode(ToolType.Hand, null)).toBe(true);
     expect(selectMode(ToolType.ObjectPlacer, null)).toBe(true);
     expect(selectMode(ToolType.ObjectPlacer, 'tree-apple')).toBe(false);
     expect(selectMode(ToolType.TerrainBrush, null)).toBe(false);
 
     const holds = Object.values(ToolType).filter((t) => toolDeclares(t).holdsSelection);
-    expect(holds.sort()).toEqual([ToolType.Hand, ToolType.ObjectPlacer].sort());
+    expect(holds.sort()).toEqual([ToolType.Hand, ToolType.ObjectPlacer, ToolType.Blueprint].sort());
   });
 
   it('names exactly the terrain brushes: the build brush, the eraser and the edge cutter', () => {

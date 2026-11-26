@@ -10,6 +10,7 @@
  */
 import type { CornerTrim, Corners } from './types';
 import { SIDE_DELTA, type Side } from '../grid/directions';
+import type { Orientation } from '../base/coords';
 
 export type CornerPos = 'TL' | 'TR' | 'BL' | 'BR';
 type CornerCompass = 'NW' | 'NE' | 'SW' | 'SE';
@@ -41,8 +42,6 @@ export const CORNERS: readonly CornerAdjacency[] = [
 
 /** index → screen-quadrant label. */
 export const CORNER_POS: readonly CornerPos[] = CORNERS.map((c) => c.pos);
-/** screen-quadrant label → index. */
-export const CORNER_INDEX = Object.fromEntries(CORNERS.map((c, i) => [c.pos, i])) as Readonly<Record<CornerPos, number>>;
 /** index → compass label (the `CornerTrim` 'tri-XX' suffix and the agent's corner vocabulary). */
 export const CORNER_COMPASS: readonly CornerCompass[] = CORNERS.map((c) => c.compass);
 
@@ -101,5 +100,27 @@ export function turnCorners(corners: Readonly<Corners>, turn: 1 | -1): Corners {
   };
   const out = copyCorners(SQUARE_CORNERS);
   corners.forEach((t, i) => { out[to[i]!] = trim(t); });
+  return out;
+}
+
+/** The corner a left-to-right mirror carries each corner to: TL and TR trade, as BL and BR do. */
+const MIRRORED = [1, 0, 3, 2] as const;
+
+/** `corners` after the cell is mirrored left to right: each trim moves to the mirrored corner, and a
+ *  triangle keeps the quadrant it named, mirrored with it. */
+export function mirrorCorners(corners: Readonly<Corners>): Corners {
+  const trim = (t: CornerTrim): CornerTrim => {
+    const i = CORNER_COMPASS.findIndex((c) => t === `tri-${c}`);
+    return i < 0 ? t : cornerTri(MIRRORED[i]!);
+  };
+  const out = copyCorners(SQUARE_CORNERS);
+  corners.forEach((t, i) => { out[MIRRORED[i]!] = trim(t); });
+  return out;
+}
+
+/** `corners` after the cell takes orientation `o`: mirrored first, then turned. */
+export function orientCorners(corners: Readonly<Corners>, o: Orientation): Corners {
+  let out = o.mirror ? mirrorCorners(corners) : copyCorners(corners);
+  for (let q = ((o.quarters % 4) + 4) % 4; q > 0; q--) out = turnCorners(out, 1);
   return out;
 }

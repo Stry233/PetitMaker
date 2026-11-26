@@ -18,7 +18,7 @@ import { MenuBubbles } from '../../../ui/chrome/floating/MenuBubbles';
 import { useEditorStore } from '../../../state/store';
 import { PREFS } from '../../../platform/storage/prefs';
 import { resetStore, setStoreModal, setStoreState } from '../../_support/store';
-import { __resetArrivals } from '../../../ui/session/arrival-bus';
+import { setArrivalStanding } from '../../../ui/session/arrival-standing';
 import { tourTargetAttr } from '../../../ui/chrome/tour/steps';
 import type { InputMode } from '../../../platform/device/input-mode';
 
@@ -53,7 +53,7 @@ const tab = (key: string) => screen.getByRole('tab', { name: en(key) });
 
 beforeEach(() => {
   resetStore();
-  __resetArrivals();
+  setArrivalStanding(false);
   localStorage.clear();
   localStorage.setItem(PREFS.tourSeen.key, TOUR_OFFERED);
   setStoreState({ locale: 'en', tourRunning: false });

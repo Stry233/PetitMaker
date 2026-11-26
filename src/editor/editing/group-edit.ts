@@ -1,17 +1,18 @@
 /*
  * Everything a group edit needs that `tools/objects/group-actions` may not touch: `showToast`, the
  * active view's animation hooks, `host`, the store. The operations themselves (`rotateGroup`,
- * `deleteGroup`) stay silent about all of it and hand back a result or take a hook instead; this
+ * `flipGroup`, `deleteGroup`) stay silent about all of it and hand back a result or take a hook instead; this
  * module plays that hook and reports what happened.
  *
  * Each action acts on the live editor (`currentEditor()`, `editorEventBus()`), as every caller is the
  * one app shell, and does nothing before a map is loaded.
  */
 import type { EventBus } from '../../core/commands/event-bus';
-import { turnRotation, type GridState, type PlacedObject, type Rotation } from '../../core/model/types';
+import { turnRotation, type PlacedObject, type Rotation } from '../../core/model/types';
 import { getCell } from '../../core/model/grid-model';
 import { getCatalogItem } from '../../state/catalog';
-import { selectedObjectIds, singleSelection, type BlockRef } from '../../state/selection';
+import { narrowToCatalog, selectedObjectIds, singleSelection, type BlockRef } from '../../state/selection';
+import { flipPress, type FlipStep } from '../../core/base/coords';
 import type { EditorEvents } from '../../state/editing/events';
 import type { Translate } from '../../i18n/keys';
 import { useEditorStore } from '../../state/store';
@@ -19,7 +20,7 @@ import { layerNumbersShown } from '../../state/layer-utils';
 import { getActiveView } from '../../view/active-view';
 import { paintGroupRotationArc } from '../../view/shared/overlay/selection-paint';
 import {
-  deleteGroup, peelTerrain, rotateGroup, rotateObject,
+  deleteGroup, flipGroup, peelTerrain, rotateGroup, rotateObject,
   type DeleteGroupResult, type QuarterTurn, type RotateResult,
 } from '../../tools/objects';
 import { showToast } from '../../platform/channels/toast-bus';
@@ -27,8 +28,8 @@ import { groupDeleteNotices } from '../../i18n/terms/copy-notices';
 import { reportRefusal } from '../../core/commands/refusal';
 import { host } from '../host/host';
 import { rotateSessionLandmark, turnsInSession, type SessionLandmarkResult } from '../operations/planet-session';
-import { pickedMaterial } from './pick-selection';
 import { currentEditor, editorEventBus, editorPort } from '../session/context';
+import { flipSelectedGroup, takeBackSelectedGroup, turnSelectedGroup } from './blueprint';
 
 /**
  * Turn one object to `angle`: validate, execute, play the spin on success, emit
@@ -88,6 +89,8 @@ function reportDeleteGroup(
 export function deleteSelection(t: Translate, ids: readonly string[]): DeleteGroupResult | null {
   const ed = currentEditor();
   if (!ed) return null;
+  // A placed blueprint selected as a group in Blueprint mode is taken back whole, its terrain with its objects.
+  if (takeBackSelectedGroup()) return { deleted: ids.length, kept: 0, refusal: null };
   const { state } = ed;
   const result = deleteGroup(ed.executor, state, ids, poofRemoved);
   useEditorStore.getState().setSelection(
@@ -98,8 +101,8 @@ export function deleteSelection(t: Translate, ids: readonly string[]): DeleteGro
   return result;
 }
 
-/** The cause a group rotation's map changes carry, so a surface placed around the selection can
- *  hold still while the members turn under it. */
+/** The cause a group rotation's and a flip's map changes carry, so a surface placed around the
+ *  selection can hold still while the members turn under it. */
 export const GROUP_ROTATION_CAUSE = 'group-rotation';
 
 /**
@@ -124,44 +127,6 @@ function rotateGroupAction(ids: readonly string[], quarterTurns: QuarterTurn): v
   reportRefusal(editorEventBus(), res.refusal);
 }
 
-/** What a selection can do; locked objects (the plaza) and bare ground take no action. */
-export interface SelectionTarget {
-  key: string;
-  plural: boolean;
-  block: BlockRef | null;
-  object: PlacedObject | null;
-  rotatable: boolean;
-  deletable: boolean;
-  pickable: boolean;
-  /** Copy is offered for it (EDIT-53): two or more objects outside the planet editor; one object
-   *  alone is armed for placing again by Pick instead. */
-  copyable: boolean;
-  /** The planet session's plaza: it turns about its centre with its footprint swapped, so it has no facing. */
-  sessionLandmark: boolean;
-}
-
-/** The selection's abilities on `gs`, or null for a selection that can take none. */
-export function selectionTarget(selection: readonly BlockRef[], gs: GridState | null, inSession: boolean): SelectionTarget | null {
-  const plural = selection.length > 1;
-  if (plural) {
-    return {
-      key: `g:${selectedObjectIds(selection).join(',')}`, plural, block: null, object: null, rotatable: true, deletable: true, pickable: false,
-      copyable: !inSession, sessionLandmark: false,
-    };
-  }
-  const block = singleSelection(selection);
-  if (!block || !gs) return null;
-  const object = block.kind === 'object' ? gs.objects.get(block.id) ?? null : null;
-  const item = object ? getCatalogItem(object.catalogId) : null;
-  const terrain = block.kind === 'terrain' ? getCell(gs.cells, block.x, block.y)?.terrain ?? null : null;
-  const sessionLandmark = turnsInSession(object, inSession);
-  const rotatable = (!!item?.rotatable && !object?.locked) || sessionLandmark;
-  const deletable = (!!object && !object.locked) || !!terrain;
-  const pickable = pickedMaterial(gs, selection) !== null;
-  if (!deletable && !pickable) return null;
-  return { key: block.kind === 'object' ? block.id : `t:${block.x},${block.y}`, plural, block, object, rotatable, deletable, pickable, copyable: false, sessionLandmark };
-}
-
 /**
  * Turn the selection a quarter either way: a plural selection as one rigid body, the planet
  * session's landmark about its centre, a rotatable object in place. The rotate shortcut and the
@@ -171,6 +136,8 @@ export function rotateSelection(delta: 90 | -90): void {
   const s = useEditorStore.getState();
   const turn: QuarterTurn = delta === 90 ? 1 : -1;
   if (!s.gridState || !s.commandExecutor) return;
+  // A placed blueprint selected as a group in Blueprint mode turns whole, its terrain with its objects, about its centre.
+  if (turnSelectedGroup(turn)) return;
   if (s.selection.length > 1) {
     rotateGroupAction(selectedObjectIds(s.selection), turn);
     return;
@@ -187,13 +154,28 @@ export function rotateSelection(delta: 90 | -90): void {
   rotateObjectAction(cur, { angle: to, spin: { from: cur.rotation, to: cur.rotation + delta } });
 }
 
-/** Turn the one selected object to face `angle`; nothing when it already does. */
-export function faceSelected(angle: Rotation): void {
+/** Each plural selection's place in Flip's cycle, keyed by the selection it was pressed on, so any
+ *  new selection starts the cycle again. */
+const selectionFlips = new WeakMap<readonly BlockRef[], FlipStep>();
+
+/**
+ * Flip the selection to the next place in Flip's cycle: a placed blueprint selected whole about its
+ * frame's centre, keeping its place in the cycle on the group, and two or more objects as one rigid
+ * body about the centre of their bounding box, refused whole as a turn is; a single object has no
+ * flip. The flip shortcut and the selection card's Flip run this one body.
+ */
+export function flipSelection(): void {
   const s = useEditorStore.getState();
-  const sel = singleSelection(s.selection);
-  const cur = sel?.kind === 'object' ? s.gridState?.objects.get(sel.id) : undefined;
-  if (!cur || !s.commandExecutor || !s.gridState || cur.rotation === angle) return;
-  rotateObjectAction(cur, { angle, spin: { from: cur.rotation, to: angle } });
+  const ed = currentEditor();
+  if (!ed) return;
+  if (flipSelectedGroup()) return;
+  if (s.selection.length < 2) return;
+  const { next, turn } = flipPress(selectionFlips.get(s.selection) ?? 0);
+  const res = ed.executor.withCause(GROUP_ROTATION_CAUSE, () => flipGroup(ed.executor, ed.state, selectedObjectIds(s.selection), turn, (motion) => {
+    getActiveView()?.animateGroupRotation(motion);
+  }));
+  if (res.moved > 0) selectionFlips.set(useEditorStore.getState().selection, next);
+  reportRefusal(editorEventBus(), res.refusal);
 }
 
 /** Turn `obj` to `angle`, the planet session's landmark by the shorter way round. Whether it now
@@ -210,6 +192,16 @@ export function rotateObjectTo(obj: PlacedObject, angle: Rotation): boolean {
   return rotateObjectAction(obj, { angle, spin: { from: obj.rotation, to: angle } })?.ok === true;
 }
 
+/** Narrows the selection to its objects of catalog item `catalogId`, as one selection step; false
+ *  where it holds none. */
+export function narrowSelectionTo(catalogId: string): boolean {
+  const s = useEditorStore.getState();
+  const refs = s.gridState ? narrowToCatalog(s.selection, s.gridState, catalogId) : [];
+  if (refs.length === 0) return false;
+  s.setSelection(refs);
+  return true;
+}
+
 /** Delete one object a surface confirmed, through `deleteSelection` so a locked object reports the
  *  refusal a group of locked members gets; the selection empties. */
 export function deleteObjectConfirmed(t: Translate, id: string): void {
@@ -217,11 +209,13 @@ export function deleteObjectConfirmed(t: Translate, id: string): void {
   useEditorStore.getState().clearSelection({ record: false });
 }
 
-/** Peel the top terrain layer at (x, y) as one undo step; the selection empties. Nothing on bare ground. */
-export function peelTerrainAt(x: number, y: number): void {
+/** Peel the top terrain layer at (x, y) as one undo step; the selection empties. Nothing on bare
+ *  ground. Whether a layer went. */
+export function peelTerrainAt(x: number, y: number): boolean {
   const ed = currentEditor();
   const cell = ed ? getCell(ed.state.cells, x, y) : null;
-  if (!ed || !cell?.terrain) return;
-  peelTerrain(ed.executor, x, y, cell);
+  if (!ed || !cell?.terrain) return false;
+  const peeled = peelTerrain(ed.executor, x, y, cell).ok;
   useEditorStore.getState().clearSelection({ record: false });
+  return peeled;
 }

@@ -9,7 +9,7 @@
  * that turns a mid into a hashed, bundled asset URL: every file under
  * `assets/team/` is imported eagerly, named by its mid (Vite fingerprints and
  * emits each file and returns the served URL). The About
- * modal resolves `TEAM_AVATARS[member.bilibili]` at render; an unmapped or
+ * modal resolves `TEAM_AVATARS[member.profileId]` at render; an unmapped or
  * absent mid renders no image.
  *
  * Provenance: each file is a downscaled (128×128, center-cropped) copy of the
@@ -20,7 +20,7 @@
 const avatarFiles = import.meta.glob('../assets/team/*.jpg', { eager: true, import: 'default' }) as Record<string, string>;
 
 // Keyed by Bilibili mid (the numeric id in space.bilibili.com/<mid>), which is each file's basename
-// and the `bilibili` field on each credited member; config.ts owns the names.
+// and the `profileId` field on each credited member; config.ts owns the names.
 const TEAM_AVATARS: Record<string, string> = Object.fromEntries(
   Object.entries(avatarFiles).map(([path, url]) => [path.slice(path.lastIndexOf('/') + 1, -'.jpg'.length), url]),
 );

@@ -1,7 +1,7 @@
 /** The layer panel's plate and tile geometry, in css px, and the depths the rail plans it by. */
 import { type LayerMode } from '../frame';
 import { PANEL_EDGE_WIDTH } from '../../design/tokens';
-import { TEXT } from '../units';
+import { roleSize } from '../../design/text-weight';
 import { TOUCH_FRAME_REACH } from '../panel-frame';
 import { ELEVATION_MAX } from '../../../core/game/profile';
 
@@ -120,8 +120,8 @@ const rowsOf = (mode: LayerMode, cols = colsOf(mode)) => Math.ceil(FLOORS / cols
 function tileDepth(mode: LayerMode, touch: boolean): number {
   const tile = tileOf(mode, touch);
   const words = mode === 'grid'
-    ? TEXT.tab + tile.line + tile.icon
-    : Math.max(tile.icon, TEXT.tab);
+    ? roleSize('label') + tile.line + tile.icon
+    : Math.max(tile.icon, roleSize('label'));
   return 2 * tile.padY + words + tile.line + tile.bar;
 }
 /** The notes row's "?", drawn at `help` css px over the file's chip slot and centred on it. */
@@ -131,19 +131,19 @@ const HELP = 16;
 export const NOTES_ROW = { padY: 5, gap: 6, help: HELP, helpMarginX: (TILE.column.swatch - HELP) / 2 } as const;
 /** The notes row's own air above and below its line, a fingertip's depth in touch mode. */
 export const notesPadY = (touch = false): number =>
-  (touch ? Math.max(NOTES_ROW.padY, (TOUCH_FRAME_REACH - Math.max(TILE.column.icon, TEXT.tab)) / 2) : NOTES_ROW.padY);
+  (touch ? Math.max(NOTES_ROW.padY, (TOUCH_FRAME_REACH - Math.max(TILE.column.icon, roleSize('label'))) / 2) : NOTES_ROW.padY);
 /** The panel's leading column, from the plate's content edge: the head's numbers toggle, the notes row's
  *  "?" and every floor's chip start on it at both sizes. */
 export const LEAD_X = TILE.column.padX + NOTES_ROW.helpMarginX;
 /** How far a size's chip stands left of its tile's padding to start on the leading column; the name keeps its place. */
 export const chipShift = (mode: LayerMode): number => LEAD_X - tileOf(mode).padX;
 function notesRowDepth(touch: boolean): number {
-  return 2 * notesPadY(touch) + Math.max(TILE.column.icon, TEXT.tab) + NOTES_ROW.gap;
+  return 2 * notesPadY(touch) + Math.max(TILE.column.icon, roleSize('label')) + NOTES_ROW.gap;
 }
 /** What a plate drawing `rows` rows of floors at this size comes to: the head, the notes row, the
  *  rows, and the plate's own air and edge. */
 function depthOf(mode: LayerMode, rows: number, touch: boolean): number {
-  return 2 * PANEL.edge + PANEL.pad + (2 * PANEL.headPadY + TEXT.head) + PANEL.headGap
+  return 2 * PANEL.edge + PANEL.pad + (2 * PANEL.headPadY + roleSize('head')) + PANEL.headGap
     + notesRowDepth(touch)
     + rows * tileDepth(mode, touch) + (rows - 1) * tileOf(mode, touch).gap + PANEL.pad;
 }

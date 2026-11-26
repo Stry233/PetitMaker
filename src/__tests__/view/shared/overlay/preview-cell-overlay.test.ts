@@ -29,7 +29,6 @@ import {
 import { PREVIEW_PALETTES } from '../../../../view/shared/overlay/preview-cell-art';
 import { mixedCellSet } from '../../../../core/grid/grids';
 import { overlayPart } from '../../../_support/overlay-parts';
-import { washColor } from '../../../../view/shared/overlay/preview-cell';
 
 interface Shape { x: number; y: number; width?: number; height?: number; radius?: number; type?: number }
 interface Data { shape: Shape; fillStyle?: { color: number; alpha: number }; lineStyle?: { color: number; width: number; alpha: number } }
@@ -50,7 +49,7 @@ const cells = (x: number, y: number, n: number) =>
 describe('the preview card in the 2D overlay', () => {
   it('draws ONE background over the whole footprint, on the terrain grid', async () => {
     const overlay = new OverlayLayer(() => {});
-    overlay.showGhost(mixedCellSet('terrain', cells(4, 6, 3)), { icon: 'mountain', valid: true });
+    overlay.showGhost(mixedCellSet('terrain', cells(4, 6, 3)), { icon: 'eraser', valid: true });
     await frame();
     const rects = graphicsData(overlay, 'ghostGraphics').filter((d) => typeof d.shape.width === 'number');
     expect(rects.length).toBe(2);
@@ -66,7 +65,7 @@ describe('the preview card in the 2D overlay', () => {
   it('puts the four dots at the footprint corners, in the palette colour, whatever the size', async () => {
     for (const n of [1, 5]) {
       const overlay = new OverlayLayer(() => {});
-      overlay.showGhost(mixedCellSet('object', cells(10, 20, n)), { icon: 'ground', valid: true });
+      overlay.showGhost(mixedCellSet('object', cells(10, 20, n)), { icon: 'trim', valid: true });
       await frame();
       const circles = graphicsData(overlay, 'ghostGraphics').filter((d) => d.shape.radius !== undefined && d.shape.width === undefined);
       expect(circles).toHaveLength(4);
@@ -82,9 +81,9 @@ describe('the preview card in the 2D overlay', () => {
 
   it('keeps the glyph at 1x1 size in the middle of a big footprint', async () => {
     const overlay = new OverlayLayer(() => {});
-    overlay.showGhost(mixedCellSet('object', cells(2, 3, 6)), { icon: 'water', valid: true });
+    overlay.showGhost(mixedCellSet('object', cells(2, 3, 6)), { icon: 'trim', valid: true });
     await frame();
-    const art = PREVIEW_ICON_ART.water;
+    const art = PREVIEW_ICON_ART.trim;
     const g = icon(overlay);
     expect(g.visible).toBe(true);
     expect(g.x).toBeCloseTo((2 + 3) * TILE_SIZE, 6);
@@ -105,19 +104,6 @@ describe('the preview card in the 2D overlay', () => {
     good.showGhost(mixedCellSet('terrain', cells(4, 4, 2)), { icon: 'eraser', valid: true });
     await frame();
     expect(graphicsData(good, 'ghostGraphics').filter((d) => (d.shape as { points?: number[] }).points !== undefined)).toHaveLength(0);
-  });
-
-  it('draws a placement wash as a square tint with no card marks', async () => {
-    const overlay = new OverlayLayer(() => {});
-    overlay.showGhost(mixedCellSet('terrain', [{ x: 3, y: 4 }, { x: 4, y: 4 }]), { wash: 'placement', valid: true });
-    await frame();
-    const data = graphicsData(overlay, 'ghostGraphics');
-    const rects = data.filter((d) => typeof d.shape.width === 'number');
-    expect(rects).toHaveLength(1);
-    expect(rects[0]!.shape.radius).toBeUndefined();
-    expect(rects[0]!.fillStyle?.color).toBe(washColor({ wash: 'placement', valid: true }));
-    expect(data.filter((d) => d.shape.radius !== undefined && d.shape.width === undefined)).toHaveLength(0);
-    expect(icon(overlay).visible).toBe(false);
   });
 
   it('drops the card when the ghost is cleared', async () => {

@@ -9,6 +9,7 @@ import { fireEvent } from '@testing-library/react';
 import { translations } from '../../_support/locale-tables';
 import { GateBlock, VerdictChip, QuickRow, markFor } from '../../../ui/agent/record/GateBlock';
 import { PlanGate } from '../../../ui/agent/record/PlanGate';
+import type { GateReply } from '../../../ui/agent/panel-shell-props';
 import { OptionPick, optionAskFrom, type OptionAsk } from '../../../ui/agent/record/OptionPick';
 import { PanelShell } from '../../../ui/agent/PanelShell';
 import { Banner, BANNER_CLASSES, type BannerActionId, type BannerClass } from '../../../ui/agent/desk/Banner';
@@ -21,6 +22,7 @@ import { submitComposer } from '../../../agent/session/composer-routing';
 import type { AskRecord, JobView } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/locale';
 import { makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
+import { drawnIcon } from '../../_support/agent/drawn-icon';
 
 const backing = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -111,11 +113,10 @@ describe('the verdict chip', () => {
     expect(getByTestId('gate-verdict').textContent).toBe('answered: Yes');
   });
 
-  /** A tapped pill and a typed sentence both reach the loop as `words`; only the card can tell them
-   *  apart, by matching what it offered. */
-  it('reads a words answer that is one of its own quick pills as a quick answer', () => {
-    expect(markFor(makeAsk({ verdict: 'words', words: 'Yes' }), ['Yes', 'No'])).toBe('quick');
-    expect(markFor(makeAsk({ verdict: 'words', words: 'stop at the meadow' }), ['Yes', 'No'])).toBe('words');
+  /** A tapped pill and a typed sentence both reach the loop as `words`; the record says which it was. */
+  it('reads a words answer that took a quick answer as a quick answer', () => {
+    expect(markFor(makeAsk({ verdict: 'words', words: 'Yes', answeredBy: 'quick' }))).toBe('quick');
+    expect(markFor(makeAsk({ verdict: 'words', words: 'stop at the meadow', answeredBy: 'typed' }))).toBe('words');
     expect(markFor(makeAsk())).toBeUndefined();
   });
 });
@@ -257,7 +258,7 @@ describe('the option pick', () => {
     const held = renderWithI18n(
       <OptionPick ask={makeOptions({ verdict: 'none-held' })} onPick={() => {}} onDecline={() => {}} />,
     );
-    expect(held.getByTestId('gate-verdict').textContent).toBe('none taken, holding');
+    expect(held.getByTestId('gate-verdict').textContent).toBe(translations.en['agent.gate_verdict_none_held']);
     expect(held.queryByTestId('option-none')).toBeNull();
     expect(held.getByTestId('option-pick').getAttribute('data-settled')).toBe('true');
   });
@@ -408,31 +409,31 @@ describe('an ask carrying quick answers is a question, not an approval', () => {
 
   it('answers in words with the pill\'s own text', () => {
     const view = deriveView(questionLog());
-    const calls: [string, string, string | undefined][] = [];
+    const calls: [string, GateReply][] = [];
     const { getAllByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
         view,
         connected: true,
         now: 0,
         ...VERBS,
-        onGateAnswer: (gateId, answer, words) => calls.push([gateId, answer, words]),
+        onGateAnswer: (gateId, reply) => calls.push([gateId, reply]),
       })}
       />,
     );
     fireEvent.click(getAllByTestId('gate-quick')[1]!);
-    expect(calls).toEqual([['g1', 'words', 'One lane']]);
+    expect(calls).toEqual([['g1', { words: 'One lane' }]]);
   });
 
   it('reads a matching answer back as the quick answer it was', () => {
     const log = questionLog();
     append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'One lane' });
     const ask = deriveView(log).current!.asks[0]!;
-    expect(markFor(ask, ask.quickAnswers)).toBe('quick');
+    expect(markFor(ask)).toBe('quick');
 
     const other = questionLog();
     append(other, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'go round the hill' });
     const typed = deriveView(other).current!.asks[0]!;
-    expect(markFor(typed, typed.quickAnswers)).toBe('words');
+    expect(markFor(typed)).toBe('words');
   });
 });
 
@@ -461,25 +462,24 @@ describe('an ask carrying options is a pick', () => {
       .toEqual(['The north shore', 'The bay']);
   });
 
-  it('sends the chosen caption as the gate words, and declines with skip', () => {
+  it('answers with the chosen option by its place among the cards, and declines with skip', () => {
     const view = deriveView(pickLog());
-    const calls: [string, string, string | undefined][] = [];
+    const calls: [string, GateReply][] = [];
     const { getAllByTestId, getByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
         view,
         connected: true,
         now: 0,
         ...VERBS,
-        onGateAnswer: (gateId, answer, words) => calls.push([gateId, answer, words]),
+        onGateAnswer: (gateId, reply) => calls.push([gateId, reply]),
       })}
       />,
     );
     fireEvent.click(getAllByTestId('option-card')[0]!);
     fireEvent.click(getByTestId('option-none'));
-    expect(calls).toEqual([['g1', 'words', 'The north shore'], ['g1', 'skip', undefined]]);
+    expect(calls).toEqual([['g1', { option: 0 }], ['g1', 'skip']]);
   });
 
-  /** The log holds only the sentence, so the index is recovered from it. */
   it('reads the settled card back as the pick it was, and a typed answer as none of these', () => {
     const picked = pickLog();
     append(picked, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words: 'The bay' });
@@ -591,7 +591,7 @@ describe('Banner: one banner for every trouble class', () => {
     for (const cls of ['other-map', 'unknown-map'] as const) {
       const { getByTestId, queryAllByTestId, unmount } = renderWithI18n(<Banner cls={cls} onAction={() => {}} />);
       expect(getByTestId('banner').getAttribute('data-paper'), cls).toBe('wait');
-      expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href'), cls).toBe('#pw-region-frame');
+      expect(drawnIcon(getByTestId('banner-icon')), cls).toBe('pw-region-frame');
       expect(queryAllByTestId('banner-action').length, cls).toBe(0);
       unmount();
     }
@@ -616,31 +616,31 @@ describe('Banner: one banner for every trouble class', () => {
 
   it('auth wears the key icon and offers a fix-key action', () => {
     const { getByTestId, getAllByTestId } = renderWithI18n(<Banner cls="auth" onAction={() => {}} />);
-    expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-key');
+    expect(drawnIcon(getByTestId('banner-icon'))).toBe('pw-key');
     const ids = getAllByTestId('banner-action').map((el) => el.getAttribute('data-action'));
     expect(ids).toContain('fix-key');
   });
 
   it('quota wears the wallet icon', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="quota" onAction={() => {}} />);
-    expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-wallet');
+    expect(drawnIcon(getByTestId('banner-icon'))).toBe('pw-wallet');
   });
 
   it('cors wears the link-out icon', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="cors" onAction={() => {}} />);
-    expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-link-out');
+    expect(drawnIcon(getByTestId('banner-icon'))).toBe('pw-link-out');
   });
 
   it('network wears the cloud-off icon', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="network" onAction={() => {}} />);
-    expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-cloud-off');
+    expect(drawnIcon(getByTestId('banner-icon'))).toBe('pw-cloud-off');
   });
 
   it('gives each storage reading the warning icon and a sentence of its own', () => {
     const said = new Set<string>();
     for (const cls of ['storage-pruned', 'storage-full', 'storage-corrupt'] as const) {
       const { getByTestId, unmount } = renderWithI18n(<Banner cls={cls} onAction={() => {}} />);
-      expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href'), cls).toBe('#pw-warning');
+      expect(drawnIcon(getByTestId('banner-icon')), cls).toBe('pw-warning');
       said.add(getByTestId('banner').textContent ?? '');
       unmount();
     }
@@ -649,7 +649,7 @@ describe('Banner: one banner for every trouble class', () => {
 
   it('a generic incident (unknown) wears the warning icon', () => {
     const { getByTestId } = renderWithI18n(<Banner cls="unknown" onAction={() => {}} />);
-    expect(getByTestId('banner-icon').querySelector('use')?.getAttribute('href')).toBe('#pw-warning');
+    expect(drawnIcon(getByTestId('banner-icon'))).toBe('pw-warning');
   });
 
   it('clicking an action pill calls onAction with that action id', () => {

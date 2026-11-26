@@ -10,10 +10,10 @@ beforeEach(resetStore);
 describe('armingOf', () => {
   it('reads what the bar resolved, under the names the tools use', () => {
     useEditorStore.getState().setEditMode({ mode: 'water', arm: { kind: 'shape', shape: 'circle' } });
-    setStoreState({ activeLayer: 2, layerPinned: true, drawingBrushSize: 3 });
+    setStoreState({ terrainThickness: 2, drawingBrushSize: 3 });
     const arming = armingOf(useEditorStore.getState());
     expect(arming).toMatchObject({
-      tool: ToolType.TerrainBrush, shape: 'circle', contentType: 'water', floor: 2, layerPinned: true, brushSize: 3,
+      tool: ToolType.TerrainBrush, shape: 'circle', contentType: 'water', terrainThickness: 2, brushSize: 3,
       groundEditable: false,
     });
   });

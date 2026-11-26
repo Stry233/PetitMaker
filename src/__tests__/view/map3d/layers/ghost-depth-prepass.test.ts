@@ -12,18 +12,22 @@ import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { getAllItems } from '../../../../state/catalog';
 import { isBridge, isRamp } from '../../../../core/model/traits';
 import { hasModel } from '../../../../view/map3d/models/registry';
-import type { GridState } from '../../../../core/model/types';
+import { TerrainType, type GridState } from '../../../../core/model/types';
 import { makeState } from '../../../_support/map-state';
 import { mixedCellSet, cellSet, evidenceOn } from '../../../../core/grid/grids';
+import { surfaceY } from '../../../../view/map3d/geometry/coords';
 
 /** A multi-part model: trunk cylinders standing inside overlapping canopy spheres. */
 const TREE = 'tree-apple';
 
 const overlayFor = (gs: GridState) => new OverlayLayer3D({ state: () => gs, requestRender: () => {} });
 
-/** The colour-pass meshes the overlay group holds (the pre-pass rides as their child). */
+/** Whether `mesh` is a terrain block mesh: its paint loses every depth tie with the map's faces. */
+const isBlock = (mesh: THREE.Mesh): boolean => (mesh.material as THREE.Material).depthFunc === THREE.LessDepth;
+
+/** The item bodies' colour-pass meshes the overlay group holds (the pre-pass rides as their child). */
 function bodies(o: OverlayLayer3D): THREE.Mesh[] {
-  return o.group.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh && c.children.length > 0);
+  return o.group.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh && c.children.length > 0 && !isBlock(c as THREE.Mesh));
 }
 
 function prepassOf(mesh: THREE.Mesh): THREE.Mesh {
@@ -65,7 +69,7 @@ describe('3D placement ghost: depth pre-pass', () => {
   it('orders the pre-pass before the colour pass and BOTH after the cell decals', () => {
     const gs = makeState(24, 24) as GridState;
     const o = overlayFor(gs);
-    o.showGhost(mixedCellSet('object', [{ x: 6, y: 6 }]), { wash: 'placement', valid: true });
+    o.showGhost(mixedCellSet('object', [{ x: 6, y: 6 }]), { placement: true, valid: true });
     o.flush();
     o.showPlacementGhost({ catalogId: TREE, x: 6, y: 6, rotation: 0, elevation: 0 }, true);
 
@@ -136,7 +140,7 @@ describe('3D placement ghost: depth pre-pass', () => {
     const gs = makeState(24, 24) as GridState;
     const o = overlayFor(gs);
     const cells = [{ x: 6, y: 6 }, { x: 7, y: 6 }];
-    o.showGhost(mixedCellSet('terrain', cells), { wash: 'placement', valid: true });
+    o.showGhost(mixedCellSet('terrain', cells), { placement: true, valid: true });
     o.flush();
     o.showSelection({ x: 8, y: 8, w: 2, h: 2 }, 'object');
     o.showHover({ x: 10, y: 10, w: 1, h: 1 }, 'object');
@@ -162,6 +166,37 @@ describe('3D placement ghost: depth pre-pass', () => {
       if (claimed.has(obj)) continue;
       expect(obj.renderOrder, obj.type).toBe(0);
     }
+  });
+
+  it('draws built terrain as blocks at their landing layer, with members standing on them', () => {
+    const gs = makeState(24, 24) as GridState;
+    const o = overlayFor(gs);
+    const blocks = [6, 7].map((x) => ({ x, y: 6, terrain: { type: TerrainType.Mountain, elevation: 2 } }));
+    o.showGhost(mixedCellSet('terrain', blocks), { placement: true, valid: true, blocks });
+    o.flush();
+    o.showGroupPlacementGhost([{ catalogId: TREE, x: 6, y: 6, rotation: 0, elevation: 2 }], true, true);
+    const solid = o.group.children.find((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh && isBlock(c as THREE.Mesh))!;
+    // A translucent block shows only its nearest surface: its own pre-pass over the same geometry
+    // runs first, so a back wall or a block behind another fails the colour pass's depth test.
+    const depth = prepassOf(solid);
+    expect(depth.geometry).toBe(solid.geometry);
+    expect(depth.renderOrder).toBeLessThan(solid.renderOrder);
+    expect((depth.material as THREE.Material).depthWrite).toBe(true);
+    expect((depth.material as THREE.Material).colorWrite).toBe(false);
+    solid.geometry.computeBoundingBox();
+    const box = solid.geometry.boundingBox!;
+    expect(box.max.y).toBeCloseTo(surfaceY(2));
+    expect(box.max.x - box.min.x).toBeCloseTo(2);
+    // The tree stands on the blocks' top, not on the bare map under them.
+    const [tree] = bodies(o);
+    expect(tree!.position.y).toBeCloseTo(surfaceY(2));
+
+    o.showGroupPlacementGhost([{ catalogId: TREE, x: 6, y: 6, rotation: 0, elevation: 0 }], true);
+    expect(bodies(o)[0]!.position.y).toBeCloseTo(surfaceY(0));
+    o.clearGhost();
+    o.flush();
+    expect(bodies(o)).toHaveLength(0);
+    expect(o.group.children.includes(solid)).toBe(false);
   });
 
   it('hiding the body hides its pre-pass with it', () => {

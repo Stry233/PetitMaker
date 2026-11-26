@@ -7,6 +7,7 @@
  * setter writes through the prefs table's key, and a freshly-booted slice reads it back.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { nextGridMode } from '../../platform/storage/prefs';
 import { useEditorStore } from '../../state/store';
 import { createPrefsSlice, type PrefsSlice } from '../../state/slices/prefs';
 
@@ -89,7 +90,7 @@ describe('the Settings tile cycles the grid modes', () => {
     s().setGridMode('auto');
     const seen: string[] = [];
     for (let i = 0; i < 4; i++) {
-      s().cycleGridMode();
+      s().setGridMode(nextGridMode(s().gridMode));
       seen.push(s().gridMode);
       expect(localStorage.getItem('petit-planet-grid-mode')).toBe(s().gridMode);
     }
@@ -99,7 +100,7 @@ describe('the Settings tile cycles the grid modes', () => {
   it('the shortcut after cycling to Off brings back the mode the cycle left', () => {
     const s = () => useEditorStore.getState();
     s().setGridMode('terrain');
-    s().cycleGridMode();
+    s().setGridMode(nextGridMode(s().gridMode));
     expect(s().gridMode).toBe('off');
     s().toggleGrid();
     expect(s().gridMode).toBe('terrain');

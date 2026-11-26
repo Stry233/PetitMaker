@@ -4,7 +4,7 @@ import { placeObjectCommand, removeObjectCommand } from '../../core/model/comman
 import type { CommandExecutor } from '../../core/commands/command-executor';
 import type { GridState, PlacedObject, PlaceObjectCommand, Rotation, StrokeScope, ValidationError } from '../../core/model/types';
 import { mapVersionKey } from '../../core/model/grid-model';
-import { surfaceElevationAt } from '../../state/object-geometry';
+import { laidElevation, surfaceElevationAt } from '../../state/object-geometry';
 
 /** The live map as a placement probe reads it with `objects` taken off: a read-only view sharing
  *  the cells, whose own object map omits them, and the scope that holds them as lifted, so a
@@ -34,11 +34,20 @@ export function probeWithout(state: GridState, objects: readonly PlacedObject[])
 /** One probe view per live map: a cache keyed by the map's versions and the objects taken off. */
 const probeViews = new WeakMap<GridState, { key: string; probe: ProbeView }>();
 
-/** `obj` as it would be at (newX, newY): elevation tracks the destination's surface, read through
- *  the straddle so a halfStep item's fractional coordinate names real cells (see
- *  `surfaceElevationAt`). A snapping item's trait replaces this when the command resolves. */
+/** `obj` with its anchor at (newX, newY), as a drag or a turn aims it: elevation tracks the
+ *  destination's surface, read through the straddle so a halfStep item's fractional coordinate
+ *  names real cells (see `surfaceElevationAt`). For a snapping item the point is a probe anchor,
+ *  which its trait snaps from when the command resolves. */
 export function movedObject(gs: GridState, obj: PlacedObject, newX: number, newY: number): PlacedObject {
   return { ...obj, position: { x: newX, y: newY }, elevation: surfaceElevationAt(gs, newX, newY) };
+}
+
+/** `obj` carried rigidly by (dx, dy), footprint and turn unchanged, as a group move and a change of
+ *  planet carry it: its position stays its own corner, never a probe anchor, and it stands where
+ *  `laidElevation` reads it there. */
+export function shiftedObject(gs: GridState, obj: PlacedObject, dx: number, dy: number): PlacedObject {
+  const shifted = { ...obj, position: { x: obj.position.x + dx, y: obj.position.y + dy } };
+  return { ...shifted, elevation: laidElevation(gs, shifted) };
 }
 
 /**

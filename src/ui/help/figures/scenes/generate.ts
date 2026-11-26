@@ -2,6 +2,7 @@
 import { TerrainType, type MacroCoord, type Command } from '../../../../core/model/types';
 import { SandboxWorld, defaultConfig, type GenerateConfig, type MazeGates } from '../../../../editor/sandbox/demo-world';
 import { mazeFootprintOn, mazeMarks, type MazeMarks } from '../../../../editor/editing/generate-batch';
+import { LETTER_SAMPLES } from '../../../../tools/generation/facts';
 import {
   Hand, UNDO_KEYS, macroArming, pickTool, rect, timed, CABIN, CABIN2, INTERIOR, COAST, type DemoCtx, type HelpScene, type SceneStep,
 } from './common';
@@ -219,9 +220,8 @@ const stencil: HelpScene = {
     const runGlyph = (world: SandboxWorld, terrain: TerrainType) => {
       job = job.then(async () => {
         const { glyphStencil } = await import('../../../../editor/sandbox/stencil-shots');
-        const { TEXT_POOL } = await import('../../../shell/bars/generate/stencil-samples');
         // The glyph is the shelf's own first sample, so the demo writes what the real pool deals.
-        const glyph = TEXT_POOL[0]?.text ?? 'A';
+        const glyph = LETTER_SAMPLES[0] ?? 'A';
         const st = await glyphStencil(glyph, box);
         if (!st) return;
         world.beginStroke();

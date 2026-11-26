@@ -1,3 +1,13 @@
+/** `v` cut to at most `max` UTF-16 units, never ending in half a surrogate pair, and trimmed before
+ *  and after the cut unless `trim` is false; null when `v` is no string or nothing is left. */
+export function clampText(v: unknown, max: number, { trim = true }: { trim?: boolean } = {}): string | null {
+  if (typeof v !== 'string') return null;
+  let text = (trim ? v.trim() : v).slice(0, max);
+  if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1);
+  if (trim) text = text.trim();
+  return text || null;
+}
+
 /** `s` with every regular-expression metacharacter escaped, so it matches itself literally. */
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

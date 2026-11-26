@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { FooterEditor } from '../../../../../ui/chrome/modals/export/FooterEditor';
+import { translateFor } from '../../../../../i18n/context';
+import type { Translate } from '../../../../../i18n/keys';
 
 function pasteInto(el: Element, data: Record<string, string>): Event {
   const ev = new Event('paste', { bubbles: true, cancelable: true });
@@ -55,5 +57,22 @@ describe('FooterEditor paste', () => {
     pasteInto(field, { 'text/plain': '{name}' });
     expect(field.querySelector('[data-tok]')).toBeNull();
     expect(onChange).toHaveBeenCalledWith('name');
+  });
+});
+
+/** A window opened before its locale's table arrives renders in English, then gets the locale's
+ *  translator; the tags already in the line must read in the new language. */
+describe('FooterEditor tag labels', () => {
+  const inLocale = (locale: 'en' | 'zh'): Translate => ((key: never, params?: never) => translateFor(locale, key, params)) as Translate;
+
+  it('relabels the tags in the line when the translator changes', () => {
+    const props = { value: '{date}{fill}{dims}', onChange: vi.fn(), samples: {} };
+    const { container, rerender } = render(<FooterEditor {...props} t={inLocale('en')} />);
+    const labels = () => [...container.querySelectorAll<HTMLElement>('[data-tok]')].map((chip) => chip.textContent);
+    expect(labels()).toEqual(['Date', '⇥ Fill', 'Dimensions']);
+    rerender(<FooterEditor {...props} t={inLocale('zh')} />);
+    expect(labels()).toEqual([
+      translateFor('zh', 'export.tok_date'), `⇥ ${translateFor('zh', 'export.footer_fill')}`, translateFor('zh', 'export.tok_dims'),
+    ]);
   });
 });

@@ -51,7 +51,7 @@ describe('the layer control names its layer whole', () => {
     );
     expect(plan?.compact, 'the window is short enough to fold the rail').toBe(true);
     for (const locale of LOCALES) {
-      act(() => { useEditorStore.setState({ locale, activeLayer: ELEVATION_MAX, displayLayer: null }); });
+      act(() => { useEditorStore.setState({ locale, displayLayer: ELEVATION_MAX }); });
       const readout = screen.getByTestId('shell-layer-readout');
       expect(readout.textContent, locale).toContain(String(layerNumber(ELEVATION_MAX)));
       expect(clipped(readout), locale).toBeNull();

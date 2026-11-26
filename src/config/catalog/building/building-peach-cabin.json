@@ -1,0 +1,43 @@
+{
+  "id": "building-peach-cabin",
+  "category": "building",
+  "name": {
+    "en": "Manna's Peach Tassel House",
+    "zh": "桃穗小屋（蛮蛮）",
+    "ja": "桃の房飾りの家（マーナ）",
+    "ru": "Домик персиковых кисточек (Манна)",
+    "th": "บ้านพู่สีพีช (แมนนา)",
+    "id": "Rumah Rumbai Persik (Manna)",
+    "fr": "Maison aux pompons pêche de Manna"
+  },
+  "aliases": [
+    "黄",
+    "yellow"
+  ],
+  "icon": "building-peach-cabin",
+  "width": 5,
+  "height": 5,
+  "loadValue": 0,
+  "loadUnknown": true,
+  "maxCount": 1,
+  "rotatable": true,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "coatingSupport"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    },
+    {
+      "type": "groundZones",
+      "onGrass": true,
+      "onSand": true,
+      "acrossBoundary": false
+    }
+  ]
+}

@@ -7,7 +7,7 @@
  * installs it when complete. Existing cell/object provenance is translated with the content. Nothing
  * here reaches the live editor, so the generation worker runs this module for the carry preview.
  */
-import { eraseTerrainCommand, paintTerrainCommand, placeObjectCommand, removeObjectCommand, trimTerrainCommand } from '../../../core/model/command-build';
+import { eraseTerrainCommand, paintTerrainCommand, placeObjectCommand, removeObjectCommand } from '../../../core/model/command-build';
 import type { CommandExecutor } from '../../../core/commands/command-executor';
 import { getCell } from '../../../core/model/grid-model';
 import { hasLandmark, isLandmarkItem, templateAnchor } from '../../../core/model/landmarks';
@@ -18,7 +18,6 @@ import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import { isBuildableZone } from '../../../core/game/zones';
 import { isCoating } from '../../../core/model/traits';
 import { createGridState, templateHasTerrain } from '../../../core/model/template';
-import { structuralTop, patchSupport } from '../../../core/domain/terrain/terrain-surface';
 import { ProvSource } from '../../../core/provenance/types';
 import {
   TerrainType,
@@ -28,7 +27,6 @@ import {
   type PaintTerrainCommand,
   type PlacedObject,
   type TerrainCell,
-  type TrimCornersCommand,
   type ValidationError,
 } from '../../../core/model/types';
 import { copyCorners } from '../../../core/model/corners';
@@ -38,9 +36,9 @@ import { getCatalogItem } from '../../../state/catalog';
 import { createExecutor } from '../../../state/executor';
 import { getObjectIndex, objectAt } from '../../../state/object-index';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
-import { backOffAt, type BackOffOptions, type SettleActions } from '../../../state/settle';
-import { planToCommands, repairPlan, type TerrainPlan } from '../terrain-plan';
-import { movedObject } from '../../placement/probe';
+import { backOffAt, type BackOffOptions, type SettleActions } from '../../repair/settle';
+import { carriedCut, carriedMass, paintLayer, planToCommands, repairPlan, type TerrainPlan } from '../terrain-plan';
+import { shiftedObject } from '../../placement/probe';
 import { carriedNotes } from './annotations';
 
 /** Cells and objects are counted apart, because the report names both. */
@@ -273,15 +271,6 @@ function paintableMask(dest: GridState, registry: RuleRegistry): (x: number, y: 
   };
 }
 
-/** The mass a source cell carries: a real block's full height, a Γ patch's real base (the fillet is
- *  cosmetic and is replayed as a corner), nothing for a `None` islet cut. −1 = no mass. */
-function carriedMass(t: TerrainCell): number {
-  if (t.type === TerrainType.None) return -1;
-  const top = structuralTop(t);
-  if (t.type === TerrainType.Mountain) return top >= 1 ? top : -1;
-  return t.patchOnly && top < 1 ? -1 : top;   // a from-empty water fillet holds no water
-}
-
 /** The carried terrain as a plan on the destination's grid. */
 function carriedPlan(
   source: GridState,
@@ -314,16 +303,6 @@ function carriedPlan(
   return plan;
 }
 
-/** Apply one layer paint, splitting it in half on refusal down to the single cells that are the
- *  actual refusal. Cells within a paint are judged independently (zone, bleed, support under the
- *  cell itself), so a half that stands is the same map as the whole would have been. */
-function applyPaint(executor: CommandExecutor, cmd: PaintTerrainCommand): void {
-  if (executor.execute(cmd).success || cmd.cells.length <= 1) return;
-  const mid = cmd.cells.length >> 1;
-  applyPaint(executor, { ...cmd, cells: cmd.cells.slice(0, mid) });
-  applyPaint(executor, { ...cmd, cells: cmd.cells.slice(mid) });
-}
-
 function replayTerrain(
   source: GridState,
   dest: GridState,
@@ -343,7 +322,9 @@ function replayTerrain(
   }
   const repaired = repairPlan(plan, dest.template, registry);
   for (const i of kept) { repaired.tier[i] = 0; repaired.water[i] = -1; }
-  for (const cmd of planToCommands(repaired, null)) applyPaint(executor, cmd);
+  for (const cmd of planToCommands(repaired, null)) {
+    paintLayer(cmd.cells, cmd.terrainType, cmd.elevation, (c) => executor.execute(c));
+  }
 }
 
 // ── silhouette ───────────────────────────────────────────────────────────────────────────────────
@@ -376,26 +357,8 @@ function replayCorners(
       const dx = sx + offset.x, dy = sy + offset.y;
       const cell = getCell(dest.cells, dx, dy);
       if (!cell) continue;
-      const now = cell.terrain;
-      const corners = copyCorners(t.corners);
-      const cut: TrimCornersCommand = trimTerrainCommand(dx, dy, corners);
-      if (t.patchOnly) {
-        const base = patchSupport(t);
-        const standing = base < 1
-          ? now === null && paintable(dx, dy)
-          : !!now && !now.patchOnly && now.type === t.type && now.elevation === base;
-        if (!standing) continue;
-        executor.execute({
-          ...cut, patchOnly: true, terrainType: t.type, elevation: t.elevation, patchBase: base,
-        });
-      } else if (t.type === TerrainType.None) {
-        // The islet cut carries no mass: anything standing here is not what it rounds.
-        if (now || !paintable(dx, dy)) continue;
-        executor.execute(cut);
-      } else {
-        if (!now || now.patchOnly || now.type !== t.type || now.elevation !== t.elevation) continue;
-        executor.execute(cut);
-      }
+      const cut = carriedCut(t, cell.terrain, () => paintable(dx, dy), { x: dx, y: dy });
+      if (cut) executor.execute(cut);
     }
   }
 }
@@ -408,8 +371,8 @@ function replayCorners(
  * A coating is laid last so it lands on the surface it coats rather than under the house that is
  * about to stand on it. Every object keeps its ID: the destination holds nothing but its own
  * landmarks, so the source's ids are unique there by construction, and a re-minted id would make
- * two runs of one transfer produce different maps. `movedObject` re-reads the elevation from the destination's
- * own surface — the mass under an object can arrive a tier lower than it left.
+ * two runs of one transfer produce different maps. `shiftedObject` re-reads the elevation from the
+ * destination's own ground, since the mass under an object can arrive a tier lower than it left.
  */
 function replayObjects(
   source: GridState,
@@ -425,8 +388,8 @@ function replayObjects(
     (item && isCoating(item) ? coatings : solids).push(o);
   }
   for (const o of [...solids, ...coatings]) {
-    const carried = movedObject(dest, o, o.position.x + offset.x, o.position.y + offset.y);
-    // The spread in `movedObject` is shallow, and the two maps must share no mutable member.
+    const carried = shiftedObject(dest, o, offset.x, offset.y);
+    // The spread in `shiftedObject` is shallow, and the two maps must share no mutable member.
     if (o.corners) carried.corners = copyCorners(o.corners);
     executor.execute(placeObjectCommand(carried));
   }

@@ -7,6 +7,7 @@ export function detectProviderFromKey(key: string): ProviderId | null {
   if (/^sk-ant-/.test(k)) return 'claude';
   if (/^sk-(proj|svcacct|admin|None)-/.test(k)) return 'openai'; // "None" is a legacy OpenAI org-less key shape
   if (/^pplx-/.test(k)) return 'perplexity';
+  if (/^ms[-_]/.test(k)) return 'modelscope';                     // ModelScope access token, or one a sign-in returned
   if (/^AIza[\w-]{20,}$/.test(k)) return 'gemini';               // Google API key
   if (/^[0-9a-f]{32}\.[A-Za-z0-9]{16}$/.test(k)) return 'zhipu'; // GLM: 32hex.16alnum
   // sk-<32hex> is not format-distinct: DeepSeek uses it, but so do legacy OpenAI

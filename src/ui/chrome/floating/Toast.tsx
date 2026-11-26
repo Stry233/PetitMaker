@@ -4,21 +4,24 @@ import { useChromeLayer } from '../../primitives/chrome-layer';
 import { NOTICE_CONTROL, useNoticeZoom } from '../../primitives/NoticeBar';
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { font, radii, z } from '../../design/styles';
+import { cursors, font, radii, z } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useEditorStore } from '../../../state/store';
 import { anyModalOpen } from '../../../state/slices/shell';
 import { useT } from '../../../i18n/context';
 import type { ValidationError } from '../../../core/model/types';
-import { setToastPresenter, type ToastType } from '../../../platform/channels/toast-bus';
+import { setToastPresenter, type ToastAction, type ToastType } from '../../../platform/channels/toast-bus';
+import { ActionButton } from '../../primitives/ActionButton';
 import { TOAST_BAND_TOP, UPRIGHT_TOAST_TOP, bandCentre, bandMaxWidth, bandTop, fromChromePx } from './toast-band';
 import { useLayoutShape } from '../../design/input-mode';
 import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
 import { refusalKey, ruleToast } from '../../../i18n/terms/rule-copy';
-import { PANEL_EDGE, ERROR, ACCENT, SUCCESS, PLATE, FRAME_INK, ON_DARK } from '../../design/tokens';
+import { PANEL_EDGE, ERROR, ACCENT, SUCCESS, PLATE, FRAME_INK, ON_DARK, inkTint } from '../../design/tokens';
 import { useMorph } from '../../primitives/morph';
 
 const TOAST_DURATION = 3000;
+/** A toast offering a press stays longer, so the press can still be reached. */
+const ACTION_TOAST_DURATION = 6000;
 
 /** Where the band stands, its places written in chrome px and converted to the toasts' own by `ratio`
  *  (`toast-band.ts:fromChromePx`); upright, under the frame's top row. */
@@ -46,6 +49,7 @@ interface ToastMessage {
   count: number;
   /** Posted while a window stood, so it reports what was done in that window. */
   overWindow: boolean;
+  action?: ToastAction;
 }
 
 function accentColor(type: ToastType): string {
@@ -57,7 +61,7 @@ function accentColor(type: ToastType): string {
 const toastStyle: CSSProperties = {
   background: PLATE,
   color: FRAME_INK,
-  ...roleFont('menu'),
+  ...roleFont('label'),
   // A toast wraps at `maxWidth`, so the leading is part of the token rather than the browser's.
   lineHeight: '150%',
   fontFamily: font.family,
@@ -81,6 +85,11 @@ const dotStyle = (type: ToastType): CSSProperties => ({
   flexShrink: 0,
 });
 
+const actionStyle: CSSProperties = {
+  border: 'none', margin: 0, background: inkTint(0.08), color: FRAME_INK, cursor: cursors.clickable,
+  ...roleFont('action'), fontFamily: font.family, padding: '2px 12px', borderRadius: radii.pill, flex: 'none',
+};
+
 const badgeStyle = (type: ToastType): CSSProperties => ({
   background: accentColor(type),
   color: ON_DARK,
@@ -96,11 +105,19 @@ const badgeStyle = (type: ToastType): CSSProperties => ({
 /** The toast's own face: card, status dot, text and repeat badge. No timers, no presence:
  *  `ToastContainer` plays it live and the Help Center's figure stands it still (the one motion
  *  here, the badge's pop, re-keys on the count, so a static count never moves). */
-export function ToastFace({ text, type, count }: { text: string; type: ToastType; count: number }) {
+export function ToastFace({ text, type, count, action, onAction }: {
+  text: string; type: ToastType; count: number;
+  /** A press beside the text, which ends the toast. */
+  action?: ToastAction; onAction?: () => void;
+}) {
   return (
     <div data-testid="toast" style={toastStyle}>
       <span style={dotStyle(type)} />
       {text}
+      {action && (
+        <ActionButton interaction="action" fill={inkTint(0.08)} hoverFill={inkTint(0.14)} onClick={() => { action.run(); onAction?.(); }}
+          style={{ ...actionStyle, pointerEvents: 'auto' }}>{action.label}</ActionButton>
+      )}
       {count > 1 && (
         <motion.span
           key={count}
@@ -117,6 +134,21 @@ export function ToastFace({ text, type, count }: { text: string; type: ToastType
 }
 
 let nextId = 0;
+
+/** The most toasts the band shows at once. */
+const BAND_MAX = 3;
+
+/** `list` cut to the band, the oldest plain toasts before the newest going first: one offering a press
+ *  stays until it is pressed or expires, so the band may stand longer for it. */
+function withinBand(list: ToastMessage[]): ToastMessage[] {
+  const out = [...list];
+  while (out.length > BAND_MAX) {
+    const plain = out.slice(0, -1).findIndex((toast) => !toast.action);
+    if (plain < 0) break;
+    out.splice(plain, 1);
+  }
+  return out;
+}
 
 export function ToastContainer() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -136,20 +168,22 @@ export function ToastContainer() {
     setToasts(next);
   }, []);
 
-  const addToast = useCallback((text: string, type: ToastType = 'error') => {
+  const addToast = useCallback((text: string, type: ToastType = 'error', action?: ToastAction) => {
     const prev = listRef.current;
     const overWindow = anyModalOpen(useEditorStore.getState());
-    const existing = prev.find((toast) => toast.text === text && toast.type === type);
+    // A toast offering a press stands alone, so each keeps its own press.
+    const existing = action ? undefined : prev.find((toast) => toast.text === text && toast.type === type && !toast.action);
     const id = existing?.id ?? nextId++;
     const timers = timersRef.current;
     clearTimeout(timers.get(id));
     timers.set(id, setTimeout(() => {
       timers.delete(id);
       publish(listRef.current.filter((toast) => toast.id !== id));
-    }, TOAST_DURATION));
+    }, action ? ACTION_TOAST_DURATION : TOAST_DURATION));
     publish(existing
-      ? prev.map((toast) => (toast.id === id ? { ...toast, count: toast.count + 1, overWindow: toast.overWindow || overWindow } : toast))
-      : [...prev.slice(-2), { id, text, type, count: 1, overWindow }]);
+      ? prev.map((toast) => (toast.id !== id ? toast
+        : { ...toast, count: toast.count + 1, overWindow: toast.overWindow || overWindow, ...(action ? { action } : null) }))
+      : withinBand([...prev, { id, text, type, count: 1, overWindow, ...(action ? { action } : null) }]));
   }, [publish]);
 
   useEffect(() => setToastPresenter(addToast), [addToast]);
@@ -173,10 +207,11 @@ export function ToastContainer() {
   const [banded, setBanded] = useState(false);
   if (toasts.length > 0 && !banded) setBanded(true);
   const emptied = useCallback(() => setBanded(false), []);
-  return banded ? <ToastBand toasts={toasts} onEmptied={emptied} /> : null;
+  const dismiss = useCallback((id: number) => publish(listRef.current.filter((toast) => toast.id !== id)), [publish]);
+  return banded ? <ToastBand toasts={toasts} onEmptied={emptied} onDismiss={dismiss} /> : null;
 }
 
-function ToastBand({ toasts, onEmptied }: { toasts: ToastMessage[]; onEmptied: () => void }) {
+function ToastBand({ toasts, onEmptied, onDismiss }: { toasts: ToastMessage[]; onEmptied: () => void; onDismiss: (id: number) => void }) {
   // Touch mode draws the refusals at the band's zoom (`NoticeBar.tsx:useNoticeZoom`). From `left: 50%`
   // a lifted card would only have the half window to its right, so it is held at its words' width
   // and never past the window less a docked panel's strip and the side margins: upright, the
@@ -207,7 +242,8 @@ function ToastBand({ toasts, onEmptied }: { toasts: ToastMessage[]; onEmptied: (
             exit={{ opacity: 0, y: -10, scale: 0.95, transition: framerMotion('notice.leave') }}
             transition={framerMotion('surface.pop')}
           >
-            <ToastFace text={toast.text} type={toast.type} count={toast.count} />
+            <ToastFace text={toast.text} type={toast.type} count={toast.count}
+              {...(toast.action ? { action: toast.action, onAction: () => onDismiss(toast.id) } : {})} />
           </motion.div>
         ))}
       </AnimatePresence>

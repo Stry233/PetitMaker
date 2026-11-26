@@ -3,10 +3,10 @@ import type { Command, GridState, MacroCoord, PlaceObjectCommand, PlacedObject, 
 import type { RuleDispatcher } from '../../core/model/rule-dispatcher';
 import type { CommandSink } from '../../core/model/command-sink';
 import { NEIGHBORS4 } from '../../core/grid/directions';
-import { rectsOverlap, cellKey, mapGrid } from '../../core/grid/rect';
+import { rectsOverlap, mapGrid } from '../../core/grid/rect';
 import { getCatalogItem, isDecoration } from '../../state/catalog';
 import { doorOf, hasGate, objectRect } from '../../state/object-geometry';
-import { getRotatedSize } from '../../core/grid/footprint';
+import { footprintCells, getRotatedSize } from '../../core/grid/footprint';
 import { entriesNear, getObjectIndex } from '../../state/object-index';
 import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
 import { hasTrait, isCoating, isSurfacePrint, isCrossing } from '../../core/model/traits';
@@ -225,21 +225,15 @@ export function sweepClearanceCells(ctx: PlaceCtx, cells: Set<number>): PlacedOb
   return removed;
 }
 
-/** Visit every macro cell of an object's footprint (the one shared rasterizer for footprint marking). */
+/** Visit every object-grid cell an object's footprint covers, part-covered cells included
+ *  (`footprintCells`): a landmark's rect is fractional, and a fractional visit would be a grid index
+ *  no integer lookup ever finds. */
 export function forEachFootprintCell(obj: PlacedObject, visit: (x: number, y: number) => void): void {
   const r = objectRect(obj);
-  // Integer cells covered by the rect, not the rect's own coordinates: a landmark's rect is
-  // fractional (sub-block precision), and a fractional visit becomes a fractional grid index, a Set
-  // member no integer lookup ever finds.
-  const x0 = Math.floor(r.x), y0 = Math.floor(r.y), x1 = Math.ceil(r.x + r.w), y1 = Math.ceil(r.y + r.h);
-  for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) visit(xx, yy);
+  for (const c of footprintCells(r.x, r.y, r.w, r.h)) visit(c.x, c.y);
 }
 
 /** Whether (x,y) is a buildable/open cell in the placement analysis (in-bounds + open mask encodes
  *  the selected-region restriction). The one shared open-cell test for every placement stage. */
 export const openAt = (a: PlacementAnalysis, x: number, y: number): boolean =>
   x >= 0 && y >= 0 && x < a.width && y < a.height && a.open[y * a.width + x] === 1;
-
-/** Record every footprint cell of a just-placed object into a "x,y" set (settled/occupied tracking). */
-export const markCells = (obj: PlacedObject, set: Set<string>): void =>
-  forEachFootprintCell(obj, (x, y) => set.add(cellKey(x, y)));

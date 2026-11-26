@@ -5,14 +5,16 @@
  * plate inherits its modal's exit opacity. */
 import { font, cursors, radii } from '../design/styles';
 import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Transition, type Variants } from 'framer-motion';
 import { skin } from '../design/window-skin';
-import { roleWeight, TEXT_ROLES } from '../design/text-weight';
+import { roleFont } from '../design/text-weight';
 import { useTransition } from '../design/motion/use-motion';
 import { visualRect } from '../design/visual-rect';
-import { FRAME_INK } from '../design/tokens';
+import { FRAME_INK, PLATE, plateShapeEdge } from '../design/tokens';
 import { useInteractionProfiles } from '../design/input-mode';
 import { onFontsSettled } from '../../assets/fonts/settled';
+import { useNameReveal } from './use-name-reveal';
+import { withBind } from './use-reveal';
 
 const PAD_X = 6; // stretch-mode button horizontal padding (each side) — see `btn.padding` below
 const TRACK_PAD = 3; // wrap's own padding — see `wrap.padding` below, and the plate's top/bottom inset
@@ -25,21 +27,19 @@ const SAME_SHARE = 1e-5;
 type PlateShare = { left: number; width: number };
 
 export function SegmentedControl<T extends string>({
-  value, options, onChange, render = (o) => String(o), label, idPrefix, stretch = true, fontSize = TEXT_ROLES.chip.px, height, wrapLabels = false,
+  value, options, onChange, render = (o) => String(o), label, idPrefix, stretch = true, height, wrapLabels = false,
+  track = 'window',
 }: {
   value: T;
   options: readonly T[];
   onChange: (o: T) => void;
   render?: (o: T) => ReactNode;
-  /** Accessible name per option, for options drawn as icons. */
+  /** The name of each option drawn as a glyph: its accessible name, shown as glyph-only controls show theirs. */
   label?: (o: T) => string;
   /** Unique namespace so each control's sliding plate animates independently. */
   idPrefix: string;
   /** Buttons fill the row (export) vs size to their content (inline settings toggle). */
   stretch?: boolean;
-  /** A segment names a choice, so it is drawn at the `chip` rung. Passed only where a caller's row
-   *  cannot hold that size. */
-  fontSize?: number;
   /** The control's whole height in css px, for a caller whose row holds controls to one line (the
    *  generate strip). The buttons fill it; their vertical padding goes. Unset, the buttons size from
    *  their own padding as they always have. */
@@ -47,6 +47,8 @@ export function SegmentedControl<T extends string>({
   /** Allow complete labels in narrow columns: a label wraps between words, and a slot is never
    *  narrower than its longest word, taking that room from the others. */
   wrapLabels?: boolean;
+  /** The track it stands on: a window's, or the cream plate of a shelf's round buttons beside it. */
+  track?: 'window' | 'plate';
 }) {
   const slide = useTransition('control.plate.slide');
   const profiles = useInteractionProfiles();
@@ -94,7 +96,10 @@ export function SegmentedControl<T extends string>({
   const pressed = { pressed: profiles.actionTap.whileTap };
 
   return (
-    <div ref={wrapRef} style={{ ...wrap, ...(stretch ? null : { alignSelf: 'flex-start' }), ...(height !== undefined ? { height, boxSizing: 'border-box' } : null) }}>
+    <div ref={wrapRef} style={{
+      ...wrap, ...(track === 'plate' ? { background: PLATE, boxShadow: plateShapeEdge() } : null),
+      ...(stretch ? null : { alignSelf: 'flex-start' }), ...(height !== undefined ? { height, boxSizing: 'border-box' } : null),
+    }}>
       {/* One persistent plate, an ordinary child of the control (no `layoutId`), so it slides inside
           the control and fades in lockstep with an enclosing modal card's exit opacity. */}
       {!measured ? (
@@ -127,44 +132,64 @@ export function SegmentedControl<T extends string>({
           />
         )
       )}
-      {options.map((o, i) => {
-        const active = o === value;
-        return (
-          <motion.button
-            key={o}
-            ref={(el) => { btnRefs.current[i] = el; }}
-            type="button"
-            onClick={() => onChange(o)}
-            whileTap="pressed"
-            aria-pressed={active}
-            aria-label={label?.(o)}
-            style={{
-              // `overflow: hidden` would resolve an automatic least width to 0, so a wrapping slot names its own.
-              ...btn, flex: stretch ? 1 : 'none', fontSize, minWidth: wrapLabels ? 'min-content' : 0,
-              padding: height !== undefined ? `0 ${stretch ? PAD_X : 14}px` : stretch ? `8px ${PAD_X}px` : '6px 14px',
-            }}
-          >
-            <motion.span
-              variants={pressed}
-              transition={profiles.actionTap.transition}
-              style={{
-                position: 'relative', zIndex: 1, display: 'inline-block', whiteSpace: wrapLabels ? 'normal' : 'nowrap',
-                // A wrapped label's box takes the slot's width, so its lines centre within it.
-                textAlign: 'center', overflowWrap: wrapLabels ? 'break-word' : undefined,
-              }}
-            >
-              {render(o)}
-            </motion.span>
-          </motion.button>
-        );
-      })}
+      {options.map((o, i) => (
+        <Segment key={o} name={label?.(o)} active={o === value} onPress={() => onChange(o)} buttonRef={(el) => { btnRefs.current[i] = el; }}
+          pressed={pressed} tap={profiles.actionTap.transition} wrapLabels={wrapLabels}
+          style={{
+            // `overflow: hidden` would resolve an automatic least width to 0, so a wrapping slot names its own.
+            ...btn, flex: stretch ? 1 : 'none', minWidth: wrapLabels ? 'min-content' : 0,
+            padding: height !== undefined ? `0 ${stretch ? PAD_X : 14}px` : stretch ? `8px ${PAD_X}px` : '6px 14px',
+          }}>
+          {render(o)}
+        </Segment>
+      ))}
     </div>
+  );
+}
+
+/** One slot. A slot drawn as a glyph names itself as every glyph-only control does (`use-name-reveal`). */
+function Segment({ name, active, onPress, buttonRef, pressed, tap, wrapLabels, style, children }: {
+  name: string | undefined;
+  active: boolean;
+  onPress: () => void;
+  buttonRef: (el: HTMLButtonElement | null) => void;
+  pressed: Variants;
+  tap: Transition | undefined;
+  wrapLabels: boolean;
+  style: CSSProperties;
+  children: ReactNode;
+}) {
+  const reveal = useNameReveal(name ?? '');
+  return (
+    <motion.button
+      ref={buttonRef}
+      type="button"
+      whileTap="pressed"
+      aria-pressed={active}
+      aria-label={name}
+      {...withBind(name ? reveal.bind : {}, { onClick: onPress })}
+      style={style}
+    >
+      <motion.span
+        variants={pressed}
+        transition={tap}
+        style={{
+          position: 'relative', zIndex: 1, display: 'inline-block', whiteSpace: wrapLabels ? 'normal' : 'nowrap',
+          // A wrapped label's box takes the slot's width, so its lines centre within it.
+          textAlign: 'center', overflowWrap: wrapLabels ? 'break-word' : undefined,
+        }}
+      >
+        {children}
+      </motion.span>
+      {name && reveal.bubble}
+    </motion.button>
   );
 }
 
 // `overflow: hidden` keeps the plate inside the track's stadium while a host's glide redraws it.
 const wrap: CSSProperties = { position: 'relative', display: 'flex', gap: TRACK_GAP, background: skin.track, borderRadius: radii.pill, padding: TRACK_PAD, overflow: 'hidden' };
-const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: radii.pill, fontFamily: font.family, fontWeight: roleWeight('chip'), color: FRAME_INK, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
+/** A segment names a choice, so it is a `chip`. */
+const btn: CSSProperties = { border: 'none', cursor: cursors.clickable, borderRadius: radii.pill, fontFamily: font.family, ...roleFont('chip'), color: FRAME_INK, position: 'relative', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' };
 // The plate's vertical box is a static inset, never measured or animated, so CSS-zoom rounding opens
 // no gap between it and the track.
 const plateTrack: CSSProperties = { position: 'absolute', top: TRACK_PAD, bottom: TRACK_PAD, left: TRACK_PAD, right: TRACK_PAD };

@@ -6,12 +6,14 @@
  * Water commands are not checked (water has no elevation ceiling in this rule).
  */
 import { CommandType, TerrainType } from '../core/model/types';
+import { CLEARING_ELEVATION } from '../core/model/grid-model';
 import { ELEVATION_MAX, TERRAIN_GRID, layerNumber } from '../core/game/profile';
 import { evidenceOn } from '../core/grid/grids';
 import { definePreRule } from './define';
 
 export const elevationRangeRule = definePreRule({
   id: 'V-MTN-01',
+  description: `Mountain elevation must be 0-${ELEVATION_MAX} (${CLEARING_ELEVATION} clears the cell).`,
   appliesTo: [CommandType.PaintTerrain],
   validate(cmd, _state, fail) {
     if (cmd.terrainType !== TerrainType.Mountain) return [];

@@ -10,6 +10,7 @@ import { LayersTour, NotesRowTour } from './previews/frame-tours';
 import { TourPreview } from './previews/tour';
 import { AutoTrimModesPreview, TerrainToolsStrip } from './previews/strips';
 import { ContextMenuPreview, DeleteConfirmPreview } from './previews/floating';
+import { BlueprintExplorerPreview, BlueprintListPreview, BlueprintMenusPreview } from './previews/blueprint';
 import {
   GenerateShelfIslandPreview, GenerateShelfMazePreview, IslandHeightPreview, IslandRichnessPreview,
 } from './previews/generate';
@@ -48,6 +49,22 @@ const REGION_BAR_TARGETS = ['tools', 'shape', 'dimensions'].flatMap((slot) => {
 // the pictured UI zoom.
 const REGION_SCREEN = { tool: 'free' } as const;
 const RegionBar = () => <FrameCut corner="bar" mode="generate" regionScreen={REGION_SCREEN} targets={REGION_BAR_TARGETS} />;
+// The Blueprint strip open over the map, its cards the reader's own library. Its root spans the
+// window's height, so the cut is the strip's own row.
+const BLUEPRINT_STRIP = '[data-testid="shell-blueprint-shelf"]';
+const BLUEPRINT_STRIP_TARGETS = [BLUEPRINT_STRIP, `${BLUEPRINT_STRIP} *`];
+const BlueprintStrip = () => <FrameCut corner="bar" mode="blueprint" targets={BLUEPRINT_STRIP_TARGETS} />;
+// The save step's dock in the bar's place, wider than a Help column at live size, so each figure
+// is a cut of it: its fields, read whole, or its two pictures.
+const SAVE_DOCK = '[data-help="blueprint-save"]';
+const cutOf = (part: string) => [`${SAVE_DOCK} ${part}`, `${SAVE_DOCK} ${part} *`];
+const SAVE_FIELDS = cutOf('[data-save-fields]');
+// The tiles alone, a picture inside one laying out wider than the tile that clips it, with less
+// room around them than the gap to the fields beside them.
+const SAVE_PICTURES = [`${SAVE_DOCK} [data-view]`];
+const SAVE_PICTURES_PAD = 8;
+const BlueprintSaveFields = () => <FrameCut corner="bar" mode="blueprint" blueprintSave targets={SAVE_FIELDS} whole />;
+const BlueprintSavePictures = () => <FrameCut corner="bar" mode="blueprint" blueprintSave targets={SAVE_PICTURES} pad={SAVE_PICTURES_PAD} />;
 
 export const CORE_SURFACES: Record<string, ComponentType> = {
   'frame-overview': FrameOverview,
@@ -58,6 +75,9 @@ export const CORE_SURFACES: Record<string, ComponentType> = {
   'frame-shelf': ShelfWindow,
   'object-brush': ObjectBrush,
   'region-bar': RegionBar,
+  'blueprint-strip': BlueprintStrip,
+  'blueprint-save': BlueprintSaveFields,
+  'blueprint-save-pictures': BlueprintSavePictures,
   tour: TourPreview,
   layers: LayersTour,
   'notes-row': NotesRowTour,
@@ -70,4 +90,7 @@ export const CORE_SURFACES: Record<string, ComponentType> = {
   'generate-shelf-island': GenerateShelfIslandPreview,
   'island-height': IslandHeightPreview,
   'island-richness': IslandRichnessPreview,
+  'blueprint-explorer': BlueprintExplorerPreview,
+  'blueprint-explorer-list': BlueprintListPreview,
+  'blueprint-menus': BlueprintMenusPreview,
 };

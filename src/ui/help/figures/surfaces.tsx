@@ -22,6 +22,7 @@ import {
   LetterMaterialsPreview, PictureMaterialsPreview, PictureStencilPreview, PictureTuningPreview,
 } from './previews/generate';
 import { FrameCut } from './previews/frame-overview';
+import { BlueprintExportPreview } from './previews/blueprint';
 import { CORE_SURFACES } from './core-surfaces';
 
 const FrameAgent = () => <FrameCut corner="agent" />;
@@ -70,4 +71,5 @@ export const HELP_SURFACES: Record<string, ComponentType> = {
   search: SearchPreview,
   checklist: ChecklistPreview,
   'checklist-full': FullChecklistPreview,
+  'blueprint-export': BlueprintExportPreview,
 };

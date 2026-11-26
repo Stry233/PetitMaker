@@ -94,10 +94,10 @@ export function MapPlate({ title, testId, motionProps, children }: {
   );
 }
 
-/** A map plate's face: its title, a rule and `children`; `pictured` in a Help figure. */
-export function PlateTitled({ title, pictured = false, children }: { title: string; pictured?: boolean; children: ReactNode }) {
+/** A map plate's face: its title, a rule and `children`. */
+function PlateTitled({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <PlateBody edge={!pictured} gap={GAP} padding={`0 ${PAD}px 0 ${SEGMENT_PAD + PAD}px`}>
+    <PlateBody gap={GAP} padding={`0 ${PAD}px 0 ${SEGMENT_PAD + PAD}px`}>
       <span style={{ ...roleFont('head'), color: PLATE_INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
         {title}
       </span>

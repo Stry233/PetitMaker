@@ -9,6 +9,7 @@ import { setReducedMotion } from '../../../../../platform/channels/motion-state'
 import { animConfig } from '../../../../../view/shared/motion/anim-config';
 import { NOTE_GHOST_ALPHA } from '../../../../../view/shared/overlay/ghost-geometry';
 import type { ChipNote } from '../../../../../core/model/annotations';
+import { beatClock } from '../../../../_support/beat-clock';
 
 const CHIP: ChipNote = { kind: 'chip', id: 'g', x: 5.3, y: 6.7, tag: 'plaza', size: 'm', color: '#FFB347' };
 
@@ -16,20 +17,22 @@ type Slot = { visible: boolean; alpha: number; children: Array<{ children: unkno
 
 let frames: FrameRequestCallback[];
 let now: number;
-/** Runs the frames queued so far, `ms` after the last. */
+let loop: ReturnType<typeof beatClock>;
+/** Runs the frames queued so far, `ms` after the last, then the overlay's frame loop at that time. */
 function frame(ms = 16): void {
   now += ms;
   const queued = frames;
   frames = [];
   for (const f of queued) f(now);
+  loop.frame(now);
 }
 
 beforeEach(() => {
   frames = [];
   now = 0;
+  loop = beatClock();
   vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => frames.push(f));
   vi.stubGlobal('cancelAnimationFrame', () => {});
-  vi.spyOn(performance, 'now').mockImplementation(() => now);
 });
 
 afterEach(() => {
@@ -43,7 +46,7 @@ const drawn = (slot: Slot): number => slot.children[0]!.children.reduce<number>(
 
 describe('the 2D note ghost', () => {
   it('draws the note on the next frame and fades in over the registry motion', () => {
-    const overlay = new OverlayLayer(() => {});
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     const slot = overlayPart<Slot>(overlay, 'noteSlot');
     overlay.showNoteGhost(CHIP, 'Plaza');
     expect(slot.visible).toBe(false);
@@ -64,7 +67,7 @@ describe('the 2D note ghost', () => {
 
   it('lands at its strength at once under reduced motion', () => {
     setReducedMotion(true);
-    const overlay = new OverlayLayer(() => {});
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     const slot = overlayPart<Slot>(overlay, 'noteSlot');
     overlay.showNoteGhost(CHIP, 'Plaza');
     frame();
@@ -73,7 +76,7 @@ describe('the 2D note ghost', () => {
   });
 
   it('goes at once on clearGhost, the call a leave or a pan makes', () => {
-    const overlay = new OverlayLayer(() => {});
+    const overlay = new OverlayLayer(() => {}, () => null, loop.play);
     const slot = overlayPart<Slot>(overlay, 'noteSlot');
     overlay.showNoteGhost(CHIP, 'Plaza');
     frame();

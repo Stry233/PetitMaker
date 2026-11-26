@@ -45,6 +45,8 @@ export function regionShapeCells(tool: RegionTool, pointer: MacroCoord, size: nu
   curve?: readonly MacroCoord[];
   constrain: boolean;
   minSide: number | null;
+  /** The longest side a rect or circle may come out at (`RegionRequest.maxSide`). */
+  maxSide?: number | null;
   map: MapExtent | null;
 }): MacroCoord[] {
   let anchor = options.anchor ?? pointer;
@@ -54,6 +56,11 @@ export function regionShapeCells(tool: RegionTool, pointer: MacroCoord, size: nu
     return through.length > 0 ? splineCells(through, size) : lineCells(pointer, pointer, size);
   }
   let end = options.constrain ? snapShapeEnd(anchor, pointer, tool) : pointer;
+  if (options.maxSide != null && (tool === 'rect' || tool === 'circle')) {
+    const most = tool === 'rect' ? options.maxSide - 1 : Math.floor((options.maxSide - 1) / 2);
+    const cap = (from: number, to: number) => from + Math.sign(to - from) * Math.min(most, Math.abs(to - from));
+    end = { x: cap(anchor.x, end.x), y: cap(anchor.y, end.y) };
+  }
   if (options.minSide !== null && (tool === 'rect' || tool === 'circle')) {
     const least = tool === 'rect' ? options.minSide - 1 : Math.ceil((options.minSide - 1) / 2);
     const grow = (from: number, to: number) => from + (to < from ? -1 : 1) * Math.max(least, Math.abs(to - from));

@@ -12,7 +12,7 @@ import { setStoreModal, setStoreState } from '../../../_support/store';
 import { InputModeProvider } from '../../../../ui/design/input-mode';
 import type { InputMode } from '../../../../platform/device/input-mode';
 import type { LayoutShape } from '../../../../platform/device/layout-shape';
-import { __resetArrivals, setArrivalStanding } from '../../../../ui/session/arrival-bus';
+import { setArrivalStanding } from '../../../../ui/session/arrival-standing';
 
 /** The task the bubbles wait through before they look. */
 const tick = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
@@ -54,7 +54,7 @@ const HELP = /explanation/;
 beforeEach(() => {
   inputMode = 'pc';
   shape = 'landscape';
-  __resetArrivals();
+  setArrivalStanding(false);
   setStoreState({ locale: 'en', tourRunning: false, modals: { ...useEditorStore.getState().modals, help: false } });
   useKeybinds.getState().resetAll();
   localStorage.clear();

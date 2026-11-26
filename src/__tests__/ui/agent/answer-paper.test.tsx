@@ -17,7 +17,7 @@ import { useAgentSession } from '../../../agent/session/store';
 import { translations } from '../../_support/locale-tables';
 import { useEditorStore } from '../../../state/store';
 import { AnswerPaper } from '../../../ui/agent/record/AnswerPaper';
-import { isAnswerJob } from '../../../ui/agent/derive/terminal';
+import { isAnswerJob } from '../../../agent/panel';
 import { CharacterHost } from '../../../ui/agent/character/CharacterHost';
 import { useCelebrateEdge } from '../../../ui/agent/character/use-celebrate-edge';
 import { PanelShell } from '../../../ui/agent/PanelShell';

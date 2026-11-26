@@ -46,7 +46,7 @@ async function mountEditor() {
   const commits = { n: 0 };
   render(
     <Profiler id="editor" onRender={() => { commits.n++; }}>
-      <EditorRoot dockRef={NO_DOCK} onRestoreSession={() => {}}><div /></EditorRoot>
+      <EditorRoot dockRef={NO_DOCK}><div /></EditorRoot>
     </Profiler>,
   );
   await quiet(commits);

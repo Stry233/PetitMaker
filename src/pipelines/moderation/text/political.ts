@@ -4,6 +4,7 @@ import { normalizeText } from './policy';
 import { fingerprint } from './fingerprint';
 import type { Evidence } from './evidence';
 import { RE2JS } from 're2js';
+import { base64ToBytes } from '../../../core/base/bytes';
 import { analysisVariants } from './variants';
 import { addLexiconWords, ordinarySpan, spanAligned, type Provisional } from './segmenter';
 import { literalKind, spanBounded } from './boundaries';
@@ -16,7 +17,7 @@ type Index = {
 };
 const index = rawIndex as Index;
 const lengths = Object.keys(index.direct).map(Number);
-const readingBytes = Uint8Array.from(atob(index.han), c => c.charCodeAt(0));
+const readingBytes = base64ToBytes(index.han);
 const readingIds = new DataView(readingBytes.buffer);
 const sources = index.evidence;
 const pattern = index.pattern ? RE2JS.compile(index.pattern, RE2JS.CASE_INSENSITIVE) : null;

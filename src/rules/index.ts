@@ -53,6 +53,16 @@ const ALL_RULES = [
  *  maker names its own. */
 export type RuleId = (typeof ALL_RULES)[number]['id'] | typeof planetGroundRule.id;
 
+const DESCRIPTIONS: ReadonlyMap<string, string> = new Map(
+  [...ALL_RULES, planetGroundRule].map((rule) => [rule.id, rule.description]),
+);
+
+/** What the rule `ruleId` requires, in its own words (`define.ts`), for a reader holding only a
+ *  refusal's `ruleId`; undefined for an id no rule here carries. */
+export function ruleDescription(ruleId: string): string | undefined {
+  return DESCRIPTIONS.get(ruleId);
+}
+
 /** The registry for a named rule set, built the same on any thread. `default` holds every rule in
  *  that order; `planet`, the session's, drops V-GROUND-LOCK so layer 0 is editable and holds the
  *  ground under objects with V-PLANET-01, registered last. */

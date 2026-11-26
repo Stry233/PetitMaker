@@ -5,7 +5,8 @@ import { z } from '../design/styles';
 import { cozyPanel } from '../design/window-skin';
 import { ConfirmationContent, confirmationCardStyle, type ConfirmationContentProps } from './ConfirmationContent';
 import { useFloatingPosition, type FloatingTarget } from './use-floating-position';
-import { useSurfaceScope } from './surface-scope';
+import { routeSurfaceKeyDown, useSurfaceScope } from './surface-scope';
+import { useAway } from './away';
 import { helpAttributes, type HelpTarget } from './help-target';
 
 /** Space between the card and the control it grows from, in css px. */
@@ -33,6 +34,8 @@ export function anchoredOrigin(above: boolean, align: 'start' | 'center' | 'end'
 }
 
 interface AnchoredConfirmProps extends ConfirmationContentProps {
+  /** The back-stack entry of the state the card shows, whose place it takes (`useSurfaceScope`). */
+  backId?: string;
   /** Where the card grows from. Absent, the card stands wherever `style` puts it and owns no dismissal. */
   anchor?: FloatingTarget;
   /** The control that asked: pressing it again closes the card rather than counting as a press outside. */
@@ -54,14 +57,17 @@ interface AnchoredConfirmProps extends ConfirmationContentProps {
  * `AnimatePresence` so it plays its exit; Escape and a press outside answer Cancel.
  */
 export function AnchoredConfirm({
-  anchor, trigger, prefer, lockSide, align = 'center', zoom = 1, width = 320, helpTarget, style, testId, ...content
+  anchor, trigger, prefer, lockSide, align = 'center', zoom = 1, width = 320, helpTarget, style, testId, backId, ...content
 }: AnchoredConfirmProps) {
   const present = useIsPresent();
   const reduced = useReducedMotionConfig() === true;
   const floating = useFloatingPosition({ open: !!anchor && present, anchor: anchor ?? { x: 0, y: 0 }, zoom, align, gap: ANCHOR_GAP, prefer, lockSide });
-  useSurfaceScope({ open: !!anchor && present && !!floating.placement, root: floating.ref, trigger, onClose: content.onCancel, focus: 'contain', outside: true });
+  useSurfaceScope({ open: !!anchor && present && !!floating.placement, root: floating.ref, trigger, onClose: content.onCancel, focus: 'contain', outside: true, backId });
+  // A card portaled out of its owner goes away with it (`AwayOwner`).
+  const away = useAway();
   return (
-    <motion.div ref={floating.ref} {...floating.piece} role="dialog" aria-label={content.title} data-testid={testId}
+    <motion.div ref={floating.ref} {...floating.piece} {...away} role="dialog" aria-label={content.title} data-testid={testId}
+      onKeyDown={routeSurfaceKeyDown}
       {...helpAttributes(helpTarget)}
       {...anchoredCardMotion(reduced)}
       style={{

@@ -17,7 +17,6 @@ import { viewportSize } from '../../../platform/device/viewport-space';
 import { useReadingT } from '../../design/reading';
 import { useCurrentInputMode } from '../../design/input-mode';
 import { readTourWatch, useTourWatch, type TourWatch } from '../../session/tour-watch';
-import { escapeOnMap } from '../../../editor/commands/commands';
 import { framerMotion, NO_MOTION } from '../../design/motion';
 import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
 import { radii, z } from '../../design/styles';
@@ -30,6 +29,8 @@ import { NOTICE_CONTROL } from '../../primitives/NoticeBar';
 import { useOverlayLock } from '../../primitives/use-overlay-lock';
 import { useSurfaceScope } from '../../primitives/surface-scope';
 import { useObservedSize } from '../../primitives/use-observed-size';
+import { useViewportEpoch } from '../../primitives/use-viewport-epoch';
+import { onProjectionChange } from '../../../view/active-view';
 import { onMorph, pageUndrawn, useMorph } from '../../primitives/morph';
 import { measureTargets } from './measure';
 import { placeBeside, VIEWPORT_MARGIN, type Box } from './place-beside';
@@ -240,12 +241,11 @@ export function ShowMe({ card, step: index, onStepOn, onBack }: {
   };
   // What a try changes can move its controls too (a folded row unfolding, a bar arriving).
   const pressing = useTourWatch(trying, { changed: () => { check(false); onGeometry(); }, input: (e) => check(e), fit: () => check('fit') });
-  useEffect(() => {
-    window.addEventListener('resize', onGeometry);
-    eventBus.on('viewport-changed', onGeometry);
-    return () => { window.removeEventListener('resize', onGeometry); eventBus.off('viewport-changed', onGeometry); };
-  }, [onGeometry, eventBus]);
-  useEffect(() => { onGeometry(); }, [uiZoom, onGeometry]);
+  // The camera, the window and a view swap move the targets, and so does the interface's scale from
+  // the glide's start (`uiZoom`) to where it lands (the viewport epoch).
+  useEffect(() => onProjectionChange(eventBus, onGeometry, { cells: false }), [onGeometry, eventBus]);
+  const epoch = useViewportEpoch();
+  useEffect(() => { onGeometry(); }, [uiZoom, epoch, onGeometry]);
   // A switch or a turn re-arranges the chrome without a resize: the ring and the callout follow their
   // targets on every frame of the morph until it settles, the callout carried from its old size as a
   // piece of the morph, and the way back too.
@@ -276,12 +276,11 @@ export function ShowMe({ card, step: index, onStepOn, onBack }: {
   useEffect(() => { if (missing) onStepOn(index); }, [missing, onStepOn, index]);
 
   const ready = step != null && (step.ring.length === 0 || (measured && (seen!.box !== null || (!!step.map && seen!.done))));
-  // It is the foreground surface once its step stands, over any window the step opened, so Escape
-  // returns to the card; during a try, Escape the map has a use for (a carried card, an armed item,
-  // a selection, a gesture being drawn) goes to the map. A pointing step holds the keyboard too, Tab
-  // staying within the callout, the ring and the way back; a try leaves it to the map.
-  const onEscape = (): void => { if (!trying || !escapeOnMap()) onBack(); };
-  useSurfaceScope({ open: ready, root, onClose: onEscape, focus: trying ? 'none' : 'contain' });
+  // Once its step stands it backs out over any window the step opened, so Escape returns to the
+  // card; during a try it stands under every other state, so Escape first ends what the try entered
+  // (a carried card, an armed item, a selection, a gesture being drawn). A pointing step holds the
+  // keyboard too, Tab staying within the callout, the ring and the way back; a try leaves it to the map.
+  useSurfaceScope({ open: ready, root, onClose: onBack, focus: trying ? 'none' : 'contain', rank: trying ? -1 : 1 });
   const calloutRef = useRef<HTMLDivElement>(null);
   useObservedSize(() => calloutRef.current, ([el]) => { if (el!.offsetHeight > 0) setCalloutH(el!.offsetHeight); }, [index, ready]);
 

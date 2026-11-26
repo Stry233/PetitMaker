@@ -4,11 +4,11 @@
 import { create } from 'zustand';
 import { readPref, writePref } from '../../platform/storage/prefs';
 import { normalizeCombo } from '../../platform/input/combo';
-import { META_BY_ID, UI_ZOOM_IDS, withCurrentIds } from './registry';
+import { COMMAND_META, KEYMAP_REVISION, META_BY_ID, PRESETS, UI_ZOOM_IDS, comboBindable, withCurrentIds } from './registry';
 import { bindingIndex, effectiveCombo, overridesFor, uiZoomVariantCombos, type Overrides } from './resolve';
 import { TOOLBAR_CONTEXTS, type ToolbarContext } from './toolbar';
 
-interface RebindResult { ok: boolean; displaced?: string; reason?: 'reserved-combo' }
+interface RebindResult { ok: boolean; displaced?: string; reason?: 'reserved-combo' | 'unbindable-key' }
 
 function load(): Overrides {
   try {
@@ -16,8 +16,9 @@ function load(): Overrides {
     const o = raw ? JSON.parse(raw) : {};
     if (!o || typeof o !== 'object') return {};
     const loaded = withCurrentIds(o as Overrides);
-    const migrated = withFrozenDelete(loaded);
-    if (migrated !== loaded) persist(migrated);
+    const revision = raw ? readPref('keybindsRevision') : KEYMAP_REVISION;
+    const migrated = withLaterCommands(withFrozenDelete(loaded), revision);
+    if (migrated !== loaded || revision < KEYMAP_REVISION) persist(migrated);
     return migrated;
   } catch { return {}; }
 }
@@ -30,15 +31,48 @@ function withFrozenDelete(o: Overrides): Overrides {
   if (o['tool.rect'] !== 'r' || 'selection.delete' in o) return o;
   return { ...o, 'selection.delete': 'delete' };
 }
+/** The normalized combo `o` stores for `id`: undefined for none, null for unbound. */
+const entryOf = (o: Overrides, id: string): string | null | undefined =>
+  !(id in o) ? undefined : o[id] == null ? null : normalizeCombo(o[id]!);
+
+/** A keymap saved at `revision` given the commands that joined the registry since: where what it
+ *  stores of the commands it knew is exactly a shortcut style's, each later command takes that
+ *  style's key unless one of those commands already answers it, and is left unbound otherwise, so
+ *  the keymap still reads as that style whenever it can. A keymap matching no style leaves later
+ *  commands to their shipped keys, which `effectiveCombo` keeps off keys the user assigned. */
+function withLaterCommands(o: Overrides, revision: number): Overrides {
+  const later = COMMAND_META.filter((c) => (c.since ?? 0) > revision);
+  if (later.length === 0) return o;
+  const known = COMMAND_META.filter((c) => (c.since ?? 0) <= revision);
+  for (const preset of PRESETS) {
+    const expected = overridesFor(preset.binds);
+    if (!known.every((c) => entryOf(o, c.id) === entryOf(expected, c.id))) continue;
+    const used = new Set(TOOLBAR_CONTEXTS.flatMap((context) => known.flatMap((c) => {
+      const combo = effectiveCombo(o, c.id, context);
+      return combo ? [normalizeCombo(combo)] : [];
+    })));
+    const out: Overrides = { ...o };
+    for (const c of later) {
+      const key = entryOf(expected, c.id);
+      if (key === undefined) continue;
+      out[c.id] = key !== null && used.has(key) ? null : key;
+    }
+    return out;
+  }
+  return o;
+}
+
 function persist(o: Overrides): void {
   writePref('keybinds', JSON.stringify(o));
+  writePref('keybindsRevision', KEYMAP_REVISION);
 }
 
 interface KeybindStore {
   overrides: Overrides;
   /** Assign `combo` to `id`, stealing it from any current holder (which becomes unbound). Returns
-   *  the displaced command id when a steal happened. Refuses a shifted twin of a live UI-zoom
-   *  binding (`uiZoomVariantCombos`), which the zoom listener would answer alongside it. */
+   *  the displaced command id when a steal happened. Refuses a key the browser or the system takes
+   *  (`registry.ts:UNBINDABLE_KEYS`) and a shifted twin of a live UI-zoom binding
+   *  (`uiZoomVariantCombos`), which the zoom listener would answer alongside it. */
   rebind: (id: string, combo: string, context?: ToolbarContext) => RebindResult;
   /** Explicitly unbind a command (override = null). */
   clear: (id: string) => void;
@@ -65,6 +99,7 @@ export const useKeybinds = create<KeybindStore>((set, get) => ({
     const cmd = META_BY_ID.get(id);
     const n = normalizeCombo(combo);
     if (!cmd || !n) return { ok: false };
+    if (!comboBindable(n)) return { ok: false, reason: 'unbindable-key' };
     // A zoom command may sit on its own twin (moving the pair around is what a rebind of it means);
     // anything else landing there would fire together with the zoom.
     if (!UI_ZOOM_IDS.includes(id) && uiZoomVariantCombos(get().overrides).has(n)) {

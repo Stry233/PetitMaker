@@ -52,7 +52,7 @@ function mountShell() {
   return render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+        <Shell><div data-testid="map-views" /></Shell>
       </I18nProvider>
     </MotionConfig>,
   );

@@ -10,11 +10,11 @@ import { fmtClock } from '../derive/clock';
 import { INK, MUTED, PLATE, PLATE_INK, REVERT_AMBER, rgbaOf } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
-import type { JobOutcome, JobView } from '../../../agent/panel';
+import { jobTotals, stageTotals, type JobOutcome, type JobView } from '../../../agent/panel';
 import type { Translate, I18nKey } from '../../../i18n/keys';
 
-/** Recorded job checkpoint shared by settled and live rewind controls. */
-export type Checkpoint = JobView['checkpoints'][number];
+/** One recorded checkpoint of a job. */
+type Checkpoint = JobView['checkpoints'][number];
 
 interface StampSpec { paper: string; icon: IconId; key: I18nKey }
 
@@ -43,14 +43,9 @@ function stepKey(label: string): I18nKey {
   return STEP_KEY[label] ?? STEP_KEY_FALLBACK;
 }
 
-/** Non-zero cell and object totals reported by the job's tool results. */
+/** The job's non-zero cell and object figures, each under the word its tile reads. */
 export function statsOf(job: JobView): { key: I18nKey; n: number }[] {
-  let cells = 0;
-  let objects = 0;
-  for (const op of job.ops) {
-    cells += op.detail?.cells ?? 0;
-    objects += op.detail?.objects ?? 0;
-  }
+  const { cells, objects } = jobTotals(job);
   const stats: { key: I18nKey; n: number }[] = [
     { key: 'agent.ticket_stat_cells', n: cells },
     { key: 'agent.ticket_stat_objects', n: objects },
@@ -58,17 +53,9 @@ export function statsOf(job: JobView): { key: I18nKey; n: number }[] {
   return stats.filter((c) => c.n > 0);
 }
 
-/** Returns a stage's dominant non-zero result measure: cells, objects, then read operations. */
+/** The one figure a ledger row shows for its stage: the larger of cells and objects, else its reads. */
 export function stageFigure(job: JobView, index: number, t: Translate): string | undefined {
-  let cells = 0;
-  let objects = 0;
-  let reads = 0;
-  for (const op of job.ops) {
-    if (op.stageIndex !== index) continue;
-    cells += op.detail?.cells ?? 0;
-    objects += op.detail?.objects ?? 0;
-    if (op.isRead) reads += 1;
-  }
+  const { cells, objects, reads } = stageTotals(job, index);
   if (cells > 0 && cells >= objects) return t('units.cells', { n: cells });
   if (objects > 0) return t('units.objects', { n: objects });
   // Reuse the status card's read-count copy.

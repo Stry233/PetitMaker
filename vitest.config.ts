@@ -70,8 +70,11 @@ export default defineConfig({
     // otherwise empty like every CSS import it does not include.
     css: { include: [/assets\/fonts\/fonts\.css/] },
     setupFiles: ['./src/__tests__/_support/setup.ts'],
-    // Transformed modules persist under node_modules/.vitest-cache, keyed by content, so a rerun skips the transform.
+    // Transformed modules persist, keyed by content, so a rerun skips the transform. An entry keeps the
+    // import paths it resolved, and worktrees share one linked node_modules, so each checkout keeps its
+    // own cache: one that moved a file would otherwise send another's unchanged modules to it.
     fsModuleCache: true,
+    fsModuleCachePath: join(ROOT, '.vitest-cache'),
     onConsoleLog(log) {
       // Reduced-motion tests set the preference explicitly; Framer's device advisory is expected.
       if (log.startsWith('You have Reduced Motion enabled on your device.')) return false;

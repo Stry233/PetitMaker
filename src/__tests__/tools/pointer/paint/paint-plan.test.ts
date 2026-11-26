@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { CommandType, type Command, type MacroCoord } from '../../../../core/model/types';
+import { CommandType, TerrainType, type Command, type MacroCoord } from '../../../../core/model/types';
 import { planPaint } from '../../../../tools/pointer/paint/paint-plan';
 import { DrawingTool } from '../../../../tools/pointer/paint/drawing-tool';
 import { rectCells, circleCells } from '../../../../core/grid/shapes';
 import { isInBounds } from '../../../../core/grid/rect';
 import { CommandExecutor } from '../../../../core/commands/command-executor';
 import { createDefaultRegistry, type RuleRegistry } from '../../../../rules/index';
-import { makeState, makeExecutor } from '../../../_support/map-state';
+import { makeState, makeExecutor, setTerrain } from '../../../_support/map-state';
 import { makeToolCtx, arm } from '../../../_support/tool-ctx';
 import { cell, point } from '../../../_support/grid';
 
@@ -34,7 +34,7 @@ function countValidations(registry: RuleRegistry): { calls: () => number } {
 describe('paint-plan: a figure sheds its off-map cells before anything validates them', () => {
   it('a mountain plan never carries an out-of-bounds cell, for a rect straddling the edge', () => {
     const state = makeState(20, 20);
-    const ctx = makeToolCtx(state, exec(state), 1, 3); // build floor 3: elevation > 1 is what V-MTN-02 flags off-map
+    const ctx = makeToolCtx(state, exec(state), 1); // build floor 3: elevation > 1 is what V-MTN-02 flags off-map
     const cells = rectCells(m(15, 15), m(24, 24)); // 10x10, half off a 20x20 map
     const plan = planPaint(cells, ctx, 'mountain', new Set());
     for (const c of commandCells(plan.commands)) {
@@ -44,7 +44,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
 
   it('a water plan never carries an out-of-bounds cell, for a rect straddling the edge', () => {
     const state = makeState(20, 20);
-    const ctx = makeToolCtx(state, exec(state), 1, 3);
+    const ctx = makeToolCtx(state, exec(state), 1);
     const cells = rectCells(m(15, 15), m(24, 24));
     const plan = planPaint(cells, ctx, 'water', new Set());
     for (const c of commandCells(plan.commands)) {
@@ -54,7 +54,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
 
   it('a plan built entirely off-map is empty, not a no-op command carrying nothing', () => {
     const state = makeState(20, 20);
-    const ctx = makeToolCtx(state, exec(state), 1, 1);
+    const ctx = makeToolCtx(state, exec(state), 1);
     const cells = rectCells(m(25, 25), m(30, 30)); // wholly off a 20x20 map
     expect(planPaint(cells, ctx, 'water', new Set()).commands).toEqual([]);
     expect(planPaint(cells, ctx, 'mountain', new Set()).commands).toEqual([]);
@@ -64,14 +64,14 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
     // Baseline: the same 10x10 rect, fully inside a big enough map, at the same build floor.
     const baseline = makeState(40, 40);
     const bTool = new DrawingTool();
-    const bCtx = makeToolCtx(baseline, exec(baseline), 1, 3, { shape: 'rect', contentType: 'mountain' });
+    const bCtx = makeToolCtx(baseline, exec(baseline), 1, { shape: 'rect', contentType: 'mountain' });
     bTool.onPointerDown(cell(m(15, 15)), point(m(15, 15)), bCtx);
     bTool.onPointerUp(cell(m(24, 24)), point(m(24, 24)), bCtx);
 
     // Straddling: the identical rect (same origin), but the map ends at 20x20 so half of it is off-map.
     const straddling = makeState(20, 20);
     const sTool = new DrawingTool();
-    const sCtx = makeToolCtx(straddling, exec(straddling), 1, 3, { shape: 'rect', contentType: 'mountain' });
+    const sCtx = makeToolCtx(straddling, exec(straddling), 1, { shape: 'rect', contentType: 'mountain' });
     sTool.onPointerDown(cell(m(15, 15)), point(m(15, 15)), sCtx);
     sTool.onPointerUp(cell(m(24, 24)), point(m(24, 24)), sCtx);
 
@@ -88,8 +88,9 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
     // so a dab that keeps its footprint atomic has to plan the in-bounds cells on their own or painting
     // near any edge above floor 1 silently caps at layer 1.
     const state = makeState(20, 20);
+    for (let y = 0; y <= 10; y++) for (let x = 0; x <= 10; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
     const tool = new DrawingTool();
-    const ctx = makeToolCtx(state, exec(state), 21, 2); // a 21x21 dab centred on the corner: half off-map
+    const ctx = makeToolCtx(state, exec(state), 21); // a 21x21 dab centred on the corner: half off-map
     tool.onPointerDown(cell(m(0, 0)), point(m(0, 0)), ctx);
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     tool.onPointerUp(cell(m(0, 0)), point(m(0, 0)), ctx);
@@ -107,7 +108,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
     const probe = countValidations(registry);
 
     const tool = new DrawingTool();
-    const ctx = makeToolCtx(state, ex, 1, 3); // floor 3: three levels to climb
+    const ctx = makeToolCtx(state, ex, 1); // floor 3: three levels to climb
 
     tool.onPointerDown(cell(m(34, 34)), point(m(34, 34)), ctx);
     arm(ctx, { contentType: 'mountain', shape: 'rect' });
@@ -125,7 +126,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
     const probe = countValidations(registry);
 
     const cells = circleCells(m(0, 0), 50, 50); // most of the disc is off the map
-    const ctx = makeToolCtx(state, ex, 1, 4);
+    const ctx = makeToolCtx(state, ex, 1);
     const plan = planPaint(cells, ctx, 'mountain', new Set());
     for (const cmd of plan.commands) ex.execute(cmd);
 
@@ -141,7 +142,7 @@ describe('paint-plan: a figure sheds its off-map cells before anything validates
     const probe = countValidations(registry);
 
     const tool = new DrawingTool();
-    const ctx = makeToolCtx(state, ex, 1, 3);
+    const ctx = makeToolCtx(state, ex, 1);
     arm(ctx, { contentType: 'mountain', shape: 'circle' });
 
     tool.onPointerDown(cell(m(60, 60)), point(m(60, 60)), ctx);

@@ -1,10 +1,9 @@
-/* Which surfaces the job zone stands, read off the session, the zone and the panel's own marks. */
-import type { JobView, PanelView } from '../../../agent/panel';
-import { keyGone } from './desk-face';
-import { PHASE } from './phase';
+/* Which surfaces the job zone stands: where each job stands (`agent/panel.ts:jobStanding`), shown
+ * through the zone and the panel's own marks. */
+import {
+  type JobStanding, type JobView, type PanelView, type PanelZone, type TroubleStanding, jobStanding, rewindBlock, troubleStanding,
+} from '../../../agent/panel';
 import type { BannerClass } from './repair';
-import { terminal, trouble, type TerminalShape } from './terminal';
-import type { PanelZone } from './zone';
 
 export interface SessionInputs {
   view: PanelView;
@@ -19,6 +18,8 @@ export interface SessionInputs {
   storageNotice?: 'pruned' | 'lost' | 'corrupt' | null;
   /** The incident the user demoted, by its job's order seq. */
   dismissed: number | null;
+  /** When the held key came from a sign-in, where it did. */
+  signedInAt?: number;
   /** An ask card stands in the record. */
   hasAsk: boolean;
   /** An idle sketch card is on offer. */
@@ -26,28 +27,11 @@ export interface SessionInputs {
   marking: boolean;
 }
 
-export interface SessionLayout {
-  /** The current job, or the newest settled one when the seat is empty. */
-  owedJob?: JobView;
-  /** A keyless session keeps its unfiled job and that job's repair in view. */
-  keyCleared: boolean;
+export interface SessionLayout extends JobStanding, TroubleStanding {
   /** The keyless rest, with nothing outstanding. */
   showWelcome: boolean;
   /** Setup, the keyless rest or management owns the zone and its foot; the composer stands down. */
   notReady: boolean;
-  incident: ReturnType<typeof trouble>;
-  /** The incident is demoted to its standing strip. */
-  standingTrouble: boolean;
-  /** A restored pause offered for resumption, or a key-cleared job offered for repair. */
-  offered?: JobView;
-  /** An opened past record replacing the zone. */
-  opened?: JobView;
-  /** The settled record standing as a card, and which card. */
-  settled: { job: JobView; shape: TerminalShape } | null;
-  /** The history the strip lists. */
-  past: readonly JobView[];
-  /** Why the standing record may not rewind this map, where it may not. */
-  settledBlocked?: 'other-map' | 'unknown-map';
   noticeCls: BannerClass | null;
   storageCls: BannerClass | null;
   /** The idle sketch card stands nearest the composer. */
@@ -57,26 +41,17 @@ export interface SessionLayout {
 }
 
 export function sessionLayout(input: SessionInputs): SessionLayout {
-  const { view, connected, zone, filed, cleared, otherMap, unknownMap, storageNotice } = input;
-  const owedJob = view.current ?? view.jobs[view.jobs.length - 1];
-  const keyCleared = owedJob !== undefined && keyGone(view, connected, owedJob.errorCls) && !filed.has(owedJob.orderSeq);
+  const { view, connected, zone, otherMap, unknownMap, storageNotice } = input;
+  const standing = jobStanding({ ...input, openedSeq: zone.kind === 'record' ? zone.seq : null });
+  const { incident, opened, settled, past } = standing;
   const showSetup = zone.kind === 'setup';
-  const showWelcome = !connected && !showSetup && !keyCleared;
+  const showWelcome = !connected && !showSetup && !standing.keyCleared;
   const covered = showSetup || showWelcome || zone.kind === 'manage';
-  const incident = trouble(view);
-  const offered = keyCleared
-    ? (PHASE[view.phase].atRest ? owedJob : undefined)
-    : input.restored && view.phase === 'paused' ? view.current : undefined;
-  const opened = zone.kind !== 'record' || view.current ? undefined : view.jobs.find((job) => job.orderSeq === zone.seq);
-  const settled = opened ? null : terminal(view, filed, offered);
-  const past = view.jobs.filter((job) => job !== settled?.job && job !== offered && !cleared.has(job.orderSeq));
-  const blockedFor = (job: JobView): 'other-map' | 'unknown-map' | undefined => (
-    otherMap?.has(job.orderSeq) === true ? 'other-map' : unknownMap?.has(job.orderSeq) === true ? 'unknown-map' : undefined);
-  const noticed = settled ? [...past, settled.job] : past;
+  const noticed: readonly JobView[] = settled ? [...past, settled.job] : past;
   // A known mismatch outranks an unknown map identity.
   const noticeCls: BannerClass | null = covered || opened ? null
-    : noticed.some((job) => blockedFor(job) === 'other-map') ? 'other-map'
-      : noticed.some((job) => blockedFor(job) === 'unknown-map') ? 'unknown-map' : null;
+    : noticed.some((job) => rewindBlock(job, otherMap, unknownMap) === 'other-map') ? 'other-map'
+      : noticed.some((job) => rewindBlock(job, otherMap, unknownMap) === 'unknown-map') ? 'unknown-map' : null;
   const storageCls: BannerClass | null = covered || opened || storageNotice == null ? null
     : storageNotice === 'corrupt' ? 'storage-corrupt' : storageNotice === 'lost' ? 'storage-full' : 'storage-pruned';
   const quiet = !covered && !opened && !view.current && !settled && !input.hasAsk && incident === null;
@@ -84,17 +59,10 @@ export function sessionLayout(input: SessionInputs): SessionLayout {
   const dressed = input.sketch && quiet && storageCls !== 'storage-corrupt';
   const rowOnly = quiet && noticeCls === null && past.length > 0 && !dressed;
   return {
-    ...(owedJob ? { owedJob } : {}),
-    keyCleared,
+    ...standing,
+    ...troubleStanding(standing, { connected, ...(input.signedInAt !== undefined ? { signedInAt: input.signedInAt } : {}) }),
     showWelcome,
     notReady: covered,
-    incident,
-    standingTrouble: incident !== null && incident.seq === input.dismissed,
-    ...(offered ? { offered } : {}),
-    ...(opened ? { opened } : {}),
-    settled,
-    past,
-    ...(settled && blockedFor(settled.job) ? { settledBlocked: blockedFor(settled.job)! } : {}),
     noticeCls,
     storageCls,
     dressed,

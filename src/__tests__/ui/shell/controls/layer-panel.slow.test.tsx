@@ -7,6 +7,7 @@
  * The size ladder: the arrows walk between the three sizes and stop at both ends, and a press on the
  * count opens the same size at every window.
  */
+import { spec } from '../../../_support/spec';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { EventBus } from '../../../../core/commands/event-bus';
@@ -85,8 +86,7 @@ beforeEach(() => {
     locale: 'en',
     eventBus: new EventBus<EditorEvents>(),
     gridState: stepped(),
-    activeLayer: 2,
-    displayLayer: null,
+    displayLayer: 2,
     layerVisibility: {},
   });
 });
@@ -131,12 +131,12 @@ describe('the layer panel', () => {
 
   /** The active floor is marked on its own tile, so the head does not name it a second time. */
   it('does not repeat the active floor in its head', () => {
-    useEditorStore.setState({ activeLayer: 3 });
+    useEditorStore.setState({ displayLayer: 3 });
     mount();
     openPanel();
     const head = screen.getByTestId('shell-layer-smaller').parentElement!.parentElement!;
     expect(head.textContent, 'the head says no floor name at all').not.toContain('Layer 3');
-    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-pressed'), 'the tile says it')
+    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-current'), 'the tile says it')
       .toBe('true');
   });
 
@@ -179,7 +179,7 @@ describe('the layer panel', () => {
   /** The grid mutates in place and the panel subscribes only while open, so opening must reread the
    *  map rather than show what it held at mount. */
   it('reads the map as it is on opening, not as it was when the rail mounted', () => {
-    act(() => { useEditorStore.setState({ gridState: makeState(), activeLayer: 0 }); });
+    act(() => { useEditorStore.setState({ gridState: makeState(), displayLayer: null }); });
     mount();
     openPanel();
     expect(count(0)).toBe('0');
@@ -294,35 +294,28 @@ describe('the layer panel', () => {
   /** Floors are numbered as the game numbers them (the ground is layer 1), alike on the collapsed
    *  count and on the tiles. */
   it('names a floor the same way on the count as in its tiles', () => {
-    useEditorStore.setState({ activeLayer: 0 });
+    useEditorStore.setState({ displayLayer: null });
     mount();
     expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 1');
     openPanel();
     expect(screen.getByTestId('shell-layer-row-0').getAttribute('aria-label')).toBe('Layer 1');
-
-    fireEvent.click(screen.getByTestId('shell-layer-row-3'));
     expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-label')).toBe('Layer 4');
+    act(() => { useEditorStore.setState({ displayLayer: 3 }); });
     closePanel();
     expect(screen.getByTestId('shell-layer-readout').textContent).toBe('Layer 4');
   });
 
-  it('marks the floor being built on, and moves it when a row is pressed', () => {
+  spec('EDIT-79', 'marks the layer a stroke works on, and a row press chooses none', () => {
     mount();
     openPanel();
-    expect(screen.getByTestId('shell-layer-row-2').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByTestId('shell-layer-row-1').getAttribute('aria-pressed')).toBe('false');
-
+    expect(screen.getByTestId('shell-layer-row-2').getAttribute('aria-current')).toBe('true');
+    expect(screen.getByTestId('shell-layer-row-1').getAttribute('aria-current')).toBeNull();
     fireEvent.click(screen.getByTestId('shell-layer-row-1'));
-    expect(useEditorStore.getState().activeLayer).toBe(1);
-    expect(screen.getByTestId('shell-layer-row-1').getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('marks the floor being PREVIEWED while one is, since that is the one a stroke would land on', () => {
-    useEditorStore.setState({ activeLayer: 1, displayLayer: 3 });
-    mount();
-    openPanel();
-    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByTestId('shell-layer-row-1').getAttribute('aria-pressed')).toBe('false');
+    expect(useEditorStore.getState().displayLayer).toBe(2);
+    expect(screen.getByTestId('shell-layer-row-2').getAttribute('aria-current')).toBe('true');
+    act(() => { useEditorStore.setState({ displayLayer: 3 }); });
+    expect(screen.getByTestId('shell-layer-row-3').getAttribute('aria-current')).toBe('true');
+    expect(screen.getByTestId('shell-layer-row-2').getAttribute('aria-current')).toBeNull();
   });
 
   it('writes visibility and lock through to the store the map reads', () => {
@@ -388,11 +381,11 @@ describe('the layer panel', () => {
 });
 
 const pressedRows = () => [...document.querySelectorAll('[data-testid="shell-layer-annotation"], [data-testid^="shell-layer-row-"]')]
-  .filter((el) => el.getAttribute('aria-pressed') === 'true').map((el) => (el as HTMLElement).dataset.testid);
+  .filter((el) => el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-current') === 'true').map((el) => (el as HTMLElement).dataset.testid);
 
 /**
  * One row is selected at a time: the notes row while annotate is armed, however it was entered, and
- * otherwise the floor a stroke lands on.
+ * otherwise the floor shown.
  */
 describe('the selected row', () => {
   beforeEach(() => { useEditorStore.getState().setEditMode({ mode: null }); });
@@ -405,21 +398,19 @@ describe('the selected row', () => {
   it.each(doors)('selects the notes row alone when annotate is entered through %s', (_door, enter) => {
     mount();
     openPanel();
-    expect(pressedRows()).toEqual(['shell-layer-row-2']);
+    expect(pressedRows()).toEqual(['shell-layer-row-0']);
     act(enter);
     expect(isAnnotating(useEditorStore.getState())).toBe(true);
     expect(pressedRows()).toEqual(['shell-layer-annotation']);
   });
 
-  it('hands the selection back to a floor, and to the floor it was on when the notes row lets go', () => {
+  it('hands the selection back to the ground when the notes row lets go, as any change of mode does', () => {
     mount();
     openPanel();
     fireEvent.click(screen.getByTestId('shell-layer-annotation'));
-    fireEvent.click(screen.getByTestId('shell-layer-row-1'));
+    expect(pressedRows()).toEqual(['shell-layer-annotation']);
+    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
     expect(isAnnotating(useEditorStore.getState())).toBe(false);
-    expect(pressedRows()).toEqual(['shell-layer-row-1']);
-    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
-    fireEvent.click(screen.getByTestId('shell-layer-annotation'));
-    expect(pressedRows()).toEqual(['shell-layer-row-1']);
+    expect(pressedRows()).toEqual(['shell-layer-row-0']);
   });
 });

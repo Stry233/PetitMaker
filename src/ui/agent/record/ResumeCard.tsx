@@ -11,12 +11,13 @@ import { Pill } from '../../primitives/Pill';
 import { Icon } from '../parts/sprite';
 import { statePaper } from '../panel-skin';
 import { INK, MUTED, PLATE } from '../../design/tokens';
-import { font, mixHex, radii } from '../../design/styles';
+import { font, radii } from '../../design/styles';
+import { hexStringToNumber, lerpColor, numberToHexString } from '../../../core/base/color';
 import { roleFont, LINE_HEIGHT } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
 
 /** A subdued wait-state tint that keeps the card distinct from warnings. */
-const RESUME_PAPER = mixHex(statePaper.wait, PLATE, 0.42);
+const RESUME_PAPER = numberToHexString(lerpColor(hexStringToNumber(PLATE), hexStringToNumber(statePaper.wait), 0.42));
 
 const CARD_STYLE: CSSProperties = { ...PAPER, background: RESUME_PAPER };
 

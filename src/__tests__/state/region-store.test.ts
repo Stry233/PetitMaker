@@ -10,7 +10,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act } from '@testing-library/react';
 import { startRegionBrush } from '../../editor/editing/region-brush';
 import { useEditorStore } from '../../state/store';
-import { paintRegionCell, finishRegionStroke, clearRegionSelection } from '../../tools/pointer/region';
+import { regionOf } from '../../state/editing/region';
+import { paintRegionCell, finishRegionStroke, clearRegionSelection } from '../../view/interaction/pointer/region-channel';
 import { createDefaultRegistry } from '../../rules/index';
 import { getMapTemplate } from '../../config/maps';
 import { getCell } from '../../core/model/grid-model';
@@ -39,16 +40,16 @@ const paint = (cells: MacroCoord[]) => act(() => {
   finishRegionStroke();
 });
 
-const region = () => useEditorStore.getState().region;
+const region = () => regionOf(useEditorStore.getState(), 'generator');
 
 describe('the painted region is store state', () => {
   let stop: (() => void) | null = null;
   beforeEach(() => {
     useEditorStore.getState().initMap(getMapTemplate('hexia')!, createDefaultRegistry());
-    useEditorStore.setState({ region: [], regionTool: 'free', regionBrushSize: 1 });
+    useEditorStore.setState({ regions: {}, regionTool: 'free', regionBrushSize: 1 });
   });
   afterEach(() => { stop?.(); stop = null; });
-  const brush = () => { stop = startRegionBrush(); };
+  const brush = () => { useEditorStore.getState().setSelectingRegion(true, 'generator'); stop = startRegionBrush(); };
 
   it('starts empty — [] is the one representation of "whole map"', () => {
     expect(region()).toEqual([]);
@@ -88,21 +89,17 @@ describe('the painted region is store state', () => {
 
   it('is readable without rendering anything — the store is the source', () => {
     const cells = buildableRun(3);
-    act(() => { useEditorStore.getState().setRegion(cells); });
-    expect(useEditorStore.getState().region).toEqual(cells);
+    act(() => { useEditorStore.getState().setRegion(cells, 'generator'); });
+    expect(regionOf(useEditorStore.getState(), 'generator')).toEqual(cells);
   });
 });
 
 describe('the region request', () => {
-  it('a release restores the default only while its own request is current', () => {
-    const first = { tools: ['free', 'rect'] as const, single: true, minSide: 20 };
-    const releaseFirst = useEditorStore.getState().claimRegionRequest(first);
-    expect(useEditorStore.getState().regionRequest).toBe(first);
-    const second = { ...DEFAULT_REGION_REQUEST, minSide: 8 };
-    const releaseSecond = useEditorStore.getState().claimRegionRequest(second);
-    releaseFirst();
-    expect(useEditorStore.getState().regionRequest).toBe(second);
-    releaseSecond();
-    expect(useEditorStore.getState().regionRequest).toBe(DEFAULT_REGION_REQUEST);
+  it('a brush started with a request paints under it, and ending the brush restores the default', () => {
+    const request = { tools: ['free', 'rect'] as const, single: true, minSide: 20 };
+    act(() => { useEditorStore.getState().setSelectingRegion(true, 'generator', request); });
+    expect(useEditorStore.getState().regionRequest).toEqual(request);
+    act(() => { useEditorStore.getState().setSelectingRegion(false); });
+    expect(useEditorStore.getState().regionRequest).toEqual(DEFAULT_REGION_REQUEST);
   });
 });

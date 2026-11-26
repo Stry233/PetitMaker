@@ -7,6 +7,8 @@ import { makeToolDeps } from '../../../agent/exec/tool-deps';
 import { buildMapContext, executeToolCall, TOOL_FACTS, wireSchemas } from '../../../agent/tools';
 import { writesMap } from '../../../agent/core/tool-facts';
 import type { AgentToolDeps } from '../../../agent/tools';
+import { serialize } from '../../../io/save/json-codec';
+import { deserialize } from '../../_support/save-file';
 
 const s = () => useEditorStore.getState();
 let deps: AgentToolDeps;
@@ -15,7 +17,7 @@ const zone = { kind: 'zone', tag: null, cells: [{ x: 2, y: 2 }, { x: 3, y: 2 }] 
 
 beforeEach(() => {
   s().initMap(makeTemplate(20, 20), createDefaultRegistry());
-  s().setRegion([]);
+  s().setRegion([], 'agent');
   deps = makeToolDeps({ vision: false, session: agentSessionPort });
 });
 
@@ -85,22 +87,22 @@ describe('assistant annotation tools', () => {
   it('checks both existing and replacement footprints against a selected region', async () => {
     await run('set_annotation', zone);
     const created = s().gridState!.annotations!.items[0]!;
-    s().setRegion([{ x: 2, y: 2 }]); deps = makeToolDeps({ vision: false, session: agentSessionPort });
+    s().setRegion([{ x: 2, y: 2 }], 'agent'); deps = makeToolDeps({ vision: false, session: agentSessionPort });
     expect((await run('remove_annotation', { id: created.id })).isError).toBe(true);
     expect((await run('set_annotation', { id: created.id, cells: [{ x: 2, y: 2 }] })).isError).toBe(true);
-    s().setRegion(zone.cells); deps = makeToolDeps({ vision: false, session: agentSessionPort });
+    s().setRegion(zone.cells, 'agent'); deps = makeToolDeps({ vision: false, session: agentSessionPort });
     expect((await run('set_annotation', { id: created.id, cells: [{ x: 6, y: 2 }] })).isError).toBe(true);
     expect((await run('remove_annotation', { id: created.id })).isError).toBe(false);
   });
 
   it('accepts a route when its full path lies inside the selected region', async () => {
-    s().setRegion(Array.from({ length: 5 }, (_, i) => ({ x: i + 2, y: 2 })));
+    s().setRegion(Array.from({ length: 5 }, (_, i) => ({ x: i + 2, y: 2 })), 'agent');
     deps = makeToolDeps({ vision: false, session: agentSessionPort });
     expect((await run('set_annotation', { kind: 'route', points: [{ x: 2, y: 2 }, { x: 6, y: 2 }] })).isError).toBe(false);
   });
 
   it('checks the space between route endpoints instead of only the endpoints', async () => {
-    s().setRegion([{ x: 2, y: 2 }, { x: 6, y: 2 }]); deps = makeToolDeps({ vision: false, session: agentSessionPort });
+    s().setRegion([{ x: 2, y: 2 }, { x: 6, y: 2 }], 'agent'); deps = makeToolDeps({ vision: false, session: agentSessionPort });
     expect((await run('set_annotation', { kind: 'route', points: [{ x: 2, y: 2 }, { x: 6, y: 2 }] })).isError).toBe(true);
   });
 
@@ -162,6 +164,20 @@ describe('assistant annotation tools', () => {
     expect((await run('get_annotations')).content).toContain('#1 咖啡馆');
     s().undoAnnotation(); s().undoAnnotation();
     expect(s().gridState!.annotations!.customTags ?? []).toEqual([]);
+  });
+
+  it('[FILE-01] keeps every custom tag it names, emoji included, through a save and a reopen', async () => {
+    // Two names alike up to a pair split by the save's limit, the second ending in another emoji.
+    const blossoms = `a${'🌸'.repeat(23)}`;
+    const daisy = `a${'🌸'.repeat(22)}🌼`;
+    await run('set_annotation', { kind: 'chip', customTag: blossoms, x: 4, y: 4 });
+    await run('set_annotation', { kind: 'chip', customTag: daisy, x: 8, y: 8 });
+    await run('set_annotation', { kind: 'chip', customTag: '🌸 tea', x: 12, y: 12 });
+    const live = s().gridState!;
+    const back = deserialize(serialize(live), live.template).annotations!;
+    expect(back.customTags).toEqual(live.annotations!.customTags);
+    expect(back.items).toEqual(live.annotations!.items);
+    expect(live.annotations!.customTags!.map((t) => t.text)).toContain('🌸 tea');
   });
 
   it('refuses shapes that leave no open ground', async () => {

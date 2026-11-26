@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { captureMapStills, buildSmartAngles } from '../../../../view/map3d/capture/stills';
+import { captureMapStills } from '../../../../view/map3d/capture/stills';
+import { buildSmartAngles } from '../../../../state/shot-list';
 import { __resetGlProbe } from '../../../../platform/device/device-quality';
 import { makeState, setTerrain } from '../../../_support/map-state';
 import { TerrainType, type GridState } from '../../../../core/model/types';
+import { ELEVATION_MAX } from '../../../../core/game/profile';
 
 vi.mock('../../../../view/map3d/scene/map-renderer', () => ({
   MapRenderer3D: class { constructor() { throw new Error('the scene cannot build here'); } },
@@ -68,6 +70,16 @@ describe('buildSmartAngles (export 3D still framing)', () => {
 
   it('is deterministic per map (preview == export)', () => {
     expect(buildSmartAngles(reliefMap())).toEqual(buildSmartAngles(reliefMap()));
+  });
+
+  /** The close 3/4 shot's tilt follows relief alone (no per-map jitter), so it reads the scale's top. */
+  it('reads relief up to the highest level, lowering the tilt for a peak at the cap', () => {
+    const peakAt = (level: number) => {
+      const s = reliefMap();
+      setTerrain(s, 10, 10, TerrainType.Mountain, level);
+      return buildSmartAngles(s)[3]!.el;
+    };
+    expect(peakAt(ELEVATION_MAX)).toBeLessThan(peakAt(ELEVATION_MAX - 1));
   });
 
   it('varies between different maps (dynamic diversity)', () => {

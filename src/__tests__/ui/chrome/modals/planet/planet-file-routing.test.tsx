@@ -58,7 +58,7 @@ function Host() {
       <I18nProvider>
         <DropImportOverlay />
         <ImportModal />
-        <ChangePlanetModal open={open} takesHandedFiles onSwitch={() => {}} onClose={() => setModal('newProject', false)} onEditPlanet={() => {}} />
+        <ChangePlanetModal open={open} takesHandedFiles onSwitch={() => {}} onClose={() => setModal('newProject', false)} />
       </I18nProvider>
     </MotionConfig>
   );

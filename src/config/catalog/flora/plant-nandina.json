@@ -1,0 +1,36 @@
+{
+  "id": "plant-nandina",
+  "category": "flora",
+  "name": {
+    "en": "Heavenly Bamboo Shrub",
+    "zh": "南天竹丛",
+    "ja": "ナンテン",
+    "ru": "Нандина",
+    "th": "ไผ่สวรรค์",
+    "id": "Nandina",
+    "fr": "Bambou sacré"
+  },
+  "aliases": [
+    "黄",
+    "yellow"
+  ],
+  "icon": "plant-nandina",
+  "iconColor": "#bda04c",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "plant-nandina",
+    "colorFamily": "yellow"
+  }
+}

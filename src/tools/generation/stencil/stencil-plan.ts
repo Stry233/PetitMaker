@@ -11,8 +11,9 @@
  * card it left blank, so the next ask decodes again.
  */
 import { boundedMap } from '../../../core/base/bounded-map';
-import { TerrainType, type MacroCoord } from '../../../core/model/types';
-import { type StencilPlan, type StencilWaterRole } from '../recipe';
+import { TerrainType, type MacroCoord, type Rotation } from '../../../core/model/types';
+import { type Stencil, type StencilPlan, type StencilWaterRole } from '../recipe';
+import { stencilFrame, turnStencil } from './stencil-turn';
 import { declaredColorPalette, type ColorEntry, type ObjectPaletteKind } from './stencil-palette';
 import { ensureGlyphFonts, rasterizeImage, rasterizeText, rasterizeStrokeText, type StencilBox } from './stencil-raster';
 import { stencilBrowser, type DecodedImage } from './stencil-browser';
@@ -45,6 +46,8 @@ export interface PlanInputs {
   fill?: StencilFill;
   /** image kinds only, 0..2 with 1 leaving the picture alone. */
   contrast?: number;
+  /** The map direction the picture's top points, clockwise from north; absent is north. */
+  facing?: Rotation;
 }
 
 /** Decoded pictures kept, least recently asked for leaving first: a batch's pool and a few pasted files. */
@@ -103,7 +106,7 @@ function planKey(sample: StencilSource, inputs: PlanInputs): string {
   }
   return JSON.stringify([
     sample.text ?? null, sample.src ?? null, inputs.box, inputs.fill ?? null, inputs.contrast ?? 1,
-    inputs.objects ?? false, inputs.material ?? null, inputs.decor ?? null, inputs.water ?? null, allow,
+    inputs.objects ?? false, inputs.material ?? null, inputs.decor ?? null, inputs.water ?? null, allow, inputs.facing ?? 0,
   ]);
 }
 
@@ -145,22 +148,26 @@ export async function buildStencilPlan(sample: StencilSource, inputs: PlanInputs
 }
 
 async function buildStencilPlanUncached(sample: StencilSource, inputs: PlanInputs): Promise<StencilPlan | null> {
-  const { box } = inputs;
-  const origin: MacroCoord = box.origin;
+  const origin: MacroCoord = inputs.box.origin;
+  // Drawn upright in its own frame, then turned once to face where it was asked to.
+  const facing = inputs.facing ?? 0;
+  const box = stencilFrame(inputs.box, facing);
+  const turned = (stencil: Stencil | null) => stencil && turnStencil(stencil, facing);
+  const faced = facing ? { facing } : {};
 
   if (sample.text) {
     // The faces first. A canvas does not wait for a font: name one that has not arrived and the text
     // is drawn in the platform fallback and read back as a different letter, with nothing to say so.
     await ensureGlyphFonts(sample.text);
     const fill = inputs.fill ?? { kind: 'terrain' as const, terrain: TerrainType.Mountain };
-    const stencil = fill.kind === 'stroke' ? rasterizeStrokeText(sample.text, box) : rasterizeText(sample.text, box);
+    const stencil = turned(fill.kind === 'stroke' ? rasterizeStrokeText(sample.text, box) : rasterizeText(sample.text, box));
     if (!stencil) return null;
-    return { read: 'shape', fill, stencil, origin, ...(inputs.allow ? { allow: inputs.allow } : {}) };
+    return { read: 'shape', fill, stencil, origin, ...faced, ...(inputs.allow ? { allow: inputs.allow } : {}) };
   }
 
   if (sample.src) {
     const img = await loadImage(sample.src);
-    const stencil = rasterizeImage(img, img.width, img.height, box);
+    const stencil = turned(rasterizeImage(img, img.width, img.height, box));
     if (!stencil) return null;
     // Objects give a picture dozens of hues where the terrain ramp is eight greens and a blue, so
     // that is the mode that reproduces rather than paraphrases -- but it is the visitor's choice,
@@ -169,7 +176,7 @@ async function buildStencilPlanUncached(sample: StencilSource, inputs: PlanInput
     const objectPalette = inputs.objects ? objectColorPalette(inputs.material ?? 'mixed') : [];
     const decorPalette = inputs.decor ? objectColorPalette(inputs.decor.species) : [];
     return {
-      read: 'color', stencil, origin, contrast: inputs.contrast ?? 1,
+      read: 'color', stencil, origin, ...faced, contrast: inputs.contrast ?? 1,
       water: inputs.water ?? 'none',
       ...(inputs.allow ? { allow: inputs.allow } : {}),
       ...(objectPalette.length ? { objectPalette } : {}),

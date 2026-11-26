@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { translations } from '../_support/locale-tables';
-import { RESOLVED_TOKENS } from '../../i18n/context';
+import { translatorFills } from '../_support/resolved-tokens';
 import type { Locale } from '../../core/model/locale';
 import { countedBase } from '../_support/plural-keys';
 import { TOOL_NAMES, skillTitleKey, toolVerbKey } from '../../agent/panel';
@@ -106,9 +106,9 @@ function passedParams(): Map<string, Set<string>> {
   return passed;
 }
 
-/** The tokens a caller must pass: the translator fills `RESOLVED_TOKENS` itself. */
+/** The tokens a caller must pass: the translator fills the rest itself. */
 const tokensOf = (s: string): string[] =>
-  [...new Set([...s.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]!))].filter((t) => !(t in RESOLVED_TOKENS)).sort();
+  [...new Set([...s.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]!))].filter((t) => !translatorFills(t)).sort();
 
 /**
  * Keys whose tokens are filled without a call naming them; a new param-bearing key needs a call site
@@ -124,6 +124,9 @@ const INDIRECT: Record<string, 'node' | 'table'> = {
   'agent.setup_manage_clear_q': 'table',
   'agent.setup_manage_clear_pause_q': 'table',
   'agent.dock_setup_shaped': 'table',
+  'agent.setup_sign_in_waiting': 'table',
+  'agent.setup_sign_in_denied': 'table',
+  'agent.setup_sign_in_failed': 'table',
   'agent.gate_verdict_quick': 'table',
   'agent.sketch_bridge_cap': 'table',
   'agent.sketch_bridge_order': 'table',

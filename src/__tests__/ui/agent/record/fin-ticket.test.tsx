@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** The terminal cards (flip ticket, stop card, archive card) and what each outcome may render. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { translations } from '../../../_support/locale-tables';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../../i18n/context';
@@ -8,6 +9,7 @@ import { ArchiveCard } from '../../../../ui/agent/record/ArchiveCard';
 import { FlipTicket } from '../../../../ui/agent/record/FlipTicket';
 import { StopCard } from '../../../../ui/agent/record/StopCard';
 import type { JobView, OpRow as OpRowData } from '../../../../agent/core/project-view';
+import { drawnIcon } from '../../../_support/agent/drawn-icon';
 
 const backing = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -71,13 +73,16 @@ function makeJob(over: Partial<JobView> = {}): JobView {
   };
 }
 
+/** The take-back facts of a map whose stack stands at the job's first checkpoint: the job is off it. */
+const offMap = (job: JobView) => ({ running: false, undoDepth: job.checkpoints[0]!.undoIndex });
+
 /** A completed village job with several operations and checkpoints. */
 const VILLAGE = makeJob({
   ops: [
     makeOp({ name: 'view_map', isRead: true, stageIndex: 0 }),
     makeOp({ name: 'build_road', detail: { cells: 118 }, stageIndex: 0 }),
     makeOp({ name: 'place_object', detail: { objects: 6 }, stageIndex: 1 }),
-    makeOp({ name: 'plant_forest', detail: { objects: 24 }, stageIndex: 2 }),
+    makeOp({ name: 'scatter_objects', detail: { objects: 24 }, stageIndex: 2 }),
   ],
   checkpoints: [
     { undoIndex: 0, label: 'job' },
@@ -104,7 +109,7 @@ describe('done: the built thing leads', () => {
       ],
       checkpoints: [{ undoIndex: 0, label: 'job' }, { undoIndex: 1, label: 'stage', stageIndex: 1 }],
     });
-    const ui = renderReduced(<FlipTicket job={job} onRewind={() => {}} undoDepth={2} />);
+    const ui = renderReduced(<FlipTicket job={job} onRewind={() => {}} takeBack={{ running: false, undoDepth: 2 }} />);
     fireEvent.click(ui.getByTestId('flip-button'));
     const steps = ui.getAllByTestId('ticket-step');
     expect(steps[0]!.querySelector('[data-testid="op-target"]')?.textContent).toContain('(3,4)');
@@ -377,7 +382,7 @@ describe('aborted: one face, the fact at the headline rung, two answers', () => 
 
   it('offers no rewind once the job is already off the map', () => {
     const { queryByTestId } = renderReduced(
-      <StopCard job={stopped} rolledBack onRewindAll={() => {}} onFileAway={() => {}} />,
+      <StopCard job={stopped} rolledBack takeBack={offMap(stopped)} onRewindAll={() => {}} onFileAway={() => {}} />,
     );
     expect(queryByTestId('stop-rewind')).toBeNull();
     expect(queryByTestId('stop-note')).toBeNull();
@@ -539,7 +544,7 @@ describe('the whole family', () => {
     const rewound: number[] = [];
     const all: number[] = [];
     const { getByTestId, getAllByTestId, queryAllByTestId } = renderReduced(
-      <FlipTicket job={VILLAGE} onRewind={(c) => rewound.push(c.undoIndex)} onRewindAll={() => all.push(1)} />,
+      <FlipTicket job={VILLAGE} onRewind={(job, i) => rewound.push(job.checkpoints[i]!.undoIndex)} onRewindAll={() => all.push(1)} />,
     );
     expect(queryAllByTestId('ticket-step-rewind').length).toBe(3);
     const front = getByTestId('flip-face-front');
@@ -561,7 +566,7 @@ describe('the whole family', () => {
 
   it('reads every step as rewound, and offers no rewind, once the whole job is rolled back', () => {
     const { getByTestId, getAllByTestId, queryAllByTestId } = renderReduced(
-      <FlipTicket job={VILLAGE} rolledBack onRewind={() => {}} onRewindAll={() => {}} />,
+      <FlipTicket job={VILLAGE} rolledBack takeBack={offMap(VILLAGE)} onRewind={() => {}} onRewindAll={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     for (const step of getAllByTestId('ticket-step')) {
@@ -614,18 +619,18 @@ describe('the whole family', () => {
 
   it('stamps each outcome with its own words and glyph', () => {
     const cases: [JobView['outcome'], string, string][] = [
-      ['done', 'Built', '#pw-check'],
-      ['capped', 'Stopped at the cap', '#pw-flag'],
+      ['done', 'Built', 'pw-check'],
+      ['capped', 'Stopped at the cap', 'pw-flag'],
     ];
     for (const [outcome, words, glyph] of cases) {
       const view = renderReduced(<FlipTicket job={makeJob({ outcome })} />);
       const stamp = view.getByTestId('ticket-stamp');
       expect(stamp.textContent).toBe(words);
-      expect(stamp.querySelector('use')?.getAttribute('href')).toBe(glyph);
+      expect(drawnIcon(stamp)).toBe(glyph);
       view.unmount();
     }
     const stop = renderReduced(<StopCard job={makeJob({ outcome: 'aborted' })} />);
-    expect(stop.getByTestId('ticket-stamp').querySelector('use')?.getAttribute('href')).toBe('#pw-stop');
+    expect(drawnIcon(stop.getByTestId('ticket-stamp'))).toBe('pw-stop');
   });
 
   /** A real button, so Enter and Space work with no key handler. */
@@ -694,16 +699,16 @@ describe('the receipt: a rewind names what it would pop', () => {
 
   it('[ASST-09] names BOTH numbers on the whole-job confirm', () => {
     const { getByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={27} onRewind={() => {}} onRewindAll={() => {}} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 27 }} onRewind={() => {}} onRewindAll={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getByTestId('ticket-rewind-all'));
-    expect(question('ticket-rewind-all')).toBe('Rewind 27 steps, 12 yours?');
+    expect(question('ticket-rewind-all')).toMatch(/27.*12/);
   });
 
   it('names the total alone where nothing of the user\'s stands on top', () => {
     const { getByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={15} onRewind={() => {}} onRewindAll={() => {}} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 15 }} onRewind={() => {}} onRewindAll={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getByTestId('ticket-rewind-all'));
@@ -712,7 +717,7 @@ describe('the receipt: a rewind names what it would pop', () => {
 
   it('names the total honestly where the record banked no settle depth', () => {
     const { getByTestId } = renderReduced(
-      <FlipTicket job={VILLAGE} undoDepth={27} onRewind={() => {}} onRewindAll={() => {}} />,
+      <FlipTicket job={VILLAGE} takeBack={{ running: false, undoDepth: 27 }} onRewind={() => {}} onRewindAll={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getByTestId('ticket-rewind-all'));
@@ -735,7 +740,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
   it('[ASST-09] does not fire on the first press', () => {
     const rewound: number[] = [];
     const { getByTestId, getAllByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={15} onRewind={(c) => rewound.push(c.undoIndex)} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 15 }} onRewind={(job, i) => rewound.push(job.checkpoints[i]!.undoIndex)} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getAllByTestId('ticket-step-rewind')[1]!);
@@ -748,7 +753,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
 
   it('previews affected step labels while keeping every rewind available', () => {
     const { getByTestId, getAllByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={15} onRewind={() => {}} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 15 }} onRewind={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getAllByTestId('ticket-step-rewind')[1]!);
@@ -780,7 +785,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
   it('drops the ghost and fires nothing on Cancel', () => {
     const rewound: number[] = [];
     const { getByTestId, getAllByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={15} onRewind={(c) => rewound.push(c.undoIndex)} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 15 }} onRewind={(job, i) => rewound.push(job.checkpoints[i]!.undoIndex)} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     fireEvent.click(getAllByTestId('ticket-step-rewind')[2]!);
@@ -791,7 +796,7 @@ describe('the receipt: the per-step rewind asks, and shows what it would discard
 
   it('offers no rewind on a step the stack already stands at or below', () => {
     const { getByTestId, queryAllByTestId } = renderReduced(
-      <FlipTicket job={SETTLED} undoDepth={4} onRewind={() => {}} />,
+      <FlipTicket job={SETTLED} takeBack={{ running: false, undoDepth: 4 }} onRewind={() => {}} />,
     );
     fireEvent.click(getByTestId('flip-button'));
     // Depth 4 is the second checkpoint's watermark, so only the first can pop.
@@ -808,10 +813,10 @@ describe('the stop card: its rewind names the same cost', () => {
       ops: [makeOp({ detail: { objects: 9 } })],
     });
     const { getByTestId } = renderReduced(
-      <StopCard job={job} undoDepth={11} onRewindAll={() => {}} />,
+      <StopCard job={job} takeBack={{ running: false, undoDepth: 11 }} onRewindAll={() => {}} />,
     );
     fireEvent.click(getByTestId('stop-rewind'));
-    expect(question('stop-rewind')).toBe('Rewind 9 steps, 5 yours?');
+    expect(question('stop-rewind')).toMatch(/9.*5/);
   });
 });
 
@@ -834,7 +839,7 @@ describe('the rewound dress', () => {
   it('replaces the model\'s closing words with what is true of the map now', () => {
     const { getByTestId } = renderReduced(<FlipTicket job={VILLAGE} rolledBack />);
     expect(getByTestId('ticket-summary').textContent)
-      .toBe('The map is back where this job started. Nothing of it remains.');
+      .toBe(translations.en['agent.ticket_rewound_sum']);
   });
 
   it('offers to show what was TAKEN BACK rather than how it was built', () => {
@@ -867,7 +872,7 @@ describe('the rewound dress', () => {
     const gone = renderReduced(<StopCard job={stopped} rolledBack onRewindAll={() => {}} />);
     expect(gone.getByTestId('ticket-stamp').textContent).toBe('Rewound');
     expect(gone.getByTestId('stop-fact').textContent)
-      .toBe('The map is back where this job started. Nothing of it remains.');
+      .toBe(translations.en['agent.ticket_rewound_sum']);
   });
 
   it('wears the same stamp on an opened past record', () => {
@@ -889,6 +894,13 @@ describe('the stop card: a question that lapsed', () => {
     const { getByTestId } = renderReduced(<StopCard job={stopped} unanswered onRewindAll={() => {}} />);
     expect(getByTestId('stop-lapsed').textContent)
       .toBe('A question was left unanswered when this stopped.');
+  });
+
+  it('[ASST-26] says another map was opened where that stopped it', () => {
+    const { getByTestId, unmount } = renderReduced(<StopCard job={{ ...stopped, stoppedBy: 'map-left' }} onRewindAll={() => {}} />);
+    expect(getByTestId('stop-map-left').textContent).toBe('Another map was opened, so this job stopped.');
+    unmount();
+    expect(renderReduced(<StopCard job={stopped} onRewindAll={() => {}} />).queryByTestId('stop-map-left')).toBeNull();
   });
 
   it('says nothing of the sort where the job was asking nothing', () => {

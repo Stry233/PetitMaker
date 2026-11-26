@@ -1,0 +1,36 @@
+{
+  "id": "plant-bird-of-paradise",
+  "category": "flora",
+  "name": {
+    "en": "Bird of Paradise Bush",
+    "zh": "天堂鸟花丛",
+    "ja": "ゴクラクチョウカ",
+    "ru": "Стрелиция",
+    "th": "ปักษาสวรรค์",
+    "id": "Bunga Cendrawasih",
+    "fr": "Oiseau de paradis"
+  },
+  "aliases": [
+    "橙",
+    "orange"
+  ],
+  "icon": "plant-bird-of-paradise",
+  "iconColor": "#8e9b69",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "plant-bird-of-paradise",
+    "colorFamily": "green"
+  }
+}

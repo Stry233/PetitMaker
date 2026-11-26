@@ -5,10 +5,11 @@ import { jobUndoFloor } from '../../../agent/core/job-reads';
 import { TOOL_FACTS } from '../../../agent/tools';
 import { executeToolCall, type AgentToolDeps } from '../../../agent/tools';
 
-/** Counts undo/redo calls over a stack of `size` entries, without a map or a rule registry. */
-function fakeExecutor(size: number) {
+/** Counts undo/redo calls over a stack of `size` entries with `undone` more already taken back,
+ *  without a map or a rule registry. */
+function fakeExecutor(size: number, undone = 0) {
   let depth = size;
-  let popped = 0;
+  let popped = undone;
   let undoCalls = 0;
   let redoCalls = 0;
   const exec = {

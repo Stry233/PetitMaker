@@ -9,11 +9,10 @@ import { MODEL_VARIANTS, modelCanRepresent } from '../../../io/share/codec/map-c
 import { tokensOf, parseToken } from '../../../io/share/codec/grid-io';
 import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { buildShareCode } from '../../../io/share/export';
-import { importFromBytes } from '../../../io/share/import';
 import { inspectImportFile } from '../../../io/import/file';
 import { ImportError } from '../../../io/save/import-error';
 import { ShareTooLargeError } from '../../../io/share/errors';
-import { encodePng } from '../../../io/share/raster/png-raster';
+import { encodePng, importFromBytes } from '../../_support/png-raster';
 import { listPlanets } from '../../../io/storage/planet-library';
 import { planetFixture, worstCasePlanet, NO_PLAZA, pondMask, landmarkAt } from '../../_support/planet';
 import { getMapTemplate } from '../../../config/maps';

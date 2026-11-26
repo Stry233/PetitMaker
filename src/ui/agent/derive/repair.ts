@@ -1,29 +1,19 @@
-/* One row per provider failure class: how the desk card, the banner and the composer name it and repair it. */
-import type { ErrorClass } from '../../../agent/panel';
+/*
+ * One row per provider failure class: how the desk card, the banner and the composer name it. Which
+ * repair a class gets, which notice it reads under and whether it refuses orders is the assistant's
+ * policy (`agent/panel.ts`), which each row carries beside its icon, paper and words.
+ */
+import {
+  incidentNotice, REPAIR_POLICY, type ErrorClass, type KeyRefusal, type RepairAct, type RepairPolicy, type TroubleClass,
+} from '../../../agent/panel';
 import type { IconId } from '../parts/sprite';
 import type { I18nKey } from '../../../i18n/keys';
 
-/**
- * Every repair the panel can route, in one vocabulary shared by the desk card and the banners.
- * `fix-key`, `change-provider` and `edit-endpoint` open setup at their step, `edit-model` opens
- * management, `try-again` files the same order again while idle, `new-order` focuses the composer,
- * `export-log` writes the raw log out, `set-aside` files the record and `dismiss` demotes the banner.
- */
-export type RepairAct =
-  | 'fix-key' | 'change-provider' | 'edit-endpoint' | 'edit-model'
-  | 'try-again' | 'new-order' | 'export-log' | 'set-aside' | 'dismiss';
-
 /** A provider failure, or one of the panel's own notices: credentials, storage and map identity. */
-export type BannerClass =
-  | ErrorClass
-  | 'key-cleared' | 'key-clearing'
-  | 'storage-pruned' | 'storage-full' | 'storage-corrupt' | 'other-map' | 'unknown-map';
+export type BannerClass = TroubleClass;
 
-export interface RepairRow {
-  /** The one repair the class offers first, on the desk card and as the banner's lit action. */
-  act: RepairAct;
-  /** The banner's actions, the repair first. */
-  actions: readonly RepairAct[];
+/** How a class looks and reads. */
+interface RepairFace {
   icon: IconId;
   /** Banner paper: retries exhausted read as a wait, repairs the user owes as danger. */
   paper: 'danger' | 'wait';
@@ -35,74 +25,78 @@ export interface RepairRow {
   /** Desk word while the loop retries after this failure. */
   retryWord: I18nKey;
   retryIcon: IconId;
-  /** The ladder ran out of attempts on a transient failure: the desk keeps the wait paper. */
-  exhausted?: true;
-  /** The composer's guidance while the fault stands, and whether it refuses text. */
-  composer?: { key: I18nKey; off: boolean };
+  /** The composer's guidance while the fault stands; a class that refuses orders has one. */
+  composerKey?: I18nKey;
 }
 
-const RETRY_OR_FILE: readonly RepairAct[] = ['try-again', 'set-aside'];
-const AGAIN: I18nKey = 'agent.dock_retry_again';
-const WAITING = { key: 'agent.composer_blocked_waiting', off: true } as const;
+interface RepairRow extends RepairPolicy, RepairFace {}
 
-export const REPAIR: Record<ErrorClass, RepairRow> = {
+const AGAIN: I18nKey = 'agent.dock_retry_again';
+const WAITING: I18nKey = 'agent.composer_blocked_waiting';
+
+const FACE: Record<ErrorClass, RepairFace> = {
   auth: {
-    act: 'fix-key', actions: ['fix-key', 'set-aside'], icon: 'pw-key', paper: 'danger',
+    icon: 'pw-key', paper: 'danger',
     sentenceKey: 'agent.banner_auth', errorWord: 'agent.dock_err_auth', retryWord: AGAIN, retryIcon: 'pw-warning',
-    composer: { key: 'agent.composer_blocked_key', off: true },
+    composerKey: 'agent.composer_blocked_key',
   },
   quota: {
-    act: 'change-provider', actions: ['change-provider', 'set-aside'], icon: 'pw-wallet', paper: 'danger',
+    icon: 'pw-wallet', paper: 'danger',
     sentenceKey: 'agent.banner_quota', errorWord: 'agent.dock_err_quota', retryWord: AGAIN, retryIcon: 'pw-warning',
-    composer: { key: 'agent.composer_blocked_provider', off: true },
+    composerKey: 'agent.composer_blocked_provider',
   },
   cors: {
-    act: 'edit-endpoint', actions: ['edit-endpoint', 'set-aside'], icon: 'pw-link-out', paper: 'danger',
+    icon: 'pw-link-out', paper: 'danger',
     sentenceKey: 'agent.banner_cors', errorWord: 'agent.dock_err_cors', retryWord: AGAIN, retryIcon: 'pw-warning',
-    composer: { key: 'agent.composer_blocked_endpoint', off: true },
+    composerKey: 'agent.composer_blocked_endpoint',
   },
-  // Nothing was sent: the custom provider has no address, so the request could not be built.
   config: {
-    act: 'edit-endpoint', actions: ['edit-endpoint', 'set-aside'], icon: 'pw-link-out', paper: 'danger',
+    icon: 'pw-link-out', paper: 'danger',
     sentenceKey: 'agent.banner_config', errorWord: 'agent.dock_err_config', retryWord: AGAIN, retryIcon: 'pw-warning',
   },
-  // The host answered and serves no such model, so the repair is the model and not the address.
   model: {
-    act: 'edit-model', actions: ['edit-model', 'set-aside'], icon: 'pw-lightning', paper: 'danger',
+    icon: 'pw-lightning', paper: 'danger',
     sentenceKey: 'agent.banner_model', bareSentenceKey: 'agent.banner_model_bare',
     errorWord: 'agent.dock_err_model', retryWord: AGAIN, retryIcon: 'pw-warning',
-    composer: { key: 'agent.composer_blocked_model', off: true },
+    composerKey: 'agent.composer_blocked_model',
+  },
+  account: {
+    icon: 'pw-key', paper: 'danger',
+    sentenceKey: 'agent.banner_account', errorWord: 'agent.dock_err_account', retryWord: AGAIN, retryIcon: 'pw-warning',
   },
   network: {
-    act: 'try-again', actions: RETRY_OR_FILE, icon: 'pw-cloud-off', paper: 'wait', exhausted: true,
+    icon: 'pw-cloud-off', paper: 'wait',
     sentenceKey: 'agent.banner_network', errorWord: 'agent.dock_err_no_answer',
-    retryWord: 'agent.dock_retry_offline', retryIcon: 'pw-cloud-off', composer: WAITING,
+    retryWord: 'agent.dock_retry_offline', retryIcon: 'pw-cloud-off', composerKey: WAITING,
   },
   'rate-limit': {
-    act: 'try-again', actions: RETRY_OR_FILE, icon: 'pw-retry-clock', paper: 'wait', exhausted: true,
+    icon: 'pw-retry-clock', paper: 'wait',
     sentenceKey: 'agent.banner_rate_limit', errorWord: 'agent.dock_err_no_answer',
-    retryWord: 'agent.dock_retry_busy', retryIcon: 'pw-retry-clock', composer: WAITING,
+    retryWord: 'agent.dock_retry_busy', retryIcon: 'pw-retry-clock', composerKey: WAITING,
   },
   overloaded: {
-    act: 'try-again', actions: RETRY_OR_FILE, icon: 'pw-cloud-off', paper: 'wait', exhausted: true,
+    icon: 'pw-cloud-off', paper: 'wait',
     sentenceKey: 'agent.banner_network', errorWord: 'agent.dock_err_no_answer',
-    retryWord: 'agent.dock_retry_busy', retryIcon: 'pw-warning', composer: WAITING,
+    retryWord: 'agent.dock_retry_busy', retryIcon: 'pw-warning', composerKey: WAITING,
   },
-  // The same order would overflow at the same place, so the offer is a shorter one.
   overflow: {
-    act: 'new-order', actions: ['new-order', 'export-log'], icon: 'pw-compress', paper: 'danger',
+    icon: 'pw-compress', paper: 'danger',
     sentenceKey: 'agent.banner_overflow', errorWord: 'agent.dock_err_overflow', retryWord: AGAIN, retryIcon: 'pw-warning',
-    composer: { key: 'agent.composer_shorter', off: false },
+    composerKey: 'agent.composer_shorter',
   },
   abort: {
-    act: 'try-again', actions: ['try-again', 'dismiss'], icon: 'pw-warning', paper: 'danger',
+    icon: 'pw-warning', paper: 'danger',
     sentenceKey: 'agent.banner_incident', errorWord: 'agent.dock_incident', retryWord: AGAIN, retryIcon: 'pw-warning',
   },
   unknown: {
-    act: 'try-again', actions: ['try-again', 'dismiss'], icon: 'pw-warning', paper: 'danger',
+    icon: 'pw-warning', paper: 'danger',
     sentenceKey: 'agent.banner_incident', errorWord: 'agent.dock_incident', retryWord: AGAIN, retryIcon: 'pw-warning',
   },
 };
+
+export const REPAIR = Object.fromEntries(
+  (Object.keys(FACE) as ErrorClass[]).map((cls) => [cls, { ...REPAIR_POLICY[cls], ...FACE[cls] }]),
+) as Record<ErrorClass, RepairRow>;
 
 /** The desk card's compact wording for a repair; the rest read as the banner does. */
 const DESK_ACT_LABEL: Partial<Record<RepairAct, I18nKey>> = {
@@ -121,7 +115,26 @@ export const ACT_LABEL: Record<RepairAct, I18nKey> = {
   'export-log': 'agent.banner_action_export_log',
   'set-aside': 'agent.banner_action_set_aside',
   dismiss: 'agent.banner_action_dismiss',
+  'sign-in': 'agent.banner_action_sign_in',
 };
+
+/** How an incident's fault is worded on the desk and in the composer. */
+interface IncidentWords {
+  errorWord: I18nKey;
+  composerKey?: I18nKey;
+}
+
+/** A refused key that came from a sign-in, worded in place of the `auth` row. */
+const SIGNED_IN_WORDS: Record<Exclude<KeyRefusal, 'key'>, IncidentWords> = {
+  'sign-in-expired': { errorWord: 'agent.dock_err_sign_in', composerKey: 'agent.composer_blocked_sign_in' },
+  'signed-in-again': { errorWord: 'agent.dock_signed_in_again' },
+};
+
+/** The words an incident of `cls` reads by, given how its refused key stands. */
+export function incidentWords(cls: ErrorClass, refusal: KeyRefusal): IncidentWords {
+  const notice = incidentNotice(cls, refusal);
+  return notice === 'sign-in-expired' || notice === 'signed-in-again' ? SIGNED_IN_WORDS[notice] : REPAIR[cls];
+}
 
 export function deskActLabel(act: RepairAct): I18nKey {
   return DESK_ACT_LABEL[act] ?? ACT_LABEL[act];

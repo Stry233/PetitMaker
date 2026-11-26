@@ -4,37 +4,37 @@
  * the field; a refused or unchecked text gets its owner's feedback under it. A text is approved
  * only for its exact trimmed form, and the text the thing already carries needs no check.
  */
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { useT } from '../../../../../i18n/context';
-import type { TextField } from '../../../../../pipelines/moderation/facts';
-import { reviewedTextParts } from '../../../../../editor/review/text-parts';
+import type { TextField as CheckedField } from '../../../../../pipelines/moderation/facts';
+import { createReviewedTextSession, type ReviewedTextInput } from '../../../../../editor/review/text-session';
 import { roleFont } from '../../../../design/text-weight';
-import { skin, windowField } from '../../../../design/window-skin';
+import { skin } from '../../../../design/window-skin';
+import { TextField } from '../../../../primitives/TextField';
 import { ActionButton } from '../../../../primitives/ActionButton';
 import { Expand } from '../../../../primitives/Expand';
-import { useTextReview } from '../edition-export';
-import { automaticExportReview } from '../../../../../editor/review/edition-review';
-import { ReviewIndicator } from './ReviewIndicator';
+import { ReviewSlot } from './ReviewIndicator';
 import { useEffectEvent } from '../../../../primitives/use-effect-event';
 
-/** The check behind one field; `known` is the text the thing already carries. `onApproved`
- *  hears each exact text the check approves while it is typed. */
-export function useReviewedText(open: boolean, text: string, known: string, field: TextField, onApproved?: (text: string) => void) {
+/** The check behind one field (`editor/review/text-session.ts:createReviewedTextSession`); `known` is
+ *  the text the thing already carries. `onApproved` hears each exact text the check approves while it is typed. */
+export function useReviewedText(open: boolean, text: string, known: string, field: CheckedField, onApproved?: (text: string) => void) {
   const [composing, setComposing] = useState(false);
-  const trimmed = text.trim();
-  const parts = useMemo(() => reviewedTextParts(trimmed, known, field), [trimmed, known, field]);
-  const review = useTextReview(open, parts, composing);
-  const approvedText = review.allowed && parts.length ? parts[0]!.text : null;
-  const approve = useEffectEvent((approved: string) => onApproved?.(approved));
+  const [session] = useState(createReviewedTextSession);
+  const input: ReviewedTextInput = { open, text, known, field, composing };
+  const { approved, approvedText, review } = useSyncExternalStore(session.subscribe, () => session.snapshot(input));
+  useLayoutEffect(() => { session.watch(input); });
+  useEffect(() => () => session.release(), [session]);
+  const approve = useEffectEvent((approvedNow: string) => onApproved?.(approvedNow));
   useEffect(() => { if (approvedText !== null) approve(approvedText); }, [approvedText]);
-  // An edition without the automatic check lets text through as it lets export text through.
-  const approved = !!trimmed && !composing && (!automaticExportReview || review.allowed);
-  return { approved, composing, setComposing, review };
+  return { approved, composing, setComposing, review, retry: session.retry, commit: session.commit };
 }
 
 export type ReviewedText = ReturnType<typeof useReviewedText>;
 
-export function ReviewedTextField({ check, inputRef, value, onChange, onSubmit, label, maxLength, refusedText, unavailableText }: {
+export function ReviewedTextField({
+  check, inputRef, value, onChange, onSubmit, label, maxLength, refusedText, unavailableText, placeholder, disabled = false, readOnly = false, height, trailing,
+}: {
   check: ReviewedText;
   inputRef?: RefObject<HTMLInputElement>;
   value: string;
@@ -46,9 +46,18 @@ export function ReviewedTextField({ check, inputRef, value, onChange, onSubmit, 
   maxLength: number;
   refusedText: string;
   unavailableText: string;
+  placeholder?: string;
+  /** Greys the field and takes no typing, as a choice beside it that sets the text aside does. */
+  disabled?: boolean;
+  /** Shows a text the player cannot type, as one the platform gives. */
+  readOnly?: boolean;
+  /** The field box's height in css px; one line's own height where absent. */
+  height?: number;
+  /** A control standing inside the field at its right end, which stays live while the text is greyed. */
+  trailing?: ReactNode;
 }) {
   const t = useT();
-  const { issue, pending, paused, retry } = check.review;
+  const { issue, pending, paused } = check.review;
   const refused = issue !== null && typeof issue === 'object';
   const message = issue === 'unavailable' ? unavailableText
     : issue === 'too-long' ? t('export.review.too_long')
@@ -56,20 +65,15 @@ export function ReviewedTextField({ check, inputRef, value, onChange, onSubmit, 
   const offerRetry = issue === 'unavailable' || (paused && !check.composing);
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ position: 'relative' }}
-        onCompositionStartCapture={() => check.setComposing(true)} onCompositionEndCapture={() => check.setComposing(false)}>
-        <input ref={inputRef} value={value} maxLength={maxLength} aria-label={label}
-          aria-busy={pending} aria-invalid={refused}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => { if (check.approved && e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) onSubmit(); }}
-          style={{ ...windowField, paddingRight: 32 }} />
-        {pending && <ReviewIndicator label={t('export.review.checking')} />}
-      </div>
-      <Expand open={!!issue || offerRetry}>
-        <div role={issue ? 'alert' : undefined} style={{ paddingTop: 8, color: skin.ink, ...roleFont('caption'), lineHeight: 1.5 }}>
+      <TextField inputRef={inputRef} value={value} onChange={readOnly ? () => {} : onChange} readOnly={readOnly} label={label}
+        maxLength={maxLength} placeholder={placeholder} disabled={disabled} aria-busy={pending} aria-invalid={refused} height={height}
+        onEnter={() => { if (check.approved) onSubmit(); }} onComposingChange={check.setComposing}
+        trailing={<><ReviewSlot label={t('export.review.checking')} checking={pending && !disabled} />{trailing}</>} />
+      <Expand open={!disabled && (!!issue || offerRetry)}>
+        <div role={issue ? 'alert' : undefined} style={{ paddingTop: 8, color: skin.ink, ...roleFont('note'), lineHeight: 1.5 }}>
           {message}
           {offerRetry && (
-            <ActionButton appearance="secondary" style={{ marginTop: 8, width: '100%' }} onClick={retry}>{t('export.review.retry')}</ActionButton>
+            <ActionButton appearance="secondary" style={{ marginTop: 8, width: '100%' }} onClick={check.retry}>{t('export.review.retry')}</ActionButton>
           )}
         </div>
       </Expand>

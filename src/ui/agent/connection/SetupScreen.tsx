@@ -6,7 +6,7 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, type CSSProperties } from 'react';
 import { motion, useReducedMotionConfig } from 'framer-motion';
-import { defaultListModels, type ListModels, type ProviderId, type SetupEntry } from '../../../agent/panel';
+import { defaultListModels, type ListModels, type ProviderId, type SetupEntry, type SetupRepair } from '../../../agent/panel';
 import type { Translate } from '../../../i18n/keys';
 import { useT } from '../../../i18n/context';
 import { providerName } from '../../../i18n/terms/providers';
@@ -14,11 +14,12 @@ import { useUiPreview } from '../../design/preview';
 import { DANGER_INK } from '../../design/tokens';
 import { ActionButton } from '../../primitives/ActionButton';
 import { FloatMenu } from '../../primitives/FloatMenu';
+import { InfoLine } from '../../primitives/InfoLine';
 import { useZoomedLayoutTransform } from '../../shell/use-frame-zoom';
 import { HelpLink } from '../parts/panel-parts';
 import { SetupKeyField, type Mark } from './SetupKeyField';
 import { SetupProviderFace } from './SetupProviderFace';
-import { FOOT_LABEL, footVerbs, noteLine, rosterItems, rowFace, urlHost, type FootVerb } from './setup-copy';
+import { FOOT_LABEL, noteLine, rosterItems, rowFace, urlHost } from './setup-copy';
 import { useKeyReading, type KeyReading } from './use-key-reading';
 import { ManageScreen } from './ManageScreen';
 import { EndpointField } from '../parts/EndpointField';
@@ -90,14 +91,13 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
     : asking
       ? { id: null, name: t('agent.setup_row_whose'), sub: t(typing ? 'agent.setup_row_key_stays' : 'agent.setup_row_pick'), dim: false }
       : rowFace({ t, shape, pinned, checking, refused });
-  const note = regionProvider && typing
-    ? { text: t('agent.setup_note_region', { name: providerName(regionProvider, t) }), danger: false }
+  // The two notes that explain a choice in front of the reader lead with the info mark; a danger note never does.
+  const note: { text: string; danger: boolean; info?: boolean } | null = regionProvider && typing
+    ? { text: t('agent.setup_note_region', { name: providerName(regionProvider, t) }), danger: false, info: true }
     : asking && typing
-    ? { text: t('agent.setup_note_unknown_pick'), danger: false }
+    ? { text: t('agent.setup_note_unknown_pick'), danger: false, info: true }
     : noteLine({ t, shape, pinned, typing, refused, needsEndpoint: r.needsEndpoint, checking, held: r.settings.keyed.length > 0 });
-  const foot = footVerbs({ refused, needsEndpoint: r.needsEndpoint, waiting: gate !== null || phase === 'checking' });
-  /** Leaving is available only before configuration starts or after the connection is complete. */
-  const canLeave = r.gaps.length === 0 || r.gaps.includes('key');
+  const foot = r.repairs;
 
   /** Derives the desk face from the same facts used by this screen's row, note and footer. */
   const step: SetupFace = (() => {
@@ -172,12 +172,12 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
               data-testid="setup-note"
               style={note.danger ? { ...NOTE_STYLE, color: DANGER_INK } : NOTE_STYLE}
             >
-              {note.text}
+              {note.info ? <InfoLine>{note.text}</InfoLine> : note.text}
             </motion.p>
           )}
           <div style={FOOT_STYLE}>
             {foot.length > 0 && <FootVerbs t={t} verbs={foot} refused={refused} reading={r} />}
-            {!foot.includes('reenter') && canLeave && onLeave && <LeaveRow t={t} onLeave={r.leave} />}
+            {!foot.includes('reenter') && r.canLeave && onLeave && <LeaveRow t={t} onLeave={r.leave} />}
           </div>
         </>
       )}
@@ -226,8 +226,8 @@ export const SetupScreen = forwardRef<SetupHandle, SetupScreenProps>(function Se
 });
 
 /** The recovery verbs under the key step; the primary ones lead. */
-function FootVerbs({ t, verbs, refused, reading }: { t: Translate; verbs: FootVerb[]; refused: boolean; reading: KeyReading }) {
-  const press: Record<FootVerb, () => void> = {
+function FootVerbs({ t, verbs, refused, reading }: { t: Translate; verbs: readonly SetupRepair[]; refused: boolean; reading: KeyReading }) {
+  const press: Record<SetupRepair, () => void> = {
     reenter: reading.reenter,
     manual: reading.chooseByHand,
     address: () => reading.setPhase('custom'),

@@ -2,12 +2,12 @@
  * The expanded layer control: every buildable floor, ground at the bottom, in a one-column file
  * that scrolls inside the square's depth or a three-column square that shows the whole stack. The
  * head stays outside the scrolling floors; `frame.ts` places the plate, and only its own controls
- * close it.
+ * close it, besides the blueprint library unfolding over the column (`bars/blueprint/BlueprintShelf.tsx`).
  */
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Refusal } from '../../../core/model/types';
-import { layerLockRule } from '../../../rules/layer-lock';
+import { LAYER_LOCK_RULE_ID } from '../../../rules/facts';
 import { viewportRect } from '../../../platform/device/viewport-space';
 import { useT } from '../../../i18n/context';
 import { layerRows } from '../../../state/layer-utils';
@@ -72,7 +72,7 @@ function useLockRefusal(scroller: RefObject<HTMLDivElement | null>): boolean {
   const { value: refused, show } = useTransient<true>(LOCK_HOLD_MS);
   useEffect(() => {
     const onFail = (data: Refusal) => {
-      if (!data.errors.some((e) => e.ruleId === layerLockRule.id)) return;
+      if (!data.errors.some((e) => e.ruleId === LAYER_LOCK_RULE_ID)) return;
       show(true);
       revealRefusal(scroller.current);
     };
@@ -120,13 +120,12 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top, maxWidth, veil
   const zoomed = useZoomedLayoutTransform();
   const zoom = useFrameZoom();
   const touch = useTouchMode();
-  const activeLayer = useEditorStore((s) => s.activeLayer);
   const displayLayer = useEditorStore((s) => s.displayLayer);
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const lockedLayers = useEditorStore((s) => s.gridState?.lockedLayers);
   const annotating = useEditorStore(isAnnotating);
-  // One row is selected: the notes while annotate is armed, else the floor a stroke would land on.
-  const selectedFloor = annotating ? null : displayLayer ?? activeLayer;
+  // One row is selected: the notes while annotate is armed, else the floor shown (the ground at rest).
+  const selectedFloor = annotating ? null : displayLayer ?? 0;
   const scroller = useRef<HTMLDivElement | null>(null);
   // The square takes as many columns as its room holds whole, and its depth follows them; the plate draws
   // at that depth or the room the rail gives it, and whether the floors scroll is arithmetic, right on the
@@ -181,7 +180,7 @@ export function LayerPanel({ mode, onMode, right, maxHeight, top, maxWidth, veil
             background: PLATE, border: PANEL_EDGE, borderRadius: PANEL.radius,
             transformOrigin: 'top right', maxHeight: drawn, maxWidth,
             // Only `visibility` here; the opacity is Framer's.
-            visibility: veiled ? 'hidden' : 'visible',
+            visibility: veiled ? 'hidden' : undefined,
             transition: [cssMotion(veiled ? 'frame.veil' : 'frame.unveil', ['visibility']), glide(['top', 'right', 'max-width'])].filter(Boolean).join(', '),
             display: 'flex', flexDirection: 'column', overflowX: 'auto', overflowY: 'hidden',
             // Over the rail, whose count it was opened from.

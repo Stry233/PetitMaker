@@ -268,11 +268,11 @@ describe('agent session persist', () => {
     append(log, { kind: 'order', text: 'build a village', mapContext: 'ctx' });
     append(log, {
       kind: 'toolResult', callId: 'c1', name: 'load_skill', content: 'STALE COZY BODY', isError: false,
-      detail: { skill: { name: 'cozy-village', kind: 'style', title: 'Cozy Village' } },
+      detail: { skill: { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' } },
     });
     append(log, {
       kind: 'toolResult', callId: 'c2', name: 'load_skill', content: 'COZY BODY', isError: false,
-      detail: { skill: { name: 'cozy-village', kind: 'style', title: 'Cozy Village' } },
+      detail: { skill: { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' } },
     });
     append(log, {
       kind: 'toolResult', callId: 'c3', name: 'load_skill', content: 'Unknown skill "nope".', isError: true,
@@ -280,7 +280,7 @@ describe('agent session persist', () => {
     });
     append(log, {
       kind: 'toolResult', callId: 'c4', name: 'load_skill', content: 'SITE ANALYSIS BODY', isError: false,
-      detail: { skill: { name: 'site-analysis', kind: 'method', title: 'Site Analysis' } },
+      detail: { skill: { name: 'layout-patterns', kind: 'method', title: 'Layout Patterns' } },
     });
     append(log, { kind: 'toolResult', callId: 'c5', name: 'place_object', content: 'placed', isError: false });
     const compaction = append(log, { kind: 'compaction', summary: 'summary', retainedFromSeq: 6 });
@@ -313,6 +313,16 @@ describe('agent session persist', () => {
     expect(setItem).toHaveBeenCalledTimes(2);
     expect(localStorage.getItem(PREFS.agentLogV3.key)).toBeNull();
     expect(eventsOf(log)).toHaveLength(4);
+  });
+
+  it('reads a failed result stored before the loop-note field as the loop\'s note, and a tool\'s own failure as its own', () => {
+    const log = createLog(() => 1);
+    append(log, { kind: 'order', text: 'build', mapContext: 'ctx' });
+    append(log, { kind: 'toolResult', callId: 'c1', name: 'build_road', isError: true, content: '(system) The turn was cut off before the arguments were complete.' });
+    append(log, { kind: 'toolResult', callId: 'c2', name: 'build_road', isError: true, content: 'No road fits there.' });
+    const [, note, own] = eventsOf(deserializeLog(serializeLog(log))!) as Extract<SessionEvent, { kind: 'toolResult' }>[];
+    expect(note?.detail?.loopNote).toBe(true);
+    expect(own?.detail?.loopNote).toBeUndefined();
   });
 
   it('re-freezes deserialized events', () => {

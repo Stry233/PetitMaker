@@ -2,5 +2,7 @@
 // UI (ImportModal + export chrome). Internals are imported by deep path; only
 // re-export here what an outside consumer actually reaches through the barrel.
 export { buildShareCode } from './export';
-export { importFromRaster, importFromBytes } from './import';
+export { pngSize } from './raster/png-chunks';
+export { importFromRaster, importFromPayload } from './import';
 export type { ImportResult } from './import';
+export { mapLinkFor, mapLinkCode, withoutMapLink } from './link';

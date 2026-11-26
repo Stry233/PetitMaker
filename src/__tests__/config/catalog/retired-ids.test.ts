@@ -10,7 +10,7 @@ import { decodeHistory, encodeHistory } from '../../../io/save/history-codec';
 import { RETIRED_CATALOG_IDS, currentCatalogId } from '../../../config/catalog/retired-ids';
 import { encodeMapPayload, decodeMapPayload } from '../../../io/share/codec/payload';
 import { createGridState } from '../../../core/model/template';
-import { toSaveJSON } from '../../../io/save/canonical';
+import { toSaveFile } from '../../../io/save/canonical';
 import { SHARE_CATALOG_ORDER } from '../../../io/share/codec/catalog-order';
 import { getMapTemplate } from '../../../config/maps';
 import { getCatalogItem } from '../../../state/catalog';
@@ -123,7 +123,7 @@ describe('a share code written before the retirement', () => {
   it('loads as the replacement once the decoded save becomes a map', async () => {
     // The steps importFromRaster takes after the gate.
     const dec = await decodeMapPayload(await legacyFrame());
-    const state = deserialize(toSaveJSON(dec.canonical), getMapTemplate(dec.canonical.templateId));
+    const state = deserialize(JSON.stringify(toSaveFile(dec.canonical)), getMapTemplate(dec.canonical.templateId));
     const ids = [...state.objects.values()].map((o) => o.catalogId);
     expect(ids).toContain('path-rustic-dirt');
     expect(ids).not.toContain('road-dirt');

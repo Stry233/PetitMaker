@@ -8,7 +8,7 @@ import { surfaceElevation } from '../../../../../core/domain/terrain/terrain-sur
 import { makeRng } from '../../../../../core/base/rng';
 import { getCatalogItem, getPlaceableByCategory } from '../../../../../state/catalog';
 import { layBridges } from '../../../../../tools/generation/designer/build/crossings';
-import { makeScope } from '../../../../../tools/generation/designer/build/scope';
+import { makeScope } from '../../../../../tools/generation/terrain-plan/scope';
 import { makeCtx, tryPlace } from '../../../../../tools/placement/object';
 import { makeExecutor, makeState, setTerrain } from '../../../../_support/map-state';
 import { ItemCategory } from '../../../../../config/catalog/categories';

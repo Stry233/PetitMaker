@@ -8,8 +8,7 @@ import '../../../_support/pixi-env';
 import { describe, it, expect } from 'vitest';
 import { OverlayLayer } from '../../../../view/map2d/layers/overlay-layer';
 import { overlayPart } from '../../../_support/overlay-parts';
-import { GHOST_LOSS } from '../../../../view/shared/viewport/view-constants';
-import { lerpColor } from '../../../../core/base/color';
+import { ghostTint } from '../../../../view/shared/viewport/view-constants';
 
 type Sprite = {
   visible: boolean; tint: number; scale: { x: number; y: number };
@@ -65,7 +64,7 @@ describe('OverlayLayer group placement ghost', () => {
     overlay.showGroupPlacementGhost(members, false);
     const invalidTint = ghosts(overlay)[0]!.tint;
     expect(invalidTint).not.toBe(validTint);
-    expect(invalidTint, 'the loss red, lifted toward white for a multiplied icon').toBe(lerpColor(GHOST_LOSS, 0xffffff, 0.35));
+    expect(invalidTint, 'the shared refused tint').toBe(ghostTint(false));
     expect(ghosts(overlay).every((s) => s.tint === invalidTint)).toBe(true);
   });
 

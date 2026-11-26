@@ -2,8 +2,8 @@
   "id": "tree-peach",
   "category": "tree",
   "name": {
-    "en": "Peach Tree",
-    "zh": "桃花树",
+    "en": "Hexian Flower Tree",
+    "zh": "禾夏花树",
     "ja": "モモの木",
     "ru": "Персиковое дерево",
     "th": "ต้นพีช",
@@ -16,7 +16,9 @@
     "cherry",
     "cherry blossom",
     "粉",
-    "pink"
+    "pink",
+    "peach tree",
+    "桃花树"
   ],
   "icon": "tree-peach",
   "iconColor": "#ca7482",

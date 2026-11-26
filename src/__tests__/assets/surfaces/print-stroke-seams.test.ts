@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { decodePng, type RasterImage } from '../../../io/share/raster/png-raster';
+import { decodePng, type RasterImage } from '../../_support/png-raster';
 import { getAllItems } from '../../../state/catalog';
 
 /** The surface prints' artwork, which a connected stroke tile reads its exits from. */

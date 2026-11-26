@@ -12,8 +12,9 @@ interface BackgroundReviewSpec<T> {
   /** The next item awaiting a check whose key is not in `tried`, or undefined when none is left.
    *  Asked again after every check, so an item settled meanwhile drops out. */
   next(tried: ReadonlySet<string>): { key: string; text: string; item: T } | undefined;
-  /** Receives whether the check allowed the item's text, or null when the check could not run. */
-  settle(item: T, allowed: boolean | null): void;
+  /** Receives whether the check allowed the item's text, or null when the check could not run. May
+   *  resolve false when the item had gone by then: it is forgotten as tried, to be checked if it comes back. */
+  settle(item: T, allowed: boolean | null): void | Promise<boolean>;
 }
 
 interface BackgroundReview {
@@ -25,6 +26,15 @@ interface BackgroundReview {
 
 const lease = new ReviewWorkerLease();
 let turn: Promise<unknown> = Promise.resolve();
+/** Every review made, each with the reset that drops its run and what it tried. */
+const resets = new Set<() => void>();
+
+/** Drops the shared turn and every review's run in progress and tried items, so a check a test left
+ *  unanswered holds back no later one. */
+export function __resetBackgroundReviews(): void {
+  turn = Promise.resolve();
+  for (const reset of resets) reset();
+}
 
 /** The check's answer on `text`, taken in turn on the shared lease. A blank text is refused
  *  without a check. */
@@ -44,15 +54,22 @@ function checkInTurn(field: TextField, text: string): Promise<boolean | null> {
 export function createBackgroundReview<T>(spec: BackgroundReviewSpec<T>): BackgroundReview {
   const tried = new Set<string>();
   let running: Promise<void> | null = null;
+  // Moved on by a reset, which a run started before it then leaves alone.
+  let generation = 0;
   const run = (): Promise<void> => {
     if (running) return running.then(run);
-    running = (async () => {
-      for (let pending = spec.next(tried); pending; pending = spec.next(tried)) {
+    const mine = generation;
+    const current = (async () => {
+      for (let pending = spec.next(tried); pending && mine === generation; pending = spec.next(tried)) {
         tried.add(pending.key);
-        spec.settle(pending.item, await checkInTurn(spec.field, pending.text));
+        const allowed = await checkInTurn(spec.field, pending.text);
+        if (mine !== generation) return;
+        if (await spec.settle(pending.item, allowed) === false) tried.delete(pending.key);
       }
-    })().finally(() => { running = null; });
-    return running;
+    })().finally(() => { if (running === current) running = null; });
+    running = current;
+    return current;
   };
+  resets.add(() => { generation++; running = null; tried.clear(); });
   return { run, forgetTried: () => tried.clear() };
 }

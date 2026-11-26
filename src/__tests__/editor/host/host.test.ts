@@ -37,7 +37,7 @@ function fakeView(over: Partial<ActiveView> = {}): ActiveView {
 /** A renderer stub with a real, mutable viewport (tracks the zoom/offset a call applies) rather
  *  than bare mocks, since the 2D tween path reads its own writes back before rewinding them. */
 function fakeRenderer(): MapRenderer {
-  let view = { zoom: 1, offsetX: 0, offsetY: 0 };
+  let view = { zoom: 1, offsetX: 0, offsetY: 0, heading: 0 };
   const viewport = {
     getView: () => view,
     getZoom: () => view.zoom,
@@ -123,11 +123,25 @@ describe('host', () => {
     expect(host.camera.get2d()).toBeUndefined();
   });
 
+  it('[UI-67] round-trips the 2D camera\'s heading through the registered renderer', () => {
+    const renderer = fakeRenderer();
+    setMapRenderer(renderer);
+    host.camera.set2d({ x: 10, y: 20, zoom: 2, rotation: 0.5 });
+    expect(host.camera.get2d()).toEqual({ x: 10, y: 20, zoom: 2, rotation: 0.5 });
+  });
+
+  it('turns the active view one eased step through its own camera', () => {
+    const turnStep = vi.fn();
+    setActiveView(fakeView({ camera: { pan: vi.fn(), zoomStep: vi.fn(), zoomStepAnimated: vi.fn(), zoomBy: vi.fn(), fitToMap: vi.fn(), turnStep } }));
+    host.camera.turnStep(-1);
+    expect(turnStep).toHaveBeenCalledWith(-1);
+  });
+
   it('round-trips the 2D camera through the registered renderer', () => {
     const renderer = fakeRenderer();
     setMapRenderer(renderer);
     host.camera.set2d({ x: 10, y: 20, zoom: 2 });
-    expect(renderer.viewport.setView).toHaveBeenCalledWith({ zoom: 2, offsetX: 10, offsetY: 20 });
+    expect(renderer.viewport.setView).toHaveBeenCalledWith({ zoom: 2, offsetX: 10, offsetY: 20, heading: 0 });
     expect(renderer.applyViewportTransform).toHaveBeenCalled();
     expect(host.camera.get2d()).toEqual({ x: 10, y: 20, zoom: 2 });
   });

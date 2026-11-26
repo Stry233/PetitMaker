@@ -12,12 +12,13 @@ import { pictureNotes } from '../../view/shared/annotation/draw-options';
 
 export interface PictureCall { state: GridState; options: DetachedCaptureOptions }
 
-/** Installs the stand-in; `uninstall` takes it away again. */
-export function installPictureRenderer(): { calls: PictureCall[]; uninstall: () => void } {
+/** Installs the stand-in, each picture landing only once `until` resolves when given; `uninstall` takes it away again. */
+export function installPictureRenderer(until?: Promise<void>): { calls: PictureCall[]; uninstall: () => void } {
   const calls: PictureCall[] = [];
   setMapRenderer({
     captureState: async (state: GridState, options: DetachedCaptureOptions = {}) => {
       calls.push({ state, options });
+      await until;
       // A canvas in jsdom; outside it, the one call the PNG path makes.
       return globalThis.document?.createElement('canvas') ?? ({ toDataURL: () => 'data:image/png;base64,' } as unknown as HTMLCanvasElement);
     },

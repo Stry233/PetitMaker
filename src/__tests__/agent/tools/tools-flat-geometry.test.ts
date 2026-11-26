@@ -245,7 +245,7 @@ describe('flat geometry: the schema stays emittable', () => {
     }).properties;
     for (const name of ['paint_terrain', 'erase_terrain', 'clear_area']) {
       const p = props(name);
-      expect(p.shape?.enum).toEqual(['rect', 'circle', 'line', 'cells']);
+      expect(p.shape?.enum).toEqual(['rect', 'circle', 'line', 'cells', 'picture']);
       for (const k of ['x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'width']) {
         expect(p[k]?.type, `${name}.${k}`).toBe('integer');
       }

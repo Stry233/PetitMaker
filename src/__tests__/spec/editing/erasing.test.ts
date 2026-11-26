@@ -34,7 +34,7 @@ describe('erasing', () => {
     const row = { x: at.x, y: at.y + 1 };
     plateau(w, row, 2, 1, 1);
     brush(w, { contentType: 'water' }).drag(east(row, 3), east(row, 4));
-    eraser(w, { contentType: 'water' }).drag(row, east(row, 4));
+    eraser(w, { contentType: 'water' }).drag(east(row, 4), row);
     expect(w.terrainAt(row)).toEqual({ type: TerrainType.Mountain, elevation: 1 });
     expect(w.terrainAt(east(row, 1))).toEqual({ type: TerrainType.Mountain, elevation: 1 });
     expect(w.terrainAt(east(row, 3))).toBeNull();

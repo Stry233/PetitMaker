@@ -23,7 +23,7 @@ import {
 } from '../core/model/types';
 import { getCell, clearsTerrain, commandGrid } from '../core/model/grid-model';
 import { cellKey } from '../core/grid/rect';
-import { groundZone, isBuildableZone, isSandZone } from '../core/game/zones';
+import { BUILDABLE_ZONES, SAND_ZONE, UNBUILDABLE_ZONES, groundZone, isBuildableZone, isSandZone, zoneName } from '../core/game/zones';
 import { groundZonesOf } from '../core/model/traits';
 import { getCatalogItem } from '../state/catalog';
 import { landmarkSpec } from '../core/game/profile';
@@ -76,8 +76,12 @@ export function paintBleedsOffBuildable(state: Pick<GridState, 'cells'>, coord: 
   }, coord);
 }
 
+const SAND = zoneName(SAND_ZONE);
+const UNBUILDABLE = UNBUILDABLE_ZONES.join('/');
+
 export const zoneRestrictionRule = definePreRule({
   id: 'V-ZONE-01',
+  description: `Build only on ${BUILDABLE_ZONES} zone. ${UNBUILDABLE.charAt(0).toUpperCase()}${UNBUILDABLE.slice(1)} reject all edits, except that an item whose groundZones trait allows ${SAND} may also stand wholly on ${SAND}; a footprint may cross from ${BUILDABLE_ZONES} to ${SAND} only when the trait allows the crossing.`,
   // Not RemoveObject: removal must always succeed, whatever the zone under the object. Gated by zone,
   // an object standing on non-grass could never be cleared — stuck in state and rendered forever.
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain, CommandType.PlaceObject],

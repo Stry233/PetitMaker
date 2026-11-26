@@ -11,6 +11,7 @@ This folder states what PetitMaker does, one requirement at a time, in words a p
 | [files.md](files.md) | saving, opening, autosave, share images, import and export | `FILE-01` on |
 | [planets.md](planets.md) | built-in and custom planets, landmarks, repair of opened maps | `PLAN-01` on |
 | [generation.md](generation.md) | Generate, Clear and Smart Build | `GEN-01` on |
+| [blueprints.md](blueprints.md) | the Blueprint mode: saving framed regions, the library, placing, files | `BLUE-NEW-` ids until numbered |
 | [interface.md](interface.md) | languages, motion, controls, export review, editions | `UI-01` on |
 | [assistant.md](assistant.md) | the optional AI assistant | `ASST-01` on |
 

@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PERF, perfSuite } from './_harness';
 import { islandConfig, makeWorld, type World } from './_fixtures';
 import { landmarkAt, worstCasePlanet } from '../_support/planet';
-import { importFromBytes } from '../../io/share/import';
+import { importFromBytes } from '../_support/png-raster';
 import { buildSaveFile, serialize } from '../../io/save/json-codec';
 import { encodeMapPayload, type ShareCodeMeta } from '../../io/share/codec/payload';
 import { evaluateMap } from '../_support/design-eval';
@@ -21,9 +21,9 @@ import { transferPreviewOf } from '../../tools/generation/run/planet-preview';
 import { reviveTransferPreview, wireGrid, type WireTransferPreview } from '../../tools/generation/run/candidate-wire';
 import { encodeCells } from '../../core/model/grid-wire';
 import { buildTransfer } from '../../tools/generation/transfer';
-import { sessionPlanet } from '../../editor/operations/planet-session';
+import { landmarkObjects } from '../../core/model/landmarks';
 import { getMapTemplate } from '../../config/maps';
-import { planetTemplateId, PLANET_MAX_CELLS } from '../../core/model/planet';
+import { cropPlanet, planetTemplateId, PLANET_MAX_CELLS } from '../../core/model/planet';
 import { createGridState } from '../../core/model/template';
 import { deriveBoundary, refreshBoundary } from '../../core/model/shore';
 import { PLANET_CANVAS_ID_PREFIX } from '../../tools/generation/run/planet-canvas';
@@ -33,7 +33,7 @@ import { validatePlanetTemplate } from '../../core/model/planet-validate';
 import { getPlacedObjectSize } from '../../state/object-geometry';
 import { footprintCells } from '../../core/grid/footprint';
 import { CommandType, TerrainType, type GridState, type MacroCell, type MacroCoord, type MapTemplate, type PaintTerrainCommand } from '../../core/model/types';
-import { CellZone } from '../../core/game/zones';
+import { CellZone, groundZone } from '../../core/game/zones';
 import { CommandExecutor } from '../../core/commands/command-executor';
 import { createPlanetRegistry } from '../../rules/index';
 import { createExecutor } from '../../state/executor';
@@ -242,7 +242,9 @@ describe.runIf(PERF)('perf: custom planet', () => {
 
   it('the session planet cut', async () => {
     const src = await readShareMap();
-    await trio('session-template', (st) => sessionPlanet(st)?.template ?? null, src, { maxSamples: 30 });
+    // The planet editor's Finish cut over a whole map: each cell's ground, the landmarks and the terrain.
+    const cut = (st: GridState) => cropPlanet(st.cells.map((row) => row.map(groundZone)), landmarkObjects(st), (x, y) => st.cells[y]?.[x]?.terrain, '');
+    await trio('session-template', (st) => cut(st)?.template ?? null, src, { maxSamples: 30 });
   });
 
   it('refreshBoundary per change at the largest brush and shape sizes', async () => {

@@ -6,6 +6,7 @@
  */
 import { heldToken } from '../../platform/input/combo';
 import { isKeyHeld, onHeldKeysChange } from '../../platform/input/held-keys';
+import { eventKeyToken } from '../../platform/input/key-token';
 import { effectiveCombo, type Overrides } from './resolve';
 import type { CommandId } from './registry';
 import { useKeybinds } from './store';
@@ -21,7 +22,7 @@ let memo: { overrides: Overrides; tokens: Map<HeldCommandId, string> } | null = 
 
 /** The key each held command waits on under the current overrides, '' for an unbound one. Read on
  *  every pointer move and pan frame, so it is computed once per overrides object. */
-function heldKeyOf(id: HeldCommandId): string {
+function heldKeys(): Map<HeldCommandId, string> {
   const overrides = useKeybinds.getState().overrides;
   if (memo?.overrides !== overrides) {
     const tokens = new Map<HeldCommandId, string>();
@@ -31,7 +32,24 @@ function heldKeyOf(id: HeldCommandId): string {
     }
     memo = { overrides, tokens };
   }
-  return memo.tokens.get(id) ?? '';
+  return memo.tokens;
+}
+
+function heldKeyOf(id: HeldCommandId): string {
+  return heldKeys().get(id) ?? '';
+}
+
+/** A modifier's own keydown names the key ('control', 'meta'), a binding the modifier ('ctrl'). */
+const MODIFIER_KEY_TOKEN: Record<string, string> = { control: 'ctrl', meta: 'ctrl', cmd: 'ctrl', option: 'alt' };
+
+/** Whether `event`'s key is one a held command waits on, so the press belongs to that command and
+ *  not to whatever control has the focus. A keydown a browser's autofill sends names no key. */
+export function isHeldCommandKey(event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'code'>): boolean {
+  if (typeof event.key !== 'string') return false;
+  const typed = eventKeyToken(event);
+  const token = MODIFIER_KEY_TOKEN[typed] ?? typed;
+  for (const key of heldKeys().values()) if (key !== '' && (MODIFIER_KEY_TOKEN[key] ?? key) === token) return true;
+  return false;
 }
 
 /** The held commands a touch latch holds, by the store flag that holds each. */

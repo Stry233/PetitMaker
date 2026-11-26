@@ -20,9 +20,11 @@ import { font, shadows, radii, cursors, z } from '../../../design/styles';
 import { CANVAS_GREEN, ON_DARK, rgbaOf } from '../../../design/tokens';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
-import { downloadView3d } from '../../../../editor/export/files';
+import { CheckIcon, CloseIcon, ExportFileIcon } from '../../../primitives/line-glyphs';
+import { exportView3d } from '../../../../editor/export/files';
+import { useExportNotice } from './review/ExportNotice';
 import { MapRenderer3D } from '../../../../view/map3d/scene/map-renderer';
-import { replaceShot } from '../../../../view/map3d/capture/shot-list';
+import { keepShotView } from '../../../../editor/export/shots';
 import { CARD_3D_CELL_ASPECT } from '../../../../io/export/facts';
 import { NO_MOTION, framerMotion } from '../../../design/motion';
 import { SurfaceOwner, useSurfaceScope } from '../../../primitives/surface-scope';
@@ -35,7 +37,7 @@ function floatBtn(top: number): CSSProperties {
     position: 'absolute', top, right: 18, width: 46, height: 46, borderRadius: radii.field,
     background: skin.plate, color: skin.ink, border: 'none', cursor: cursors.clickable,
     boxShadow: shadows.float, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontFamily: font.family, fontWeight: 900, fontSize: 24, lineHeight: 1, WebkitTapHighlightColor: 'transparent',
+    WebkitTapHighlightColor: 'transparent',
   };
 }
 
@@ -83,39 +85,37 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scope = useSurfaceScope({ open: visible, root: surfaceRef, onClose: () => setVisible(false), focus: 'contain' });
 
+  // The notice stands in front of this surface, which stands on the takeover rung itself.
+  const notice = useExportNotice(visible, null, gridState, 'image', 'takeover');
+  const [asking, setAsking] = useState(false);
+
   // The user's pan keys walk the camera here too. This overlay is the foreground, so it pans even
-  // though the export modal behind it holds the overlay lock that suppresses the editor's.
+  // though the export modal behind it holds the overlay lock that suppresses the editor's; the keys
+  // rest while the notice asks in front of it.
   useHeldPan(
     useCallback((dx: number, dy: number) => { sceneRef.current?.cameraVerbs().pan(dx, dy); }, []),
-    useCallback(() => visible, [visible]),
+    useCallback(() => visible && !asking, [visible, asking]),
   );
 
   const close = () => setVisible(false);
 
   // Edit mode: capture whatever the user orbited to into the target shot, then close. Cancel/Esc/×
-  // just close (the shot keeps its previous angle); preview3DEdit is cleared on exit-complete below.
+  // just close (the shot keeps its previous angle); closing the window ends the edit.
   const useThisView = () => {
     const scene = sceneRef.current;
-    const st = useEditorStore.getState();
-    const ed = st.preview3DEdit;
-    if (scene && ed) st.setExport3dShots(replaceShot(st.export3dShots, ed.index, scene.getCurrentAngle()));
+    if (scene) keepShotView(scene.getCurrentAngle());
     setVisible(false);
   };
 
-  // Save a PNG of the current 3D framing, decoding the capture's data: URL to a Blob.
   const onCapture = () => {
     const scene = sceneRef.current;
-    if (!scene) return;
-    // In edit mode the download is the framed slice (matches the viewfinder + the
-    // exported shot); otherwise it's the whole view.
-    const editing = !!useEditorStore.getState().preview3DEdit;
-    const url = editing ? scene.captureFramed(CARD_3D_CELL_ASPECT) : scene.captureImage();
-    if (!url) return;
-    downloadView3d(url);
+    if (!scene || asking) return;
+    setAsking(true);
+    void exportView3d(scene, { confirmNotice: notice.request }).finally(() => setAsking(false));
   };
 
   return (
-    <AnimatePresence onExitComplete={() => { useEditorStore.getState().setPreview3DEdit(null); onClose(); }}>
+    <AnimatePresence onExitComplete={onClose}>
       {visible && (
         <motion.div
           key="preview3d"
@@ -143,7 +143,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
               so the exported still is exactly the full-HEIGHT, centre-WIDTH slice of
               what's on screen. The frame marks that slice (largest centred box of the
               cell's aspect → full height for a wide screen) and dims the rest; the
-              download (onCapture) crops to the same region. */}
+              download crops to the same region. */}
           {edit && gridState && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               {/* Largest centred box of the cell's aspect that fits the viewport
@@ -162,7 +162,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
             interaction="tile"
             style={{ ...floatBtn(18), zoom: chrome }}
          >
-            <span aria-hidden>×</span>
+            <CloseIcon />
             {closeName.bubble}
           </ActionButton>
 
@@ -175,7 +175,7 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
               interaction="tile"
               style={{ ...floatBtn(74), zoom: chrome }}
            >
-              <span aria-hidden>⤓</span>
+              <ExportFileIcon />
               {imageName.bubble}
             </ActionButton>
           )}
@@ -195,13 +195,12 @@ export function Preview3D({ onClose }: { onClose: () => void }) {
             <div style={{ position: 'absolute', left: '50%', bottom: 24, transform: 'translateX(-50%)', display: 'flex', gap: 10, zoom: chrome }}>
               <ActionButton onClick={useThisView} interaction="tile"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: skin.ink, color: skin.plate, border: 'none', borderRadius: radii.md, padding: '10px 20px', fontFamily: font.family, ...roleFont('action'), cursor: cursors.clickable, boxShadow: shadows.float }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 13l4 4L19 7" stroke={skin.active} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <span style={{ display: 'flex', color: skin.active }}><CheckIcon size={17} /></span>
                 {t('export.use_this_view')}
               </ActionButton>
             </div>
           )}
+          {notice.notice}
           </SurfaceOwner.Provider>
         </motion.div>
       )}

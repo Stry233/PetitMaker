@@ -4,10 +4,12 @@
  * otherwise hold the incoming badge at scale(0). Zero-delay steps run synchronously.
  */
 import { INSET, TRACK } from '../../design/tokens';
+import { holdSeconds } from '../../design/motion';
+import { CSS_CURVES } from '../../design/motion/curves';
 import type { BadgeId } from './badges';
 import type { Garnish } from './intent';
 import {
-  CURVES, MICRO, POSE_DWELL, POSES, PRESS_SQUASH, PUFF, WAKE_BEAT,
+  BADGE_BEATS, MICRO, POSE_DWELL, POSES, PRESS_SQUASH, PUFF, WAKE_BEAT,
   type PoseKeyframe, type PoseName, type PoseTimer, type PoseTrack,
 } from './poses';
 
@@ -34,12 +36,6 @@ const REAL_CLOCK: PoseClock = {
   now: () => Date.now(),
 };
 
-const BADGE_SWAP_OUT_MS = 110;
-const BADGE_SWAP_GAP_MS = 60;
-/** The ask badge's longer boing is a different landing weight from the ordinary pop. */
-const BADGE_BOING_MS = 420;
-/** How long a blink holds the lids down. */
-const BLINK_MS = 130;
 /** How long a reduced one-shot stands before it settles. */
 const REDUCED_SETTLE_MS = 900;
 
@@ -140,7 +136,7 @@ export class PoseEngine {
             { transform: 'translate(0,0) scale(.6)', opacity: 0.9 },
             { transform: `translate(${i * 10}px,${i === 0 ? 3 : -5}px) scale(1)`, opacity: 0 },
           ],
-          { duration: PUFF.dur, easing: CURVES.out, delay: k * PUFF.stagger, fill: 'forwards' },
+          { duration: PUFF.dur, easing: CSS_CURVES.toss, delay: k * PUFF.stagger, fill: 'forwards' },
         );
       }
       this.timers.push(this.clock.set(() => d.remove(), PUFF.clearAfter));
@@ -243,7 +239,7 @@ export class PoseEngine {
   private micro(name: PoseTimer['run']): void {
     if (name === 'blink') {
       this.setLids(true);
-      this.schedule(() => { if (!(this.worn && POSES[this.worn].lids)) this.setLids(false); }, BLINK_MS);
+      this.schedule(() => { if (!(this.worn && POSES[this.worn].lids)) this.setLids(false); }, holdSeconds('character.blink.lid') * 1000);
       return;
     }
     const m = MICRO[name];
@@ -270,11 +266,11 @@ export class PoseEngine {
       const kf: PoseKeyframe[] = curve === 'boing'
         ? [{ transform: 'scale(0)' }, { transform: 'scale(1.25)', offset: 0.55 }, { transform: 'scale(.95)', offset: 0.8 }, { transform: 'scale(1)' }]
         : [{ transform: 'scale(0)' }, { transform: 'scale(1.18)', offset: 0.6 }, { transform: 'scale(1)' }];
-      el.animate(kf as Keyframe[], { duration: curve === 'boing' ? BADGE_BOING_MS : this.popMs, easing: 'linear' });
+      el.animate(kf as Keyframe[], { duration: curve === 'boing' ? BADGE_BEATS.boing : this.popMs, easing: CSS_CURVES.linear });
     };
     if (this.badge && !this.reduced && typeof el.animate === 'function') {
-      el.animate([{ transform: 'scale(1)' }, { transform: 'scale(0)' }], { duration: BADGE_SWAP_OUT_MS, easing: CURVES.inn, fill: 'forwards' });
-      this.schedule(showNew, BADGE_SWAP_OUT_MS + BADGE_SWAP_GAP_MS + delay);
+      el.animate([{ transform: 'scale(1)' }, { transform: 'scale(0)' }], { duration: BADGE_BEATS.swapOut, easing: CSS_CURVES.gravity, fill: 'forwards' });
+      this.schedule(showNew, BADGE_BEATS.swapOut + BADGE_BEATS.swapGap + delay);
     } else {
       this.schedule(showNew, delay);
     }

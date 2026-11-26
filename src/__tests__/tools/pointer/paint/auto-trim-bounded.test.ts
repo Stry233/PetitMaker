@@ -28,7 +28,7 @@ function commandsPerDab(n: number, content: ContentType): number[] {
   const state = makeState(120, 120);
   const executor = makeExecutor(state);
   let count = 0;
-  const ctx = makeToolCtx(state, executor, 1, 1, {
+  const ctx = makeToolCtx(state, executor, 1, {
     contentType: content,
     autoEdgeCut: 'round',
     execute: (cmd: Command) => { count++; return executor.execute(cmd); },

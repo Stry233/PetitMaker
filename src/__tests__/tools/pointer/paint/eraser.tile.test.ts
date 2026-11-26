@@ -21,7 +21,7 @@ describe('EraserTool: tile surface', () => {
     placeTileCell(m(5, 5), makeToolCtx(state, e), new Set());
     expect(objectsByCatalog(state, 'path-overgrown-dirt').length).toBe(1);
 
-    const tileCtx = makeToolCtx(state, e, 1, 1, { contentType: 'road' });
+    const tileCtx = makeToolCtx(state, e, 1, { contentType: 'road' });
     const eraser = new EraserTool();
     eraser.onPointerDown(cell(m(5, 5)), point(m(5, 5)), tileCtx);
     eraser.onPointerUp(cell(m(5, 5)), point(m(5, 5)), tileCtx);

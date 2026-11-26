@@ -111,7 +111,7 @@ describe('the edge-cut tool on a pit', () => {
     setTerrain(state, 10, 11, TerrainType.Mountain, 1);
     setTerrain(state, 11, 9, TerrainType.Mountain, 2);
     const executor = makeExecutor(state);
-    const ctx = makeToolCtx(state, executor, 1, 1);
+    const ctx = makeToolCtx(state, executor, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);
     // A click governs the four corners around an intersection, so these four reach every corner of
@@ -128,7 +128,7 @@ describe('the edge-cut tool on a pit', () => {
     setTerrain(state, 10, 9, TerrainType.Mountain, 1);
     setTerrain(state, 9, 9, TerrainType.Mountain, 1);
     const executor = makeExecutor(state);
-    const ctx = makeToolCtx(state, executor, 1, 1);
+    const ctx = makeToolCtx(state, executor, 1);
     const tool = new EdgeCutTool();
     tool.onActivate(ctx);
     // Intersection (9,9) is the cell's top-left corner, the one the mass wraps.

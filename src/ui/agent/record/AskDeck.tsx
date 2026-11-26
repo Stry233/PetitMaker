@@ -5,13 +5,13 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { ASK_SPINE, markFor, VerdictChip, type VerdictMark } from './GateBlock';
+import { ASK_SPINE_PAD, AskSpine, markFor, VerdictChip, type VerdictMark } from './GateBlock';
 import { Icon } from '../parts/sprite';
 import { Disclosure } from '../../primitives/Disclosure';
 import { ActionButton } from '../../primitives/ActionButton';
 import { useReadingIntent } from '../parts/scroll-intent';
 import { edge } from '../panel-skin';
-import { INK, LINE, MUTED, PLATE } from '../../design/tokens';
+import { INK, MUTED, PLATE } from '../../design/tokens';
 import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
@@ -67,23 +67,22 @@ function faceMark(ask: AskRecord): { mark: VerdictMark; word?: string } | undefi
   const word = ask.words !== undefined ? { word: ask.words } : {};
   if (ask.options) {
     if (ask.verdict === 'words') {
-      return ask.options.some((option) => option.cap === ask.words)
-        ? { mark: 'picked' }
-        : { mark: 'none-words', ...word };
+      return ask.answeredBy === 'option' ? { mark: 'picked' } : { mark: 'none-words', ...word };
     }
     if (ask.verdict === 'declined') return { mark: 'none-held' };
     return { mark: ask.verdict, ...word };
   }
-  return { mark: markFor(ask, ask.quickAnswers)!, ...word };
+  return { mark: markFor(ask)!, ...word };
 }
 
 /** Deck face using the settled approval-card treatment. */
 const FACE_STYLE: CSSProperties = {
+  position: 'relative',
   background: PLATE,
   border: edge,
-  borderLeft: `${ASK_SPINE}px solid ${LINE}`,
   borderRadius: radii.md,
   padding: 12,
+  paddingLeft: ASK_SPINE_PAD,
   display: 'flex',
   alignItems: 'center',
   gap: 10,
@@ -140,6 +139,7 @@ export function AskDeck({
         onClick={() => setOpen(!open)}
         style={FACE_STYLE}
       >
+        <AskSpine settled />
         {/* The count is the face's primary fact and never truncates; the chip is the one that gives
             (it carries its own ellipsis), since its full sentence stands on the card inside. */}
         <span

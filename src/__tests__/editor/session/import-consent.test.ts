@@ -47,6 +47,8 @@ vi.setConfig({ testTimeout: 60_000 });
 const FILE = join(__dirname, '..', '..', 'fixtures', 'saves', 'hexia-plaza-frame-1.5.557.json.gz');
 const SAVED_SESSION = '{"saved":"session"}';
 const store = () => useEditorStore.getState();
+/** The responsibility notice, confirmed at once. */
+const CONFIRMED = { confirmNotice: async () => true };
 
 /** Everything of the open map a load must not touch before it is chosen. */
 function openMap() {
@@ -171,7 +173,7 @@ describe.each(Object.keys(PATHS))('Export first while opening %s', (path) => {
     const before = openMap();
     const exportedAt = store().exportedAt;
     await PATHS[path]!();
-    expect(exportUnrepaired()).toBe(true);
+    expect(await exportUnrepaired(CONFIRMED)).toBe(true);
     expect(downloads).toHaveLength(1);
     expect(await readBlob(downloads[0]!.blob, 'text')).toBe(await EXPORTED[path]!());
     expect(store().repairSession?.phase).toBe('choose');
@@ -186,6 +188,25 @@ describe.each(Object.keys(PATHS))('Export first while opening %s', (path) => {
   });
 });
 
+describe('Export first without a confirmed notice', () => {
+  it('[FILE-31] downloads nothing for any caller and leaves the choice open', async () => {
+    const before = openMap();
+    await PATHS['a save file']!();
+    const confirmNotice = vi.fn(async () => false);
+    expect(await exportUnrepaired({ confirmNotice })).toBe(false);
+    expect(confirmNotice).toHaveBeenCalledTimes(1);
+    expect(downloads).toHaveLength(0);
+    expect(store().repairSession?.phase).toBe('choose');
+    expect(openMap()).toEqual(before);
+  });
+
+  it('downloads nothing once the choice was made while the notice stood', async () => {
+    await PATHS['a save file']!();
+    expect(await exportUnrepaired({ confirmNotice: async () => { cancelRepair(); return true; } })).toBe(false);
+    expect(downloads).toHaveLength(0);
+  });
+});
+
 describe('Export first over a fresh planet', () => {
   it('downloads the old save whole, with the objects the repair would move, never the empty open map', async () => {
     newMap(editorPort, 'hexia');
@@ -194,7 +215,7 @@ describe('Export first over a fresh planet', () => {
     await PATHS['a save file']!();
     const session = store().repairSession!;
     if (session.phase !== 'choose') throw new Error(session.phase);
-    expect(exportUnrepaired()).toBe(true);
+    expect(await exportUnrepaired(CONFIRMED)).toBe(true);
     const text = await readBlob(downloads[0]!.blob, 'text');
     expect(text).toBe(saveText());
     // The file reopens as the old save it is: the same objects, where the save had them, and the same report.

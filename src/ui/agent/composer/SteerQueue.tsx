@@ -69,6 +69,8 @@ const TEXT_STYLE: CSSProperties = {
 
 const MORE_STYLE: CSSProperties = {
   alignSelf: 'flex-start',
+  // Stands on the chips' left edge, past the balanced scroll gutter the record above also keeps.
+  marginLeft: 'var(--scrollbar-size)',
   flex: '0 0 auto',
   display: 'inline-flex',
   alignItems: 'center',
@@ -116,7 +118,7 @@ export function SteerQueue({ steers, onRecall }: SteerQueueProps) {
   return (
     // Preserve the zone in the layout while the queue is empty.
     <div data-testid="panel-steer-zone" style={ZONE_STYLE}>
-      <ScrollArea data-testid="steer-chips" gutter="stable" fade="none" style={CHIPS_STYLE}>
+      <ScrollArea data-testid="steer-chips" gutter="stable both-edges" fade="none" style={CHIPS_STYLE}>
         <DisclosureStack gap={GAP}>
           <AnimatePresence initial={false}>
             {shown.map((steer) => {

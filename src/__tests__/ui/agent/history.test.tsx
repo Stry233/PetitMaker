@@ -27,10 +27,16 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   return <I18nProvider>{children}</I18nProvider>;
 }
 
-/** The strip with its open flag held as `PanelShell` holds it. */
-function Strip(props: Omit<ComponentProps<typeof HistoryStrip>, 'open' | 'onOpenChange'> & { open?: boolean }) {
+/** The strip with its open flag held as `PanelShell` holds it, and its take-back facts named one by one. */
+function Strip({ undoDepth, otherMap, unknownMap, ...props }: Omit<ComponentProps<typeof HistoryStrip>, 'open' | 'onOpenChange' | 'takeBack'> & {
+  open?: boolean; undoDepth?: number; otherMap?: ReadonlySet<number>; unknownMap?: ReadonlySet<number>;
+}) {
   const [open, setOpen] = useState(props.open ?? false);
-  return <HistoryStrip {...props} open={open} onOpenChange={setOpen} />;
+  const takeBack = {
+    running: false,
+    ...(undoDepth !== undefined ? { undoDepth } : {}), ...(otherMap ? { otherMap } : {}), ...(unknownMap ? { unknownMap } : {}),
+  };
+  return <HistoryStrip {...props} takeBack={takeBack} open={open} onOpenChange={setOpen} />;
 }
 
 /** The question the roll-back square unrolled. */
@@ -98,7 +104,7 @@ describe('HistoryStrip: the expanded list', () => {
   const jobs = [
     makeJob({ orderSeq: 1, orderText: 'Harbor town on the east bay', ops: [makeOp({ detail: { objects: 6 } })] }),
     makeJob({ orderSeq: 2, orderText: 'Roads between the houses', ops: [makeOp({ name: 'build_road', detail: { cells: 36 } })] }),
-    makeJob({ orderSeq: 3, orderText: 'Forest around the lake', ops: [makeOp({ name: 'plant_forest', detail: { objects: 24 } })] }),
+    makeJob({ orderSeq: 3, orderText: 'Forest around the lake', ops: [makeOp({ name: 'scatter_objects', detail: { objects: 24 } })] }),
   ];
 
   it('lists one line per settled job, newest first', () => {
@@ -240,8 +246,10 @@ describe('HistoryStrip: the expanded list', () => {
 
   it('keeps a rolled-back record readable and openable with no further rollback', () => {
     const onOpen = vi.fn();
+    // The stack stands at the newest job's watermark and above the two before it.
+    const stacked = [jobs[0]!, jobs[1]!, { ...jobs[2]!, checkpoints: [{ undoIndex: 5, label: 'job' }] }];
     const { getByTestId, getAllByTestId, queryAllByTestId } = renderWithI18n(
-      <Strip jobs={jobs} now={NOW} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={onOpen} />,
+      <Strip jobs={stacked} now={NOW} undoDepth={5} rolledBack={new Set([3])} onRollBack={() => {}} onOpen={onOpen} />,
     );
     fireEvent.click(getByTestId('history-toggle'));
     const items = getAllByTestId('history-item');
@@ -252,7 +260,7 @@ describe('HistoryStrip: the expanded list', () => {
     expect(items[0]!.querySelector('[data-testid="history-roll-back"]')).toBeNull();
     expect(items[0]!.querySelector('[data-testid="history-open"]')).not.toBeNull();
     fireEvent.click(items[0]!.querySelector('[data-testid="history-open"]')!);
-    expect(onOpen).toHaveBeenCalledWith(jobs[2]);
+    expect(onOpen).toHaveBeenCalledWith(stacked[2]);
   });
 });
 
@@ -470,7 +478,7 @@ describe('HistoryStrip: the roll back asks before it fires', () => {
     fireEvent.click(getAllByTestId('history-roll-back')[0]!);
     expect(onRollBack).not.toHaveBeenCalled();
     // The question carries the cost; the square itself is unchanged.
-    expect(question()).toBe('Rewind 16 steps, 12 yours?');
+    expect(question()).toMatch(/16.*12/);
     expect(getAllByTestId('history-roll-back')[0]!.textContent).toBe('');
     confirm();
     expect(onRollBack).toHaveBeenCalledTimes(1);

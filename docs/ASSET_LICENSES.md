@@ -1,6 +1,6 @@
 # Asset Licenses & Provenance
 
-This repository contains code, branding, original art, third-party assets and user works under different terms. Code uses Apache-2.0; other materials follow their own licenses or explicit permissions. This document records their sources and use conditions, including the permission the project grants under “Sharing what you export”.
+This repository contains code, branding, original art, third-party assets and user works under different terms. Code uses FSL-1.1-ALv2; other materials follow their own licenses or explicit permissions. This document records their sources and use conditions, including the permission the project grants under “Sharing what you export”.
 
 PetitMaker, whose Chinese name is 谷地工坊, is an independent, unofficial fan project. It is **not affiliated** with, endorsed by, or sponsored by miHoYo / HoYoverse (COGNOSPHERE PTE. LTD.). *Petit Planet*, whose Chinese name is 星布谷地, and related names, characters, and material are the property of their respective owners.
 
@@ -8,7 +8,7 @@ PetitMaker, whose Chinese name is 谷地工坊, is an independent, unofficial fa
 
 The repository contains four distinct classes of material, each under its own terms:
 
-1. **Code**: the application and tooling source code, plus configuration files that are not assets or document content assigned different terms below. Licensed **Apache-2.0** (see `LICENSE` and `NOTICE`). Inbound code contributions are under the same license (see `CONTRIBUTING.md`). A file is not Apache-2.0 merely because it sits under `src/` or `scripts/`.
+1. **Code**: the application and tooling source code, plus configuration files that are not assets or document content assigned different terms below. Licensed **FSL-1.1-ALv2**, the Functional Source License, under which each version becomes available under Apache-2.0 two years after it is made available; versions up to and including v2.0.916 stay licensed Apache-2.0 (see `LICENSE` and `NOTICE`). Inbound code contributions are under the same license (see `CONTRIBUTING.md`). A file is not under the code license merely because it sits under `src/` or `scripts/`.
 2. **Brand, logo, and original art**: the PetitMaker name and logo, and original artwork created for the project. Examples include the catalog item sprites under `src/assets/icons/catalog/` and the UI chrome icons under `src/assets/icons/ui/`, and the original low-poly 3D model specifications (`model3d`) authored in the catalog's model files (`src/config/catalog/**/*.model.json`). These are **All Rights Reserved** unless a specific file or section states otherwise. They are **not** covered by the code's Apache-2.0 license. The project's original art is led by **火山野牛王**. (Sharing your own editor exports that embed this art is expressly permitted; see [Sharing what you export](#sharing-what-you-export).)
 3. **Third-party assets and fonts**: third-party materials keep **their own licenses**; nothing here overrides or relicenses them. Bundled software dependencies are recorded in `THIRD_PARTY_NOTICES.md`; the shipped fonts (Alibaba PuHuiTi 3 and the Quicksand-derived PW Rounded Sans), together with their exact license texts and subsetting findings, are recorded in the **Fonts** section of `THIRD_PARTY_NOTICES.md`; refer to that section rather than this file for font terms.
 4. **User maps**: rights in maps and other content created in the editor belong to their respective creators, subject to any third-party material they incorporate (game-referential names, templates, or assets remain their owners'). For the images and files you export and share, see [Sharing what you export](#sharing-what-you-export).
@@ -29,21 +29,21 @@ The images and files the editor produces for you (screenshots, exported map file
 
 | Item | License | Owner | Notes |
 |---|---|---|---|
-| Application and tooling source code, and non-asset configuration | Apache-2.0 | PetitMaker contributors | See `LICENSE` / `NOTICE`; contributors retain copyright, and contributions and redistribution use the same license. Assets and authored document content listed elsewhere in this file retain their stated terms. |
+| Application and tooling source code, and non-asset configuration | FSL-1.1-ALv2 | PetitMaker contributors | See `LICENSE` / `NOTICE`; contributors retain copyright, and contributions and redistribution use the same license. Assets and authored document content listed elsewhere in this file retain their stated terms. |
 | Bundled software dependencies | Their own licenses | Upstream authors | Enumerated in `THIRD_PARTY_NOTICES.md`; full texts under `licenses/<pkg>/`. |
 
 ### Brand & original art
 
 | Item | License | Owner | Notes |
 |---|---|---|---|
-| PetitMaker name and logo | All Rights Reserved | PetitMaker | Not licensed under Apache-2.0. |
+| PetitMaker name and logo | All Rights Reserved | PetitMaker | Not licensed under the code license. |
 | Catalog item sprites (`src/assets/icons/catalog/`) | All Rights Reserved (unless stated) | 火山野牛王 | Project-created item art, except the game-derived `path-*.png` surfaces listed below. The project has verified permission to ship the original sprites and to let users share editor exports that embed them; game-referential publication remains subject to the disclosure below. |
 | UI chrome icons (`src/assets/icons/ui/`) | All Rights Reserved (unless stated) | 火山野牛王 | Interface art created for the project. The project has verified permission to ship it and to let users share editor exports that embed it. |
 | Drawn cursor art (`src/assets/cursors/*.svg`) | All Rights Reserved; project display permission confirmed | 火山野牛王 | Generated from project design art. Permission for display in this project has been confirmed; standalone reuse requires separate permission. |
 | Extracted shell art (`src/assets/shell/`) | All Rights Reserved; project display permission confirmed | 火山野牛王 | Interface plates, illustrations, and glyphs generated from project design art. Permission for display in this project has been confirmed; standalone reuse requires separate permission. |
 | Original low-poly 3D model specs (`model3d`) | All Rights Reserved (unless stated) | PetitMaker | Original interpretations authored in the catalog's model files; game-referential where noted (see below). |
 | Illustration samples (`src/assets/stylize/*.webp`, excluding `neural-*.webp`) | All Rights Reserved to the extent protectable; no separate reuse license granted | PetitMaker contributors, subject to provider and source rights | Project-generated examples used by the illustration studio. Provider terms and rights in the source map remain applicable. |
-| On-device model weights and previews (`src/assets/stylize/models/*.onnx`, `src/assets/stylize/neural-*.webp`) | No separate reuse license granted; provenance review incomplete | PetitMaker contributors, subject to provider and source rights | Student models trained from provider-generated examples based on project map renders, plus previews generated by those models. They are product assets, not Apache-2.0 source code. Do not treat them as cleared for reuse; see the disclosure below. |
+| On-device model weights and previews (`src/assets/stylize/models/*.onnx`, `src/assets/stylize/neural-*.webp`) | No separate reuse license granted; provenance review incomplete | PetitMaker contributors, subject to provider and source rights | Student models trained from provider-generated examples based on project map renders, plus previews generated by those models. They are product assets, not source code under the code license. Do not treat them as cleared for reuse; see the disclosure below. |
 
 ### Third-party assets & fonts
 
@@ -53,7 +53,7 @@ The images and files the editor produces for you (screenshots, exported map file
 | PW Rounded Sans, derived from Quicksand, files `Quicksand-*.woff2` | SIL Open Font License 1.1 | The Quicksand Project Authors | Modified and renamed under the reserved-font-name requirement; see `THIRD_PARTY_NOTICES.md`. |
 | MgOpen Helvetiker Bold, file `helvetiker_bold.typeface.json` (3D legend outlines) | MgOpen font license | MAGENTA Ltd. | Unmodified typeface data from three.js r169; may not be sold by itself; see `THIRD_PARTY_NOTICES.md`. |
 | Welcome tips reels (`src/assets/tour/`) | All Rights Reserved to the extent protectable; no separate reuse license granted | PetitMaker contributors | Screen recordings of the editor itself, with their posters and timing tables, encoded as AV1, H.264 and JPEG. They show the project's own interface and item art under the terms listed above for that art. |
-| Team member avatars (`src/assets/team/`) | Project display permission confirmed; no standalone reuse license | The individual members | Bilibili profile images displayed on the About screen. The members have consented to their display in this project. |
+| Team member avatars (`src/assets/team/`) | Project display permission confirmed; no standalone reuse license | The individual members | <!-- web -->Bilibili profile images displayed on the About screen.<!-- /web --><!-- lite: The members' social media profile pictures, displayed on the About screen. --> The members have consented to their display in this project. |
 | AI provider brand marks (`src/assets/agent/provider-logos.tsx`) | Collection: MIT (Lobe Icons). Marks: each owner's trademark; no project license claimed | LobeHub (the collection); each provider (its own mark) | Drawn into the README's supported-provider figure (`docs/media/providers.png`) for identification. See the note below and `THIRD_PARTY_NOTICES.md` → Vendored assets. |
 
 **AI provider brand marks.** The README's supported-provider figure shows each platform's mark so a reader can identify the services the assistant connects to. Every provider name and logo shown there is a trademark of its respective owner and appears for identification only. This project is not affiliated with, endorsed by, or sponsored by those providers, and displaying a mark does not claim a partnership or their support for this software.

@@ -2,12 +2,9 @@ import type { ReviewProgress, ReviewResult, TextPart } from './policy';
 import { createWorkerClient, WORKER_IDLE_MS } from '../../../platform/async/worker-client';
 import { throwIfAborted } from '../../../platform/async/abort';
 import type { TextReviewReply, TextReviewRequest } from './review.worker';
+import { ReviewTooLong, ReviewUnavailable, reviewOnThread, reviewTooLong } from './review-here';
 
-export class ReviewUnavailable extends Error {}
-export class ReviewTooLong extends Error {}
-
-/** The most characters one review accepts, segments included. */
-export const REVIEW_MAX_CHARS = 4096;
+export { REVIEW_MAX_CHARS, ReviewTooLong, ReviewUnavailable } from './review-here';
 
 const spawnReviewWorker = () => new Worker(new URL('./review.worker.ts', import.meta.url), { type: 'module' });
 
@@ -22,25 +19,13 @@ export class ReviewWorkerLease {
   }
 }
 
-/** The same review on this thread, for an engine with no module worker to run it in. */
-async function reviewOnThread(parts: TextPart[], signal: AbortSignal, progress: (p: ReviewProgress) => void): Promise<ReviewResult> {
-  progress({ phase: 'checking' });
-  let result: ReviewResult;
-  // Submitted text and internal stacks must not enter UI error reporting.
-  try { result = await (await import('./review-run')).runReview(parts); } catch { throw new ReviewUnavailable(); }
-  throwIfAborted(signal);
-  return result;
-}
-
 /** Approval is per request; package matchers may outlive a check within the worker lease. */
 export async function reviewText(
   parts: TextPart[], signal: AbortSignal, progress: (p: ReviewProgress) => void, lease?: ReviewWorkerLease,
 ): Promise<ReviewResult> {
   throwIfAborted(signal);
   if (!parts.length) return { allowed: true };
-  if (parts.reduce(
-    (n, p) => n + p.text.length + (p.segments?.reduce((size, text) => size + text.length, 0) ?? 0), 0,
-  ) > REVIEW_MAX_CHARS) throw new ReviewTooLong();
+  if (reviewTooLong(parts)) throw new ReviewTooLong();
   if (typeof Worker === 'undefined') return reviewOnThread(parts, signal, progress);
   const client = lease?.client ?? createWorkerClient<TextReviewRequest, TextReviewReply>({ spawn: spawnReviewWorker, idleMs: 0 });
   // Null is the worker reporting that its check failed.

@@ -1,5 +1,5 @@
 /** Structural admission shared by map decoding and history restoration. */
-import { ROTATIONS, TerrainType, type CatalogItem } from '../../core/model/types';
+import { CORNER_TRIMS, ROTATIONS, TerrainType, type CatalogItem, type Corners, type Rotation } from '../../core/model/types';
 import { onItemGrid } from '../../state/object-geometry';
 import { ELEVATION_MAX } from '../../core/game/profile';
 import { isFiniteNumber } from '../../core/base/guards';
@@ -10,15 +10,16 @@ import { currentCatalogId } from '../../config/catalog/retired-ids';
 /** Terrain types a decoded/imported cell may legally carry (None/Mountain/Water). */
 const VALID_TERRAIN_TYPES: readonly number[] = [TerrainType.None, TerrainType.Mountain, TerrainType.Water];
 
-export const isValidTerrainType = (t: unknown): boolean => VALID_TERRAIN_TYPES.includes(t as number);
-export const isValidRotation = (r: unknown): boolean => (ROTATIONS as readonly number[]).includes(r as number);
+export const isValidTerrainType = (t: unknown): t is TerrainType => VALID_TERRAIN_TYPES.includes(t as number);
+export const isValidRotation = (r: unknown): r is Rotation => (ROTATIONS as readonly unknown[]).includes(r);
 
 /** An elevation-like field (elevation / patchBase): an integer within [0, ELEVATION_MAX]. */
-export const isValidElevation = (e: unknown): boolean =>
+export const isValidElevation = (e: unknown): e is number =>
   Number.isInteger(e) && (e as number) >= 0 && (e as number) <= ELEVATION_MAX;
 
-/** An object id in the alphabet the app emits. Ids can enter model context, so a decoder admits no other. */
-export const isValidObjectId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+/** Four known corner trims. */
+export const isValidCorners = (v: unknown): v is Corners =>
+  Array.isArray(v) && v.length === 4 && v.every((t) => (CORNER_TRIMS as readonly unknown[]).includes(t));
 
 interface ImportBounds { width: number; height: number }
 

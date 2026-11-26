@@ -300,7 +300,7 @@ export function layRoadNetwork(ctx: MacroContext, input: RoadNetworkInput): Road
   // A caller with a `replace` list never arrives here over its own network, and that is the point of
   // the list: it took that network back above, so what remains is a map full of buildings wanting a
   // road and the run lays another candidate. This report is for the caller that has no list to hand
-  // — a press after a reload, the agent's director tool — where "the network already touches
+  // — a press after a reload — where "the network already touches
   // everything" is still the whole truth.
   if (doors === 0) {
     return served > 0

@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three';
 import type { GridState } from '../../../core/model/types';
+import type { RoadLookup } from '../../../core/model/road-lookup';
+import type { MeshData } from '../geometry/types';
 import { coatingLayer } from '../../../core/model/traits';
 import { roadPatternKey, roadPatternRepeat } from '../../shared/road/pattern';
 import { getCatalogItem } from '../../../state/catalog';
@@ -17,7 +19,8 @@ import { toGeometry } from '../draw/mesh-upload';
 
 /** What the road surfaces read from the scene that holds them. */
 interface RoadSurfacesHost {
-  readonly scene: THREE.Scene;
+  /** What the surfaces are added to: the scene, or a placement ghost's group. */
+  readonly scene: THREE.Object3D;
   /** The live map. */
   state(): GridState;
   hiddenLayers(): ReadonlySet<number>;
@@ -28,6 +31,12 @@ interface RoadSurfacesHost {
   requestRender(): void;
   /** Owes a rebuild, which the scene runs once per rendered frame. */
   rebuildOwed(): void;
+  /** What of each surface mesh is drawn; the whole of it by default. */
+  clip?(mesh: MeshData): MeshData;
+  /** The road lookup the surfaces of `state` read; the state's own roads by default. */
+  roads?(state: GridState): RoadLookup;
+  /** Applied once to every material the surfaces create, after its own colour: a ghost's look. */
+  paint?(mat: THREE.MeshLambertMaterial): void;
 }
 
 export class RoadSurfaces3D {
@@ -53,6 +62,7 @@ export class RoadSurfaces3D {
       vertexColors: true, flatShading: true, side: THREE.DoubleSide, transparent: true, depthWrite: false,
     });
     softenRoadEdge(this.material);
+    host.paint?.(this.material);
   }
 
   /** Rebuilds the surfaces of `state` (the live map by default). `offsets` displaces named roads
@@ -63,8 +73,10 @@ export class RoadSurfaces3D {
     for (const geo of this.geometries) geo.dispose(); // the materials are cached per material, not per rebuild
     this.meshes = [];
     this.geometries = [];
-    for (const part of buildRoadTrimMeshes(state, this.host.hiddenLayers(), offsets, this.cache)) {
-      const geo = toGeometry(part.mesh, 'road trim');
+    for (const part of buildRoadTrimMeshes(state, this.host.hiddenLayers(), offsets, this.cache, this.host.roads?.(state))) {
+      const drawn = this.host.clip ? this.host.clip(part.mesh) : part.mesh;
+      if (drawn.index.length === 0) continue;
+      const geo = toGeometry(drawn, 'road trim');
       const mesh = new THREE.Mesh(geo, this.materialFor(part));
       mesh.renderOrder = coatingLayer(getCatalogItem(part.material));
       // A flat decal on the surface casts no shadow of its own — and the shadow depth pass ignores
@@ -99,6 +111,7 @@ export class RoadSurfaces3D {
     const hit = this.tileMats.get(key);
     if (hit) return hit;
     const mat = this.material.clone();
+    mat.color.setRGB(1, 1, 1);
     softenRoadEdge(mat);
     if (canvas) {
       const tex = new THREE.CanvasTexture(canvas);
@@ -126,6 +139,7 @@ export class RoadSurfaces3D {
       const hex = getCatalogItem(part.material)?.color;
       if (hex) mat.color.setStyle(hex, THREE.SRGBColorSpace);
     }
+    this.host.paint?.(mat);
     this.disposables.push(mat);
     this.tileMats.set(key, mat);
     return mat;

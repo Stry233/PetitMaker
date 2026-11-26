@@ -587,11 +587,9 @@ describe('landedWriteCount', () => {
 });
 
 describe('reviewNudge', () => {
-  it('accepts a verified result without demanding more edits or whole-map scoring', () => {
+  it('asks once for a builder\'s standard and never points at a score', () => {
     const msg = reviewNudge(GUIDES);
-    expect(msg).toContain('If all requested outcomes are satisfied, close now');
-    expect(msg).toContain('smallest necessary correction');
-    expect(msg).toContain('Intentional planting is not an error');
+    expect(msg).toContain('Your next close is final');
     expect(msg).not.toContain('find_speckle');
     expect(msg).not.toContain('evaluate_map');
   });

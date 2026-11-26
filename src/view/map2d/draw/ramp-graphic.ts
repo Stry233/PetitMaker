@@ -3,32 +3,15 @@ import { APP_FONT_FAMILY } from '../../../assets/fonts/family';
 import { TILE_SIZE } from '../geometry/world';
 import type { PlacedObject } from '../../../core/model/types';
 import type { CatalogEntry } from '../../../config/catalog/catalog-entry';
-import { iconUrl } from '../../../assets/icon-urls';
 import { getIconTexture } from './icon-texture';
-import { fitSpriteToTexture } from './sprite-fit';
+import { poseSprite } from './sprite-fit';
+import { objectSpritePose } from './object-sprite';
 import { hexStringToNumber, lerpColor } from '../../../core/base/color';
 import { rampDropLayers } from '../../../core/model/traits';
 import { rampOrientation } from '../../../core/domain/terrain/ramp-span';
 import { OBJECT_CHILD } from './object-children';
 
 const RAMP_ARROWS: Record<number, string> = { 0: '↑', 90: '←', 180: '↓', 270: '→' };
-
-/**
- * How to turn the ramp's icon so the art climbs the way the ramp does.
- *
- * Every ramp is drawn the same way: low on the left, high on the right. A ramp that climbs the
- * other way is the same picture mirrored — not turned upside down, which is what a half turn would
- * give. The two vertical directions are quarter turns of it. Uphill by rotation is the arrow table
- * above: 0 north, 90 west, 180 south, 270 east.
- */
-export function rampIconTurn(rotation: number): { rotation: number; flipX: boolean } {
-  switch (((rotation % 360) + 360) % 360) {
-    case 90: return { rotation: 0, flipX: true };              // uphill west — mirrored
-    case 0: return { rotation: -Math.PI / 2, flipX: false };   // uphill north
-    case 180: return { rotation: Math.PI / 2, flipX: false };  // uphill south
-    default: return { rotation: 0, flipX: false };             // uphill east — the art as drawn
-  }
-}
 
 /** The footprint gradient's base colour for a ramp whose catalog entry names none. */
 const RAMP_DEFAULT_COLOR = 0xb0b0a8;
@@ -73,22 +56,14 @@ export function drawRamp(
   }
   wrapper.addChild(g);
 
-  // Per-type sprite — a small icon badge, never stretched to the footprint. It carries the ramp's
-  // Type and, turned by `rampIconTurn`, the way it climbs: the art is drawn low-left to high-right,
-  // so a ramp running the other way shows the same picture mirrored and a vertical one a quarter
-  // turn of it. The gradient and the elevation numbers still carry the layers.
+  // Per-type sprite: a small icon badge carrying the ramp's type and, turned and mirrored as
+  // `object-sprite.ts:rampIconTurn` says, the way it climbs. The gradient and the elevation numbers
+  // still carry the layers.
   const fw = size.w * TILE_SIZE, fh = size.h * TILE_SIZE;
-  const spriteUrl = item.icon ? iconUrl(item.icon) : undefined;
-  if (spriteUrl) {
-    const tex = getIconTexture(spriteUrl);
-    const sprite = new PIXI.Sprite(tex);
-    sprite.anchor.set(0.5);
-    sprite.x = fw / 2;
-    sprite.y = fh / 2;
-    const turn = rampIconTurn(obj.rotation);
-    sprite.rotation = turn.rotation;
-    const badge = Math.min(fw, fh) * 0.8; // fits the short side, aspect preserved
-    fitSpriteToTexture(sprite, tex, (tw, th) => badge / Math.max(tw, th), turn.flipX, requestRender);
+  const pose = objectSpritePose(obj, item, size);
+  if (pose?.art.kind === 'icon') {
+    const sprite = new PIXI.Sprite();
+    poseSprite(sprite, pose, getIconTexture(pose.art.url), { x: 0, y: 0 }, requestRender);
     wrapper.addChild(sprite);
   }
 

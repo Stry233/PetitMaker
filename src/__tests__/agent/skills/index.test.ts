@@ -7,7 +7,6 @@
 import { describe, expect, it } from 'vitest';
 import { SKILLS } from '../../../agent/skills';
 import { executeToolCall, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
-import { ROOM_THEMES as THEMES } from '../../../tools/macros';
 import { getCatalogItem } from '../../../state/catalog';
 
 const TOOL_NAMES = new Set(wireSchemas().map((t) => t.name));
@@ -46,7 +45,8 @@ describe('skill metadata shape', () => {
   it('list_skills names every skill under its kind header', async () => {
     const out = (await executeToolCall({ id: 'l', name: 'list_skills', input: {} }, {} as AgentToolDeps)).content;
     expect(out).toContain('METHOD skills');
-    expect(out).toContain('STYLE set pieces');
+    // A kind with no skill prints no header.
+    expect(out.includes('STYLE set pieces')).toBe(Object.values(SKILLS).some((s) => s.kind === 'style'));
     for (const [name, s] of Object.entries(SKILLS)) {
       expect(out, name).toContain(`- ${name}: ${s.description}`);
     }
@@ -82,12 +82,4 @@ describe('skill bodies name only real things', () => {
     }
   });
 
-  it('every decorate_zone theme a body suggests is a real theme', () => {
-    const themeRe = /decorate_zone ([a-z]+)\b/g;
-    for (const [name, s] of Object.entries(SKILLS)) {
-      for (const m of s.body.matchAll(themeRe)) {
-        expect(THEMES as readonly string[], `${name} decorate_zone theme "${m[1]}"`).toContain(m[1]);
-      }
-    }
-  });
 });

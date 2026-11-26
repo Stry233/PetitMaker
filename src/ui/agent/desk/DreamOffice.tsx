@@ -4,13 +4,13 @@
  * ambient sleeping movement. Reduced motion shows a still board and badge. Each row uses a capture
  * of the open map when available and falls back to its tool glyph.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { HelpLink } from '../parts/panel-parts';
 
 import { useT } from '../../../i18n/context';
 import { font, radii } from '../../design/styles';
-import { INK, INSET, MUTED, PLATE_INK, SURFACE_SECONDARY } from '../../design/tokens';
+import { DANGER_INK, INK, INSET, MUTED, PLATE_INK, SURFACE_SECONDARY } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { ActionButton } from '../../primitives/ActionButton';
 import { useCharacterChannel } from '../character/intent';
@@ -19,8 +19,15 @@ import { DREAM } from '../sketchbook/sketch-motion';
 import { edge } from '../panel-skin';
 
 import { useObservedSize } from '../../primitives/use-observed-size';
+import { useTransient } from '../../primitives/use-transient';
+import { useScriptedWalk } from '../../primitives/use-scripted-walk';
 import { DREAM_THUMBS } from './dream-thumbs';
 import type { I18nKey } from '../../../i18n/keys';
+import { providerName } from '../../../i18n/terms/providers';
+import { signIn } from '../../../agent/panel';
+import { useUiPreview } from '../../design/preview';
+import { activeTarget } from '../../../platform/build/deploy-targets';
+import { ProviderLogo } from '../../../assets/agent/provider-logos';
 
 /** Five sample orders; `DREAM_THUMBS` holds captures of their built outcomes. */
 export const DREAMS: readonly { id: string; icon: IconId; titleKey: I18nKey; subKey: I18nKey }[] = [
@@ -123,12 +130,10 @@ export function DreamOffice({ onConnect, pinned = false }: {
 }) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
-  const [beat, setBeat] = useState(0);
   const stirredAt = useRef(0);
   /** Departing row retained as an overlay for its exit animation. */
-  const [leaving, setLeaving] = useState<typeof DREAMS[number] | null>(null);
+  const { value: leaving, show: showLeaving } = useTransient<typeof DREAMS[number]>(DREAM.rowOut.dur);
   const prevBeatRef = useRef(0);
-  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Fixed board reserve derived from the tallest visible-window combination. */
   const measureRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
@@ -136,57 +141,28 @@ export function DreamOffice({ onConnect, pinned = false }: {
   const reserve = boardHeight(poolHeights);
   const character = useCharacterChannel();
 
-  /** Drives board beats and the character's dream plume for the lifetime of this screen. */
+  /** The character's dream plume, up for the lifetime of this screen; reduced motion keeps the first board and plume still. */
   useEffect(() => {
-    character.setDream('zzz');
-    if (reduced) {
-      // Reduced motion keeps the first board and plume state still.
-      character.setDream(DREAMS[dreamingAt(0)]!.icon);
-      return () => { character.setDream('off'); };
-    }
-    const t0 = performance.now();
-    let frame = 0;
-    let at = -1;
-    let twitched = false;
-    let resettled = false;
-    // Composite one-shot movement onto the persistent sleeping pose.
-    const garnish = (move: typeof DREAM.twitchFrames): void => character.cue({ kind: 'garnish', moves: [move] });
-    const tick = () => {
-      const now = performance.now() - t0;
-      const b = Math.floor(now / DREAM.cycle);
-      if (b !== at) { at = b; twitched = false; resettled = false; setBeat(b); }
-      const into = now - b * DREAM.cycle;
-      if (!twitched && into >= DREAM.twitch) {
-        twitched = true;
-        garnish(DREAM.twitchFrames);
-      }
-      // Add a sparse resettling movement on alternating cycles.
-      if (!resettled && into >= DREAM.resettle && b % DREAM.resettleEvery === 1) {
-        resettled = true;
-        garnish(DREAM.resettleFrames);
-      }
-      character.setDream(into >= DREAM.glyphIn && into < DREAM.glyphOut
-        ? DREAMS[dreamingAt(b)]!.icon
-        : 'zzz');
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-      character.setDream('off');
-    };
+    character.setDream(reduced ? DREAMS[dreamingAt(0)]!.icon : 'zzz');
+    return () => { character.setDream('off'); };
   }, [character, reduced]);
+
+  /** The board turns over once a cycle; inside it she twitches, dreams the order and resettles,
+   *  each a one-shot composited onto the persistent sleeping pose. */
+  const beat = useScriptedWalk({ beatMs: DREAM.cycle, active: !reduced }, (b) => [
+    [DREAM.twitch, () => character.cue({ kind: 'garnish', moves: [DREAM.twitchFrames] })],
+    [DREAM.glyphIn, () => character.setDream(DREAMS[dreamingAt(b)]!.icon)],
+    [DREAM.resettle, () => character.cue({ kind: 'garnish', moves: [DREAM.resettleFrames] }), DREAM.resettleEvery],
+    [DREAM.glyphOut, () => character.setDream('zzz')],
+  ]);
 
   /** Starts one departing-row overlay per board beat. */
   useEffect(() => {
-    if (reduced || pinned) return undefined;
+    if (reduced || pinned) return;
     const prev = prevBeatRef.current;
     prevBeatRef.current = beat;
-    if (beat === prev) return undefined;
-    setLeaving(DREAMS[prev % DREAMS.length]!);
-    leaveTimerRef.current = setTimeout(() => setLeaving(null), DREAM.rowOut.dur);
-    return () => clearTimeout(leaveTimerRef.current);
-  }, [beat, reduced, pinned]);
+    if (beat !== prev) showLeaving(DREAMS[prev % DREAMS.length]!);
+  }, [beat, reduced, pinned, showLeaving]);
 
   /** Applies a pre-paint flip animation to rows that survive a board beat. */
   const rowEls = useRef(new Map<string, HTMLDivElement>());
@@ -225,6 +201,16 @@ export function DreamOffice({ onConnect, pinned = false }: {
     character.cue({ kind: 'garnish', moves: [DREAM.stirFrames] });
   };
 
+  /** The provider this deployment's visitors sign in with, and the round its button runs. */
+  const signInProvider = activeTarget().signInProvider;
+  const signInName = providerName(signInProvider, t);
+  // A pictured screen holds still: it shows no round of the reader's own panel.
+  const pictured = useUiPreview();
+  const live = useSyncExternalStore(signIn.subscribe, signIn.get);
+  const round = pictured ? null : live;
+  const waiting = round?.standing === 'waiting';
+  const failed = round?.standing === 'blocked' || round?.standing === 'failed';
+
   return (
     <div data-testid="dream-office" style={WRAP_STYLE}>
       <div data-testid="dream-scroll" style={SCROLL_STYLE}>
@@ -258,18 +244,50 @@ export function DreamOffice({ onConnect, pinned = false }: {
             />
           ))}
         </div>
-        <p style={{ ...roleFont('note'), fontFamily: font.family, color: MUTED, lineHeight: 1.45, margin: 0, padding: '0 2px' }}>
-          {t('agent.dream_note')} <HelpLink page="agent-setup" anchor="agsetup-keys" />
+        <p
+          data-testid="dream-note"
+          style={{ ...roleFont('note'), fontFamily: font.family, color: failed ? DANGER_INK : MUTED, lineHeight: 1.45, margin: 0, padding: '0 2px' }}
+        >
+          {round
+            ? t(SIGN_IN_NOTE[round.standing], { name: providerName(round.provider, t) })
+            : <>{t('agent.setup_sign_in_note', { name: signInName })} <HelpLink page="agent-setup" anchor="agsetup-signin" /></>}
         </p>
       </div>
-      <div style={{ flex: '0 0 auto', display: 'flex' }}>
-        <ActionButton appearance="primary" data-testid="dream-connect" onClick={onConnect} style={{ flex: 1, whiteSpace: 'nowrap' }}>
-          {t('agent.dream_connect')}
+      <div style={CHOICES_STYLE}>
+        <ActionButton
+          appearance="primary"
+          data-testid="dream-sign-in"
+          busy={waiting}
+          onClick={() => signIn.start(signInProvider)}
+          style={CHOICE_STYLE}
+        >
+          <ProviderLogo provider={signInProvider} size={17} fill="currentColor" />
+          {t('agent.setup_sign_in', { name: signInName })}
         </ActionButton>
+        {waiting ? (
+          <ActionButton appearance="secondary" data-testid="dream-sign-in-cancel" onClick={signIn.cancel} style={CHOICE_STYLE}>
+            {t('agent.action_cancel')}
+          </ActionButton>
+        ) : (
+          <ActionButton appearance="secondary" data-testid="dream-connect" onClick={onConnect} style={CHOICE_STYLE}>
+            {t('agent.dream_use_key')}
+          </ActionButton>
+        )}
       </div>
     </div>
   );
 }
+
+/** The two ways to connect stand one above the other, signing in first. */
+const CHOICES_STYLE: CSSProperties = { flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8 };
+const CHOICE_STYLE: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap' };
+/** What the note says for each standing of a sign-in round. */
+const SIGN_IN_NOTE = {
+  waiting: 'agent.setup_sign_in_waiting',
+  blocked: 'agent.setup_sign_in_blocked',
+  denied: 'agent.setup_sign_in_denied',
+  failed: 'agent.setup_sign_in_failed',
+} as const;
 
 type DreamOrder = { id: string; icon: IconId; titleKey: I18nKey; subKey: I18nKey };
 

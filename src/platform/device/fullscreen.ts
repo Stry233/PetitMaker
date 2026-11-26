@@ -1,6 +1,7 @@
 /** Page fullscreen through the Fullscreen API: the immersive mode a browser tab offers without installation. */
 
 import { SUPPORTS_FULLSCREEN } from '../build/edition';
+import { writePref } from '../storage/prefs';
 
 /** The `webkit`-prefixed calls Safari and WKWebView expose before 16.4. */
 interface PrefixedDocument {
@@ -60,6 +61,17 @@ export async function toggleFullscreen(): Promise<void> {
   } catch {
     // The engine refused.
   }
+}
+
+/**
+ * Immersive mode as the user sets it: enters or leaves fullscreen (`on` left out, the other state),
+ * and in an installed app records whether it enters on its own next time
+ * (`installed-immersive.ts`); a tab records nothing. Synchronous up to the browser's request, which
+ * needs the press's user activation.
+ */
+export function setImmersive(on: boolean = !isFullscreen()): Promise<void> {
+  if (isInstalledApp()) writePref('installedImmersive', on);
+  return on === isFullscreen() ? Promise.resolve() : toggleFullscreen();
 }
 
 /** Subscribes to entering and leaving fullscreen, including the browser's own exit gesture. */

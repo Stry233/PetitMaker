@@ -34,7 +34,6 @@ export const LAYER_PARAMS = {
   'layer.name': 'n',
   'layer.tile': 'n',
   'error.elevation_limit': 'max',
-  'error.water_only_layer': 'layer',
   'agent.dc_paint': 'elev',
   'agent.dc_paint_smooth': 'elev',
   'agent.dc_wall': 'crest',

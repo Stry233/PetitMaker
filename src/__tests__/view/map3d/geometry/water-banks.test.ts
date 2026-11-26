@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BufferGeometry, DoubleSide, Float32BufferAttribute, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
-import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildTerrainMeshes } from '../../../_support/terrain-meshes';
 import type { MeshData } from '../../../../view/map3d/geometry/types';
 import { GROUND_SLAB_Y, waterSurfaceY } from '../../../../view/map3d/geometry/coords';
 import { pickSurface } from '../../../../view/map3d/geometry/pick';

@@ -11,7 +11,7 @@ import { classify, NO_ENDPOINT_ADDRESS, PROVIDER_SILENCE } from '../core/errors'
 import { parseArgs } from '../core/json';
 import type { ProviderMessage } from '../core/project-messages';
 import type { FinalToolCall, StopReason, StreamEvent, TurnQuirk, Usage } from '../core/types';
-import { OPENAI_BASE_URL, type ProviderId, type Quirks } from './defaults';
+import type { ProviderId, Quirks } from './defaults';
 import type { ModelCapabilities } from '../core/adapter';
 import { modelCapabilities, rememberNativeModels } from './model-catalog';
 import { ChatReasoning, savedChat } from './chat-reasoning';
@@ -142,16 +142,6 @@ function refusesStreamOptions(err: unknown): boolean {
   const e = err as { status?: unknown; message?: unknown } | null;
   if (e?.status !== 400 && e?.status !== 422) return false;
   return typeof e.message === 'string' && STREAM_OPTIONS_REJECTION.test(e.message);
-}
-
-/** OpenAI's reasoning model families, which take `max_completion_tokens` and, on OpenAI's own host,
- *  the Responses protocol. */
-const OPENAI_REASONING_MODEL = /^(?:gpt-[5-9]|o[1-9])/;
-
-/** Whether a turn goes over the Responses protocol: a reasoning model on OpenAI's own host. */
-function usesResponses(baseUrl: string | undefined, model: string, caps: ModelCapabilities | undefined): boolean {
-  const official = !baseUrl || baseUrl.replace(/\/$/, '') === OPENAI_BASE_URL;
-  return official && (caps?.reasoning === true || OPENAI_REASONING_MODEL.test(model));
 }
 
 /** A tool call the model typed into its message body instead of the tool_calls channel. */
@@ -312,7 +302,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
     return {
       model: req.model,
       ...reasoningBody(opts.quirks.thinkingWire, req.thinking, capabilities),
-      ...(req.maxOutputTokens === undefined ? {} : OPENAI_REASONING_MODEL.test(req.model)
+      ...(req.maxOutputTokens === undefined ? {} : opts.quirks.completionTokenLimit?.(req.model)
         ? { max_completion_tokens: req.maxOutputTokens } : { max_tokens: req.maxOutputTokens }),
       messages: toOpenAIMessages(req.system, req.messages, { imageInToolResult, sameModel: req.sameModel, endpoint: endpointKey }),
       ...(req.tools.length ? { tools: req.tools.map((t) => ({
@@ -437,7 +427,7 @@ export function createOpenAIAdapter(opts: { apiKey: string; baseUrl?: string; pr
       const toolNames = new Set(req.tools.map((t) => t.name));
       try {
         const capabilities = req.capabilities ?? modelCapabilities(providerId, req.model, opts.baseUrl);
-        if (usesResponses(opts.baseUrl, req.model, capabilities)) {
+        if (opts.quirks.responses?.(req.model, capabilities)) {
           const { streamResponses } = await import('./openai-responses');
           yield* streamResponses(client, { ...req, capabilities }, signal, opts.apiKey);
           return;

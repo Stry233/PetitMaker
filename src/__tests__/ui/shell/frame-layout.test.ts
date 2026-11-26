@@ -56,7 +56,7 @@ describe('the shell shares the available workspace', () => {
   });
 
   it('decides whether the modes fold from the controls that show', () => {
-    const session = { ...options, modes: sessionModes({} as PlanetSession).length, corner: cornerArt(true) };
+    const session = { ...options, modes: sessionModes({} as PlanetSession).length, corner: cornerArt('planet') };
     let onlySessionWhole = 0;
     for (let width = 360; width <= 1400; width += 7) for (const height of [360, 600, 900]) {
       const full = planFrame(width, height, options);

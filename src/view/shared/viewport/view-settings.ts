@@ -7,6 +7,7 @@
 import { useEffect, type RefObject } from 'react';
 import { useEditorStore, type EditorStore } from '../../../state/store';
 import { layerNumbersShown } from '../../../state/layer-utils';
+import { standInShown } from '../../../state/map-stand-in';
 import { armingOf } from '../../../state/editing/arming';
 import { toolDeclares } from '../../../tools/pointer/runtime';
 import type { GridId } from '../../../core/grid/grids';
@@ -14,14 +15,25 @@ import type { GridId } from '../../../core/grid/grids';
 /** The passive overlays the Settings choices show; `grid` is the grid the cell lines draw, or null. */
 export interface PassiveOverlays { grid: GridId | null; numbers: boolean; chunks: boolean }
 
+/** Whether the views draw the passive overlays Settings choose: never over a stand-in, the save
+ *  step's frame shown as its blueprint pictures hold it, which carry no grid lines, chunk bounds or
+ *  layer numbers. */
+const overlaysOpen = (s: EditorStore): boolean => !standInShown(s);
+
 /** The grid the map draws in `s`: the Settings choice, `auto` taking the grid the active tool's
- *  cells lie on, so a terrain brush shows the cells it paints. */
+ *  cells lie on, so a terrain brush shows the cells it paints; none over a stand-in. */
 export function shownGridOf(s: EditorStore): GridId | null {
-  if (s.gridMode === 'off') return null;
+  if (s.gridMode === 'off' || !overlaysOpen(s)) return null;
   if (s.gridMode !== 'auto') return s.gridMode;
   const arming = armingOf(s);
   return toolDeclares(arming.tool).grid(arming);
 }
+
+/** Whether the map draws the chunk bounds in `s`: the Settings choice, none over a stand-in. */
+export const chunkBoundsShown = (s: EditorStore): boolean => s.showChunkBounds && overlaysOpen(s);
+
+/** Whether the map draws the layer numbers in `s`: as `layerNumbersShown` says, none over a stand-in. */
+const layerNumbersDrawn = (s: EditorStore): boolean => layerNumbersShown(s) && overlaysOpen(s);
 
 /** What a map view takes from the store's view settings. */
 export interface ViewSettingsTarget {
@@ -31,7 +43,7 @@ export interface ViewSettingsTarget {
 }
 
 const passiveOverlaysOf = (s: EditorStore): PassiveOverlays =>
-  ({ grid: shownGridOf(s), numbers: layerNumbersShown(s), chunks: s.showChunkBounds });
+  ({ grid: shownGridOf(s), numbers: layerNumbersDrawn(s), chunks: chunkBoundsShown(s) });
 
 /** Gives `target` the settings as they stand. */
 export function applyViewSettings(target: ViewSettingsTarget): void {
@@ -44,8 +56,8 @@ export function applyViewSettings(target: ViewSettingsTarget): void {
 export function useViewSettings(targetRef: RefObject<ViewSettingsTarget | null>): void {
   const layerVisibility = useEditorStore((s) => s.layerVisibility);
   const grid = useEditorStore(shownGridOf);
-  const numbers = useEditorStore(layerNumbersShown);
-  const chunks = useEditorStore((s) => s.showChunkBounds);
+  const numbers = useEditorStore(layerNumbersDrawn);
+  const chunks = useEditorStore(chunkBoundsShown);
   useEffect(() => { targetRef.current?.setLayerVisibility(layerVisibility); }, [targetRef, layerVisibility]);
   useEffect(() => { targetRef.current?.setPassiveOverlays({ grid, numbers, chunks }); }, [targetRef, grid, numbers, chunks]);
 }

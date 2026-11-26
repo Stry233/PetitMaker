@@ -1,51 +1,54 @@
-// Generic PNG chunk primitives for the raster codec: signature check, CRC-validated chunk
-// reader, chunk builder.
+// The PNG primitives every writer and header reader shares: the signature, a chunk, the RGBA
+// header and the size a file's header names.
 import { crc32 } from '../../../core/base/crc32';
-import { ImportError } from '../../save/import-error';
+import { readBlob } from '../../import/read-blob';
 
-/** The 8-byte PNG file signature — the single source for both the reader (isPng) and the
- *  writer (png-raster prepends it to the chunk stream). */
+/** The 8-byte PNG file signature. */
 export const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
 
-interface PngChunk { type: string; data: Uint8Array }
+/** Bytes from the start of a PNG through its header's width and height. */
+const SIZE_BYTES = 24;
+/** The length of IHDR's data. */
+const IHDR_LENGTH = 13;
 
-function isPng(bytes: Uint8Array): boolean {
-  if (bytes.length < PNG_SIGNATURE.length) return false;
-  for (let i = 0; i < PNG_SIGNATURE.length; i++) if (bytes[i] !== PNG_SIGNATURE[i]) return false;
-  return true;
-}
-
-function typeBytes(type: string): Uint8Array {
-  return new Uint8Array([type.charCodeAt(0), type.charCodeAt(1), type.charCodeAt(2), type.charCodeAt(3)]);
-}
-
+/** One chunk: big-endian length, type, data, and the CRC over type and data. */
 export function buildChunk(type: string, data: Uint8Array): Uint8Array {
   const out = new Uint8Array(12 + data.length);
   const dv = new DataView(out.buffer);
-  dv.setUint32(0, data.length, false); // length big-endian (PNG)
-  out.set(typeBytes(type), 4);
+  dv.setUint32(0, data.length, false);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
   out.set(data, 8);
-  dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)), false); // crc over type+data
+  dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)), false);
   return out;
 }
 
-export function readChunks(bytes: Uint8Array): PngChunk[] {
-  if (!isPng(bytes)) throw new ImportError('not-an-image', 'Not a PNG.');
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const chunks: PngChunk[] = [];
-  let p = 8;
-  while (p + 8 <= bytes.length) {
-    const len = dv.getUint32(p, false);
-    const type = String.fromCharCode(bytes[p + 4]!, bytes[p + 5]!, bytes[p + 6]!, bytes[p + 7]!);
-    const dataStart = p + 8;
-    const crcAt = dataStart + len;
-    if (crcAt + 4 > bytes.length) throw new ImportError('corrupt', 'Truncated PNG chunk.');
-    const want = dv.getUint32(crcAt, false) >>> 0;
-    const got = crc32(bytes.subarray(p + 4, crcAt));
-    if (want !== got) throw new ImportError('corrupt', `Bad CRC in ${type} chunk.`);
-    chunks.push({ type, data: new Uint8Array(bytes.subarray(dataStart, crcAt)) });
-    p = crcAt + 4;
-    if (type === 'IEND') break;
+/** IHDR's data for a `width` by `height` picture of 8-bit RGBA, not interlaced. */
+export function ihdrBytes(width: number, height: number): Uint8Array {
+  const out = new Uint8Array(IHDR_LENGTH);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, width, false);
+  dv.setUint32(4, height, false);
+  out[8] = 8; out[9] = 6;
+  return out;
+}
+
+/** Whether `bytes` open with the PNG signature. */
+function opensPng(bytes: Uint8Array): boolean {
+  return bytes.length >= PNG_SIGNATURE.length && PNG_SIGNATURE.every((byte, i) => bytes[i] === byte);
+}
+
+/** The size `blob`'s PNG header names, or null for a blob that is not a PNG, names no size or
+ *  cannot be read. */
+export async function pngSize(blob: Blob): Promise<{ width: number; height: number } | null> {
+  let head: Uint8Array;
+  try {
+    head = new Uint8Array(await readBlob(blob.slice(0, SIZE_BYTES), 'bytes'));
+  } catch {
+    return null;
   }
-  return chunks;
+  if (head.length < SIZE_BYTES || !opensPng(head)) return null;
+  const dv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  if (dv.getUint32(8, false) !== IHDR_LENGTH || String.fromCharCode(...head.subarray(12, 16)) !== 'IHDR') return null;
+  const width = dv.getUint32(16, false), height = dv.getUint32(20, false);
+  return width && height ? { width, height } : null;
 }

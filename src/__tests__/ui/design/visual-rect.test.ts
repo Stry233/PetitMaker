@@ -5,7 +5,8 @@
  * every measurement site sees screen pixels.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { __resetVisualRectProbe, visualRect } from '../../../ui/design/visual-rect';
+import { __resetZoomedRectsProbe } from '../../../platform/device/browser-env';
+import { visualRect } from '../../../ui/design/visual-rect';
 
 const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
   left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
@@ -29,7 +30,7 @@ function measured(el: Element, r: DOMRect): Element {
   return el;
 }
 
-beforeEach(() => { __resetVisualRectProbe(); });
+beforeEach(() => { __resetZoomedRectsProbe(); });
 afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ''; });
 
 describe('visualRect', () => {

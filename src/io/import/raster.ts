@@ -1,5 +1,7 @@
 import { DEFAULT_LIMITS } from '../share/errors';
 import { deviceCanvasLimits } from '../export/canvas-limits';
+import { pngSize } from '../share/raster/png-chunks';
+import { loadImage } from '../../platform/async/load-image';
 
 /** The scale that fits `width` by `height` under the pixel limit and this device's canvas ceiling; 1 when it already fits. */
 function fitScale(width: number, height: number): number {
@@ -12,21 +14,12 @@ function fitScale(width: number, height: number): number {
  *  share code is built to survive the resize, and the returned pixel buffer belongs to the caller. */
 export async function readRasterImage(file: Blob): Promise<{ pixels: Uint8Array; width: number; height: number }> {
   // A PNG names its size in the header, so an oversized one can be decoded straight to the smaller
-  // bitmap without ever holding the full-size pixels.
+  // bitmap without ever holding the full-size pixels; any other file leaves the size to the decoder.
   let resize: ImageBitmapOptions | undefined;
-  if (typeof file.slice === 'function') {
-    const header = file.slice(0, 24);
-    if (typeof header.arrayBuffer === 'function') {
-      let bytes: Uint8Array | undefined;
-      try { bytes = new Uint8Array(await header.arrayBuffer()); } catch { /* the image decoder remains authoritative */ }
-      const signature = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82];
-      if (bytes?.length === 24 && signature.every((byte, index) => bytes![index] === byte)) {
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const w = view.getUint32(16), h = view.getUint32(20);
-        const scale = fitScale(w, h);
-        if (scale < 1) resize = { resizeWidth: Math.max(1, Math.floor(w * scale)), resizeHeight: Math.max(1, Math.floor(h * scale)), resizeQuality: 'high' };
-      }
-    }
+  const named = await pngSize(file);
+  if (named) {
+    const scale = fitScale(named.width, named.height);
+    if (scale < 1) resize = { resizeWidth: Math.max(1, Math.floor(named.width * scale)), resizeHeight: Math.max(1, Math.floor(named.height * scale)), resizeQuality: 'high' };
   }
   let source: ImageBitmap | HTMLImageElement;
   let release: () => void;
@@ -36,17 +29,7 @@ export async function readRasterImage(file: Blob): Promise<{ pixels: Uint8Array;
     release = () => bitmap.close?.();
   } catch {
     const url = URL.createObjectURL(file);
-    const image = new Image();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('Image decode failed'));
-        image.src = url;
-      });
-    } catch (error) {
-      URL.revokeObjectURL(url);
-      throw error;
-    }
+    const image = await loadImage(url).catch((error: unknown) => { URL.revokeObjectURL(url); throw error; });
     source = image;
     release = () => { image.src = ''; URL.revokeObjectURL(url); };
   }

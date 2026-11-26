@@ -195,7 +195,7 @@ function linkTool(kit: Kit, over: ToolCtxOver = {}): {
     showGhostSpans() {}, clearGhost() {}, flashCommit() {},
   };
   const toasts: string[] = [];
-  const ctx = makeToolCtx(kit.state, kit.executor, 1, 1, {
+  const ctx = makeToolCtx(kit.state, kit.executor, 1, {
     armedMacro: 'road-link', overlay: overlay as unknown as HostedToolContext['overlay'], notify: (text) => { toasts.push(text); }, ...over,
   });
   const tool = new MacroTool();

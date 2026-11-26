@@ -11,14 +11,16 @@ import { localeTag } from '../../../../i18n/locale-info';
 import { Switch } from '../../../primitives/Switch';
 import { useRef } from 'react';
 import { useLocale, useT } from '../../../../i18n/context';
-import { getMapStats } from '../../../../state/map-stats';
+import { allChunkLoads, getMapStats } from '../../../../state/map-stats';
 import { useEditorStore } from '../../../../state/store';
+import { pressCommand } from '../../../../editor/commands/run';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { useScrollRow } from '../../../primitives/use-scroll-row';
 import { WindowBody, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
 import { useSurfaceZoom } from '../../../design/scale';
-import { allChunkLoads, CHUNK_LOAD_MAX, getPointerRegion } from './map-load';
+import { getPointerRegion } from './map-load';
+import { CHUNK_LOAD_LIMIT } from '../../../../core/game/profile';
 import { mapChunkAxes } from '../../../../core/grid/map-chunks';
 import { ACTIVE, INSET, LOAD_FILL, PLATE_INK, TRACK } from '../../../design/tokens';
 import { roleFont } from '../../../design/text-weight';
@@ -30,7 +32,6 @@ export function ChunkLoadWindow() {
   const t = useT();
   const locale = useLocale();
   const enforced = useEditorStore((s) => !!s.gridState && isChunkLoadEnforced(s.gridState));
-  const setLoadEnforced = useEditorStore((s) => s.setLoadEnforced);
   const { open, close } = useWindow('regionLoad');
   useMapRevision(open);
   const gridState = useEditorStore((s) => s.gridState);
@@ -59,7 +60,7 @@ export function ChunkLoadWindow() {
           aside={(
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ ...roleFont('body'), color: PLATE_INK }}>{t('load.enforce')}</span>
-              <Switch on={enforced} onClick={() => setLoadEnforced(!enforced)} label={t('load.enforce')} />
+              <Switch on={enforced} onClick={() => pressCommand('map.load_enforced', { on: !enforced })} label={t('load.enforce')} />
             </div>
           )} />
         <WindowBody>
@@ -75,7 +76,7 @@ export function ChunkLoadWindow() {
             }}
           >
             {regions.map((region) => {
-              const share = Math.min(1, region.value / CHUNK_LOAD_MAX);
+              const share = Math.min(1, region.value / CHUNK_LOAD_LIMIT);
               const here = current !== null && current.cx === region.cx && current.cy === region.cy;
               return (
                 <div
@@ -94,7 +95,7 @@ export function ChunkLoadWindow() {
                     {formatLoad(locale, region.value, region.unknownLoads > 0)}
                   </span>
                   <span style={{ ...roleFont('caption'), color: PLATE_INK, lineHeight: 1 }}>
-                    {new Intl.NumberFormat(localeTag(locale), { style: 'percent', maximumFractionDigits: 1 }).format(region.value / CHUNK_LOAD_MAX)}
+                    {new Intl.NumberFormat(localeTag(locale), { style: 'percent', maximumFractionDigits: 1 }).format(region.value / CHUNK_LOAD_LIMIT)}
                   </span>
                   {/* The figure is usually a few percent of the limit, which no tint can show. The bar
                       is the reading; the tile's own colour only says which region the disc is on. */}

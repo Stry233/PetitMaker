@@ -14,6 +14,48 @@ function orderText(mapContext: string, text: string): string {
 }
 
 describe('deriveMessages', () => {
+  it('replays an earlier order without the map it described, and keeps its words, edits and short results', () => {
+    const log = createLog(() => 0);
+    const longRead = 'grid '.repeat(200);
+    const firstMap = 'first map '.repeat(100);
+    append(log, { kind: 'order', text: 'plant a grove', mapContext: firstMap });
+    append(log, {
+      kind: 'assistant', stop: 'tool-calls',
+      parts: [
+        { kind: 'tool', callId: 'r1', name: 'inspect_region', input: {}, argsDone: true },
+        { kind: 'tool', callId: 'w1', name: 'scatter_objects', input: {}, argsDone: true },
+        { kind: 'tool', callId: 's1', name: 'load_skill', input: {}, argsDone: true },
+      ],
+    });
+    append(log, { kind: 'toolResult', callId: 'r1', name: 'inspect_region', content: longRead, isError: false });
+    append(log, { kind: 'toolResult', callId: 'w1', name: 'scatter_objects', content: longRead, isError: false, write: true });
+    append(log, {
+      kind: 'toolResult', callId: 's1', name: 'load_skill', content: longRead, isError: false,
+      detail: { skill: { name: 'grove', kind: 'method', title: 'Grove' } },
+    });
+    const during = deriveMessages(log, { budgetTokens: 100_000 });
+    expect(during[0]).toEqual({ role: 'user', text: orderText(firstMap, 'plant a grove') });
+    expect(during[2]).toMatchObject({ results: [{ content: longRead }, { content: longRead }, { content: longRead }] });
+
+    append(log, { kind: 'order', text: 'add a pond', mapContext: 'second map' });
+    append(log, {
+      kind: 'assistant', stop: 'tool-calls',
+      parts: [{ kind: 'tool', callId: 'r2', name: 'inspect_region', input: {}, argsDone: true }],
+    });
+    append(log, { kind: 'toolResult', callId: 'r2', name: 'inspect_region', content: longRead, isError: false });
+    const after = deriveMessages(log, { budgetTokens: 100_000 });
+    const first = after[0] as Extract<ProviderMessage, { role: 'user' }>;
+    expect(first.text).toContain('plant a grove');
+    expect(first.text).not.toContain('first map');
+    expect(first.text.length).toBeLessThan(400);
+    const earlier = (after[2] as Extract<ProviderMessage, { role: 'tool' }>).results;
+    expect(earlier[0]!.content.length).toBeLessThan(200);
+    expect(earlier[1]!.content).toBe(longRead);
+    expect(earlier[2]!.content).toBe(longRead);
+    expect(after[3]).toEqual({ role: 'user', text: orderText('second map', 'add a pond') });
+    expect(after[5]).toMatchObject({ results: [{ content: longRead }] });
+  });
+
   it('estimates each message once while dropping whole exchanges from a long log', () => {
     const log = createLog(() => 0);
     for (let i = 0; i < 500; i++) {
@@ -267,7 +309,7 @@ describe('deriveMessages', () => {
     it('a delivered steer opens the retained group, so the evicted body returns right behind the summary', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
-      loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c1', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       work(log, 'c2');
       const steer = append(log, { kind: 'steer', text: 'make it smaller' });
       const delivered = append(log, { kind: 'steerDelivered', steerSeq: steer.seq });
@@ -277,7 +319,7 @@ describe('deriveMessages', () => {
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
-      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
+      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Figure Landscape")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
       // The steer's own event sits before the cut (logged when typed, delivered later), yet its
       // words still open the retained group.
       expect(out[2]).toEqual({ role: 'user', text: `make it smaller${CUE}` });
@@ -287,7 +329,7 @@ describe('deriveMessages', () => {
     it('a follow-up order opens the retained group, and the body returns the same way', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
-      loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c1', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       work(log, 'c2');
       const second = append(log, { kind: 'order', text: 'now add the pines', mapContext: 'ctx' });
       work(log, 'c3');
@@ -296,14 +338,14 @@ describe('deriveMessages', () => {
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       expect(out[0]).toEqual({ role: 'user', text: '(conversation summary, reference only) <summary_data>"a village is going up"</summary_data>' });
-      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
+      expect(out[1]).toEqual({ role: 'user', text: `(playbook still loaded: "Figure Landscape")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` });
       expect(out[2]).toEqual({ role: 'user', text: orderText('ctx', 'now add the pines') });
     });
 
     it('two playbooks either side of the cut, and only the evicted one is re-issued', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
-      loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c1', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       const steer = append(log, { kind: 'steer', text: 'switch to a garden' });
       const delivered = append(log, { kind: 'steerDelivered', steerSeq: steer.seq });
       loadSkill(log, 'c2', { name: 'zen-garden', kind: 'style', title: 'Zen Garden' }, ZEN);
@@ -312,7 +354,7 @@ describe('deriveMessages', () => {
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Figure Landscape")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       // The retained load replays natively as its own tool result, so it is present but not doubled.
       const zenCarriers = out.filter((m) => JSON.stringify(m).includes('rake the gravel'));
       expect(zenCarriers).toHaveLength(1);
@@ -322,24 +364,24 @@ describe('deriveMessages', () => {
     it('re-issues the NEWEST evicted load per playbook, not every one of them', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
-      loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, 'STALE BODY');
-      loadSkill(log, 'c2', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c1', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, 'STALE BODY');
+      loadSkill(log, 'c2', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       const second = append(log, { kind: 'order', text: 'carry on', mapContext: '' });
       append(log, { kind: 'compaction', summary: 'carrying on', retainedFromSeq: second.seq });
 
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
 
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Figure Landscape")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       expect(JSON.stringify(out)).not.toContain('STALE BODY');
     });
 
     it('re-issues nothing for a playbook the retained window RELOADED: it replays natively, not twice', () => {
       const log = createLog(() => 0);
       append(log, { kind: 'order', text: 'build a village', mapContext: '' });
-      loadSkill(log, 'c1', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c1', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       const second = append(log, { kind: 'order', text: 'carry on', mapContext: '' });
-      loadSkill(log, 'c2', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c2', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
       append(log, { kind: 'compaction', summary: 'carrying on', retainedFromSeq: second.seq });
 
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
@@ -357,7 +399,7 @@ describe('deriveMessages', () => {
         parts: [{ kind: 'tool', callId: 'c1', name: 'load_skill', input: { name: 'nope' }, argsDone: true }],
       });
       append(log, { kind: 'toolResult', callId: 'c1', name: 'load_skill', content: 'Unknown skill "nope".', isError: true });
-      loadSkill(log, 'c2', { name: 'cozy-village', kind: 'style', title: 'Cozy Village' }, COZY);
+      loadSkill(log, 'c2', { name: 'figure-landscape', kind: 'style', title: 'Figure Landscape' }, COZY);
 
       // No compaction yet: the load is inside the live window and needs no help.
       expect(deriveMessages(log, { budgetTokens: 1_000_000 }).some((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'))).toBe(false);
@@ -366,7 +408,7 @@ describe('deriveMessages', () => {
       append(log, { kind: 'compaction', summary: 'carrying on', retainedFromSeq: second.seq });
       const out = deriveMessages(log, { budgetTokens: 1_000_000 });
       const reissued = out.filter((m) => m.role === 'user' && m.text.startsWith('(playbook still loaded:'));
-      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Cozy Village")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
+      expect(reissued).toEqual([{ role: 'user', text: `(playbook still loaded: "Figure Landscape")\n<playbook_data>${quotePromptData(COZY)}</playbook_data>` }]);
       expect(JSON.stringify(out)).not.toContain('Unknown skill');
     });
   });

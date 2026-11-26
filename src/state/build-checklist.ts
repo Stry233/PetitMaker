@@ -71,6 +71,8 @@ export interface BuildChecklist {
   /** Lowest layer first, which is the order the game requires: nothing stands on nothing. Only
    *  layers that carry something appear. */
   layers: ChecklistLayer[];
+  /** The objects of `groups`, summed: what a player places by hand, roads and landmarks apart. */
+  placedTotal: number;
   /** Every object counted, the landmarks and the unresolved included. */
   objectTotal: number;
   /** The map's landmarks, in profile order: structures the game lays on the planet rather than
@@ -122,6 +124,7 @@ export function buildChecklist(state: GridState): BuildChecklist {
   }
 
   for (const group of groups) group.total = group.items.reduce((n, i) => n + i.count, 0);
+  const placedTotal = groups.reduce((n, g) => n + g.total, 0);
   const roadTotal = roads.reduce((n, i) => n + i.count, 0);
   const landmarkTotal = landmarks.reduce((n, i) => n + i.count, 0);
 
@@ -133,7 +136,7 @@ export function buildChecklist(state: GridState): BuildChecklist {
     if (blocks > 0 || water > 0) layers.push({ layer, blocks, water });
   }
 
-  return { groups, roads, roadTotal, layers, objectTotal, landmarks, landmarkTotal, unresolved };
+  return { groups, roads, roadTotal, layers, placedTotal, objectTotal, landmarks, landmarkTotal, unresolved };
 }
 
 /**
@@ -147,10 +150,10 @@ export function buildChecklist(state: GridState): BuildChecklist {
 export function buildChecklistText(list: BuildChecklist, locale: Locale, t: Translate): string {
   const nameOf = (name: LocalizedName): string => name[locale] ?? name.en;
   const groupsWithItems = list.groups.filter((g) => g.items.length > 0);
-  const placedTotal = list.groups.reduce((n, g) => n + g.total, 0);
+  const { placedTotal } = list;
   const nothing = groupsWithItems.length === 0 && list.roads.length === 0 && list.layers.length === 0;
 
-  const lines: string[] = [`${t('share.tab_game')}: ${t('checklist.total', { n: placedTotal })}`];
+  const lines: string[] = [`${t('share.tab_stats')}: ${t('checklist.total', { n: placedTotal })}`];
 
   if (list.landmarks.length > 0) {
     lines.push('', `${t('checklist.sec_landmarks')} (${list.landmarkTotal})`);

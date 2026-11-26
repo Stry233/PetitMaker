@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { archetypeGeometry, ARCHETYPE_KEYS } from '../../../../view/map3d/models/object-archetypes';
-import { ItemCategory } from '../../../../config/catalog/categories';
+import { archetypeGeometry } from '../../../../view/map3d/models/object-archetypes';
+import { CATEGORIES, ItemCategory } from '../../../../config/catalog/categories';
+import type { ArchetypeKey } from '../../../../view/map3d/geometry/types';
+
+/** Every archetype: one stand-in per category, and the landmark platform. */
+const ARCHETYPE_KEYS: ArchetypeKey[] = [...CATEGORIES.map((c) => c.id), 'platform'];
 
 describe('preview3d/object-archetypes', () => {
   it('builds a non-empty geometry for every archetype key', () => {

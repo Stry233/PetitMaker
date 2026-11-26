@@ -55,6 +55,14 @@ describe('prefs', () => {
     expect(readPref('uiZoom')).toBe(1.4);
   });
 
+  it('a null author is stored as no entry and reads back as null, never the text "null"', () => {
+    writePref('blueprintAuthor', 'Mei');
+    expect(readPref('blueprintAuthor')).toBe('Mei');
+    writePref('blueprintAuthor', null);
+    expect(localStorage.getItem(PREFS.blueprintAuthor.key)).toBeNull();
+    expect(readPref('blueprintAuthor')).toBeNull();
+  });
+
   it('falls back when the stored value is out of range', () => {
     localStorage.setItem('petit-planet-ui-zoom', '99');
     expect(readPref('uiZoom')).toBe(1);

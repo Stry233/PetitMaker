@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildHeaderBytes, encodeGlyph } from '../../../../io/share/glyph/encode';
-import { decodeGlyph } from '../../../../io/share/glyph/decode';
+import { readGlyph } from '../../../../io/share/glyph/decode';
 import { PRODUCT_HEADER_LEVELS } from '../../../../io/share/glyph/palette';
 import { HEADER_NSYM, HEADER_SYMBOL_BITS, HEADER_VERSION, headerModuleAt } from '../../../../io/share/glyph/geometry';
 import { rsEncode } from '../../../../io/share/glyph/rs';
@@ -37,14 +37,14 @@ describe('PetitGlyph header damage', () => {
 
   it('repainting the same header still decodes', () => {
     const same = withHeader(glyph.rgba, glyph.width, header);
-    expect(decodeGlyph(same, glyph.width, glyph.height)).toEqual(data);
+    expect(readGlyph(same, glyph.width, glyph.height).payload).toEqual(data);
   });
 
   it.each([0, 3, 8, 12, 16, 21, 24, 30, 32, 41, 50, 63])('a header with bit %s flipped never returns a different payload, and a damaged CRC returns none', (bit) => {
     const damaged = header.slice();
     damaged[bit >> 3]! ^= 1 << (bit & 7);
     // The header itself is consistent, so only the CRC, length, version and profile checks can refuse it.
-    const decoded = decodeGlyph(withHeader(glyph.rgba, glyph.width, damaged), glyph.width, glyph.height);
+    const decoded = readGlyph(withHeader(glyph.rgba, glyph.width, damaged), glyph.width, glyph.height).payload;
     expect(decoded === null || decoded.every((v, i) => v === data[i]) && decoded.length === data.length).toBe(true);
     if (bit >= 32) expect(decoded).toBeNull();
   });

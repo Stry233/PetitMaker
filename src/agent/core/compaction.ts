@@ -5,7 +5,7 @@
 import { append, eventsOf, type SessionLog } from './log';
 import { automaticSummary, ledgerMessage, mapLedger } from './nudges';
 import SUMMARY_SYSTEM from '../prompts/10-summary.md?raw';
-import { deriveMessages, latestCompaction, messageText } from './project-messages';
+import { deriveMessages, latestCompaction } from './project-messages';
 import { jobEvents } from './job-reads';
 import { withIdleTimeout } from './stream-idle';
 import type { SessionEvent } from './types';
@@ -20,15 +20,10 @@ export const COMPACTION_RESERVE = 16000;
 /** Tail tokens kept verbatim behind the summary, rounded up to the nearest whole exchange group. */
 const KEEP_RECENT = 8000;
 
-const UNBOUNDED = Number.MAX_SAFE_INTEGER;
-
-export function needsCompaction(
-  log: SessionLog,
-  opts: { contextWindow: number; estimate: (s: string) => number },
-): boolean {
-  const messages = deriveMessages(log, { budgetTokens: UNBOUNDED, estimate: opts.estimate });
-  const total = messages.reduce((sum, m) => sum + opts.estimate(messageText(m)), 0);
-  return total > opts.contextWindow - COMPACTION_RESERVE;
+/** Whether a replay costing `total` tokens (`project-messages.ts:projectRequest`) leaves a window of
+ *  `contextWindow` too little room for the reply. */
+export function needsCompaction(total: number, contextWindow: number): boolean {
+  return total > contextWindow - COMPACTION_RESERVE;
 }
 
 /** What an event costs the request, which is the only cost a retention decision may weigh. A

@@ -62,6 +62,7 @@ const EFFORT_WIRE: Record<ProviderId, Record<string, unknown>> = {
   moonshot: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
   doubao: { reasoning_effort: 'high', thinking: { type: 'enabled' } },
   perplexity: { reasoning_effort: 'high' },
+  modelscope: { reasoning_effort: 'high' },
   custom: { reasoning_effort: 'high' },
 };
 

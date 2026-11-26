@@ -20,14 +20,14 @@ describe('turn assembler', () => {
     expect([...deriveBadCallIds(turn)]).toEqual([]);
   });
 
-  it('exposes best-effort partial args in live snapshots', () => {
+  it('parses a call once it completes, and what parses of one the stream left unfinished', () => {
     const a = make();
     a.push({ t: 'tool-start', callId: 'c1', name: 'paint_terrain' });
     a.push({ t: 'tool-args', callId: 'c1', delta: '{"type":"mountain","cells":[[1,2],[1,' });
-    const live = a.snapshot();
+    expect(a.snapshot()[0]).toMatchObject({ kind: 'tool', name: 'paint_terrain', argsDone: false });
     // `parsePartial` reads the trailing "1" as a complete number and closes the open inner array
     // around it, so the unfinished second cell appears as `[1]` instead of being dropped.
-    expect(live[0]).toMatchObject({ kind: 'tool', input: { type: 'mountain', cells: [[1, 2], [1]] }, argsDone: false });
+    expect(a.finish().parts[0]).toMatchObject({ kind: 'tool', input: { type: 'mountain', cells: [[1, 2], [1]] }, argsDone: false });
   });
 
   it('marks a call bad when final args are unparseable, keeping the raw', () => {
@@ -67,10 +67,10 @@ describe('turn assembler', () => {
     a.push({ t: 'text', delta: 'x' });
     a.push({ t: 'tool-start', callId: 'c1', name: 'undo' });
     const s1 = a.snapshot();
-    a.push({ t: 'tool-args', callId: 'c1', delta: '{"a":1}' });
+    a.push({ t: 'text', delta: 'y' });
     const s2 = a.snapshot();
-    expect(s2[0]).toBe(s1[0]);
-    expect(s2[1]).not.toBe(s1[1]);
+    expect(s2[0]).not.toBe(s1[0]);
+    expect(s2[1]).toBe(s1[1]);
   });
 
   it('finish without a done or error event reports an aborted stop with the partial parts', () => {
@@ -130,12 +130,11 @@ describe('turn assembler', () => {
     expect(plain.finish()).not.toHaveProperty('quirks');
   });
 
-  it('a tool-args delta that reparses to the same value keeps the part and its input identity', () => {
+  it('a tool-args delta keeps the part and its input identity while the call arrives', () => {
     const a = make();
     a.push({ t: 'tool-start', callId: 'c1', name: 'undo' });
     a.push({ t: 'tool-args', callId: 'c1', delta: '{"a":1}' });
     const s1 = a.snapshot();
-    // A trailing space grows the raw buffer but parses to the same value.
     a.push({ t: 'tool-args', callId: 'c1', delta: ' ' });
     const s2 = a.snapshot();
     expect(s2[0]).toBe(s1[0]);

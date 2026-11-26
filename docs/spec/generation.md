@@ -11,14 +11,14 @@ This area covers what Generate builds (designed planets, mazes, and picture and 
 
 ## Regions, rules and landmarks
 
-- **GEN-05** With a region painted, a generation changes only cells inside the region and leaves everything outside it exactly as it was, and the region stays painted after the run. A planet is still designed as a whole, so a small region may receive no change.
+- **GEN-05** With a region painted on Generate's scope screen, a generation changes only cells inside the region and leaves everything outside it exactly as it was, and the region stays painted after the run, until the user clears it or another map is opened. The map shows it while Generate is open, and painting the assistant's region or a blueprint's frame leaves it as it was. A planet is still designed as a whole, so a small region may receive no change.
 - **GEN-06** Every generated map, on built-in and custom planets alike, satisfies every map rule, and generation never builds over the landmark or paints the ground under it. Source: the game.
 - **GEN-07** A generated maze can be entered from outside and reaches every passage, and it leaves exactly one route between its way in and its destination, with no way around the maze.
 
 ## Undo, cancel and Clear
 
-- **GEN-08** Each generation is one undo step: undoing it restores the map and the recipe that stood before, and redo puts the run back. Each recipe card clicked is its own undo step.
-- **GEN-09** A generation cancelled before it lands, including by closing the shelf, leaves the map, its undo history and the previous generation untouched.
+- **GEN-08** Each generation is one undo step: undoing it restores the map and the recipe that stood before, and redo puts the run back. Each recipe card clicked is its own undo step. While a maze run stands, moving one of its ends lays it again as one more step; once that run is undone or another map is opened, moving an end lays nothing until a card is clicked.
+- **GEN-09** A generation cancelled before it lands, including by closing the shelf, by Undo or Redo, which then take back nothing else and whose buttons both stand available while it lands, or by opening another map, leaves the map, its undo history and the previous generation untouched.
 - **GEN-10** Clear generated removes generated content, Smart Build results included, within the last run's scope (the whole planet when no region was painted), and keeps the landmark and everything the user placed or painted by hand. It is one undo step, and undoing it gives the recipe back.
 - **GEN-11** Opening or loading a map forgets the last generation's scope, so Clear generated has nothing to take back on that map until it is generated again.
 
@@ -26,9 +26,10 @@ This area covers what Generate builds (designed planets, mazes, and picture and 
 
 - **GEN-12** A Picture or Letter is never resized to fit the regional load: when load is short, it keeps its size, position and materials and places objects more sparsely, keeping its outline, corners and fine details first.
 - **GEN-13** When the smallest readable version of a Picture or Letter cannot fit the regional load, the run is refused with a notice, and the map, its undo history and the previous generation stay unchanged.
-- **GEN-14** A Letter too long for its region says so on its card and generates nothing; the same word builds once the region has room for it.
+- **GEN-14** A Letter too long for its region says so on its card and generates nothing; the same word builds once the region has room for it. Where a character's joints or gaps are thinner than a cell, a Letter joins the stroke its cells would part, parts the strokes they would join and reopens the opening they would close or fill, wherever that restores the character's separate pieces and enclosed openings as the font draws them.
 - **GEN-15** Letter counts characters as the reader sees them, so an emoji sequence or an accented letter is one character, and pressing Enter while an input method is still composing does not start a run.
 - **GEN-16** After a Picture or Letter run the editor says when the run was refused, laid nothing, was made sparser or left cells out, and why; it says nothing when the result was laid whole.
+- **GEN-23** Letter and Picture lay their content with its top toward the map direction chosen, north by default; the choice shows four arrows, each pointing where its direction lies on screen in the current view, and the whole content turns with it, the pieces that can turn and road prints included, a word fitting the region along the direction it runs. A run with no direction chosen lays exactly as before. Source: owner request 2026-11-03.
 
 ## Smart Build
 

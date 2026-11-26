@@ -12,23 +12,30 @@
  *   'style'  — set-piece reference layout for a specific aesthetic.
  */
 
-import cozyVillage from './cozy-village.md?raw';
-import terracedHillPark from './terraced-hill-park.md?raw';
 import proTerraforming from './pro-terraforming.md?raw';
-import gardenTown from './garden-town.md?raw';
-import waterGarden from './water-garden.md?raw';
 import type { SkillKind } from '../core/types';
 import type { SkillName } from './titles';
 import figureLandscape from './figure-landscape.md?raw';
-import siteAnalysis from './site-analysis.md?raw';
 import planOnMap from './plan-on-map.md?raw';
+import planIsland from './plan-island.md?raw';
 import buildFromPlan from './build-from-plan.md?raw';
-import composition from './composition.md?raw';
-import designReview from './design-review.md?raw';
 import terrainShaping from './terrain-shaping.md?raw';
-import settlementDesign from './settlement-design.md?raw';
-import ecologyPlanting from './ecology-planting.md?raw';
-import streetGrammar from './street-grammar.md?raw';
+import layoutPatterns from './layout-patterns.md?raw';
+import regionKinds from './region-kinds.md?raw';
+import neighborsIntro from './neighbors.md?raw';
+import { NEIGHBORS } from '../../config/neighbors';
+
+/** The neighbors skill: its fixed prose, then each neighbour with a house, drawn from the neighbour
+ *  data so that names and profiles have one owner. */
+function neighborsBody(): string {
+  const lines = NEIGHBORS.flatMap(({ name, profile }) => {
+    if (!profile) return [];
+    const names = [...new Set(Object.values(name))].join(' / ');
+    const home = profile.home ? ` Their house: ${profile.home}` : '';
+    return [`- ${profile.house}: ${names}, ${profile.role}. Loves ${profile.loves.join(', ')}; likes ${profile.likes.join(', ')}.${home}`];
+  });
+  return `${neighborsIntro.trimEnd()}\n\n${lines.join('\n')}\n`;
+}
 
 export interface AgentSkill {
   kind: SkillKind;
@@ -41,16 +48,34 @@ export interface AgentSkill {
 
 export const SKILLS: Record<string, AgentSkill> = {
   // --- method skills: transferable craft, compose with any request ---
-  'site-analysis': {
+  'layout-patterns': {
     kind: 'method',
-    title: 'Site Analysis',
-    description: 'Read the map before building: scale, plaza, anchors, levels; decide the subject, the back/front axis and the routes, then plan.',
-    body: siteAnalysis,
+    title: 'Layout Patterns',
+    description: 'Design and build any place the request leaves open as a drawing: idea, parts, ground, paving, planting; mirror and repeat; composition devices.',
+    body: layoutPatterns,
+  },
+  'plan-island': {
+    kind: 'method',
+    title: 'Plan an Island',
+    description: 'Design a whole island: its idea, levels, main route and four to six districts, each handed to a lead of its own, then joined and finished.',
+    body: planIsland,
+  },
+  'region-kinds': {
+    kind: 'method',
+    title: 'Region Kinds',
+    description: 'Choose what each district or place is: kinds of place by group, each resident\'s home themed for its owner, taste examples.',
+    body: regionKinds,
+  },
+  neighbors: {
+    kind: 'method',
+    title: 'Neighbors',
+    description: 'Who lives in each house of the catalogue and what they love, from the game\'s own profiles, to dress each home for its owner.',
+    body: neighborsBody(),
   },
   'plan-on-map': {
     kind: 'method',
     title: 'Plan on the Map',
-    description: 'Plan a multi-area design as annotations: programme with instances and sizes, adjacency, paths first, blocks tiled into parcels, a self-check.',
+    description: 'Design one district or several areas: idea, ground as one drawing, paths, places drawn as annotations, each place handed to a helper, halves mirrored.',
     body: planOnMap,
   },
   'build-from-plan': {
@@ -59,41 +84,11 @@ export const SKILLS: Record<string, AgentSkill> = {
     description: 'Build what annotations describe, an approved plan or the user\'s drawing: read each zone, build it inside its cells, roads on paths, report gaps.',
     body: buildFromPlan,
   },
-  'composition': {
-    kind: 'method',
-    title: 'Composition',
-    description: 'Compose a requested scene around its purpose, approach, clear foreground and supporting background while preserving existing work.',
-    body: composition,
-  },
   'terrain-shaping': {
     kind: 'method',
     title: 'Terrain Shaping',
     description: 'Build the landform: near-low-far-high grading, terraces as walkable floors, a water shape vocabulary, legal ponds and waterfall lips.',
     body: terrainShaping,
-  },
-  'settlement-design': {
-    kind: 'method',
-    title: 'Settlement Design',
-    description: 'Site requested homes with usable yards and accessible entrances; connect destinations while preserving building counts and existing work.',
-    body: settlementDesign,
-  },
-  'ecology-planting': {
-    kind: 'method',
-    title: 'Ecology Planting',
-    description: 'Arrange beds, rows, groves and specimens at the requested scale, preserve intentional palettes and repair partial placements locally.',
-    body: ecologyPlanting,
-  },
-  'street-grammar': {
-    kind: 'method',
-    title: 'Street Grammar',
-    description: 'Roads as streets: a 3-wide trunk through the destinations, 2-wide lanes, T and offset junctions, spurs that arrive, ramps stitched inline.',
-    body: streetGrammar,
-  },
-  'design-review': {
-    kind: 'method',
-    title: 'Design Review',
-    description: 'Verify requested outcomes, preserved features and composition; repair only actual gaps and stop when the brief is satisfied.',
-    body: designReview,
   },
   'pro-terraforming': {
     kind: 'method',
@@ -101,35 +96,11 @@ export const SKILLS: Record<string, AgentSkill> = {
     description: 'Advanced terrain moves: backing walls above 3 tiers, terraced cascades, sunk ponds, coves, and the waterfall patterns that pass validation.',
     body: proTerraforming,
   },
-  // --- style set pieces: reference layouts, each grounded in a hand-built expert map ---
-  'garden-town': {
-    kind: 'style',
-    title: 'Garden Town',
-    description: 'The flat formal dialect: a street partition with flower edging on every walk, walled courts, orchard grids, one iconic water figure.',
-    body: gardenTown,
-  },
-  'water-garden': {
-    kind: 'style',
-    title: 'Water Garden',
-    description: 'The terraced water-court dialect: a flooded backing wall, formal pools sunk in benches, an islet-grid parterre, crop plots in color blocks.',
-    body: waterGarden,
-  },
+  // --- style set pieces: reference layouts ---
   'figure-landscape': {
-    kind: 'style',
+    kind: 'method',
     title: 'Figure Landscape',
-    description: 'A picture or word drawn into the ground: water hearts and rings, a flooded terrace banner with dry-bench lettering, flower marks.',
+    description: 'Shape land and water into the design of a place with a drawing: terraces, a stage, pools with an outline, islands, channels, figures.',
     body: figureLandscape,
-  },
-  'cozy-village': {
-    kind: 'style',
-    title: 'Cozy Village',
-    description: 'A small village district: distinct cabins with themed yards around a half-open green, a 3-wide spine with lanes, a farm band.',
-    body: cozyVillage,
-  },
-  'terraced-hill-park': {
-    kind: 'style',
-    title: 'Terraced Hill Park',
-    description: 'A walkable park hill: organic benches with a paved switchback climb, a lookout court on top, a sunk pond on the way up.',
-    body: terracedHillPark,
   },
 } satisfies Record<SkillName, AgentSkill>;

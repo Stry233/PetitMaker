@@ -23,7 +23,7 @@ describe('ObjectPlacerTool: placing over a road', () => {
     const ex = exec(state);
     addRoad(state, 5, 5);
     const tool = new ObjectPlacerTool();
-    const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: 'building-stall' });
+    const ctx = makeToolCtx(state, ex, 1, { armedItem: 'building-stall' });
     const before = ex.historyDepth();
 
     tool.onPointerDown(cell(m(5, 5)), point(m(5, 5)), ctx);
@@ -43,7 +43,7 @@ describe('ObjectPlacerTool: placing over a road', () => {
     addRoad(state, 5, 5);
     addStall(state, 5, 5); // a real building already here → V-PLACE-OVERLAP rejects the new one
     const tool = new ObjectPlacerTool();
-    const ctx = makeToolCtx(state, ex, 1, 1, { armedItem: 'building-stall' });
+    const ctx = makeToolCtx(state, ex, 1, { armedItem: 'building-stall' });
     const before = ex.historyDepth();
 
     tool.onPointerDown(cell(m(5, 5)), point(m(5, 5)), ctx);

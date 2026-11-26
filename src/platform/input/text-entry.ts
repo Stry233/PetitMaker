@@ -19,3 +19,10 @@ export function raisesKeyboard(el: EventTarget | null | undefined): boolean {
   if (e.tagName === 'SELECT') return false;
   return e.tagName !== 'INPUT' || TYPED_INPUTS.has(e.type ?? 'text');
 }
+
+/** Whether a key event belongs to an IME composition rather than to the field it lands in: Safari
+ *  reports the committing Enter with `keyCode` 229 and `isComposing` false, and some IMEs end the
+ *  composition before they dispatch the confirming keydown. */
+export function isComposingKey(e: KeyboardEvent): boolean {
+  return e.isComposing || e.keyCode === 229;
+}

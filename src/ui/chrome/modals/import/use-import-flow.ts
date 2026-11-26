@@ -1,89 +1,28 @@
 /**
- * An import surface's file flow over `editor/session/import-flow.ts`: busy while a file is classified
- * or decoded, a decoded map waiting on the confirmation card, a file of another window's kind waiting
- * on its redirect card. The Import window, the page-level drop overlay and Import planet's window each
- * take their files through this hook.
+ * An import surface's file flow (`editor/session/import-flow.ts:createImportFlow`), one per mounted
+ * surface: the Import window, the page-level drop overlay, Import planet's window and the blueprint
+ * shelf each take their files through this hook.
  */
-import { useCallback, useRef, useState } from 'react';
-import type { HandedImport } from '../../../../state/slices/shell';
-import { commitImport, routeImport, type ImportRouting, type PendingMap } from '../../../../editor/session/import-flow';
-import { declineRestoreOffer } from '../../../session/restore-offer';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import {
+  createImportFlow, type ImportFlow, type ImportFlowOptions, type ImportFlowState, type ImportRouting,
+} from '../../../../editor/session/import-flow';
 
 export type { ImportRouting };
 
-interface ImportFlowOptions {
-  routing: ImportRouting;
-  /** Reads a video this surface takes itself. */
-  onVideo?: (file: File) => void;
-  /** A file this surface refuses. */
-  onRefused?: () => void;
-  /** After a decoded map was installed. */
-  onCommitted?: () => void;
-}
+/** The flow's state as of this render, with its verbs; `idle` answers between renders. */
+type ImportFlowView = ImportFlowState & Pick<ImportFlow, 'idle' | 'take' | 'confirm' | 'dismiss'>;
 
-interface ImportFlow {
-  /** A file is being classified or decoded. */
-  busy: boolean;
-  pending: PendingMap | null;
-  /** A file of another window's kind, waiting on its redirect card. */
-  redirect: HandedImport | null;
-  /** Whether nothing is being read and nothing waits on a card, read synchronously. */
-  idle: () => boolean;
-  take: (file: File | Blob, name?: string) => Promise<void>;
-  /** Installs the pending map; a second press does nothing. */
-  confirm: () => void;
-  /** Puts away the pending map and the redirect card. */
-  dismiss: () => void;
-}
-
-export function useImportFlow({ routing, onVideo, onRefused, onCommitted }: ImportFlowOptions): ImportFlow {
-  const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<PendingMap | null>(null);
-  const [redirect, setRedirect] = useState<HandedImport | null>(null);
-  // Window listeners and quick double presses read the flow between renders, so it is mirrored here.
-  const live = useRef({ busy: false, pending: null as PendingMap | null, redirect: null as HandedImport | null });
-  const set = useCallback((next: Partial<typeof live.current>) => {
-    Object.assign(live.current, next);
-    if ('busy' in next) setBusy(live.current.busy);
-    if ('pending' in next) setPending(live.current.pending);
-    if ('redirect' in next) setRedirect(live.current.redirect);
-  }, []);
-  const options = useRef({ routing, onVideo, onRefused, onCommitted });
-  options.current = { routing, onVideo, onRefused, onCommitted };
-
-  const idle = useCallback(() => !live.current.busy && !live.current.pending && !live.current.redirect, []);
-
-  const take = useCallback(async (file: File | Blob, name = file instanceof File ? file.name : '') => {
-    if (!idle()) return;
-    // Handing a file over is choosing to work on something else: the saved session's countdown
-    // would otherwise land over the import.
-    declineRestoreOffer();
-    const { routing: route, onVideo: video, onRefused: refused } = options.current;
-    set({ busy: true });
-    try {
-      const routed = await routeImport(file, name, route);
-      if (routed.to === 'card') set({ redirect: routed.redirect });
-      else if (routed.to === 'refused') refused?.();
-      else if (routed.to === 'video') video?.(routed.file);
-      else if (routed.to === 'pending') set({ pending: routed.pending });
-    } finally {
-      set({ busy: false });
-    }
-  }, [idle, set]);
-
-  const confirm = useCallback(() => {
-    const waiting = live.current.pending;
-    if (!waiting || live.current.busy) return;
-    set({ pending: null, busy: true });
-    try {
-      commitImport(waiting);
-    } finally {
-      set({ busy: false });
-    }
-    options.current.onCommitted?.();
-  }, [set]);
-
-  const dismiss = useCallback(() => set({ pending: null, redirect: null }), [set]);
-
-  return { busy, pending, redirect, idle, take, confirm, dismiss };
+/** `routing` is read as the surface mounts; the handlers are the latest render's. */
+export function useImportFlow(options: ImportFlowOptions): ImportFlowView {
+  const latest = useRef(options);
+  latest.current = options;
+  const [flow] = useState(() => createImportFlow({
+    routing: options.routing,
+    onVideo: (file) => latest.current.onVideo?.(file),
+    onRefused: () => latest.current.onRefused?.(),
+    onCommitted: () => latest.current.onCommitted?.(),
+  }));
+  const state = useSyncExternalStore(flow.subscribe, flow.snapshot);
+  return { ...state, idle: flow.idle, take: flow.take, confirm: flow.confirm, dismiss: flow.dismiss };
 }

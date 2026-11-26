@@ -3,21 +3,20 @@
  * flips; clock and metadata changes repaint in place. Context screens can override session state.
  */
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { motion, useReducedMotionConfig, AnimatePresence } from 'framer-motion';
-import type { PanelView } from '../../../agent/panel';
+import type { KeyRefusal, PanelView, RepairAct } from '../../../agent/panel';
 import { useT } from '../../../i18n/context';
 import { Character } from '../character/Character';
 import { characterPose, type PoseName } from '../character/poses';
 import { useCelebrateEdge } from '../character/use-celebrate-edge';
 import { useCharacterChannel } from '../character/intent';
 import { StatusCard } from './StatusCard';
-import { useLastActivity } from '../hooks/use-clock';
 import { buildFace, deskFaceKey, deskPose, deskSeat, showsAllowAll, type DeskContext } from '../derive/desk-face';
-import type { RepairAct } from '../derive/repair';
 import type { SetupFace } from '../connection/setup-parts';
 import { CHARACTER_SEAT } from '../../shell/panel-frame';
 import { flipProfile, outMotion, turnSeconds } from '../../design/motion';
+import { useTransient } from '../../primitives/use-transient';
 
 /** Gap between the externally hosted character seat and the status card. */
 const DESK_GAP = 10;
@@ -43,6 +42,8 @@ interface DeskHeaderProps {
   modelName?: string;
   /** Clock source for elapsed time and retry countdowns. */
   now?: number;
+  /** When the in-flight turn's parts last moved (the session store's stamp), which ends a stall as a log event does. */
+  liveAt?: number;
   onPause?: () => void;
   /** Stop was pressed on the card's seat; the caller confirms from that control. */
   onAskStop?: (from: RefObject<HTMLElement | null>) => void;
@@ -55,6 +56,8 @@ interface DeskHeaderProps {
   managing?: boolean;
   /** The live connection as one line, said on the manage face's meta deck. */
   connectionMeta?: string;
+  /** How a refused key stands (`DeskContext.keyRefusal`). */
+  keyRefusal?: KeyRefusal;
   /** A past record is open over the job zone, and this is its provenance (`DeskContext.reading`). */
   readingRecord?: string;
   /** A delegate is at work (`DeskContext.helper`). */
@@ -86,6 +89,7 @@ export function DeskHeader({
   providerName,
   modelName,
   now = Date.now(),
+  liveAt = 0,
   onPause,
   onAskStop,
   onResume,
@@ -93,6 +97,7 @@ export function DeskHeader({
   onManage,
   managing = false,
   connectionMeta,
+  keyRefusal,
   readingRecord,
   helper = false,
   setupFace,
@@ -107,8 +112,7 @@ export function DeskHeader({
 }: DeskHeaderProps) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
-  // Live view updates provide activity timestamps that are not stored in the projection.
-  const activeAt = useLastActivity(view, now);
+  const activeAt = Math.max(view.lastEventAt, liveAt);
   const ctx: DeskContext = {
     connected,
     managing,
@@ -116,6 +120,7 @@ export function DeskHeader({
     ...(providerName !== undefined ? { providerName } : {}),
     ...(modelName !== undefined ? { modelName } : {}),
     ...(connectionMeta !== undefined ? { connectionMeta } : {}),
+    ...(keyRefusal !== undefined ? { keyRefusal } : {}),
     ...(readingRecord !== undefined ? { reading: readingRecord } : {}),
     ...(helper ? { helper } : {}),
     ...(setupFace ? { setup: setupFace } : {}),
@@ -144,15 +149,12 @@ export function DeskHeader({
   const seatRef = useRef<HTMLButtonElement>(null);
   const faceKey = stateKey;
   // Disable input for the turn duration so a stationary pointer cannot activate the incoming face.
-  const [turning, setTurning] = useState(false);
+  const { value: turning, show: turn } = useTransient<true>(TURN_MS);
   const firstFace = useRef(true);
   useEffect(() => {
-    if (firstFace.current) { firstFace.current = false; return undefined; }
-    if (reduced) return undefined;
-    setTurning(true);
-    const timer = setTimeout(() => setTurning(false), TURN_MS);
-    return () => clearTimeout(timer);
-  }, [faceKey, reduced]);
+    if (firstFace.current) { firstFace.current = false; return; }
+    if (!reduced) turn(true);
+  }, [faceKey, reduced, turn]);
   // Oversight status appears only on a face backed by an active session.
   const showAllow = showsAllowAll(view, ctx, face);
 

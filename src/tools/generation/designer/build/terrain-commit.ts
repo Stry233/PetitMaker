@@ -7,8 +7,9 @@
  */
 import { flatIndex } from '../../../../core/grid/rect';
 import type { RuleDispatcher } from '../../../../core/model/rule-dispatcher';
-import type { Command, GridState, MacroCoord, ValidationResult } from '../../../../core/model/types';
+import type { Command, GridState, ValidationResult } from '../../../../core/model/types';
 import { planToCommands } from '../../terrain-plan/commit';
+import type { Scope } from '../../terrain-plan/scope';
 import { repairPlan } from '../../terrain-plan/repair';
 import type { TerrainPlan } from '../../terrain-plan/types';
 import type { TerrainSculpt } from '../terrain/terrain-sculpt';
@@ -30,17 +31,17 @@ interface CommitContext {
  * the sculpt, so a caller reads the terrain the map actually got.
  */
 export function commitTerrain(
-  ctx: CommitContext, sculpt: TerrainSculpt, region: MacroCoord[] | null,
+  ctx: CommitContext, sculpt: TerrainSculpt, scope: Scope,
 ): { commands: number; refused: number } {
   const repaired = repairPlan(sculpt.terrain, ctx.state.template, ctx.reg);
-  if (region) keepWaterWhole(repaired, region, ctx.state.template.width, ctx.state.template.height);
+  if (scope.bounded) keepWaterWhole(repaired, scope, ctx.state.template.width, ctx.state.template.height);
   sculpt.terrain.tier.set(repaired.tier);
   sculpt.terrain.water.set(repaired.water);
   let commands = 0, refused = 0;
   // The plan is the whole planet's and the region crops the commands, which is where a scoped run
   // can legitimately be refused: a terrace whose supporting neighbours fell outside the crop has no
   // base to stand on. An unscoped run still expects zero, and the probes hold it to that.
-  for (const cmd of planToCommands(repaired, region)) {
+  for (const cmd of planToCommands(repaired, scope.bounded ? scope : null)) {
     commands++;
     if (!ctx.execute(cmd).success) refused++;
   }
@@ -54,17 +55,10 @@ export function commitTerrain(
  * post-stroke rules revert the whole run. An elevated bed whose 3x3 does not fit inside the region is
  * not cut; ground-level water faces nothing lower and crops freely.
  */
-function keepWaterWhole(plan: TerrainPlan, region: MacroCoord[], W: number, H: number): void {
-  const inside = new Uint8Array(W * H);
-  for (const c of region) {
-    if (c.x >= 0 && c.y >= 0 && c.x < W && c.y < H) inside[flatIndex(c.x, c.y, W)] = 1;
-  }
+function keepWaterWhole(plan: TerrainPlan, scope: Scope, W: number, H: number): void {
   const whole = (x: number, y: number): boolean => {
     for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H || !inside[flatIndex(nx, ny, W)]) return false;
-      }
+      for (let dx = -1; dx <= 1; dx++) if (!scope.cell(x + dx, y + dy)) return false;
     }
     return true;
   };

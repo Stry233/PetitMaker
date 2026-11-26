@@ -16,6 +16,9 @@ import { getPlacedObjectSize } from '../../../state/object-geometry';
 import { createGridState } from '../../../core/model/template';
 import { CHUNK_GRID_STYLE, chunkGridRects, chunkStrokeCells } from '../../shared/grid/reference-grid';
 import { mapPicture, mapPictureFrame } from './thumbnail';
+import { onMapRenderer } from '../scene/renderer-registry';
+import { boundsWhere, rectsBounds, type Rect } from '../../../core/grid/rect';
+import { cssBoxOf, fitCells, makeCanvas, sizeToCssBox } from '../../shared/viewport/dom-canvas';
 
 interface PlanetView {
   /** Pan in css px, applied after the zoom. */
@@ -56,43 +59,32 @@ const freshMaps = new WeakMap<MapTemplate, GridState>();
 /** The revision a fresh map is kept under: it is never edited. */
 const FRESH = 'fresh';
 
-function makeCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, w);
-  canvas.height = Math.max(1, h);
-  const ctx = canvas.getContext('2d');
-  return ctx ? { canvas, ctx } : null;
-}
+const extentOf = (r: Rect): CellExtent => ({ x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h });
+const rectOf = (e: CellExtent): Rect => ({ x: e.x0, y: e.y0, w: e.x1 - e.x0, h: e.y1 - e.y0 });
+const isRect = (r: Rect | null): r is Rect => r !== null;
 
-function grow(b: CellExtent | null, x0: number, y0: number, x1: number, y1: number): CellExtent {
-  if (!b) return { x0, y0, x1, y1 };
-  return { x0: Math.min(b.x0, x0), y0: Math.min(b.y0, y0), x1: Math.max(b.x1, x1), y1: Math.max(b.y1, y1) };
+/** The cells `o` stands on. */
+function footprint(o: PlacedObject): Rect {
+  const { w, h } = getPlacedObjectSize(o);
+  return { x: o.position.x, y: o.position.y, w, h };
 }
 
 /** What the picture shows of the planet: every cell off the sea (grass, sand, rim, plaza), every
  *  raised or water terrain cell where it is drawn (at the terrain grid's offset) and every object
  *  footprint. `null` for a planet with nothing on it. */
 function landBounds(state: GridState): CellExtent | null {
-  let b: CellExtent | null = null;
+  const { width, height } = state.template;
+  const cell = (x: number, y: number) => state.cells[y]?.[x];
+  const land = boundsWhere(width, height, (x, y) => { const c = cell(x, y); return !!c && !isOpenSeaZone(c.zone); });
+  const raised = boundsWhere(width, height, (x, y) => {
+    const t = cell(x, y)?.terrain;
+    return !!t && (t.type === TerrainType.Water || (t.type === TerrainType.Mountain && t.elevation >= 1));
+  });
   const { x: ox, y: oy } = TERRAIN_GRID_OFFSET;
-  for (let y = 0; y < state.cells.length; y++) {
-    const row = state.cells[y];
-    if (!row) continue;
-    for (let x = 0; x < row.length; x++) {
-      const c = row[x];
-      if (!c) continue;
-      if (!isOpenSeaZone(c.zone)) b = grow(b, x, y, x + 1, y + 1);
-      const t = c.terrain;
-      if (t && (t.type === TerrainType.Water || (t.type === TerrainType.Mountain && t.elevation >= 1))) {
-        b = grow(b, x + ox, y + oy, x + 1 + ox, y + 1 + oy);
-      }
-    }
-  }
-  for (const o of state.objects.values()) {
-    const { w, h } = getPlacedObjectSize(o);
-    b = grow(b, o.position.x, o.position.y, o.position.x + w, o.position.y + h);
-  }
-  return b;
+  const all = rectsBounds([
+    land, raised && { ...raised, x: raised.x + ox, y: raised.y + oy }, rectsBounds(Array.from(state.objects.values(), footprint)),
+  ].filter(isRect));
+  return all && extentOf(all);
 }
 
 /** The map a template opens as, its own terrain and plaza included. */
@@ -120,19 +112,13 @@ function droppedRaster(dropped: readonly GridCellRef[]): Raster | null {
   const hit = droppedRasters.get(dropped);
   if (hit !== undefined) return hit;
   const rects = dropped.map((c) => gridCellRect(GRIDS[c.grid], c));
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const r of rects) {
-    if (r.x < x0) x0 = r.x;
-    if (r.y < y0) y0 = r.y;
-    if (r.x + r.w > x1) x1 = r.x + r.w;
-    if (r.y + r.h > y1) y1 = r.y + r.h;
-  }
-  const made = rects.length ? makeCanvas(Math.round((x1 - x0) * MARK_RASTER), Math.round((y1 - y0) * MARK_RASTER)) : null;
-  if (!made) { droppedRasters.set(dropped, null); return null; }
+  const box = rectsBounds(rects);
+  const made = box ? makeCanvas(box.w * MARK_RASTER, box.h * MARK_RASTER) : null;
+  if (!box || !made) { droppedRasters.set(dropped, null); return null; }
   made.ctx.fillStyle = LOSS_COLOR;
   const px = (v: number): number => Math.round(v * MARK_RASTER);
-  for (const r of rects) made.ctx.fillRect(px(r.x - x0), px(r.y - y0), px(r.w), px(r.h));
-  const raster = { canvas: made.canvas, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  for (const r of rects) made.ctx.fillRect(px(r.x - box.x), px(r.y - box.y), px(r.w), px(r.h));
+  const raster = { canvas: made.canvas, ...box };
   droppedRasters.set(dropped, raster);
   return raster;
 }
@@ -142,40 +128,20 @@ function droppedRaster(dropped: readonly GridCellRef[]): Raster | null {
  *  scale and centre. */
 export function planetBounds(input: PlanetPaintInput): CellExtent {
   const { template } = input;
-  let shown = landOf(input);
+  const land = landOf(input);
   const lost = input.dropped?.length ? droppedRaster(input.dropped) : null;
-  if (lost) shown = grow(shown, lost.x, lost.y, lost.x + lost.w, lost.y + lost.h);
-  for (const o of input.flagged ?? []) {
-    const { w, h } = getPlacedObjectSize(o);
-    shown = grow(shown, o.position.x, o.position.y, o.position.x + w, o.position.y + h);
-  }
-  return shown ?? { x0: 0, y0: 0, x1: template.width, y1: template.height };
-}
-
-/** The rest view's placement: `bounds` scaled to fit the box less `margin` css px on every side and
- *  centred, so the margins on opposite sides are equal and the tighter axis has exactly `margin`.
- *  Returns css px per cell and the css position of cell (0, 0). */
-function fitBounds(cssW: number, cssH: number, bounds: CellExtent, margin: number): { cell: number; x: number; y: number } {
-  const bw = Math.max(1e-6, bounds.x1 - bounds.x0), bh = Math.max(1e-6, bounds.y1 - bounds.y0);
-  const room = (side: number) => Math.max(1, side - 2 * margin);
-  const cell = Math.min(room(cssW) / bw, room(cssH) / bh);
-  return { cell, x: (cssW - bw * cell) / 2 - bounds.x0 * cell, y: (cssH - bh * cell) / 2 - bounds.y0 * cell };
+  const shown = rectsBounds([land && rectOf(land), lost, ...(input.flagged ?? []).map(footprint)].filter(isRect));
+  return shown ? extentOf(shown) : { x0: 0, y0: 0, x1: template.width, y1: template.height };
 }
 
 interface PaintOpts { margin: number; bounds?: CellExtent }
 
-/** The css box `canvas` paints into. */
-function cssBox(canvas: HTMLCanvasElement): { cssW: number; cssH: number; dpr: number } {
-  const dpr = globalThis.devicePixelRatio || 1;
-  return { cssW: canvas.clientWidth || canvas.width / dpr, cssH: canvas.clientHeight || canvas.height / dpr, dpr };
-}
-
 /** The long side, in px, of the picture that is sharp in `canvas` at `view`: the device pixels a
  *  cell takes there across the picture's frame, rounded up to the next step. */
 export function planetPictureSide(canvas: HTMLCanvasElement, input: PlanetPaintInput, view: PlanetView, opts: PaintOpts): number {
-  const { cssW, cssH, dpr } = cssBox(canvas);
+  const { cssW, cssH, scale: dpr } = cssBoxOf(canvas);
   const frame = pictureFrameOf(input);
-  const fit = fitBounds(cssW, cssH, opts.bounds ?? planetBounds(input), opts.margin);
+  const fit = fitCells(cssW, cssH, rectOf(opts.bounds ?? planetBounds(input)), opts.margin);
   const want = fit.cell * view.scale * dpr * Math.max(frame.width, frame.height);
   return PICTURE_STEPS.find((step) => step >= want) ?? PICTURE_STEPS[PICTURE_STEPS.length - 1]!;
 }
@@ -185,14 +151,30 @@ function pictureFrameOf(input: PlanetPaintInput) {
   return mapPictureFrame(shownMap(input).state, undefined, input.flagged);
 }
 
-/** The picture of `input`'s map at `longSidePx`, drawn by the map's renderer with its plan notes as
- *  its notes layer shows them and `input.flagged` flagged; null where no renderer stands yet. */
-export function planetPicture(input: PlanetPaintInput, longSidePx: number): Promise<HTMLCanvasElement | null> {
-  const { state, revision } = shownMap(input);
-  return mapPicture(state, longSidePx, {
-    ...(revision !== undefined ? { version: revision } : {}),
-    ...(input.flagged?.length ? { flagged: input.flagged } : {}),
+/** Resolves as the next map renderer is installed, or as `signal` aborts. */
+function rendererInstalled(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => { off(); signal.removeEventListener('abort', done); resolve(); };
+    const off = onMapRenderer(done);
+    signal.addEventListener('abort', done);
   });
+}
+
+/** The picture of `input`'s map at `longSidePx`, drawn by the map's renderer with its plan notes as
+ *  its notes layer shows them and `input.flagged` flagged. Where no renderer stands yet it is taken
+ *  once one does; null once `signal` aborts. */
+export async function planetPicture(input: PlanetPaintInput, longSidePx: number, signal: AbortSignal): Promise<HTMLCanvasElement | null> {
+  const { state, revision } = shownMap(input);
+  while (!signal.aborted) {
+    const picture = await mapPicture(state, longSidePx, {
+      ...(revision !== undefined ? { version: revision } : {}),
+      ...(input.flagged?.length ? { flagged: input.flagged } : {}),
+    });
+    if (picture) return signal.aborted ? null : picture;
+    if (signal.aborted) break;
+    await rendererInstalled(signal);
+  }
+  return null;
 }
 
 /**
@@ -208,20 +190,15 @@ export function paintPlanet(
   view: PlanetView,
   opts: PaintOpts,
 ): void {
-  const { cssW, cssH, dpr } = cssBox(canvas);
-  const backW = Math.max(1, Math.round(cssW * dpr)), backH = Math.max(1, Math.round(cssH * dpr));
-  if (canvas.width !== backW) canvas.width = backW;
-  if (canvas.height !== backH) canvas.height = backH;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, backW, backH);
+  const sized = sizeToCssBox(canvas);
+  if (!sized) return;
+  const { ctx, cssW, cssH, scale: dpr } = sized;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { template } = input;
   if (template.width <= 0 || template.height <= 0) return;
 
   const lost = input.dropped?.length ? droppedRaster(input.dropped) : null;
-  const fit = fitBounds(cssW, cssH, opts.bounds ?? planetBounds(input), opts.margin);
+  const fit = fitCells(cssW, cssH, rectOf(opts.bounds ?? planetBounds(input)), opts.margin);
   const cx = cssW / 2, cy = cssH / 2;
   const cell = fit.cell * view.scale;
   const ox = cx + (fit.x - cx) * view.scale + view.tx;

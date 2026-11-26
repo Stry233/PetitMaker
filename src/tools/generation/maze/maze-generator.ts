@@ -8,7 +8,7 @@ import { buildObjectOccupancy } from '../../../state/object-geometry';
 import { landmarkCells } from '../../../core/model/landmarks';
 import { makeRng } from '../../../core/base/rng';
 import { defaultEnds, mainland, resolveEnd, routeBetween, type MazeEnd, type MazeField } from './maze-endpoints';
-import { cellKey } from '../../../core/grid/rect';
+import { boundsWhere, cellKey, cellsBounds } from '../../../core/grid/rect';
 import { paintBleedsOffBuildable } from '../../../rules/zone-restriction';
 
 /** The cell-wall lattice a gate is expressed in. `cw` cells of corridor, then one of wall. */
@@ -37,27 +37,15 @@ export function defaultMazeGates({ origin: o, dims: d }: MazeFootprint): Resolve
 export function mazeFootprint(state: GridState, region: MacroCoord[] | null, corridorWidth: number): MazeFootprint | null {
   const { width, height } = state.template;
   const occ = buildObjectOccupancy(state);
-  let minX = width, maxX = 0, minY = height, maxY = 0;
-  if (region && region.length > 0) {
-    for (const c of region) {
-      if (c.x < minX) minX = c.x;
-      if (c.x > maxX) maxX = c.x;
-      if (c.y < minY) minY = c.y;
-      if (c.y > maxY) maxY = c.y;
-    }
-  } else {
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const cell = getCell(state.cells, x, y);
-        if (cell && isBuildableZone(cell.zone) && !occ.has(cellKey(x, y))) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-  }
+  const box = region && region.length > 0
+    ? cellsBounds(region)
+    : boundsWhere(width, height, (x, y) => {
+      const cell = getCell(state.cells, x, y);
+      return !!cell && isBuildableZone(cell.zone) && !occ.has(cellKey(x, y));
+    });
+  // No free cell leaves the box inverted, so the lattice below falls to its two-room minimum.
+  const minX = box?.x ?? width, minY = box?.y ?? height;
+  const maxX = box ? box.x + box.w - 1 : 0, maxY = box ? box.y + box.h - 1 : 0;
 
   // Cell step = corridorWidth + 1 (corridor + wall between)
   const cw = Math.max(RECIPE_RANGES.corridorWidth.min, Math.min(RECIPE_RANGES.corridorWidth.max, corridorWidth));

@@ -2,13 +2,13 @@
 import { forwardRef, type CSSProperties } from 'react';
 import { localizedName, useLocale, useT } from '../../../../i18n/context';
 import { getCatalogItem } from '../../../../state/catalog';
-import { useEditorStore } from '../../../../state/store';
+import { pressCommand } from '../../../../editor/commands/run';
 import { helpTargetAttr } from '../../../session/help-targets';
 import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { layerName } from '../../../../i18n/terms/layer-name';
-import { TEXT } from '../../units';
 import { BarSlider } from '../BarSlider';
 import { Knob, StripChip, StripSwitch } from './generate-controls';
+import { FacingChoice } from './FacingChoice';
 import {
   CONTRAST, CORRIDOR, GENERATE_KIND, RICHNESS, SLIDERS, STRIP, fillKindsFor, fillLabelKey, fillTakesElevation, fillTakesItem,
 } from './generate-shelf';
@@ -33,11 +33,12 @@ export const GenerateStrip = forwardRef<HTMLDivElement, {
   recipe: GenerateRecipe;
   ends: MazeEndsState;
   scopeSays: string;
+  /** The middle of what a Letter or Picture fills, where its facing arrows are read; null for none. */
+  facingAt: { x: number; y: number } | null;
   style: CSSProperties;
-}>(function GenerateStrip({ recipe, ends, scopeSays, style }, ref) {
+}>(function GenerateStrip({ recipe, ends, scopeSays, facingAt, style }, ref) {
   const t = useT();
   const locale = useLocale();
-  const setSelectingRegion = useEditorStore((s) => s.setSelectingRegion);
   const { kind, stencil, fillKind, fillItem } = recipe;
   const traits = GENERATE_KIND[kind];
   const takesItem = fillTakesItem(kind, fillKind);
@@ -66,7 +67,7 @@ export const GenerateStrip = forwardRef<HTMLDivElement, {
   return (
     <div ref={ref} className="pw-noscroll" data-testid="shell-gen-strip" style={style}>
       <span {...helpTargetAttr('region')} style={{ flex: '0 0 auto' }}>
-        <StripChip testId="shell-gen-scope" name={t('generate.scope')} value={scopeSays} onOpen={() => setSelectingRegion(true)} />
+        <StripChip testId="shell-gen-scope" name={t('generate.scope')} value={scopeSays} onOpen={() => pressCommand('region.paint', { on: true })} />
       </span>
       <span style={{ flex: '1 1 auto', minWidth: 0 }} />
       {traits.gates ? (
@@ -88,7 +89,7 @@ export const GenerateStrip = forwardRef<HTMLDivElement, {
                 // An object letter with nothing chosen opens the shelf that chooses one; a picture matches its own items.
                 if (fillTakesItem(kind, next) && !fillItem) recipe.setPickingItem(true);
               }}
-              render={(o) => t(fillLabelKey(kind, o))} stretch={false} fontSize={TEXT.label}
+              render={(o) => t(fillLabelKey(kind, o))} stretch={false}
             />
           </span>
         )} />
@@ -109,6 +110,13 @@ export const GenerateStrip = forwardRef<HTMLDivElement, {
         reading: fillTakesElevation(kind, fillKind) ? layerName(t, recipe.elevation) : t('generate.not_applicable'),
         min: recipe.floor, max: recipe.ceiling,
       }, SLIDERS.maxLayer, !fillTakesElevation(kind, fillKind)) : null}
+      {stencil ? (
+        <Knob label={t('generate.facing')} groove={false} control={(
+          <span style={{ pointerEvents: 'auto', display: 'flex' }} data-testid="shell-gen-facing">
+            <FacingChoice value={recipe.facing} onChange={recipe.setFacing} at={facingAt} />
+          </span>
+        )} />
+      ) : null}
     </div>
   );
 });

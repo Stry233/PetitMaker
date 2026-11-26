@@ -26,7 +26,7 @@ export function rectContains(r: Rect, x: number, y: number): boolean {
 
 /** The bounding box of the cells `cellOf` reads off `items`, or null when there are none: the one
  *  bounding-box loop. */
-function boundsOf<T>(items: Iterable<T>, cellOf: (item: T) => { x: number; y: number }): Rect | null {
+export function boundsOf<T>(items: Iterable<T>, cellOf: (item: T) => { x: number; y: number }): Rect | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const item of items) {
     const c = cellOf(item);
@@ -60,14 +60,46 @@ export function regionBounds(region: readonly { x: number; y: number }[]): Regio
 }
 
 /** The bounding box of flat cell indices on a grid `W` cells wide; none answers a zero rect. */
-export function indexBounds(cells: readonly number[], W: number): Rect {
+export function indexBounds(cells: Iterable<number>, W: number): Rect {
   return boundsOf(cells, (i) => ({ x: i % W, y: (i / W) | 0 })) ?? { x: 0, y: 0, w: 0, h: 0 };
+}
+
+/** The box holding every cell of a `w` by `h` grid that `test` accepts, or null when none does. */
+export function boundsWhere(w: number, h: number, test: (x: number, y: number) => boolean): Rect | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!test(x, y)) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      y1 = y;
+    }
+  }
+  return Number.isFinite(x0) ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : null;
+}
+
+/** The smallest rect holding every one of `rects`, or null when there are none. */
+export function rectsBounds(rects: Iterable<Rect>): Rect | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rects) {
+    if (r.x < x0) x0 = r.x;
+    if (r.y < y0) y0 = r.y;
+    if (r.x + r.w > x1) x1 = r.x + r.w;
+    if (r.y + r.h > y1) y1 = r.y + r.h;
+  }
+  return Number.isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }
 
 /** AABB overlap of two macro rects. Touching edges (a.x + a.w === b.x) do not
  *  count as overlapping — matches the object-to-object "strict <" rule. */
 export function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Whether `a` and `b` overlap or come within `pad` cells of each other. */
+export function rectsTouch(a: Rect, b: Rect, pad: number): boolean {
+  return rectsOverlap(inflateRect(a, pad), b);
 }
 
 /** `r` grown by `pad` cells on every side (a negative `pad` shrinks it). */

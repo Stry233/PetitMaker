@@ -8,16 +8,15 @@ import { Disclosure } from '../../primitives/Disclosure';
 import { ActionButton } from '../../primitives/ActionButton';
 import { useNameReveal } from '../../primitives/use-name-reveal';
 import { useReadingIntent } from '../parts/scroll-intent';
-import { displayAgentText, type JobView, type OpRow as OpRowData } from '../../../agent/panel';
+import { displayAgentText, type JobView, type OpRow as OpRowData, type TakeBackFacts, takeBackStanding } from '../../../agent/panel';
 import { useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
 import { amplitude, cssMotion, framerMotion } from '../../design/motion';
 import { Icon } from '../parts/sprite';
 import { OpsList } from './OpRow';
-import { rollbackCost } from '../derive/rollback';
 import { RewindSquare } from '../parts/RewindSquare';
-import type { LaneView } from './Lane';
-import type { Checkpoint } from './ticket-parts';
+import type { LaneViews } from './Lane';
+import { AT_REST, takeBackControl } from '../derive/rollback';
 import { ACTIVE, INK, INSET, MUTED, PLATE, PLATE_INK, TRACK } from '../../design/tokens';
 import { cursors, font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
@@ -95,43 +94,38 @@ function rollupOf(ops: readonly OpRowData[], t: Translate): string | null {
 }
 
 export function PlanRail({
+  job,
   plan,
-  ops,
-  checkpoints,
   lane,
-  busy = false,
-  undoDepth,
+  takeBack = AT_REST,
   onRewind,
 }: {
+  /** The job the plan belongs to: its operations, and the checkpoints its stages rewind to. */
+  job: JobView;
   plan: StagePlan;
-  ops: readonly OpRowData[];
-  checkpoints?: JobView['checkpoints'];
   /** The live helper lane, for the delegate row nested under the active stage. */
-  lane?: LaneView;
-  /** A job is in flight, so a stage take-back would pop a stack the loop is still writing to. The
-   *  control stands where it is, disabled, saying why: the hold lifts the moment the job does. */
-  busy?: boolean;
-  /** The live undo depth, so a stage's take-back can name what it would pop. */
-  undoDepth?: number;
-  onRewind?: (checkpoint: Checkpoint) => void;
+  lane?: LaneViews;
+  /** The live facts a stage's take-back is read against. While the job runs the control stands
+   *  where it is, disabled, saying why: the hold lifts the moment the job does. */
+  takeBack?: TakeBackFacts;
+  onRewind?: (job: JobView, checkpointIndex: number) => void;
 }) {
+  const { ops, checkpoints } = job;
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
   const preserveReading = useReadingIntent();
   const [expanded, setExpanded] = useState<ReadonlyMap<number, boolean>>(new Map());
-  const fallbackStage = Math.min(plan.currentIndex, plan.stages.length - 1);
   return (
     <div data-testid="plan-rail" style={{ display: 'flex', flexDirection: 'column' }}>
       {plan.stages.map((stage, i) => {
         const state = stateFor(i, plan.currentIndex);
-        const checkpoint = checkpoints?.find((c) => c.stageIndex === i);
-        const canRewind = state === 'done' && checkpoint !== undefined && Boolean(onRewind);
+        const checkpointIndex = checkpoints.findIndex((c) => c.stageIndex === i);
+        const rewind = state === 'done' && onRewind ? takeBackControl(takeBackStanding(job, checkpointIndex, takeBack)) : null;
         // Model-authored, so it can arrive blank or absent: a nameless stage reads as a rail with a
         // hole in it, and a missing one would throw here and take the whole panel down with it. The
         // loop's own parser coerces the field, but a log restored from an older build need not have.
         const label = (stage.label ?? '').trim() === '' ? t('agent.ticket_step_stage', { n: i + 1 }) : stage.label;
-        // Older records have no stage index; keep their work accessible on the current or final stage.
-        const stageOps = ops.filter(op => (op.stageIndex ?? fallbackStage) === i);
+        const stageOps = ops.filter((op) => op.stageIndex === i);
         const open = expanded.get(i) ?? state === 'now';
         const nests = open && stageOps.length > 0;
         const rollup = rollupOf(stageOps, t);
@@ -198,14 +192,14 @@ export function PlanRail({
                 )}
               </AnimatePresence>
             </div>
-            {canRewind && (
+            {rewind && (
               <RewindSquare
                 testId="plan-rewind"
                 label={t('agent.ticket_rewind')}
                 actLabel={t('agent.ticket_rewind')}
-                cost={rollbackCost(checkpoint.undoIndex, undoDepth)}
-                busy={busy}
-                onConfirm={() => onRewind?.(checkpoint)}
+                cost={rewind.cost}
+                busy={rewind.busy}
+                onConfirm={() => onRewind?.(job, checkpointIndex)}
               />
             )}
           </div>

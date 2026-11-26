@@ -80,14 +80,16 @@ describe('adjusting a curve', () => {
     const w = world();
     const at = w.openGround(14, 10);
     const a = shift(at, 1, 2), b = shift(at, 9, 2);
-    plateau(w, shift(at, 4, 1), 3, 3, 1);
+    plateau(w, shift(at, 0, 1), 11, 3, 1);
+    plateau(w, shift(at, 0, 7), 11, 3, 1);
     const p = brush(w, { shape: 'curve' });
     p.click(a);
     p.doubleClick(b);
-    expect(w.terrainAt(shift(at, 5, 2)), 'the curve stacked on the block').toEqual({ type: TerrainType.Mountain, elevation: 2 });
+    expect(w.terrainAt(shift(at, 5, 2)), 'the curve built on the strip').toEqual({ type: TerrainType.Mountain, elevation: 2 });
     p.curve.moveAnchor(1, b.x, b.y + 6, true);
     p.curve.moveAnchor(0, a.x, a.y + 6, true);
-    expect(w.terrainAt(shift(at, 5, 2)), 'the block as it was').toEqual({ type: TerrainType.Mountain, elevation: 1 });
+    expect(w.terrainAt(shift(at, 5, 2)), 'the strip as it was').toEqual({ type: TerrainType.Mountain, elevation: 1 });
+    expect(w.terrainAt(shift(at, 5, 8)), 'the curve on the other strip, on its own layer').toEqual({ type: TerrainType.Mountain, elevation: 2 });
   });
 
   spec('EDIT-37', 'a direction handle bends the curve, and each adjustment is its own undo step', () => {
@@ -119,11 +121,12 @@ describe('adjusting a curve', () => {
     const w = world();
     const at = w.openGround(14, 12);
     const before = picture(w);
-    plateau(w, shift(at, 8, 6), 5, 5, 3);
+    plateau(w, at, 12, 6, 3);
     const withPlateau = picture(w);
+    // Layer 4 inside the plateau has its support; on the plateau's rim it has none.
     const p = brush(w, { shape: 'curve' });
-    p.click(shift(at, 1, 1));
-    p.doubleClick(shift(at, 9, 1));
+    p.click(shift(at, 2, 2));
+    p.doubleClick(shift(at, 9, 2));
     const curve = picture(w);
     const anchors = anchorsOf(p);
 
@@ -134,7 +137,7 @@ describe('adjusting a curve', () => {
 
     w.undo();
     expect(picture(w), 'one undo takes the curve itself').toBe(withPlateau);
-    w.undo();
+    for (let layer = 0; layer < 3; layer++) w.undo();
     expect(picture(w)).toBe(before);
   });
 });

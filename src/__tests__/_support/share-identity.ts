@@ -11,10 +11,10 @@ import { createDefaultTerrainCell } from '../../core/model/grid-model';
 import { LANDMARKS } from '../../core/game/profile';
 import { CellZone } from '../../core/game/zones';
 import { TerrainType, type GridState, type MapTemplate } from '../../core/model/types';
-import { canonicalBytes, canonicalize, toSaveJSON } from '../../io/save/canonical';
+import { canonicalBytes, canonicalize, toSaveFile } from '../../io/save/canonical';
 import { createDefaultRegistry } from '../../rules';
-import { clearUnderLandmarks } from '../../state/landmark-clearance';
-import { applyRelocation } from '../../state/relocation-plan';
+import { clearUnderLandmarks } from '../../tools/repair/landmark-clearance';
+import { applyRelocation } from '../../tools/repair/relocation-plan';
 import { createExecutor } from '../../state/executor';
 import { openSave } from '../../io/import/open-save';
 import { decodeSave } from '../../io/save/json-codec';
@@ -110,8 +110,7 @@ export async function canonicalSha(state: GridState): Promise<string> {
 export function importPayload(dec: DecodedMapPayload): { state: GridState; repaired: boolean } {
   const planet = dec.template && upgradeLandmarks(dec.template);
   const templateId = planet ? planet.id : dec.canonical.templateId;
-  const json = toSaveJSON({ ...dec.canonical, templateId }, dec.annotations);
-  const state = decodeSave(parseSave(JSON.parse(json), { template: resolveTemplate(templateId, planet) }));
+  const state = decodeSave(parseSave(toSaveFile({ ...dec.canonical, templateId }, dec.annotations), { template: resolveTemplate(templateId, planet) }));
   const rules = createDefaultRegistry();
   const { report } = clearUnderLandmarks(state, rules);
   const repaired = report !== undefined;

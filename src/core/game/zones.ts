@@ -94,3 +94,16 @@ export function groundZone(cell: { readonly zone: CellZone; readonly under?: San
 export function isCellZone(v: unknown): v is CellZone {
   return typeof v === 'number' && Number.isInteger(v) && SPECS[v] !== undefined;
 }
+
+/** Every zone a map holds, buildable ones first and then the rest by id: the order prose names them in. */
+export const ZONE_ORDER: readonly CellZone[] = (Object.keys(SPECS).map(Number) as CellZone[])
+  .sort((a, b) => Number(SPECS[b]!.buildable) - Number(SPECS[a]!.buildable) || a - b);
+
+/** The English word for `zone`. */
+export const zoneName = (zone: CellZone): string => SPECS[zone]!.name;
+
+/** The buildable zones' words, as one phrase. */
+export const BUILDABLE_ZONES: string = ZONE_ORDER.filter(isBuildableZone).map(zoneName).join(' or ');
+
+/** The words of every zone that refuses edits, in reading order. */
+export const UNBUILDABLE_ZONES: readonly string[] = ZONE_ORDER.filter((z) => !isBuildableZone(z)).map(zoneName);

@@ -33,9 +33,9 @@ describe('TerrainLayer chunk consolidation', () => {
     setTerrain(state, 18, 3, TerrainType.Mountain, 1); // chunk (1,0)
     const layer = new TerrainLayer(() => {});
     layer.drawFull(state);
-    // 5 terrain cells in 2 chunks → exactly 2 Graphics (waterfall arrows would
-    // add more, but this state has none).
-    expect(graphicsLeaves(layer.container)).toHaveLength(2);
+    // 5 terrain cells in 2 chunks → exactly 2 Graphics that draw (the waterfall arrows' one
+    // Graphics draws nothing on a map without falls).
+    expect(graphicsLeaves(layer.container).filter((g) => g.geometry.graphicsData.length > 0)).toHaveLength(2);
   });
 
   it('redrawCells defers the repaint to flushDirty, which repaints each dirty chunk once', () => {

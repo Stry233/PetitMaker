@@ -19,7 +19,7 @@ import { useEditorStore, type ShareSection } from '../../../../../state/store';
 import { ShareWindow } from '../../../../../ui/chrome/modals/export/ShareWindow';
 import { ItemCategory } from '../../../../../config/catalog/categories';
 
-const TABS = ['Keep working', 'For a friend', 'Into the game'];
+const TABS = ['Keep working', 'For a friend', 'Map stats'];
 
 beforeEach(() => {
   act(() => { useEditorStore.setState({ locale: 'en' }); });
@@ -58,7 +58,7 @@ describe('the save-and-share window', () => {
     [undefined, 'Keep working'],
     ['keep', 'Keep working'],
     ['friend', 'For a friend'],
-    ['game', 'Into the game'],
+    ['stats', 'Map stats'],
   ] as const)('opening at %s lands on the %s section', async (section, tab) => {
     mount();
     openWith(section);
@@ -96,9 +96,9 @@ describe('the save-and-share window', () => {
     mount();
     openWith();
     await screen.findByRole('dialog', { name: 'Save and share' });
-    fireEvent.click(screen.getByRole('button', { name: 'Into the game' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Map stats' }));
 
-    expect(screen.getByRole('button', { name: 'Into the game' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Map stats' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText('Things to place')).toBeTruthy();
     expect(screen.getByText('Terrain, layer by layer')).toBeTruthy();
     expect(screen.getByText(localizedName(house.name, 'en'))).toBeTruthy();
@@ -121,7 +121,7 @@ describe('the save-and-share window', () => {
     fireEvent.click(pretty);
     expect(pretty.getAttribute('aria-checked')).toBe('true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Into the game' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Map stats' }));
     fireEvent.click(screen.getByRole('button', { name: 'Keep working' }));
     expect(screen.getByRole('switch', { name: 'Pretty-print' }).getAttribute('aria-checked')).toBe('true');
   });

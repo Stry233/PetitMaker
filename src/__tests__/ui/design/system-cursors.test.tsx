@@ -6,7 +6,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { CURSORS, CURSOR_IDS, DOM_CURSORS, type DomCursorId } from '../../../assets/cursors/cursor-spec';
+import { CURSORS, DOM_CURSORS, type CursorId, type DomCursorId } from '../../../assets/cursors/cursor-spec';
+
+const CURSOR_IDS = Object.keys(CURSORS) as CursorId[];
 import { cursorCss } from '../../../assets/cursors/cursor-css';
 import { publishCursorPreference, useCursorVars } from '../../../ui/design/cursors/cursor-vars';
 import {
@@ -18,7 +20,7 @@ import { PREFS } from '../../../platform/storage/prefs';
 /** The ids that have art, and so are the ones a url() is expected for. */
 const DRAWN = CURSOR_IDS.filter((id) => CURSORS[id].hasArt);
 
-/** Set the store's preference and publish it, as a flip in Settings does. */
+/** Set the store's preference and write the DOM's properties for it, as a flip in Settings does. */
 const prefer = (on: boolean): void => { useEditorStore.setState({ systemCursors: on }); publishCursorPreference(); };
 
 const domProp = (id: DomCursorId): string =>

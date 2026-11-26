@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GridState } from '../../core/model/types';
-import { mapRevisionOf } from '../../state/map-revision';
+import { mapRevisionOf } from '../../core/model/grid-model';
 import { useVersioned } from '../primitives/use-versioned';
 import { useMapRevision } from './use-map-revision';
 

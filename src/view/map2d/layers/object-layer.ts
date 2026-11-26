@@ -15,9 +15,9 @@ import { animConfig } from '../../shared/motion/anim-config';
 import { FALLBACK_TINT } from '../../shared/icon/item-tint';
 import { spawnPuff } from '../draw/particles';
 import { getIconTexture, iconColor, iconLodVersion } from '../draw/icon-texture';
-import { fitSpriteToTexture, footprintFit, itemSpriteFill, spriteTurns } from '../draw/sprite-fit';
+import { poseSprite } from '../draw/sprite-fit';
 import { drawRamp } from '../draw/ramp-graphic';
-import { objectSpriteUrl } from '../draw/object-sprite-url';
+import { objectSpritePose, type SpritePose } from '../draw/object-sprite';
 import { ChunkGrid, type CullRect } from './chunk-grid';
 import { RoadSurfaces } from './road-surfaces';
 import { materialTexture } from '../draw/road-surface';
@@ -27,6 +27,7 @@ import { MIN_NUMBER_ZOOM } from './number-overlay';
 import { animateSquash, animateRotation, animateGroupRotation, animateRemove, fadeLayer } from './object-animations';
 import type { GroupRotation } from '../../../tools/objects';
 import { OBJECT_CHILD } from '../draw/object-children';
+import { settleAtOnce, type PlayBeat } from '../../shared/viewport/frame-loop';
 import { layerNumeral } from '../../../i18n/terms/layer-name';
 
 // Backing tint for an object with no sprite/color of its own — the shared fallback from
@@ -56,6 +57,9 @@ interface ObjectLayerDeps {
   state(): GridState | null;
   /** Opens the owning renderer's render window. */
   requestRender: () => void;
+  /** Plays the placement, turn and removal beats on the owning renderer's frame loop; without one
+   *  they land on their end states at once. */
+  play?: PlayBeat;
 }
 
 type Size = { w: number; h: number };
@@ -101,7 +105,7 @@ export class ObjectLayer {
    *  zIndex = `coatingLayer`, the key 3D's `renderOrder` reads, whatever order they were drawn in. */
   private surfaceContainers = new Map<number, PIXI.Container>();
   private layerChunks = new Map<number, ChunkGrid>();
-  private layerFadeAnim = new Map<number, number>();
+  private layerFadeAnim = new Map<number, () => void>();
   private lastCullRect: CullRect | null = null;
   /** Deferred elevation-label geometry per object — the Text is built lazily, only while
    *  numbers are shown (an always-allocated Text per object is a rasterized texture each,
@@ -116,8 +120,11 @@ export class ObjectLayer {
     state: () => this.deps.state(),
   });
 
+  private readonly play: PlayBeat;
+
   constructor(private readonly deps: ObjectLayerDeps) {
     this.requestRender = deps.requestRender;
+    this.play = deps.play ?? settleAtOnce;
     this.container = new PIXI.Container();
     this.container.sortableChildren = true; // layer containers sort by zIndex = elevation
   }
@@ -266,7 +273,7 @@ export class ObjectLayer {
     // Fade each per-elevation container as a unit (one fade per layer, never
     // per-object). Reduced motion snaps instantly.
     for (const [elev, lc] of this.layerContainers) {
-      fadeLayer(lc, elev, !this.hiddenLayers.has(elev), this.layerFadeAnim, this.requestRender);
+      fadeLayer(lc, elev, !this.hiddenLayers.has(elev), this.layerFadeAnim, this.play);
     }
   }
 
@@ -372,7 +379,7 @@ export class ObjectLayer {
 
       const wrapper = new PIXI.Container();
       wrapper.name = obj.id;
-      if (print) this.drawPrint(wrapper, obj, print, size);
+      if (print) this.drawPrint(wrapper, obj, item, size);
       else if (isRamp(item) && item) drawRamp(wrapper, obj, item, size, { showNumbers: this.labelsVisible(), requestRender: this.requestRender });
       else {
         this.drawBody(wrapper, obj, item, size);
@@ -391,13 +398,12 @@ export class ObjectLayer {
     if (objects.some((o) => this.roads.ids.has(o.id))) this.roads.schedule();
   }
 
-  /** A surface print: its art stretched over the footprint and turned with the object. */
-  private drawPrint(wrapper: PIXI.Container, obj: PlacedObject, art: NonNullable<CatalogEntry['surfacePrint']>, size: Size): void {
-    const sprite = new PIXI.Sprite(materialTexture(art, this.requestRender));
-    sprite.anchor.set(0.5);
-    sprite.position.set(size.w * TILE_SIZE / 2, size.h * TILE_SIZE / 2);
-    sprite.width = size.w * TILE_SIZE; sprite.height = size.h * TILE_SIZE;
-    sprite.rotation = obj.rotation * Math.PI / 180;
+  /** A surface print: its art over the footprint, turned with the object (`objectSpritePose`). */
+  private drawPrint(wrapper: PIXI.Container, obj: PlacedObject, item: CatalogEntry | undefined, size: Size): void {
+    const pose = objectSpritePose(obj, item, size);
+    if (pose?.art.kind !== 'print') return;
+    const sprite = new PIXI.Sprite();
+    poseSprite(sprite, pose, materialTexture(pose.art.pattern, this.requestRender), { x: 0, y: 0 }, this.requestRender);
     wrapper.addChild(sprite);
   }
 
@@ -409,12 +415,12 @@ export class ObjectLayer {
     const bgColor = obj.color ?? item?.color;
     const fill = bgColor ? hexStringToNumber(bgColor) : OBJECT_COLOR;
     const alpha = bgColor ? 0.85 : OBJECT_ALPHA;
-    const spriteUrl = objectSpriteUrl(obj, item);
-    if (spriteUrl) {
+    const pose = objectSpritePose(obj, item, size);
+    if (pose?.art.kind === 'icon') {
       // Non-1x1 footprints keep their background box (so the multi-cell extent stays visible) even
       // when an icon sits on top; 1x1 items show the icon alone.
       if (size.w > 1 || size.h > 1) wrapper.addChild(footprintBox(size, fill, alpha));
-      this.drawIcon(wrapper, obj, item, size, spriteUrl);
+      this.drawIcon(wrapper, obj, item, size, pose);
       return;
     }
     if (isCoatingItem(item)) {
@@ -441,28 +447,22 @@ export class ObjectLayer {
   }
 
   /**
-   * The item's icon, fitted within the footprint by its actual texture dimensions (icons vary:
+   * The item's icon, posed by `objectSpritePose` against its actual texture dimensions (icons vary:
    * 256x256 plants, 700x400 bridges) and scaled on load if the image has not decoded yet. The LOD
    * budget is in device px: footprint x renderer resolution (the DPR cap) x4 zoom-in headroom. The
    * resolution must be in it: a world-px budget would upscale at zoom > 1, leaving the map icon
    * blurry while the same icon is crisp as a DOM <img> in the placement panel.
    */
-  private drawIcon(wrapper: PIXI.Container, obj: PlacedObject, item: CatalogEntry | undefined, size: Size, url: string): void {
-    const fw = size.w * TILE_SIZE;
-    const fh = size.h * TILE_SIZE;
-    const tex = getIconTexture(url, Math.max(size.w, size.h) * TILE_SIZE * maxRenderScale() * 4);
-    const sprite = new PIXI.Sprite(tex);
-    sprite.anchor.set(0.5);
-    sprite.x = fw / 2;
-    sprite.y = fh / 2;
-    sprite.rotation = spriteTurns(item) ? (obj.rotation * Math.PI) / 180 : 0;
+  private drawIcon(wrapper: PIXI.Container, obj: PlacedObject, item: CatalogEntry | undefined, size: Size, pose: SpritePose): void {
+    if (pose.art.kind !== 'icon') return;
+    const { url } = pose.art;
+    const footprintPx = Math.max(size.w, size.h) * TILE_SIZE;
+    const tex = getIconTexture(url, footprintPx * maxRenderScale() * 4);
+    const sprite = new PIXI.Sprite();
     // animateRotation tweens this; a footprint-turning item's art rests upright and spins in only as it turns.
     if (item && (item.rotatable || hasTrait(item, 'footprintTurn'))) sprite.name = OBJECT_CHILD.icon;
-    // Self-described objects (landmarks) carry a filled platform image: contain it within the
-    // footprint (no 1.1 overflow) so the icon stays inside its grey backing box.
-    const spriteFill = obj.icon ? 1 : itemSpriteFill(item);
-    fitSpriteToTexture(sprite, tex, footprintFit(fw, fh, spriteFill), false, this.requestRender);
-    const lodEntry = { sprite, url, footprintPx: Math.max(fw, fh) };
+    poseSprite(sprite, pose, tex, { x: 0, y: 0 }, this.requestRender);
+    const lodEntry = { sprite, url, footprintPx };
     this.lodSprites.set(obj.id, lodEntry);
     this.pendingLod.push(lodEntry); // starts on the oversized default; the next updateLod settles it (O(new))
     wrapper.addChild(sprite);
@@ -527,7 +527,7 @@ export class ObjectLayer {
         lifetimeMs: place.lifetimeMs, risePx: place.risePx, gravity: place.gravity,
         arcSpread: place.arcSpread, maxRadiusPx: place.maxRadiusPx, behind: true,
       },
-      this.requestRender,
+      this.play,
     );
   }
 
@@ -564,12 +564,12 @@ export class ObjectLayer {
 
   /** Delegates to object-animations.ts animateSquash — see there for the design notes. */
   animateSquash(objectId: string, sizeCells = 1): void {
-    animateSquash(this.objectMap, objectId, sizeCells, this.requestRender);
+    animateSquash(this.objectMap, objectId, sizeCells, this.play);
   }
 
   /** Delegates to object-animations.ts animateRotation — see there for the design notes. */
   animateRotation(id: string, fromDeg: number, toDeg: number, onFrame?: (eased: number) => void): void {
-    animateRotation(this.objectMap, id, { fromDeg, toDeg }, this.requestRender, onFrame);
+    animateRotation(this.objectMap, id, { fromDeg, toDeg }, this.play, onFrame);
   }
 
   /** Delegates to object-animations.ts animateGroupRotation — see there for the design notes.
@@ -580,7 +580,7 @@ export class ObjectLayer {
   animateGroupRotation(turn: GroupRotation, onFrame?: (eased: number) => void): void {
     const roadMembers = turn.members.filter((m) => this.roads.ids.has(m.id));
     if (roadMembers.length === 0 || isMotionReduced()) {
-      animateGroupRotation(this.objectMap, turn, this.requestRender, onFrame);
+      animateGroupRotation(this.objectMap, turn, this.play, onFrame);
       return;
     }
     const gridState = this.deps.state();
@@ -599,7 +599,7 @@ export class ObjectLayer {
       wrapper.addChildAt(g, 0);
       flightGfx.push(g);
     }
-    animateGroupRotation(this.objectMap, turn, this.requestRender, (eased) => {
+    animateGroupRotation(this.objectMap, turn, this.play, (eased) => {
       onFrame?.(eased);
       if (eased !== 1) return;
       for (const g of flightGfx) { g.parent?.removeChild(g); g.destroy(); }
@@ -612,6 +612,6 @@ export class ObjectLayer {
   /** Delegates to object-animations.ts animateRemove — see there for the design notes.
    *  Must be called before the RemoveObject command executes, while the wrapper still exists. */
   animateRemove(id: string): void {
-    animateRemove(this.objectMap, this.container, id, this.deps.state()?.objects.get(id), this.requestRender);
+    animateRemove(this.objectMap, this.container, id, this.deps.state()?.objects.get(id), this.play);
   }
 }

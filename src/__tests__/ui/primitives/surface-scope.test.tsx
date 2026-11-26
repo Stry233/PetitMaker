@@ -130,3 +130,25 @@ describe('a press outside a floating surface', () => {
     vi.useRealTimers();
   });
 });
+
+describe('the surface the keyboard reaches', () => {
+  function Menu({ name, rank, close }: { name: string; rank: 0 | 1; close(): void }) {
+    const root = useRef<HTMLDivElement>(null);
+    useSurfaceScope({ open: true, onClose: close, root, focus: 'menu', rank });
+    return <div ref={root} role="menu" aria-label={name}>
+      <button type="button" role="menuitem">{`${name} one`}</button>
+      <button type="button" role="menuitem">{`${name} two`}</button>
+    </div>;
+  }
+
+  it('[UI-12] is the one Escape ends, though a surface opened after it ranks under it', () => {
+    const closeOver = vi.fn();
+    const { rerender } = render(<Menu name="Over" rank={1} close={closeOver} />);
+    rerender(<><Menu name="Over" rank={1} close={closeOver} /><Menu name="Under" rank={0} close={() => {}} /></>);
+    screen.getByRole('menuitem', { name: 'Over one' }).focus();
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Over two' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(closeOver).toHaveBeenCalledOnce();
+  });
+});

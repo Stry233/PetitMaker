@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { cellDecals, rectDecals, DECAL_LIFT } from '../../../../view/map3d/geometry/overlay-decals';
 import { cellSurfacePieces, spanCellCentres } from '../../../../view/map3d/geometry/surface-pieces';
-import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildTerrainMeshes } from '../../../_support/terrain-meshes';
 import { GROUND_SLAB_Y, layerToY, mapCenterOffset, waterSurfaceY } from '../../../../view/map3d/geometry/coords';
 import { TerrainType, type Corners, type GridState } from '../../../../core/model/types';
 import { makeState, setTerrain } from '../../../_support/map-state';

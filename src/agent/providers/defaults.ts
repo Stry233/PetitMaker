@@ -1,9 +1,10 @@
 /** SDK-independent provider metadata and wire-format quirks. Regional URLs are ordered global, then China. */
 import type { I18nKey } from '../../i18n/keys';
+import type { ModelCapabilities } from '../core/adapter';
 
 export const PROVIDER_IDS = [
   'claude', 'openai', 'deepseek', 'gemini', 'openrouter', 'zhipu', 'qwen', 'moonshot', 'doubao', 'perplexity',
-  'custom',
+  'modelscope', 'custom',
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -91,6 +92,12 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     keyUrl: 'https://console.perplexity.ai/project/keys',
     accent: '#20808D',
   },
+  modelscope: {
+    id: 'modelscope',
+    name: 'ModelScope',
+    keyUrl: 'https://modelscope.cn/my/access/token',
+    accent: '#624AFF',
+  },
   custom: {
     id: 'custom',
     name: 'Custom',
@@ -135,11 +142,18 @@ export interface Quirks {
   imageInToolResult: boolean;
   /** The i18n key of the hint beside the model field, where the platform's model ids need one. */
   modelHintKey?: I18nKey;
+  /** Whether a turn of `model` goes over the Responses protocol rather than chat completions. */
+  responses?: (model: string, caps: ModelCapabilities | undefined) => boolean;
+  /** Whether `model` caps its reply with `max_completion_tokens`, where `max_tokens` serves the rest. */
+  completionTokenLimit?: (model: string) => boolean;
 }
 
 // OpenAI-dialect adapters synthesize a missing tool-call id for every provider.
 
 const lower = (model: string): string => model.toLowerCase();
+
+/** OpenAI's reasoning model families, which take `max_completion_tokens` and the Responses protocol. */
+const OPENAI_REASONING_MODEL = /^(?:gpt-[5-9]|o[1-9])/;
 
 /** What every hosted OpenAI-dialect platform shares: no images in tool results, streamed usage. */
 const HOSTED_OPENAI = { dialect: 'openai', imageInToolResult: false, streamUsage: true } as const;
@@ -162,6 +176,8 @@ export const QUIRKS: Record<ProviderId, Quirks> = {
     preferredModels: ['gpt-4.1-mini', 'gpt-4o-mini'],
     baseUrls: [OPENAI_BASE_URL],
     vision: { guess: (model) => /^(gpt-|o\d)/.test(lower(model)) && !/audio|realtime/.test(lower(model)) },
+    responses: (model, caps) => caps?.reasoning === true || OPENAI_REASONING_MODEL.test(model),
+    completionTokenLimit: (model) => OPENAI_REASONING_MODEL.test(model),
   },
   deepseek: {
     ...HOSTED_OPENAI,
@@ -237,6 +253,16 @@ export const QUIRKS: Record<ProviderId, Quirks> = {
     baseUrls: ['https://api.perplexity.ai/router/v1'],
     reasoningFields: ['reasoning_content'],
     vision: { guess: (model) => /claude|gemini|gpt-|grok/.test(lower(model)), probe: true },
+  },
+  modelscope: {
+    ...HOSTED_OPENAI,
+    thinkingWire: 'effort',
+    baseUrls: ['https://api-inference.modelscope.cn/v1'],
+    reasoningFields: ['reasoning_content', 'reasoning'],
+    // The account list also names image, SQL and judging models, which hold no conversation.
+    chatModelIds: /^(?!.*(?:image|sql|judger|angelmed)).+$/i,
+    // A community hub serves many families under their repository ids, so the id is no authority.
+    vision: { guess: (model) => /vl|vision|omni|deepseek|nex-|intern|qwen/.test(lower(model)), probe: true },
   },
   custom: {
     dialect: 'openai',

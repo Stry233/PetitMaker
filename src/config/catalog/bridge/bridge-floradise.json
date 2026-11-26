@@ -1,0 +1,35 @@
+{
+  "id": "bridge-floradise",
+  "category": "bridge",
+  "name": {
+    "en": "Floradise Petal Bridge",
+    "zh": "花野栖居花桥",
+    "ja": "フローラダイスの花びら橋",
+    "ru": "Мост из лепестков «Флорадайз»",
+    "th": "สะพานกลีบดอกไม้ฟลอราไดซ์",
+    "id": "Jembatan Kelopak Floradise",
+    "fr": "Pont Fleuri Floradis"
+  },
+  "aliases": [
+    "粉",
+    "pink",
+    "花",
+    "flower"
+  ],
+  "icon": "bridge-floradise",
+  "width": 2,
+  "height": 1,
+  "loadValue": 204,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "waterSpan",
+      "min": 3,
+      "max": 6
+    },
+    {
+      "type": "halfStep"
+    }
+  ]
+}

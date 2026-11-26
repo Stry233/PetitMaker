@@ -9,6 +9,7 @@
  * `script-src 'self'`.
  */
 import { workerScope, type Keyed } from '../../../platform/async/worker-client';
+import { neuralBackend } from './backend';
 import { ORT_FILES, type NeuralBackend } from './runtime-files';
 
 export type { NeuralBackend } from './runtime-files';
@@ -26,12 +27,6 @@ const runtimes = new Map<Backend, Promise<Runtime>>();
 /** Why WebGPU was not used, when it was not: for the harness, and for a bug report. */
 let gpuError: string | undefined;
 const sessions = new Map<string, Promise<{ session: import('onnxruntime-web').InferenceSession; runtime: Runtime }>>();
-
-async function hasGpu(): Promise<boolean> {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-  if (!gpu) return false;
-  return !!(await gpu.requestAdapter().catch(() => null));
-}
 
 /** Errors only. The runtime's warnings describe its own choices (it keeps shape arithmetic on the
  *  CPU beside a GPU session by design) and each arrives with a full stack, which is noise for anyone
@@ -81,7 +76,7 @@ function session(modelUrl: string) {
   let s = sessions.get(modelUrl);
   if (!s) {
     s = (async () => {
-      if (await hasGpu()) {
+      if (await neuralBackend() === 'webgpu') {
         try { return await open(modelUrl, 'webgpu'); } catch (err) { gpuError = err instanceof Error ? err.message : String(err); }
       } else {
         gpuError = 'no WebGPU adapter in the worker';

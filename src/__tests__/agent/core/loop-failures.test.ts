@@ -264,7 +264,9 @@ describe('runJob failure modes', () => {
       parts: [{ kind: 'tool', callId: 'c0', name: 'place_object', input: {}, argsDone: true }],
     });
     append(log, { kind: 'toolResult', callId: 'c0', name: 'place_object', content: 'placed', isError: false });
-    seedOrder(log, 'go');
+    // At about 9000 tokens the job's own order is more than compaction keeps verbatim, so there is
+    // something to fold, while the whole log stays under the default context window's threshold.
+    seedOrder(log, 'go '.repeat(12_000));
 
     const adapter = createScriptedAdapter([
       { error: { cls: 'overflow', detail: 'context length exceeded' } },
@@ -272,10 +274,7 @@ describe('runJob failure modes', () => {
       textTurn('replayed and done'),
     ]);
     const executor = makeExecutor();
-    // At 9000 per message the job's own group exceeds KEEP_RECENT, so there is something to fold,
-    // while the whole log stays under the pre-turn compaction threshold.
-    const bigEstimate = (): number => 9000;
-    const deps = makeDeps({ adapter, executor, estimate: bigEstimate });
+    const deps = makeDeps({ adapter, executor });
 
     const outcome = await runJob(log, deps);
 

@@ -31,7 +31,7 @@ const s = () => useEditorStore.getState();
 function liveCtx(over: ToolCtxOver = {}): HostedToolContext {
   const state = s().gridState!;
   const exec = makeExecutor(state);
-  return makeToolCtx(state, exec, 2, 1, {
+  return makeToolCtx(state, exec, 2, {
     annotationTool: s().annotationTool,
     annotationZoneShape: s().annotationZoneShape,
     eraserShape: s().eraserShape,

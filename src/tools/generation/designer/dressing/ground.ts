@@ -3,7 +3,7 @@
  * level, segmented into runs, assigned to the regions they stand in, and grouped into the level
  * runs that share one palette.
  */
-import { flatIndex, rectContains, type Rect } from '../../../../core/grid/rect';
+import { flatIndex, inflateRect, rectContains, type Rect } from '../../../../core/grid/rect';
 import { NEIGHBORS4 } from '../../../../core/grid/directions';
 import { componentCells, labelComponents } from '../../../../core/grid/cell-sets';
 import { footprintCells } from '../../../../core/grid/footprint';
@@ -75,9 +75,7 @@ export function segmentRuns(open: Uint8Array, surface: Int8Array, W: number, H: 
 /** A lot with its apron: the ground a region composes. */
 const grounds = (region: RegionPlan): Rect | null => {
   const lot = region.lot[0];
-  return lot
-    ? { x: lot.x - APRON, y: lot.y - APRON, w: lot.w + 2 * APRON, h: lot.h + 2 * APRON }
-    : null;
+  return lot ? inflateRect(lot, APRON) : null;
 };
 
 /**

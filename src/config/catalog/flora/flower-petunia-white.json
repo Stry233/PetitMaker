@@ -1,0 +1,36 @@
+{
+  "id": "flower-petunia-white",
+  "category": "flora",
+  "name": {
+    "en": "White Petunia",
+    "zh": "白矮牵牛",
+    "ja": "ホワイトペチュニア",
+    "ru": "Белая петуния",
+    "th": "พิทูเนียขาว",
+    "id": "Petunia Putih",
+    "fr": "Pétunia blanc"
+  },
+  "aliases": [
+    "白",
+    "white"
+  ],
+  "icon": "flower-petunia-white",
+  "iconColor": "#919b7f",
+  "width": 1,
+  "height": 1,
+  "loadValue": 100,
+  "rotatable": false,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "growsOnPlantable"
+    }
+  ],
+  "plant": {
+    "species": "flower-petunia",
+    "colorFamily": "white"
+  }
+}

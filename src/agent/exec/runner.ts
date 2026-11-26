@@ -14,11 +14,11 @@ import type { Adapter } from '../core/adapter';
 import { pendingGate, type Oversight } from '../core/gates';
 import { runJob, type LoopDeps } from '../core/loop';
 import { isJobActive } from '../core/job-reads';
-import { rawIsAllFrom } from '../core/project-messages';
+import { ordersRefused, type KeyStanding } from '../core/repair-policy';
 import { derivePhase, deriveView } from '../core/project-view';
 import { createSkippableSleeper } from '../core/skippable-sleep';
 import { requestReplySuggestion } from '../core/reply-suggestion';
-import type { JobOutcome } from '../core/types';
+import { MAP_LEFT, type JobOutcome } from '../core/types';
 import { queueSteer } from '../core/steering';
 import { buildAdapter } from '../providers/connect';
 import type { ProviderId, ProviderRegion } from '../providers/defaults';
@@ -27,9 +27,9 @@ import { lightestEffort, thinkingChoices, thinkingChoiceKey } from '../providers
 import { redactSecrets } from '../../platform/remote/redact';
 import { composerRoute, submitComposer } from '../session/composer-routing';
 import { buildSystemPrompt } from '../prompts';
-import { buildMapContext, wireSchemas, type AgentToolDeps } from '../tools';
+import { buildMapContext, type AgentToolDeps } from '../tools';
 import { regionBounds } from '../../core/grid/rect';
-import { createExecutor, type DelegateOpts } from './executor';
+import { jobLoopDeps } from './job-deps';
 import { screenText } from './screen';
 import type { SessionPort } from './session-port';
 
@@ -48,7 +48,11 @@ export interface RunnerConfig {
   registry: RuleDispatcher;
   /** The session the runner reads its log from and publishes live parts to. */
   session: SessionPort;
+  /** How the armed key stands as an order arrives; a caller with none to report holds a pasted key. */
+  keyStanding?: () => KeyStanding;
 }
+
+const KEY_HELD: KeyStanding = { connected: true };
 
 /**
  * The connection a running job is bound to, as its launch froze it. Every turn of a job reaches the
@@ -93,14 +97,20 @@ function suggestReply(
 }
 
 export function createRunner(cfg: RunnerConfig): {
+  /** Takes typed text as an order, a note or an answer by the phase; nothing while the repair policy
+   *  refuses orders (`core/repair-policy.ts:ordersRefused`). */
   send(text: string): void;
+  /** Files `text` again as a new order (Try again, Keep going), only while no job runs, since a send
+   *  then would be read as steering; nothing without a text. It is a repair, so no fault refuses it. */
+  resend(text: string | undefined): void;
   stop(): void;
   pause(): void;
   /** Continues a paused job with no note (the panel's Resume button, as opposed to `send` with
    *  typed text, which carries the note as a queued steer). */
   resume(): void;
-  /** Settles and files a held job as aborted. A live job remains the responsibility of `stop()`. */
-  setAside(): void;
+  /** Sets the job of `orderSeq` aside: a held one settles as aborted first, then its record is
+   *  filed. A live job is left to `stop()` and only filed. */
+  setAside(orderSeq: number): void;
   active(): boolean;
   /** Ends a standing retry backoff early (the dock's countdown press); a no-op when none is
    *  pending. Never touches `withIdleTimeout`'s stream-idle bound or the summary idle bound: this
@@ -130,6 +140,8 @@ export function createRunner(cfg: RunnerConfig): {
     const unwatchLog = session.watch(() => {
       if (session.log() !== log) controller.abort();
     });
+    // A job owns the map it launched on too: another map taking its place stops it, as Stop does.
+    const unwatchMap = toolDeps.onMapLeft?.(() => controller.abort(MAP_LEFT)) ?? (() => {});
     const adapter = buildAdapter(cfg);
     const capabilities = modelCapabilities(cfg.providerId, cfg.model, cfg.customBaseUrl);
     const thinking = thinkingChoices(capabilities, cfg.providerId).find((choice) => thinkingChoiceKey(choice) === cfg.effort);
@@ -141,46 +153,28 @@ export function createRunner(cfg: RunnerConfig): {
       ...(cfg.customBaseUrl !== undefined ? { customBaseUrl: cfg.customBaseUrl } : {}),
       ...(cfg.region !== undefined ? { region: cfg.region } : {}),
     };
-    const system = buildSystemPrompt(cfg.registry, cfg.uiLocale !== undefined ? { uiLocale: cfg.uiLocale } : undefined);
-    const delegateOpts: DelegateOpts = {
-      adapter, // same instance the parent turn itself runs on, never a second build
-      model: cfg.model,
-      capabilities, thinking,
-      system,
-      get oversight() { return cfg.oversight; },
-      signal: controller.signal,
-      log,
-      onChildProgress: (p) => {
-        if (session.log() === log) session.setChildLive(p);
+    const promptOpts = cfg.uiLocale !== undefined ? { uiLocale: cfg.uiLocale } : {};
+    const system = buildSystemPrompt(cfg.registry, promptOpts);
+    // `runner-host.ts` mutates this config in place, so a changed oversight tier applies to the next
+    // write of the running job.
+    const loopDeps: LoopDeps = Object.assign(jobLoopDeps({
+      toolDeps, adapter, model: cfg.model, capabilities, thinking, system,
+      oversight: () => cfg.oversight, signal: controller.signal, log,
+      onChildProgress: (callId, p) => {
+        if (session.log() === log) session.setChildLive(callId, p);
       },
-    };
-    const executor = createExecutor(toolDeps, { delegate: delegateOpts });
-    const loopDeps: LoopDeps = {
-      adapter,
-      model: cfg.model,
-      capabilities, thinking,
-      system,
-      tools: wireSchemas(),
-      executor,
-      // Read at every tool call: `runner-host.ts` mutates this config in place, so a changed
-      // oversight tier applies to the next write of the running job.
-      get oversight() { return cfg.oversight; },
-      // One runner serves successive models over the same log, so raw replay is decided per launch.
-      sameModel: rawIsAllFrom(log, cfg.model),
-      contextWindow: capabilities?.context,
-      signal: controller.signal,
-      undoStackSize: () => toolDeps.getExecutor().historyDepth(),
+    }), {
       // The user's words meet the export content check before any provider does.
-      screen: (text) => screenText(text, cfg.uiLocale),
+      screen: (text: string) => screenText(text, cfg.uiLocale),
       sleep: sleeper.sleep,
       // The turn as it arrives. Everything the panel shows while a turn is in flight comes through
       // here: the loop appends nothing until the turn closes, so without this the phase never
       // leaves `thinking`, the assistant's sentence appears only once it is finished, and a tool
       // call shows no row until its result lands. The loop nulls it at every exit of its own.
-      onLive: (parts) => {
+      onLive: (parts: Parameters<NonNullable<LoopDeps['onLive']>>[0]) => {
         if (session.log() === log) session.setLive(parts);
       },
-    };
+    });
     inflight = runJob(log, loopDeps)
       .then((outcome) => {
         if (outcome === 'done') cancelReply = suggestReply(session, log, adapter, replyConnection);
@@ -197,10 +191,11 @@ export function createRunner(cfg: RunnerConfig): {
         launched = undefined;
         if (abortController === controller) abortController = undefined;
         unwatchLog();
+        unwatchMap();
         // The loop clears the live parts on every path it takes itself; this covers the one it
         // does not, the stray throw caught above, which would otherwise leave a half-streamed turn
         // standing in the panel for the rest of the session.
-        if (session.log() === log) { session.setLive(null); session.setChildLive(null); }
+        if (session.log() === log) { session.setLive(null); session.setChildLive(null, null); }
       });
   }
 
@@ -230,34 +225,50 @@ export function createRunner(cfg: RunnerConfig): {
     append(log, { kind: 'paused' });
   }
 
-  return {
+  /** Whether the policy refuses an order on `log` now; a filed record's incident counts as put down. */
+  function refuses(log: SessionLog): boolean {
+    const view = deriveView(log);
+    const filed = new Set(view.jobs.map((job) => job.orderSeq).filter((seq) => session.isFiled(seq)));
+    return ordersRefused(view, cfg.keyStanding?.() ?? KEY_HELD, filed);
+  }
+
+  /** Routes `trimmed` by the phase: an order, a steer, a resume note or a gate's answer. */
+  function file(trimmed: string): void {
+    const log = session.log();
+    const phase = derivePhase(log);
+    const route = composerRoute(phase);
+
+    if (inflight && (route === 'order' || route === 'resume-note')) {
+      queueSteer(log, trimmed); // reentry: a live job already owns this log
+      return;
+    }
+
+    if (route === 'order') {
+      const toolDeps = cfg.makeToolDeps();
+      const mapContext = buildMapContext(toolDeps.getState(), toolDeps.getRegion(), toolDeps);
+      const region = regionBounds(toolDeps.getRegion());
+      // The map the order is filed against, stamped at submission for the panel's rollback guard.
+      const mapId = toolDeps.getState().template.id;
+      const result = submitComposer(log, phase, trimmed, {
+        mapContext, ...(region ? { region } : {}), ...(mapId ? { mapId } : {}),
+      });
+      if (result.startsJob) launch(toolDeps);
+      return;
+    }
+
+    const result = submitComposer(log, phase, trimmed);
+    if (result.route === 'resume-note') launch(cfg.makeToolDeps());
+  }
+
+  const runner: ReturnType<typeof createRunner> = {
+    resend(text: string | undefined): void {
+      if (text === undefined || inflight || text.trim() === '') return;
+      file(text.trim());
+    },
     send(text: string): void {
       const trimmed = text.trim();
-      if (trimmed === '') return;
-      const log = session.log();
-      const phase = derivePhase(log);
-      const route = composerRoute(phase);
-
-      if (inflight && (route === 'order' || route === 'resume-note')) {
-        queueSteer(log, trimmed); // reentry: a live job already owns this log
-        return;
-      }
-
-      if (route === 'order') {
-        const toolDeps = cfg.makeToolDeps();
-        const mapContext = buildMapContext(toolDeps.getState(), toolDeps.getRegion(), toolDeps);
-        const region = regionBounds(toolDeps.getRegion());
-        // The map the order is filed against, stamped at submission for the panel's rollback guard.
-        const mapId = toolDeps.getState().template.id;
-        const result = submitComposer(log, phase, trimmed, {
-          mapContext, ...(region ? { region } : {}), ...(mapId ? { mapId } : {}),
-        });
-        if (result.startsJob) launch(toolDeps);
-        return;
-      }
-
-      const result = submitComposer(log, phase, trimmed);
-      if (result.route === 'resume-note') launch(cfg.makeToolDeps());
+      if (trimmed === '' || refuses(session.log())) return;
+      file(trimmed);
     },
     stop(): void {
       cancelReply();
@@ -281,9 +292,9 @@ export function createRunner(cfg: RunnerConfig): {
       append(log, { kind: 'resumed' });
       launch(cfg.makeToolDeps());
     },
-    setAside(): void {
-      if (inflight) return;
-      settleUnheld();
+    setAside(orderSeq: number): void {
+      if (!inflight) settleUnheld();
+      session.fileAway(orderSeq);
     },
     active(): boolean {
       return inflight !== undefined;
@@ -295,4 +306,5 @@ export function createRunner(cfg: RunnerConfig): {
       return inflight === undefined ? undefined : launched;
     },
   };
+  return runner;
 }

@@ -3,7 +3,7 @@
  * landmark through every edit rather than standing where the map first put it.
  */
 import { describe, expect, it } from 'vitest';
-import { buildObjectInstances, objectSlotIds, objectSlotInstances, slotOwner } from '../../../../view/map3d/geometry/object-meshes';
+import { objectInstance, objectSlotIds, objectSlotInstances, slotOwner } from '../../../../view/map3d/geometry/object-meshes';
 import { InstanceSlots } from '../../../../view/map3d/geometry/instance-slots';
 import { buildModel, deckGeometry } from '../../../../view/map3d/models/build-model';
 import { getDeckSpec } from '../../../../view/map3d/models/registry';
@@ -54,7 +54,7 @@ describe('the landmark deck', () => {
       rotationY: 0, scaleX: 1, scaleY: 1, scaleZ: 1,
     });
     // The plinth is still the platform body beside it.
-    expect(buildObjectInstances(state).get('a:platform')).toHaveLength(1);
+    expect(objectInstance(state, plaza)?.groupKey).toBe('a:platform');
   });
 
   it('follows an edited landmark: a move carries it, a turn turns it about the same centre', () => {

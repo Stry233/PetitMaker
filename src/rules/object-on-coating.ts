@@ -7,6 +7,7 @@ import { definePostRule } from './define';
 
 export const objectOnCoatingRule = definePostRule({
   id: 'V-PLACE-COATED',
+  description: 'An item with coatingSupport may stand on any road, an item with growsOnPlantable on a plantable coating, and a bridge or ramp over any road. Any other solid object needs ground with no coating under it.',
 
   validate(state, opts, fail) {
     const index = getObjectIndex(state);

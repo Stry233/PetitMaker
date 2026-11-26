@@ -32,6 +32,13 @@ export function listFiles(dir: string, skip: readonly string[] = [], base = dir)
   return out;
 }
 
+/** The files `present` under a verified export that the export did not write (`exported`): what its
+ *  install, build and tests left behind. */
+export function strayFiles(present: readonly string[], exported: readonly string[]): string[] {
+  const kept = new Set(exported);
+  return present.filter((path) => !kept.has(path));
+}
+
 function escapeRegExpLiteral(s: string): string {
   // Escape regex metacharacters except '*' and '/', which the steps below handle specially.
   // '?' is escaped here (treated as a literal character, never a wildcard) — this matcher

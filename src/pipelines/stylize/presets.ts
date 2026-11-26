@@ -168,9 +168,16 @@ const PACKS = definePacks([
   },
 ]);
 
-export interface StylePack extends StylePackFields { id: (typeof PACKS)[number]['id'] }
+/** A provider take's relative render cost, on the scale a local pack states its own
+ *  (`proc/packs/manifest.ts`): the dearest there is, the custom direction's too. */
+export const PROVIDER_TAKE_COST = 5;
 
-export const STYLE_PACKS: readonly StylePack[] = PACKS;
+export interface StylePack extends StylePackFields {
+  id: (typeof PACKS)[number]['id'];
+  cost: typeof PROVIDER_TAKE_COST;
+}
+
+export const STYLE_PACKS: readonly StylePack[] = PACKS.map((pack) => ({ ...pack, cost: PROVIDER_TAKE_COST }));
 
 export const CUSTOM_DIRECTION_ID = 'custom';
 

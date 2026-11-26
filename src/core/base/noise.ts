@@ -1,3 +1,5 @@
+import { cellHash01 } from './hash';
+
 /** The smoothstep-weighted bilinear blend of the lattice values `at` gives around (x, y): the
  *  interpolation every value-noise field in the app shares, whatever its lattice. */
 export function smoothLattice(at: (ix: number, iy: number) => number, x: number, y: number): number {
@@ -12,10 +14,6 @@ export function smoothLattice(at: (ix: number, iy: number) => number, x: number,
 /** Seeded, smooth hash value noise in [0,1] over `smoothLattice`. A caller that needs a signed field
  *  remaps it to [-1,1]. */
 export function valueNoise01(seed: number): (x: number, y: number) => number {
-  const hash = (x: number, y: number): number => {
-    let h = (x * 374761393 + y * 668265263 + seed * 0x9e3779b9) | 0;
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-  };
+  const hash = (x: number, y: number): number => cellHash01(x, y, 0, seed);
   return (x: number, y: number): number => smoothLattice(hash, x, y);
 }

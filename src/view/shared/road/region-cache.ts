@@ -2,6 +2,7 @@ import type { GridState, PlacedObject } from '../../../core/model/types';
 import type { RoadLookup } from '../../../core/model/road-lookup';
 import { isCoatingItem, isSurfacePrint } from '../../../core/model/traits';
 import { getCatalogItem } from '../../../state/catalog';
+import { roadLookup } from '../../../state/object-index';
 import { updateRoadRegions, type RoadRegion } from './region';
 
 /** The tiles that make up connected road surfaces: base-layer coatings, prints excluded. */
@@ -12,6 +13,30 @@ export function roadSurfaceTiles(state: GridState): PlacedObject[] {
     if (isCoatingItem(item) && !isSurfacePrint(item)) out.push(obj);
   }
   return out;
+}
+
+/**
+ * A road ghost's surface: `tiles` on a copy of `live` holding them and the map's road tiles beside
+ * them, so a ghost tile joining a road draws joined rather than as an end, the lookup it reads (its
+ * own tiles first, then the map's roads, for the cuts of the tiles at its edge), and those
+ * neighbours, whose part of the surface draws again in their own art (which phases at the map
+ * origin) and never takes a refused ghost's tint.
+ */
+export function roadGhost(
+  live: GridState, tiles: readonly PlacedObject[], version: number,
+): { state: GridState; roads: RoadLookup; beside: PlacedObject[] } {
+  const map = roadLookup(live);
+  const objects = new Map(tiles.map((t) => [t.id, t]));
+  for (const t of tiles) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const beside = map(t.position.x + dx, t.position.y + dy);
+      if (beside && !objects.has(beside.id)) objects.set(beside.id, beside);
+    }
+  }
+  const state = { ...live, objects, objectsVersion: version };
+  const own = roadLookup(state);
+  const beside = [...objects.values()].slice(tiles.length);
+  return { state, roads: (x, y) => own(x, y) ?? map(x, y), beside };
 }
 
 /** The road fields a region's outline reads. */

@@ -4,6 +4,7 @@
  * route tool lays anchors on that lattice, and chips are free. */
 import type { MacroCoord } from './types';
 import { type CurveAnchor } from '../base/spline';
+import { clampText } from '../base/text';
 import { generateId } from './object-id';
 import { cellKey, snapHalf } from '../grid/rect';
 import { gridCellAt, gridCellCentre, gridCellSize } from '../grid/grids';
@@ -27,6 +28,13 @@ export type NoteTag = PresetTagId | CustomTagId;
 
 /** The most custom tags one map holds. */
 export const CUSTOM_TAG_MAX = 32;
+
+/** The longest custom tag text a map keeps, in UTF-16 units. */
+export const CUSTOM_TAG_TEXT_MAX = 24;
+
+/** `text` as a map keeps a custom tag's text (`clampText`), null when nothing is left. Every way a tag
+ *  is made and read admits it here, so a tag reads the same after a save and a reopen. */
+export const admitTagText = (text: unknown): string | null => clampText(text, CUSTOM_TAG_TEXT_MAX);
 
 /** The most cells of its own grid one zone keeps through a save. */
 export const ZONE_CELL_MAX = 5000;

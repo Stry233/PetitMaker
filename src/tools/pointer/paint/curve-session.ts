@@ -6,7 +6,9 @@
  * (`ui/chrome/floating/CurveHandles`) that has to read the session every frame of a drag, while the
  * thing that owns the curve is the drawing tool. A subscription is the seam between them, and it
  * keeps a session's bookkeeping, which is not UI state, out of the editor store. Each host that is
- * not handed one gets its own, so a Help figure's curve never closes the editor's.
+ * not handed one gets its own, so a Help figure's curve never closes the editor's. What closes an
+ * open session besides its tool (another arming, an undo) is its host's wiring
+ * (`editor/session/tool-wiring.ts:watchCurveSession`), never the handles.
  *
  * The tool supplies `repaint`: the session never touches the map itself. Every tweak goes back
  * through the tool's own paint path, so an adjusted curve is exactly the curve that would have been
@@ -14,8 +16,12 @@
  */
 import { anchorHandles, type CurveAnchor } from '../../../core/base/spline';
 import { createSignal } from '../../../core/base/signal';
-import type { GridId } from '../../../core/grid/grids';
+import { cellSet, type CellSet, type GridId, type MapPoint } from '../../../core/grid/grids';
+import { cellAtPoint, halfPoint } from '../../../core/grid/pointer';
+import { splineCells } from '../../../core/grid/shapes';
+import type { MacroCoord } from '../../../core/model/types';
 import type { ToolContext } from '../runtime/types';
+import type { ToolOverlay } from '../runtime/view-seam';
 import type { ToolArming } from '../../../state/editing/arming';
 
 interface CurveSession {
@@ -59,7 +65,7 @@ export function adjustContext<C extends ToolContext>(ctx: C): C {
 }
 
 /** What an open session is bound to: a change of tool, shape, surface, eraser footprint or armed
- *  macro re-lays nothing, it closes the handles. Brush size and floor are not in it, since the
+ *  macro re-lays nothing, it closes the handles. Brush size and thickness are not in it, since the
  *  adjust phase keeps the ones the curve was drawn with. */
 export function curveArmingKey(a: ToolArming): string {
   return `${a.tool}|${a.shape}|${a.contentType}|${a.eraserShape}|${a.armingEpoch}`;
@@ -82,6 +88,46 @@ export class CurveSessions {
   /** Whether an adjust phase is open. */
   isOpen(): boolean {
     return this.session !== null;
+  }
+
+  /** Where a pointer at map point `point` puts an anchor of the open curve: the half-cell lattice
+   *  point for a free-coord session, else the cell of the session's grid; null with none open. */
+  anchorAt(point: MapPoint): MacroCoord | null {
+    const s = this.session;
+    if (!s) return null;
+    return s.freeCoords ? halfPoint(point) : cellAtPoint(point, s.grid);
+  }
+
+  /** The cells the open curve covers, where its session keeps them visible; null otherwise. */
+  footprint(): CellSet | null {
+    const s = this.session;
+    return s?.footprint ? cellSet(s.grid, splineCells(s.anchors, s.width)) : null;
+  }
+
+  /** Keeps the open curve's footprint on the overlay `overlay` answers, drawn again on every change
+   *  of the session and whenever `watch` tells (the view was swapped, the map changed under it);
+   *  returns the stop, which clears it. */
+  showFootprintOn(
+    overlay: () => Pick<ToolOverlay, 'showCurveFootprint' | 'clearCurveFootprint'> | null | undefined,
+    watch: (tell: () => void) => () => void,
+  ): () => void {
+    let on: ReturnType<typeof overlay> = null;
+    const draw = (): void => {
+      const cells = this.footprint();
+      const next = cells ? overlay() : null;
+      if (on && on !== next) on.clearCurveFootprint();
+      on = next;
+      if (cells) next?.showCurveFootprint(cells);
+    };
+    draw();
+    const offSession = this.subscribe(draw);
+    const offWatch = watch(draw);
+    return () => {
+      offSession();
+      offWatch();
+      on?.clearCurveFootprint();
+      on = null;
+    };
   }
 
   /** Open the adjust phase on a curve that has just been painted. */

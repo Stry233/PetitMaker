@@ -19,8 +19,11 @@ export const PANEL_LEFT = EDGE_LEFT;
 /** The width of a mode row of `count` blocks `gap` apart, in frame px. */
 export const modeRowSpan = (count: number, gap: number) => count * MODE.size + (count - 1) * gap;
 
-/** The column's width, from the row above it. */
-export const PANEL_COLUMN_W = modeRowSpan(MODES.length, MODE.gap);
+/** How many mode blocks wide the column stands, however many the row above it holds. */
+const PANEL_BLOCKS = 5;
+
+/** The column's width, in frame px. */
+export const PANEL_COLUMN_W = modeRowSpan(PANEL_BLOCKS, MODE.gap);
 
 /** The column's right edge, in frame px from the window's left. What the right-hand column has to
  *  keep clear of (`frame.ts:readoutPressLane`). */
@@ -144,9 +147,12 @@ export function uprightTopRow(corner: number): number {
   return CHARACTER_SEAT.w - 2 * CHARACTER_SEAT.pad + corner + RAIL.groupMin;
 }
 
+/** How many mode tiles the upright row shows whole at the least width; a row of more scrolls sideways. */
+const UPRIGHT_ROW_TILES_SEEN = 5;
+
 /** The narrowest frame the upright arrangement stands in, in its own px: its widest row, with the mode
- *  row's blocks abutting, between the least side margins (`frame-plan.ts:portraitEdges`). */
-const UPRIGHT_LEAST_W = Math.max(uprightTopRow(cornerWidth(TOP_RIGHT)), modeRowSpan(MODES.length, 0)) + 2 * EDGE;
+ *  row's tiles abutting, between the least side margins (`frame-plan.ts:portraitEdges`). */
+const UPRIGHT_LEAST_W = Math.max(uprightTopRow(cornerWidth(TOP_RIGHT)), modeRowSpan(Math.min(MODES.length, UPRIGHT_ROW_TILES_SEEN), 0)) + 2 * EDGE;
 
 /** The touch frame's zoom at 100% where the touch line leads, which its controls stand a fingertip
  *  apart for; under it their hit areas shrink with them (`design/scale-model.ts:touchReachPx`). */

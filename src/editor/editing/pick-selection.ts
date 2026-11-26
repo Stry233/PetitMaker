@@ -1,13 +1,12 @@
 import { TerrainType, type GridState, type Rotation } from '../../core/model/types';
 import { type BlockRef, singleSelection } from '../../state/selection';
 import { getCell } from '../../core/model/grid-model';
-import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
 import { getOfferedItem } from '../../state/catalog';
 import { batchStore, useEditorStore } from '../../state/store';
 import { isCoating } from '../../core/model/traits';
 
 type PickedMaterial =
-  | { mode: 'mountain' | 'water'; elevation: number }
+  | { mode: 'mountain' | 'water' }
   | { mode: 'road'; itemId: string; rotation?: Rotation }
   | { mode: 'object'; itemId: string; rotation: Rotation };
 
@@ -17,8 +16,8 @@ export function pickedMaterial(grid: GridState | null, selection: readonly Block
   if (!grid || !block) return null;
   if (block.kind === 'terrain') {
     const terrain = getCell(grid.cells, block.x, block.y)?.terrain;
-    if (terrain?.type === TerrainType.Mountain) return { mode: 'mountain', elevation: Math.max(1, surfaceElevation(terrain)) };
-    if (terrain?.type === TerrainType.Water) return { mode: 'water', elevation: terrain.elevation };
+    if (terrain?.type === TerrainType.Mountain) return { mode: 'mountain' };
+    if (terrain?.type === TerrainType.Water) return { mode: 'water' };
     return null;
   }
   const object = grid.objects.get(block.id);
@@ -36,6 +35,7 @@ export function pickSelection(): void {
   if (!material) return;
   batchStore(() => {
     const state = useEditorStore.getState();
+    // Picking the item already armed changes no arming, so nothing else would put the selection down.
     state.setSelection([], { record: false });
     state.setSelectingRegion(false);
     if (material.mode === 'object') {
@@ -43,7 +43,6 @@ export function pickSelection(): void {
       state.setPlacementRotation(material.rotation);
       return;
     }
-    if (material.mode !== 'road') state.setActiveLayer(material.elevation);
     state.setEditMode({ mode: material.mode, arm: { kind: 'brush' } });
     if (material.mode === 'road') {
       state.setTileMaterial(material.itemId);

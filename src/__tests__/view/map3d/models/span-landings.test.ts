@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { modelGeometry } from '../../../../view/map3d/models/build-model';
 import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
-import { buildTerrainMeshes } from '../../../../view/map3d/geometry/terrain-geometry';
+import { buildTerrainMeshes } from '../../../_support/terrain-meshes';
 import { LAYER_HEIGHT, surfaceY, waterSurfaceY, bridgeDeckY } from '../../../../view/map3d/geometry/coords';
 import { getCatalogByCategory } from '../../../../state/catalog';
 import { TerrainType, type PlacedObject } from '../../../../core/model/types';
@@ -20,7 +20,7 @@ function deckHeight(id: string, x: number, z: number): number {
 }
 
 describe('span contact surfaces', () => {
-  it.each(['ramp-park-steps', 'ramp-retro-steps'])('%s has no exposed faces coplanar with its upper cliff', id => {
+  it.each(['ramp-park-steps', 'ramp-retro-steps', 'ramp-fluorite-steps'])('%s has no exposed faces coplanar with its upper cliff', id => {
     for (const rotation of [0, 90, 180, 270] as const) for (const elevation of [1, 2, 7]) {
       const state = makeState(24, 24);
       const obj: PlacedObject = { id, catalogId: id, position: { x: 10, y: 10 }, rotation, elevation };

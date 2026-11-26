@@ -3,6 +3,8 @@ import { stencilFromPixels } from './stencil-sample';
 import type { Stencil } from '../recipe';
 import { textTopology } from './stencil-text-grid';
 import { NEIGHBORS4_NESW } from '../../../core/grid/directions';
+import { boundsWhere, fitAspect } from '../../../core/grid/rect';
+import { luma709 } from '../../../core/base/color';
 
 export interface EmojiDrawing {
   width: number;
@@ -70,14 +72,13 @@ function contrastSplit(histogram: Uint32Array): number {
 
 /** Color details become negative space inside the silhouette, preserving faces and emblems in one material. */
 export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): EmojiDrawing {
-  let x0 = source.width, y0 = source.height, x1 = -1, y1 = -1;
-  for (let y = 0; y < source.height; y++) for (let x = 0; x < source.width; x++) {
-    if (source.data[(y * source.width + x) * 4 + 3]! < 128) continue;
-    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-  }
-  if (x1 >= x0 && y1 >= y0) {
-    const width = x1 - x0 + 1, height = y1 - y0 + 1, data = new Uint8Array(width * height * 4);
-    for (let y = 0; y < height; y++) data.set(source.data.subarray(((y + y0) * source.width + x0) * 4, ((y + y0) * source.width + x1 + 1) * 4), y * width * 4);
+  const inked = boundsWhere(source.width, source.height, (x, y) => source.data[(y * source.width + x) * 4 + 3]! >= 128);
+  if (inked) {
+    const { x: x0, y: y0, w: width, h: height } = inked, data = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const row = (y + y0) * source.width + x0;
+      data.set(source.data.subarray(row * 4, (row + width) * 4), y * width * 4);
+    }
     source = { width, height, data };
   }
   const { width, height, data } = source;
@@ -139,7 +140,7 @@ export function emojiTextDrawing(source: SourcePixels, minimumDetail = 0.0025): 
       // A dark outline follows the outside edge; it must not become an interior cutout.
       if (feature.reduce((sum, i) => sum + distance[i]!, 0) / feature.length < rim * 1.4) continue;
       const average = [0, 1, 2].map(c => feature.reduce((sum, i) => sum + data[i * 4 + c]!, 0) / feature.length);
-      const brightness = (rgb: number[]) => rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+      const brightness = (rgb: number[]) => luma709(rgb[0]!, rgb[1]!, rgb[2]!);
       const tint = (rgb: number[]) => {
         const low = Math.min(...rgb), span = Math.max(...rgb) - low;
         return span < 25 ? null : rgb.map(value => (value - low) / span);
@@ -194,8 +195,8 @@ function fitDrawing(source: EmojiDrawing, box: { width: number; height: number }
   const stencil = sampleTextMask({ ...source, coverage: source.silhouette }, box);
   if (!stencil) return null;
   const { width, height } = box;
-  const scale = Math.min(width / source.width, height / source.height);
-  const ox = (width - source.width * scale) / 2, oy = (height - source.height * scale) / 2;
+  const fit = fitAspect({ x: 0, y: 0, w: width, h: height }, source.width / source.height);
+  const scale = fit.w / source.width, ox = fit.x, oy = fit.y;
   const body = stencil.coverage.slice();
   const sampled = sampleTextMask(source, box)!;
   const labels = new Int16Array(width * height).fill(-1);

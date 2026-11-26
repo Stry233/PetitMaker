@@ -8,10 +8,10 @@
  * the neighbours its auto-trim reached, and the first pre-image of every object it removed or
  * changed. An adjusted curve restores through it before it is laid again.
  */
-import { eraseTerrainCommand, paintTerrainCommand, placeObjectCommand, removeObjectCommand, materialisePatchCommand, trimTerrainCommand } from '../../../core/model/command-build';
+import { eraseTerrainCommand, mountainLadder, paintTerrainCommand, placeObjectCommand, removeObjectCommand, materialisePatchCommand, trimTerrainCommand } from '../../../core/model/command-build';
 import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
 import { SQUARE_CORNERS } from '../../../core/model/corners';
-import { clonePlacedObject, sameTerrain } from '../../../core/model/grid-model';
+import { CLEARING_ELEVATION, clonePlacedObject, sameTerrain } from '../../../core/model/grid-model';
 import { cellKey } from '../../../core/grid/rect';
 import {
   TerrainType,
@@ -47,12 +47,10 @@ function restoreCommands(current: GridState, target: RestoreTarget): Command[] {
   for (const [id, obj] of target.objects) {
     if (canonical(obj) !== canonical(current.objects.get(id))) replacements.push(placeObjectCommand(obj));
   }
-  const erase: MacroCoord[] = [];
-  const mountains = new Map<number, MacroCoord[]>(), water = new Map<number, MacroCoord[]>();
+  const erase: MacroCoord[] = [], cleared: MacroCoord[] = [];
+  const raised: { c: MacroCoord; base: number; top: number }[] = [];
+  const water = new Map<number, MacroCoord[]>();
   const corners: Command[] = [];
-  const group = (groups: Map<number, MacroCoord[]>, e: number, c: MacroCoord): void => {
-    const cells = groups.get(e) ?? []; cells.push(c); groups.set(e, cells);
-  };
   for (const { x, y, terrain: wanted } of target.cells) {
     const standing = current.cells[y]?.[x]?.terrain ?? null;
     if (sameTerrain(wanted, standing, { patchOnly: 'flag' })) continue;
@@ -61,11 +59,12 @@ function restoreCommands(current: GridState, target: RestoreTarget): Command[] {
       && !wanted.patchOnly && !standing.patchOnly;
     if (!wanted || wanted.type === TerrainType.None) erase.push(c);
     else if (!wanted.patchOnly && !sameBody) {
-      const from = surfaceElevation(standing);
-      for (let e = Math.min(from + 1, wanted.elevation); e <= wanted.elevation; e++) {
-        if (e === wanted.elevation && wanted.type === TerrainType.Water) group(water, e, c);
-        else group(mountains, e, c);
-      }
+      const isWater = wanted.type === TerrainType.Water;
+      // A cell standing at or above its wanted top is repainted at that top alone.
+      if (isWater || wanted.elevation !== CLEARING_ELEVATION) {
+        raised.push({ c, base: Math.min(surfaceElevation(standing), wanted.elevation - 1), top: isWater ? wanted.elevation - 1 : wanted.elevation });
+      } else cleared.push(c);
+      if (isWater) { const cells = water.get(wanted.elevation) ?? []; cells.push(c); water.set(wanted.elevation, cells); }
     }
     if (wanted && (wanted.corners || wanted.patchOnly || sameBody && standing?.corners)) {
       const after: Corners = wanted.corners ? [...wanted.corners] : [...SQUARE_CORNERS];
@@ -75,11 +74,9 @@ function restoreCommands(current: GridState, target: RestoreTarget): Command[] {
     }
   }
   if (erase.length > 0) commands.push(eraseTerrainCommand(erase));
-  for (const [type, groups] of [[TerrainType.Mountain, mountains], [TerrainType.Water, water]] as const) {
-    for (const [e, cells] of [...groups].sort(([a], [b]) => a - b)) {
-      commands.push(paintTerrainCommand(cells, type, e));
-    }
-  }
+  if (cleared.length > 0) commands.push(paintTerrainCommand(cleared, TerrainType.Mountain, CLEARING_ELEVATION));
+  commands.push(...mountainLadder(raised, (r) => r.c, (r) => r.base, (r) => r.top));
+  for (const [e, cells] of [...water].sort(([a], [b]) => a - b)) commands.push(paintTerrainCommand(cells, TerrainType.Water, e));
   return [...commands, ...corners, ...replacements];
 }
 

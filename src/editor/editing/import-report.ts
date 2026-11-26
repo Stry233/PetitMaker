@@ -12,6 +12,7 @@ function failureKey({ code, source }: Extract<ImportRefusal, { status: 'failed' 
   if (code === 'future-version') return 'import.fail_future';
   if (code === 'incompatible-template') return 'import.fail_planet';
   if (source === 'json') return code ? 'import.fail_file' : 'import.fail_generic';
+  if (source === 'link') return 'import.fail_link';
   if (source === 'raster') {
     switch (code) {
       case undefined: return 'import.fail_image';

@@ -12,7 +12,7 @@ import type { ActiveView } from '../../../tools/pointer/runtime';
 import { ToolType } from '../../../state/editing/vocabulary';
 import { useEditorStore } from '../../../state/store';
 import { ToolManager } from '../../../tools/pointer/runtime/tool-manager';
-import { escapeOnMap } from '../../../editor/commands/commands';
+import { backOut } from '../../../editor/back/back-out';
 import { editorToolWiring } from '../../../editor/session/tool-wiring';
 import { tourCards } from '../../../ui/chrome/tour/deck';
 import { mapFingerprint } from '../../../core/model/fingerprint';
@@ -45,8 +45,8 @@ afterEach(() => {
 function dragDuringShowMe() {
   const state = makeState(20, 20), executor = makeExecutor(state);
   setStoreState({
-    gridState: state, commandExecutor: executor, region: [], selectingRegion: false, selection: [],
-    layerPinned: false, activeLayer: 1, autoEdgeCut: 'off', tourRunning: false,
+    gridState: state, commandExecutor: executor, regions: {}, selectingRegion: false, selection: [],
+    autoEdgeCut: 'off', tourRunning: false,
     ...armedEditMode({ tool: ToolType.TerrainBrush, content: 'mountain' }),
   });
   const manager = new ToolManager(makeStubView(), executor, state, editorToolWiring());
@@ -90,7 +90,7 @@ describe('a press still live when a Show me ends', () => {
   spec('UI-47', 'Escape in the middle of a drag during a try takes the drag back and keeps the Show me standing', () => {
     const { state, executor, before } = dragDuringShowMe();
     let put = false;
-    act(() => { put = escapeOnMap(); });
+    act(() => { put = backOut(); });
     expect(put).toBe(true);
     expect(mapFingerprint(state)).toBe(before);
     expect(useEditorStore.getState().tourPhase.kind).toBe('show');

@@ -1,9 +1,9 @@
-import { SUPPORTS_CLIPBOARD, SUPPORTS_JSON_FILES, SUPPORTS_VIDEO_IMPORT } from '../../../../platform/build/edition';
-import { useEffect, useState, useRef } from 'react';
+import { SUPPORTS_CLIPBOARD } from '../../../../platform/build/edition';
+import { useEffect } from 'react';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { autosaveWorthy } from '../../../../io/storage/facts';
-import { VIDEO_ACCEPT } from '../../../../io/import/facts';
+import { IMPORT_ACCEPT } from '../../../../io/import/facts';
 import { ImportConfirm } from './ImportConfirm';
 import { ImportRedirect } from './ImportRedirect';
 import { useImportFlow, type ImportRouting } from './use-import-flow';
@@ -12,14 +12,7 @@ import { useWindow, type WindowProps } from '../use-window';
 import { ModalShell } from '../../../primitives/ModalShell';
 import { ImportDropZone, IMPORT_CARD_WIDTH, type ImportDropZoneProps } from './ImportDropZone';
 import { WindowBody, WindowHeader, windowFrame } from '../../../primitives/Window';
-
-/** What the picker offers: map images, then map and planet files where JSON is read, then game
- *  videos where they are read, so the redirect card can answer a picked one. */
-const PICKER_ACCEPT = [
-  'image/png,image/jpeg,image/webp',
-  ...(SUPPORTS_JSON_FILES ? ['.json,application/json'] : []),
-  ...(SUPPORTS_VIDEO_IMPORT ? [VIDEO_ACCEPT] : []),
-].join(',');
+import { useFilePick } from '../../../primitives/use-file-pick';
 
 /** The Import window's body: its title over the shared drop zone. Exported for the Help Center's
  *  import figure, which poses the same body inside the modal's own card. */
@@ -49,8 +42,6 @@ export function ImportModal(props: WindowProps) {
 
 function ImportBody({ open, onClose }: { open: boolean; onClose: () => void }) {
   const gridState = useEditorStore((s) => s.gridState);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
   // Decoding never installs anything: the confirmation card is where the map is replaced.
   const flow = useImportFlow({ routing: ROUTING, onCommitted: onClose });
   const { take } = flow;
@@ -70,13 +61,11 @@ function ImportBody({ open, onClose }: { open: boolean; onClose: () => void }) {
     return () => window.removeEventListener('paste', onPaste);
   }, [open, take]);
 
-  const pickFile = () => {
-    if (inputRef.current) { inputRef.current.value = ''; inputRef.current.click(); }
-  };
+  const file = useFilePick({ accept: IMPORT_ACCEPT, onFile: (f) => { void take(f, f.name); } });
 
   return (
     <>
-      <input ref={inputRef} type="file" hidden accept={PICKER_ACCEPT} data-testid="import-file" onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void take(f, f.name); }} />
+      <input {...file.input} data-testid="import-file" />
       {flow.redirect ? (
         <ImportRedirect hand={flow.redirect} onCancel={flow.dismiss} />
       ) : flow.pending ? (
@@ -90,14 +79,11 @@ function ImportBody({ open, onClose }: { open: boolean; onClose: () => void }) {
         />
       ) : <ImportCardBody
         onClose={onClose}
-        dragOver={dragOver}
         busy={flow.busy}
-        onClick={pickFile}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        // stopPropagation: this is the modal's own import surface, and the page-level overlay stands
-        // aside while it is open, so a drop here imports exactly once.
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f) void take(f, f.name); }}
+        onClick={file.pick}
+        // The box keeps its drop: the page-level overlay stands aside while this window is open, so a
+        // drop here imports exactly once.
+        onFiles={([f]) => { void take(f!, f!.name); }}
       />}
     </>
   );

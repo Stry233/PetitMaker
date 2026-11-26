@@ -8,8 +8,10 @@ import { useNameReveal } from '../../primitives/use-name-reveal';
 import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameZoom } from '../../shell/use-frame-zoom';
 import { Icon, type IconId } from './sprite';
-import { rewindConfirmCopy, type RollbackCost } from '../derive/rollback';
-import { PanelConfirm } from './PanelConfirm';
+import { rewindConfirmCopy } from '../derive/rollback';
+import type { RollbackCost } from '../../../agent/panel';
+import { ControlConfirm } from '../../primitives/ControlConfirm';
+import { PANEL_CONFIRM_W } from '../panel-skin';
 
 /** The take-back square's side, in frame px. */
 const SQUARE = 26;
@@ -69,10 +71,12 @@ export function RewindSquare({
       </ActionButton>
       <AnimatePresence>
         {open && (
-          <PanelConfirm
+          <ControlConfirm
             key="rewind"
             anchor={ref}
-            help="agent-undo"
+            floor={false}
+            width={PANEL_CONFIRM_W}
+            helpTarget={{ page: 'agent-undo' }}
             testId={`${testId}-ask`}
             title={copy.confirmLabel}
             {...(copy.question !== copy.confirmLabel ? { message: copy.question } : {})}

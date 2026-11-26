@@ -3,7 +3,7 @@
  * and the islands a basin keeps.
  */
 import type { MacroCoord } from '../../../../core/model/types';
-import type { Rect } from '../../../../core/grid/rect';
+import { inflateRect, type Rect } from '../../../../core/grid/rect';
 import { hashInt32, seedHash01 } from '../../../../core/base/hash';
 
 // --- tunables -----------------------------------------------------------------------------------
@@ -108,10 +108,7 @@ function disc(
 }
 
 export const key = (x: number, y: number): number => ((y + 1024) << 12) | (x + 1024);
-export const unkey = (k: number): MacroCoord => ({ x: (k & 0xfff) - 1024, y: (k >> 12) - 1024 });
-
-const insetBy = (rect: Rect, k: number): Rect =>
-  ({ x: rect.x + k, y: rect.y + k, w: rect.w - 2 * k, h: rect.h - 2 * k });
+const unkey = (k: number): MacroCoord => ({ x: (k & 0xfff) - 1024, y: (k >> 12) - 1024 });
 
 /** A basin: a lobed ellipse with two or three dry islets standing in it, mirrored about its long
  *  axis so the whole figure still reads as composed. */
@@ -202,7 +199,7 @@ function coveCells(rect: Rect, seed: number): MacroCoord[] {
 /** A ring: a moat `width` cells across around a dry platform. */
 function ringCells(rect: Rect, width: number): MacroCoord[] {
   const outer = disc(rect);
-  const inner = disc(insetBy(rect, width));
+  const inner = disc(inflateRect(rect, -width));
   for (const k of inner) outer.delete(k);
   return [...outer].map(unkey);
 }
@@ -211,9 +208,9 @@ function ringCells(rect: Rect, width: number): MacroCoord[] {
 function medallionCells(rect: Rect): MacroCoord[] {
   const { moat, platform, basin } = MEDALLION;
   const cells = disc(rect);
-  for (const k of disc(insetBy(rect, moat))) cells.delete(k);
-  const pool = disc(insetBy(rect, moat + platform));
-  for (const k of disc(insetBy(rect, moat + platform + basin))) pool.delete(k);
+  for (const k of disc(inflateRect(rect, -moat))) cells.delete(k);
+  const pool = disc(inflateRect(rect, -(moat + platform)));
+  for (const k of disc(inflateRect(rect, -(moat + platform + basin)))) pool.delete(k);
   for (const k of pool) cells.add(k);
   return [...cells].map(unkey);
 }

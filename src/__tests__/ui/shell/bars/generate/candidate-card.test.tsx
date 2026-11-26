@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 import { I18nProvider } from '../../../../../i18n/context';
 import { CustomCard } from '../../../../../ui/shell/bars/generate/CustomCard';
 
@@ -41,5 +42,20 @@ describe('custom text input', () => {
     expect(commit).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(commit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the chosen card', () => {
+  it('fades its plate away when another card is chosen', async () => {
+    const card = (selected: boolean) => (
+      <MotionConfig reducedMotion="never"><I18nProvider>
+        <CustomCard field="glyph" seed={null} draft="" shot={null} selected={selected} onDraft={() => {}} onCommit={() => {}} onEdit={() => {}} onSelect={() => {}} />
+      </I18nProvider></MotionConfig>
+    );
+    const view = render(card(true));
+    expect(screen.getByTestId('chosen-plate')).toBeTruthy();
+    view.rerender(card(false));
+    const plate = screen.getByTestId('chosen-plate');
+    await waitFor(() => expect(plate.isConnected, 'removed once its fade has run').toBe(false));
   });
 });

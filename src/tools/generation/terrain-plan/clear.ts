@@ -12,6 +12,7 @@ import { buildObjectOccupancy, objectRect } from '../../../state/object-geometry
 import { EMPTY_CORNERS } from '../../../core/model/corners';
 import { cellKey } from '../../../core/grid/rect';
 import { footprintCells } from '../../../core/grid/footprint';
+import { makeScope } from './scope';
 
 /** Where a clear reaches, and what it leaves standing there. */
 interface ClearOptions<Spare> {
@@ -76,14 +77,16 @@ export function clearAllObjects(
   { state, execute: executeCommand }: MapWriter,
   { region, spare }: ClearOptions<(obj: PlacedObject) => boolean> = {},
 ): number {
-  const inRegion = region ? new Set(region.map((c) => cellKey(c.x, c.y))) : null;
+  // An empty region reaches no cell, as it does for the terrain clear.
+  if (region?.length === 0) return 0;
+  const scope = region ? makeScope(region, state.template.width, state.template.height) : null;
   // Footprint intersection, the same membership the marquee and the agent's region lock use: an
   // object whose footprint reaches into the region blocks every terrain paint on those cells
   // (V-PLACE-BLOCK), so a region that regenerates must take it with it, wherever its anchor sits.
   const touchesRegion = (obj: PlacedObject): boolean => {
-    if (!inRegion) return true;
+    if (!scope) return true;
     const r = objectRect(obj);
-    return footprintCells(r.x, r.y, r.w, r.h).some((c) => inRegion.has(cellKey(c.x, c.y)));
+    return footprintCells(r.x, r.y, r.w, r.h).some((c) => scope.cell(c.x, c.y));
   };
   let count = 0;
   for (const obj of [...state.objects.values()]) {

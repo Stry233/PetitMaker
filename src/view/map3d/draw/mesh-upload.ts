@@ -3,6 +3,15 @@ import * as THREE from 'three';
 import { assertFinite } from '../geometry/finite';
 import type { MeshData } from '../geometry/types';
 
+/** Bare positions, indexed when `index` is given, as a geometry with no colours, normals or uvs:
+ *  overlay washes, ribbons and marks a flat material paints. */
+export function toPlainGeometry(m: { positions: ArrayLike<number>; index?: number[] }): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3));
+  if (m.index) g.setIndex(m.index);
+  return g;
+}
+
 /** `source` names the mesh in the development-only finiteness check. */
 export function toGeometry(m: MeshData, source: string): THREE.BufferGeometry {
   if (import.meta.env.DEV) assertFinite(source, m.positions);

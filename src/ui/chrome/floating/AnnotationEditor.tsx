@@ -8,8 +8,9 @@
  * are the one place they are picked, and a pick applies to the selection.
  *
  * A multi-selection (Ctrl-clicks) carries its own verb row at the last-picked note: delete takes
- * the whole set as one undo entry, and merge, offered when everything selected is a zone, folds
- * the others' cells into the FIRST-picked zone, which keeps its tag, number and colour.
+ * the whole set as one undo entry, and merge folds the other selected zones' cells into the
+ * first-picked zone, which keeps its tag, number and colour. Which verbs the row offers is
+ * `editor/editing/annotation-edit.ts:noteSelectionTarget`'s answer.
  */
 import { helpTargetAttr } from '../../session/help-targets';
 import { useEffect, useState } from 'react';
@@ -19,7 +20,8 @@ import { zoneCellCentre, zoneGrid, type MapAnnotation } from '../../../core/mode
 import { zoneLabelAnchor } from '../../../core/model/annotation/geometry';
 import { useT } from '../../../i18n/context';
 import { useEditorStore } from '../../../state/store';
-import { flipMeasures, mergeZones, removeNotes } from '../../../editor/editing/annotation-edit';
+import { pressCommand } from '../../../editor/commands/run';
+import { noteSelectionTarget, removeNotes, type NoteSelectionTarget } from '../../../editor/editing/annotation-edit';
 import { btnReset, cursors, font, z, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { PANEL_EDGE, PLATE, PLATE_INK, DANGER_INK } from '../../design/tokens';
@@ -45,6 +47,7 @@ export function AnnotationEditor() {
   const mode = useEditorStore((s) => s.editMode.mode);
   const eventBus = useEditorStore((s) => s.eventBus);
   const selection = useEditorStore((s) => s.annotationSelection);
+  const gridState = useEditorStore((s) => s.gridState);
   const data = useEditorStore((s) => s.gridState?.annotations);
   // The notes are edited in place, so they are read again on each annotation epoch.
   const epoch = useEditorStore((s) => s.annotationsEpoch);
@@ -56,14 +59,15 @@ export function AnnotationEditor() {
     const items = data?.items ?? [];
     return selection.map((id) => items.find((n) => n.id === id)).filter((n): n is MapAnnotation => !!n);
   }, [data, selection, epoch]);
+  const target = useVersioned(() => noteSelectionTarget({ gridState, annotationSelection: selection }), [gridState, data, selection, epoch]);
   const measurement = picked.length === 1 && picked[0]?.kind === 'measure' ? picked[0] : null;
   return (
     <>
     {mode === 'annotate' && data?.visible && !data.locked && measurement
       ? <MeasurementHandles key={measurement.id} note={measurement} /> : null}
     <AnimatePresence>
-      {mode === 'annotate' && data?.visible && picked.length > 0
-        ? <SelectedVerbs key={`verbs-${picked[picked.length - 1]!.id}-${picked.length}`} notes={picked} locked={data.locked === true} />
+      {mode === 'annotate' && target && picked.length > 0
+        ? <SelectedVerbs key={`verbs-${picked[picked.length - 1]!.id}-${picked.length}`} notes={picked} target={target} />
         : null}
     </AnimatePresence>
     </>
@@ -81,7 +85,7 @@ function screenAnchor(note: MapAnnotation): { x: number; y: number; behind: bool
 }
 
 /** The verb row over the selected notes, re-reading its anchor on every render of the editor. */
-function SelectedVerbs({ notes, locked }: { notes: MapAnnotation[]; locked: boolean }) {
+function SelectedVerbs({ notes, target }: { notes: MapAnnotation[]; target: NoteSelectionTarget }) {
   const t = useT();
   // The row stands at the LAST-picked note: that is where the hand already is.
   const note = notes[notes.length - 1]!;
@@ -92,8 +96,7 @@ function SelectedVerbs({ notes, locked }: { notes: MapAnnotation[]; locked: bool
   const zoom = useChromeLayerZoom(TOUCH_TARGET);
   const floating = useFloatingPosition({ open: shown, anchor: at ?? { x: 0, y: 0 }, zoom, align: 'center', prefer: 'above', gap: ROW_GAP });
   if (!shown) return null;
-  const mergeable = notes.length > 1 && notes.every((n) => n.kind === 'zone');
-  const flippable = notes.every(n => n.kind === 'measure');
+  const { locked } = target;
   const verb = (label: string, onPress: () => void, danger?: boolean) => (
     <ActionButton
       interaction="pill"
@@ -120,12 +123,13 @@ function SelectedVerbs({ notes, locked }: { notes: MapAnnotation[]; locked: bool
         zIndex: z.canvasControls,
         display: 'flex', gap: 2, padding: 4,
         background: PLATE, border: PANEL_EDGE, borderRadius: radii.md,
-        visibility: floating.placement ? 'visible' : 'hidden',
+        visibility: floating.placement ? undefined : 'hidden',
       }}
     >
-      {mergeable ? verb(t('annot.merge'), () => mergeZones(notes.map((n) => n.id))) : null}
-      {flippable ? verb(t('annot.flip'), () => flipMeasures(notes.map((n) => n.id))) : null}
-      {verb(t('annot.delete'), () => removeNotes(notes.map((n) => n.id)), true)}
+      {target.mergeable ? verb(t('annot.merge'), () => pressCommand('notes.merge')) : null}
+      {target.flippable ? verb(t('annot.flip'), () => pressCommand('notes.flip')) : null}
+      {/* Delete runs the row's own verb: the Delete key's command takes whatever stands in front. */}
+      {target.deletable ? verb(t('annot.delete'), () => removeNotes([...target.ids]), true) : null}
     </motion.div>
   );
 }

@@ -7,9 +7,9 @@
 import { describe, it, expect } from 'vitest';
 import type { Stencil } from '../../../../tools/generation/stencil/stencil';
 import { covered } from '../../../../tools/generation/stencil/stencil';
-import { finishGlyph, GLYPH_WEIGHTS, glyphWeight } from '../../../../tools/generation/stencil/stencil-stroke';
+import { finishGlyph, GLYPH_WEIGHTS, glyphWeight, restoreStructure, type GlyphSource } from '../../../../tools/generation/stencil/stencil-stroke';
 import { glyphExtent } from '../../../../tools/generation/stencil/stencil-stem';
-import { strokeTarget } from './_stencil-metrics';
+import { components, holes, strokeTarget } from './_stencil-metrics';
 
 function stencilOf(rows: string[]): Stencil {
   const height = rows.length, width = rows[0]!.length;
@@ -109,5 +109,64 @@ describe('nothing reshapes what the face drew', () => {
       finishGlyph(s);
       expect(draw(s), `${width} cells wide`).toEqual(rows);
     }
+  });
+});
+
+const PER = 4;
+
+/** A font drawing at four pixels to a cell, from rectangles [x0, y0, x1, y1) in its pixels. */
+function sourceOf(cols: number, rows: number, rects: [number, number, number, number][]): GlyphSource {
+  const width = cols * PER, height = rows * PER, on = new Uint8Array(width * height);
+  for (const [x0, y0, x1, y1] of rects) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) on[y * width + x] = 1;
+  const cell = Int32Array.from({ length: width * height }, (_, i) => Math.floor(Math.floor(i / width) / PER) * cols + Math.floor(i % width / PER));
+  return { width, height, on, cell };
+}
+
+/** The cells the drawing covers, each holding its share of the drawing's pixels. */
+function cellsOf(source: GlyphSource): Stencil {
+  const width = source.width / PER, height = source.height / PER;
+  const coverage = new Uint8Array(width * height);
+  source.on.forEach((v, i) => { coverage[source.cell[i]!]! += v; });
+  for (let i = 0; i < coverage.length; i++) coverage[i] = Math.round(coverage[i]! * 255 / (PER * PER));
+  return { width, height, coverage, color: new Uint32Array(width * height) };
+}
+
+const maskOfStencil = (s: Stencil) => ({ width: s.width, height: s.height, on: Uint8Array.from(s.coverage, v => v >= 128 ? 1 : 0) });
+
+describe('a joint or counter thinner than a cell keeps the font\'s structure', () => {
+  it('bridges a hairline joint the grid parts with the fewest cells along it', () => {
+    // Two stems joined by a one-pixel hairline: a quarter of each cell it crosses, so the cells part.
+    const source = sourceOf(7, 5, [[0, 0, 8, 20], [20, 0, 28, 20], [8, 9, 20, 10]]);
+    const s = cellsOf(source);
+    expect(components(maskOfStencil(s), 8)).toBe(2);
+    expect(restoreStructure(s, source, { pieces: 1, counters: 0 })).toBe(3);
+    expect(draw(s)).toEqual(['##...##', '##...##', '#######', '##...##', '##...##']);
+  });
+
+  it('joins a parted body without joining a detached mark that grazes it', () => {
+    // A body parted at a hairline, and a dot whose cells also hold a few pixels of a spur off the body.
+    const source = sourceOf(7, 7, [[0, 16, 12, 28], [16, 16, 28, 28], [12, 21, 16, 22], [12, 2, 13, 16], [14, 1, 16, 7]]);
+    const s = cellsOf(source);
+    expect(components(maskOfStencil(s), 8)).toBe(3);
+    restoreStructure(s, source, { pieces: 2, counters: 0 });
+    expect(components(maskOfStencil(s), 8)).toBe(2);
+    expect(draw(s)).toEqual(['...#...', '...#...', '.......', '.......', '###.###', '#######', '###.###']);
+  });
+
+  it('reopens a counter the cells filled without parting the ring', () => {
+    // A small counter in the middle of a thick square: three quarters of its cell stay inked.
+    const source = sourceOf(5, 5, [[0, 0, 20, 9], [0, 11, 20, 20], [0, 9, 9, 11], [11, 9, 20, 11]]);
+    const s = cellsOf(source);
+    expect(holes(maskOfStencil(s))).toBe(0);
+    expect(restoreStructure(s, source, { pieces: 1, counters: 1 })).toBe(1);
+    expect(draw(s)).toEqual(['#####', '#####', '##.##', '#####', '#####']);
+    expect(components(maskOfStencil(s), 8)).toBe(1);
+  });
+
+  it('changes nothing when the cells already hold the structure', () => {
+    const source = sourceOf(7, 5, [[0, 0, 8, 20], [20, 0, 28, 20]]);
+    const s = cellsOf(source), before = draw(s);
+    expect(restoreStructure(s, source, { pieces: 2, counters: 0 })).toBe(0);
+    expect(draw(s)).toEqual(before);
   });
 });

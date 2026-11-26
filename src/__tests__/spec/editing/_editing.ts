@@ -50,6 +50,10 @@ export class Pointer {
   /** The held modifiers: constrain (Shift) and multi-select (Ctrl). */
   readonly held = { constrain: false, multiSelect: false };
   readonly curve = new CurveSessions();
+  /** The layer the layer panel highlights, as the tools set it (`ToolContext.setDisplayLayer`). */
+  shownLayer: number | null = null;
+  /** Every layer the panel was set to, in order. */
+  readonly shownLayers: (number | null)[] = [];
   private arming: ToolArming;
   private clock = 0;
   private view: AimedView;
@@ -62,6 +66,7 @@ export class Pointer {
       arming: () => this.arming,
       t: (key: TextKey, params?: Record<string, string | number>) => translateFor('en', key, params as never),
       notify: (text) => { this.toasts.push(text); },
+      setDisplayLayer: (layer) => { this.shownLayer = layer; this.shownLayers.push(layer); },
       modifiers: { get constrain() { return held.constrain; }, get multiSelect() { return held.multiSelect; } },
       curve: this.curve,
     });
@@ -177,9 +182,10 @@ export function heldCells(world: SpecWorld, cells: readonly MacroCoord[]): Set<s
   return new Set(cells.filter((c) => world.state.cells[c.y]?.[c.x]?.terrain).map((c) => `${c.x},${c.y}`));
 }
 
-/** A w-by-h block of mountain built to `elevation` with one rectangle of the brush, top-left at `at`. */
+/** A w-by-h block of mountain built to `elevation`, top-left at `at`: one rectangle of the brush per
+ *  layer, each pressed on the top it builds on. */
 export function plateau(world: SpecWorld, at: MacroCoord, w: number, h: number, elevation: number): void {
-  brush(world, { shape: 'rect', floor: elevation }).drag(at, { x: at.x + w - 1, y: at.y + h - 1 });
+  for (let e = 1; e <= elevation; e++) brush(world, { shape: 'rect' }).drag(at, { x: at.x + w - 1, y: at.y + h - 1 });
 }
 
 /** The cell a person points at to lay `item`, turned by `rotation`, with its footprint's top-left

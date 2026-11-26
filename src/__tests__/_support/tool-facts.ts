@@ -10,6 +10,7 @@ export function stubFacts(write: Iterable<string> = [], wide: Iterable<string> =
     access: (name) => (wides.has(name) ? 'wide' : writes.has(name) ? 'write' : 'read'),
     verifies: TOOL_FACTS.verifies,
     sketches: TOOL_FACTS.sketches,
+    delivers: TOOL_FACTS.delivers,
     footprint: TOOL_FACTS.footprint,
     guides: TOOL_FACTS.guides,
   };

@@ -1,0 +1,45 @@
+{
+  "id": "building-pine-cabin",
+  "category": "building",
+  "name": {
+    "en": "Heyu's Timeless Pine House",
+    "zh": "古松长青小屋（鹤玉）",
+    "ja": "常磐松の家（ホーユイ）",
+    "ru": "Домик вечной сосны (Хэюй)",
+    "th": "บ้านสนนิรันดร์ (เฮ่ออวี้)",
+    "id": "Rumah Pinus Abadi (Heyu)",
+    "fr": "Maison du pin éternel de Heyu"
+  },
+  "aliases": [
+    "白",
+    "white",
+    "红",
+    "red"
+  ],
+  "icon": "building-pine-cabin",
+  "width": 5,
+  "height": 5,
+  "loadValue": 0,
+  "loadUnknown": true,
+  "maxCount": 1,
+  "rotatable": true,
+  "placementMode": "point",
+  "traits": [
+    {
+      "type": "flat"
+    },
+    {
+      "type": "coatingSupport"
+    },
+    {
+      "type": "exclusionRadius",
+      "radius": 1
+    },
+    {
+      "type": "groundZones",
+      "onGrass": true,
+      "onSand": true,
+      "acrossBoundary": false
+    }
+  ]
+}

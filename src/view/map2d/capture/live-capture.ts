@@ -36,15 +36,9 @@ interface LiveCaptureHost {
 export class LiveCapture {
   constructor(private readonly host: LiveCaptureHost) {}
 
-  /** Longest side a render target may have here: the texture and the multisample renderbuffer
-   *  ceilings both bound it, and the smaller one is what fails first on huge maps. */
+  /** Longest side a render target may have on this renderer (`textureCap`). */
   textureCap(): number {
-    const glr = this.host.app.renderer as unknown as { gl?: WebGLRenderingContext };
-    const gl = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
-    const maxTex = gl ? (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) : 0;
-    const maxRb = gl ? (gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number) : 0;
-    const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
-    return Number.isFinite(hardMax) ? hardMax : Infinity;
+    return textureCap(this.host.app.renderer);
   }
 
   /** The map, or an inclusive saved-cell `rect` with terrain's half-cell bleed, at most `maxPx` on
@@ -68,9 +62,7 @@ export class LiveCapture {
       }
       const region = frameRegion(frame);
       if (region.width <= 0 || region.height <= 0) return null;
-      // Clamp the request to the GPU limits so a native-resolution ("Original") request never
-      // exceeds them (which would upload black); the achieved size is region*resolution.
-      return this.bake(region, this.resolutionFor(region, maxPx), this.chrome(includeGrid));
+      return this.bake(region, regionResolution(this.host.app.renderer, region, maxPx), this.chrome(includeGrid));
     });
   }
 
@@ -149,7 +141,7 @@ export class LiveCapture {
     try {
       const region = frameRegion(mapCaptureFrame(state.template));
       if (region.width <= 0 || region.height <= 0) return null;
-      return this.bake(region, this.resolutionFor(region, maxPx), hidden);
+      return this.bake(region, regionResolution(this.host.app.renderer, region, maxPx), hidden);
     } catch {
       return null;
     } finally {
@@ -166,10 +158,6 @@ export class LiveCapture {
       : [gridLayer.container, overlayLayer.container, labelLayer.container];
   }
 
-  private resolutionFor(region: PIXI.Rectangle, maxPx: number): number {
-    return Math.min(1, Math.min(maxPx, this.textureCap()) / Math.max(region.width, region.height));
-  }
-
   /**
    * Renders `region` of the world at `resolution` into a canvas with `hidden` off. A capture that
    * keeps the reference grid bakes the same grid the editor draws (sub, cell and chunk lines) at
@@ -180,25 +168,22 @@ export class LiveCapture {
     const grid = !hidden.includes(gridLayer.container);
     if (grid) gridLayer.drawForCapture(resolution);
     const prevVisible = hidden.map((c) => c.visible);
-    // generateTexture bakes the container's current transform, so the editor's pan/zoom would render
-    // the map small and off-corner inside the region. Reset to identity for the capture (the map's
-    // local content then fills the template region), restore after.
-    const sx = world.scale.x, sy = world.scale.y;
-    const px = world.position.x, py = world.position.y;
+    // generateTexture bakes the container's current transform, so the editor's pan, zoom and turn
+    // would render the map small, off-corner and turned inside the region. Reset to identity for the
+    // capture (the map's local content then fills the template region), restore after.
+    const live = {
+      x: world.position.x, y: world.position.y, sx: world.scale.x, sy: world.scale.y,
+      rotation: world.rotation, pivotX: world.pivot.x, pivotY: world.pivot.y,
+    };
     hidden.forEach((c) => { c.visible = false; });
     annotationLayer.setCellPixels(resolution * TILE_SIZE, true);
-    world.scale.set(1, 1);
-    world.position.set(0, 0);
+    world.setTransform();
     world.updateTransform(); // ensure the identity matrix is current before generateTexture bakes it
     try {
-      // No multisample: MSAA is invisible on an export and its renderbuffer has the smaller ceiling.
-      const rt = app.renderer.generateTexture(world, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
-      try { return app.renderer.extract.canvas(rt) as HTMLCanvasElement; }
-      finally { rt.destroy(true); }
+      return bakeRegion(app.renderer, world, region, resolution);
     } finally {
-      world.scale.set(sx, sy);
-      world.position.set(px, py);
-      annotationLayer.setCellPixels(sx * TILE_SIZE, true);
+      world.setTransform(live.x, live.y, live.sx, live.sy, live.rotation, 0, 0, live.pivotX, live.pivotY);
+      annotationLayer.setCellPixels(live.sx * TILE_SIZE, true);
       hidden.forEach((c, i) => { c.visible = prevVisible[i]!; });
       if (grid) this.host.restoreGrid();
       this.host.requestRender();
@@ -206,6 +191,32 @@ export class LiveCapture {
   }
 }
 
-function frameRegion(frame: MapFrame): PIXI.Rectangle {
+/** A capture frame in cells as the world px rectangle a bake renders. */
+export function frameRegion(frame: MapFrame): PIXI.Rectangle {
   return new PIXI.Rectangle(frame.x * TILE_SIZE, frame.y * TILE_SIZE, frame.width * TILE_SIZE, frame.height * TILE_SIZE);
+}
+
+/** Longest side a render target may have on `renderer`: the texture and the multisample renderbuffer
+ *  ceilings both bound it, and the smaller one is what fails first on huge maps. */
+function textureCap(renderer: PIXI.IRenderer): number {
+  const glr = renderer as unknown as { gl?: WebGLRenderingContext };
+  const gl = glr.gl && typeof glr.gl.getParameter === 'function' ? glr.gl : null;
+  const maxTex = gl ? (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) : 0;
+  const maxRb = gl ? (gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number) : 0;
+  const hardMax = Math.min(...[maxTex, maxRb].filter((v) => v && v > 0));
+  return Number.isFinite(hardMax) ? hardMax : Infinity;
+}
+
+/** The resolution that bakes `region` at most `maxPx` on its long side and within `renderer`'s
+ *  render-target ceiling: past it the upload comes back black. */
+export function regionResolution(renderer: PIXI.IRenderer, region: PIXI.Rectangle, maxPx: number): number {
+  return Math.min(1, Math.min(maxPx, textureCap(renderer)) / Math.max(region.width, region.height));
+}
+
+/** `region` of `world`, under the transform it stands at, rendered at `resolution` into a canvas. No
+ *  multisample: MSAA is invisible on a capture and its renderbuffer has the smaller ceiling. */
+export function bakeRegion(renderer: PIXI.IRenderer, world: PIXI.Container, region: PIXI.Rectangle, resolution: number): HTMLCanvasElement {
+  const rt = renderer.generateTexture(world, { resolution, region, multisample: PIXI.MSAA_QUALITY.NONE });
+  try { return renderer.extract.canvas(rt) as HTMLCanvasElement; }
+  finally { rt.destroy(true); }
 }

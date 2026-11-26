@@ -39,9 +39,8 @@ export class RuleRegistry implements RuleDispatcher {
     }
   }
 
-  /** Registered rule ids + phases, for introspection (e.g. the agent system prompt). */
-  getRules(): { id: string; phase: 'pre-command' | 'post-stroke' }[] {
-    return [...this.preCommandRules, ...this.postStrokeRules].map((r) => ({ id: r.id, phase: r.phase }));
+  getRules(): { id: string; phase: 'pre-command' | 'post-stroke'; description: string }[] {
+    return [...this.preCommandRules, ...this.postStrokeRules].map((r) => ({ id: r.id, phase: r.phase, description: r.description }));
   }
 
   resolve<C extends Command>(cmd: C, state: GridState): C {

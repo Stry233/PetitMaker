@@ -7,7 +7,8 @@
  */
 export type AutoEdgeCut = 'off' | 'rect' | 'round';
 
-export const NEXT_AUTO_EDGE_CUT: Record<AutoEdgeCut, AutoEdgeCut> = { off: 'rect', rect: 'round', round: 'off' };
+/** The auto edge-cut modes in the order the toolbar shows them and its key steps through them. */
+export const AUTO_EDGE_CUTS: readonly AutoEdgeCut[] = ['off', 'rect', 'round'];
 
 /** A figure the terrain brush, the eraser and the note brushes draw. */
 export type BuildShape = 'free' | 'line' | 'curve' | 'rect' | 'circle';
@@ -28,6 +29,7 @@ export enum ToolType {
   EdgeCut = 'EdgeCut',
   Macro = 'Macro',
   Annotate = 'Annotate',
+  Blueprint = 'Blueprint',
 }
 
 /**
@@ -43,8 +45,9 @@ export type RegionTool = BuildShape | 'erase';
 
 export const REGION_TOOLS: readonly RegionTool[] = ['free', 'erase', 'line', 'curve', 'rect', 'circle'];
 
-/** What the surface that opened region selection asks of the brush: the store's `regionRequest`, set
- *  by that surface and read by the scope screen, the shortcuts and the brush, which never meet it. */
+/** What the surface that starts region selection asks of the brush: the store's `regionRequest`, passed
+ *  with the start (`slices/edit.ts:setSelectingRegion`) and read by the scope screen, the shortcuts
+ *  and the brush, which never meet that surface. */
 export interface RegionRequest {
   /** The region tools offered, in row order. */
   tools: readonly RegionTool[];
@@ -62,6 +65,13 @@ export interface RegionRequest {
    * (the picture generators, whose stencil is exactly as many cells as the region).
    */
   minSide: number | null;
+  /** The longest side a drawn figure may come out at, in the cells drawn; no ceiling where absent. A hard
+   *  limit at creation as `minSide` is: the rect and circle drags stop growing at it, so a larger
+   *  figure cannot be drawn. */
+  maxSide?: number;
+  /** Whether the region's dimension guides measure the whole object-grid cells inside it, the unit
+   *  a consumer that captures objects counts in, rather than the cells drawn. */
+  wholeCells?: boolean;
 }
 
 export const DEFAULT_REGION_REQUEST: RegionRequest = { tools: REGION_TOOLS, single: false, minSide: null };

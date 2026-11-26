@@ -8,7 +8,6 @@
  * Map/terrain colours (`ELEVATION_COLORS`, `WATER_COLOR`, `ZONE_COLORS`) live in
  * `view/shared/viewport/view-constants.ts`.
  */
-import { hexChannels } from '../core/base/color.ts';
 
 /** The dark ink behind the frame, the load pill and chrome text. */
 export const FRAME_INK = '#43413F';
@@ -66,11 +65,6 @@ export const MAP_INK = '#574935';
 /** How much ink an edge on the map carries, for a word and a drawing alike. */
 export const MAP_EDGE_ALPHA = 0.62;
 
-/** A channel-wise `rgba()` of a 6-digit hex colour, for a value that must blend at an exact alpha. */
-export function rgbaOf(hex: string, alpha: number): string {
-  const [r, g, b] = hexChannels(hex);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 /** The plain white a map is laid on for the map check, so transparent areas read as nothing. */
 export const CAPTURE_MATTE = '#FFFFFF';

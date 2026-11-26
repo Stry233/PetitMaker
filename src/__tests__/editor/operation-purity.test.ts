@@ -67,6 +67,11 @@ describe('operations stay silent', () => {
     expect(offenders.map(srcRelative)).toEqual([]);
   });
 
+  it('never runs a pipeline (editor/operations): the editor\'s wiring and the surfaces run them', () => {
+    const offenders = filesUnder(join(SRC, 'editor/operations')).filter((file) => runtimeModules(file).some((m) => m.startsWith('pipelines/')));
+    expect(offenders.map(srcRelative)).toEqual([]);
+  });
+
   // The broader tool-store boundary is enforced by repo/import-direction.test.ts.
   it('never imports the store at runtime (editor/operations, the generation run and tools/macros)', () => {
     const roots = [join(SRC, 'editor/operations'), join(SRC, 'tools/generation/run'), join(SRC, 'tools/macros')];

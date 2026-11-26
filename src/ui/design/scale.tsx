@@ -9,7 +9,6 @@ import { useUiPreviewPose } from './preview';
 import { touchSizing, useLayoutShape, useTouchMode } from './input-mode';
 import { onUiZoomSpan, uiZoomLive, uiZoomSpan, useSettledUiZoom } from './ui-zoom-anim';
 import { isDenseScript, readableWeight, weightVars } from './text-weight';
-import { UI_ZOOM_MIN } from '../../platform/storage/prefs';
 import { useLocale } from '../../i18n/context';
 import {
   NO_DOCK, reachOf, uiScaleOf,
@@ -20,20 +19,6 @@ export {
   FIT_FLOOR, MIN_UI_ROOM, NO_DOCK, TOUCH_TARGET, besideDock, fittedUiScale, liftOf, reachShareOf, touchReachPx, uiScaleOf,
   type ArrangementRoom, type DockAxis, type DockRef,
 } from './scale-model';
-
-/** One step of the UI scale, for the Settings slider and the Ctrl+(+/−) shortcut alike. */
-export const UI_SCALE_STEP = 0.05;
-
-/** The UI scale's stops for a scale whose default is `anchor`: the default plus or minus whole steps,
- *  from the lowest at or above `UI_ZOOM_MIN` to the highest at or below `reach`, never short of the
- *  default, so every default sits on its own track. */
-export function scaleLattice(anchor: number, reach: number): { lo: number; hi: number; snap: (z: number) => number } {
-  const at = (k: number) => +(anchor + k * UI_SCALE_STEP).toFixed(2);
-  const lo = at(-Math.floor((anchor - UI_ZOOM_MIN) / UI_SCALE_STEP + 1e-6));
-  const hi = Math.max(at(Math.max(0, Math.floor((reach - anchor) / UI_SCALE_STEP + 1e-6))), +(lo + UI_SCALE_STEP).toFixed(2));
-  const snap = (z: number) => Math.min(hi, Math.max(lo, at(Math.round((z - anchor) / UI_SCALE_STEP))));
-  return { lo, hi, snap };
-}
 
 /** The strip a dock has taken (`DockRef`), provided over the whole app (`App`) so the frame and the
  *  chrome read one answer. */

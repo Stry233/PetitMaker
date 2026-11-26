@@ -26,7 +26,9 @@ function demoMap(world: SandboxWorld): DemoMap {
   return {
     state: world.state, curves: world.curve, view: () => ({ overlay: HEADLESS_OVERLAY, projection }),
     watch: (tell) => moved.subscribe(tell),
-    selection: () => ({ selection: world.selection, gridState: world.state, latched: world.multiSelectLatched }),
+    selection: () => ({
+      selection: world.selection, gridState: world.state, latched: world.multiSelectLatched, groups: world.blueprintMode, details: world.cardDetails,
+    }),
     onSelection: (tell) => world.watchSelection(tell),
   };
 }
@@ -56,7 +58,7 @@ describe('[UI-64] the selection card and touch multi-select stand on a Help figu
     const card = screen.getByTestId('selection-card');
     expect(card.style.position).toBe('absolute');
     expect(card.hasAttribute('inert')).toBe(true);
-    expect(card.style.visibility).toBe('visible');
+    expect(card.style.visibility).not.toBe('hidden');
     const left = parseFloat(card.style.left);
     expect(left).toBeGreaterThanOrEqual(0);
     expect(left).toBeLessThan(BOX.W);

@@ -1,6 +1,7 @@
 import { TerrainType, type GridState, type MapTemplate, type ValidationError } from '../../../core/model/types';
 import { getCell, createDefaultTerrainCell, bumpCellsVersion } from '../../../core/model/grid-model';
 import { NEIGHBORS4 } from '../../../core/grid/directions';
+import { labelComponents } from '../../../core/grid/cell-sets';
 import { isBuildableZone } from '../../../core/game/zones';
 import { createGridState } from '../../../core/model/template';
 import type { RuleDispatcher } from '../../../core/model/rule-dispatcher';
@@ -113,33 +114,21 @@ function levelNeighbours(plan: TerrainPlan, flagged: number[]): boolean {
  * pass, until nothing is left of it anyway.
  */
 function dropBodies(plan: TerrainPlan, flagged: number[]): boolean {
-  let changed = false;
+  const W = plan.width, H = plan.height;
+  const wet = new Uint8Array(W * H);
+  for (let i = 0; i < wet.length; i++) if (plan.water[i]! >= 0) wet[i] = 1;
+  // A body is the water one surface level joins.
+  const { labels } = labelComponents(wet, W, H, false, (i, j) => plan.water[i] === plan.water[j]);
+  const drop = new Set<number>();
   for (const i of flagged) {
-    const x = i % plan.width, y = (i / plan.width) | 0;
+    const x = i % W, y = (i / W) | 0;
     for (const [dx, dy] of NEIGHBORS4) {
       const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= plan.width || ny >= plan.height) continue;
-      const seed = ny * plan.width + nx;
-      const elev = plan.water[seed]!;
-      if (elev < 0) continue;
-      const stack = [seed];
-      plan.water[seed] = -1;
-      changed = true;
-      while (stack.length) {
-        const j = stack.pop()!;
-        const jx = j % plan.width, jy = (j / plan.width) | 0;
-        for (const [ex, ey] of NEIGHBORS4) {
-          const kx = jx + ex, ky = jy + ey;
-          if (kx < 0 || ky < 0 || kx >= plan.width || ky >= plan.height) continue;
-          const k = ky * plan.width + kx;
-          if (plan.water[k] !== elev) continue;
-          plan.water[k] = -1;
-          stack.push(k);
-        }
-      }
+      if (nx >= 0 && ny >= 0 && nx < W && ny < H && labels[ny * W + nx]) drop.add(labels[ny * W + nx]!);
     }
   }
-  return changed;
+  for (let i = 0; i < labels.length; i++) if (drop.has(labels[i]!)) plan.water[i] = -1;
+  return drop.size > 0;
 }
 
 /**

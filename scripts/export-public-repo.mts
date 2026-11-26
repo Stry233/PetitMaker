@@ -13,7 +13,7 @@
 // --verify does not rerun the whole suite: a release requires it to have passed on this commit
 // first. It needs this checkout's own node_modules to compute the scope.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
@@ -34,6 +34,7 @@ import {
   selectSnapshotTests,
   shouldRefuseVerify,
   snapshotTestSeeds,
+  strayFiles,
   type ManifestGlobs,
 } from './export-public-repo-core.mts';
 
@@ -133,7 +134,17 @@ async function snapshotTestScope(
 
 // The snapshot runs its own install, the full production build, the public typecheck programs (app,
 // scripts and tests, so an import of a withheld file fails here) and the scoped tests.
-function runVerify(outDir: string, tests: readonly string[]): void {
+/** Removes every directory under `dir` left empty, deepest first; `dir` itself stays. */
+function pruneEmptyDirs(dir: string): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const full = join(dir, entry.name);
+    pruneEmptyDirs(full);
+    if (readdirSync(full).length === 0) rmdirSync(full);
+  }
+}
+
+function runVerify(outDir: string, exported: readonly string[], tests: readonly string[]): void {
   console.log(`[export-public-repo] --verify: install, build, typecheck and ${tests.length} scoped test file(s) in ${outDir}`);
   for (const test of tests) console.log(`  ${test}`);
   initGitSnapshot(outDir);
@@ -150,10 +161,11 @@ function runVerify(outDir: string, tests: readonly string[]): void {
       }
     }
   } finally {
-    // Restore the output to publishable source files after verification.
-    for (const artifact of ['.git', 'node_modules', 'dist', '.tsbuild', 'artifacts']) {
-      rmSync(join(outDir, artifact), { recursive: true, force: true });
-    }
+    // Restore the output to exactly the files the export wrote: whatever the install, build,
+    // typecheck and tests left behind goes, whichever tool wrote it and wherever.
+    for (const heavy of ['.git', 'node_modules']) rmSync(join(outDir, heavy), { recursive: true, force: true });
+    for (const path of strayFiles(listFiles(outDir), exported)) rmSync(join(outDir, path), { force: true });
+    pruneEmptyDirs(outDir);
   }
   console.log('[export-public-repo] --verify passed: the exported public repo builds and its scoped tests pass.');
 }
@@ -264,7 +276,7 @@ async function main(): Promise<void> {
     );
   }
 
-  if (verify) runVerify(outDir, await snapshotTestScope(rootDir, tracked, toCopy, assumeChanged));
+  if (verify) runVerify(outDir, [...toCopy, '.gitignore'], await snapshotTestScope(rootDir, tracked, toCopy, assumeChanged));
 }
 
 main().catch((err) => {

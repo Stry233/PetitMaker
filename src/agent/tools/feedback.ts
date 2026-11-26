@@ -4,6 +4,10 @@
  * stable feedback whatever language it converses in.
  */
 import type { MacroCoord, ValidationError } from '../../core/model/types';
+import { TERRAIN_GRID } from '../../core/game/profile';
+import { footprintCells } from '../../core/grid/footprint';
+import { regionBounds } from '../../core/grid/rect';
+import { terrainCellRect } from '../../core/grid/grid-convert';
 import { translateFor } from '../../i18n/context';
 import type { Translate } from '../../i18n/keys';
 import { violationToast } from '../../i18n/terms/rule-copy';
@@ -70,6 +74,34 @@ export function geometryError(input: Record<string, unknown>, shapes: 'area' | '
   return noCellsError(shapes);
 }
 
+/** The widest patch of cited ground named as one span, in cells on a side. */
+const GROUND_SPAN_MAX = 12;
+
+/** One piece of ground named by the object cells that rest on it, since the model names object cells only. */
+function groundText(c: MacroCoord): string {
+  const r = terrainCellRect(c);
+  const over = footprintCells(r.x, r.y, r.w, r.h);
+  const a = over[0]!, b = over[over.length - 1]!;
+  return `the ground between cells (${a.x},${a.y})-(${b.x},${b.y})`;
+}
+
+/** Ground cited in one small patch reads as that patch in the model's own cells; a sample of pairs
+ *  between cells left it to piece the patch together. Null for scattered ground. */
+function groundSpan(cited: readonly MacroCoord[]): string | null {
+  const over = cited.flatMap((c) => { const r = terrainCellRect(c); return footprintCells(r.x, r.y, r.w, r.h); });
+  if (over.length === 0) return null;
+  const { x1, y1, x2, y2 } = regionBounds(over)!;
+  if (x2 - x1 >= GROUND_SPAN_MAX || y2 - y1 >= GROUND_SPAN_MAX) return null;
+  return `the ground under cells x ${x1}..${x2}, y ${y1}..${y2} (${cited.length} ${cited.length === 1 ? 'place' : 'places'})`;
+}
+
+/** Terrain cells as the model reads them, in the object cells resting on them: one small patch as
+ *  its span, scattered ground as a sample of `shown` pieces and how many more. */
+export function groundPlaces(cited: readonly MacroCoord[], shown = 4): string {
+  return groundSpan(cited) ?? cited.slice(0, shown).map(groundText).join(' ')
+    + (cited.length > shown ? ` and ${cited.length - shown} more places` : '');
+}
+
 export function formatErrors(errors: ValidationError[]): string {
   // A bare translator: the model reads quantities as plain digits, whatever the locale would group.
   const inEnglish: Translate = (key, params) => translateFor('en', key, params);
@@ -87,14 +119,15 @@ export function formatErrors(errors: ValidationError[]): string {
   return [...groups.values()]
     .map(({ e, rects, cells }) => {
       const text = violationToast(inEnglish, e);
+      const terrain = e.grid === TERRAIN_GRID;
       // Rect evidence (an object's drawn body) is quoted whole: a 4-cell sample of a building's footprint
       // reads as a thin bar, and the model then probes "free" cells that are inside the same
       // blocker. Cell evidence keeps the sample but names how much of it is unshown.
       const at = rects.length > 0
         ? rects.slice(0, 4).map((r) => `footprint (${r.x},${r.y})-(${r.x + r.w},${r.y + r.h})`).join(' ')
           + (rects.length > 4 ? ` and ${rects.length - 4} more` : '')
-        : cells.slice(0, 4).map((c) => `(${c.x},${c.y})`).join(' ')
-          + (cells.length > 4 ? ` and ${cells.length - 4} more cells` : '');
+        : terrain ? groundPlaces(cells)
+          : cells.slice(0, 4).map((c) => `(${c.x},${c.y})`).join(' ') + (cells.length > 4 ? ` and ${cells.length - 4} more cells` : '');
       const advice = ruleHint(e.ruleId);
       const hint = advice ? ` Hint: ${advice}` : '';
       return `[${e.ruleId}] ${text}${at ? ` at ${at}` : ''}.${hint}`;

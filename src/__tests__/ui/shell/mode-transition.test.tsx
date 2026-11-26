@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The mode switch under reduced motion, and assistant region selection taking over the bottom
- * controls. How the switch looks is checked in a browser.
+ * The mode switch under reduced motion, its pieces of the chrome's morph, and assistant region
+ * selection taking over the bottom controls. How the switch looks is checked in a browser.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
@@ -16,7 +16,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <I18nProvider>{
 
 function mount() {
   return render(
-    <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>,
+    <Shell><div data-testid="map-views" /></Shell>,
     { wrapper },
   );
 }
@@ -47,8 +47,21 @@ describe('a beat under reduced motion', () => {
 });
 
 
+describe('a mode switch inside the chrome\'s morph', () => {
+  /** The morph pairs pieces by id, so a plate leaving under the id of the one arriving would be drawn
+   *  as the other: a switch of input that picks a mode would pop both. */
+  it('[UI-27] keeps each morph piece one element while the selected mode\'s plate leaves and the next arrives', () => {
+    render(<Shell><div data-testid="map-views" /></Shell>, { wrapper: ({ children }) => wrapper({ children: motionAs('never')({ children }) }) });
+    act(() => { useEditorStore.getState().setEditMode({ mode: 'object' }); });
+    act(() => { useEditorStore.getState().setEditMode({ mode: 'mountain' }); });
+    const ids = [...document.querySelectorAll('[data-morph]')].map((el) => el.getAttribute('data-morph'));
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+  });
+});
+
 describe('assistant region selection owns the bottom controls', () => {
-  it.each(['mountain', 'water', 'object', 'generate', 'annotate'] as const)('covers and restores the %s panel without changing editing mode', async (mode) => {
+  it.each(['mountain', 'water', 'object', 'blueprint', 'generate', 'annotate'] as const)('covers and restores the %s panel without changing editing mode', async (mode) => {
     useEditorStore.getState().setEditMode({ mode });
     useEditorStore.getState().setAssistantOpen(true);
     mount();

@@ -144,7 +144,7 @@ describe('random painting and cutting', () => {
       const autoEdgeCut = rand() < 0.5 ? 'round' : 'rect';
       const state = makeState(24, 24);
       const ex = makeExecutor(state);
-      const ctx = makeToolCtx(state, ex, 1 + Math.floor(rand() * 3), 1, { autoEdgeCut });
+      const ctx = makeToolCtx(state, ex, 1 + Math.floor(rand() * 3), { autoEdgeCut });
       const paint = new DrawingTool();
       arm(ctx, { contentType: 'mountain' });
       const cut = new EdgeCutTool();
@@ -154,14 +154,14 @@ describe('random painting and cutting', () => {
       for (let step = 0; step < 14; step++) {
         const x = 6 + Math.floor(rand() * 12), y = 6 + Math.floor(rand() * 12);
         if (rand() < 0.7) {
-          const layer = 1 + Math.floor(rand() * 3);
-          arm(ctx, { floor: layer, shape: rand() < 0.5 ? 'free' : 'rect' });
+          const thickness = 1 + Math.floor(rand() * 3);
+          arm(ctx, { terrainThickness: thickness, shape: rand() < 0.5 ? 'free' : 'rect' });
           paint.onActivate(ctx);
           const to = { x: Math.min(20, x + Math.floor(rand() * 5)), y: Math.min(20, y + Math.floor(rand() * 5)) };
           paint.onPointerDown(cell({ x, y }), point(MICRO), ctx);
           paint.onPointerMove(cell(to), point(MICRO), ctx);
           paint.onPointerUp(cell(to), point(MICRO), ctx);
-          log.push(`paint ${ctx.arming.shape} L${layer} ${x},${y}->${to.x},${to.y}`);
+          log.push(`paint ${ctx.arming.shape} T${thickness} ${x},${y}->${to.x},${to.y}`);
         } else {
           cut.onActivate(ctx);
           cut.onPointerDown(cell({ x, y }), point({ x, y }), ctx);
@@ -196,7 +196,7 @@ describe('a pit left in a map', () => {
     const holes = pits(state);
     expect(holes.length).toBeGreaterThan(0);
     const ex = makeExecutor(state);
-    const ctx = makeToolCtx(state, ex, 1, 2);
+    const ctx = makeToolCtx(state, ex, 1);
     const paint = new DrawingTool();
     arm(ctx, { contentType: 'mountain', shape: 'free' });
     paint.onActivate(ctx);

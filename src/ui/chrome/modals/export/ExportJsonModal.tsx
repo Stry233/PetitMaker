@@ -4,18 +4,21 @@
  * per opening (and when the history depth changes), never per switch, so a long undo history never
  * freezes the panel; the total sums the measured sizes.
  */
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { clampNotes } from '../../../../core/model/notes';
 import type { MapNotes } from '../../../../core/model/types';
-import { onAfterPaint } from '../../../../platform/async/after-paint';
+import { afterPaint, onAfterPaint } from '../../../../platform/async/after-paint';
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import type { SectionKey, SectionSizes } from '../../../../io/save/sections';
 import { SECTION_LABELS } from '../../../../io/save/facts';
 import {
-  effectiveSections, estimatedTotal, initialSections, jsonReviewParts, measureJsonSections, RECENT_HISTORY_STEPS, sectionsReducer,
-  writeJsonExport, type HistoryDepth,
+  effectiveSections, estimatedTotal, exportJson, initialSections, jsonReviewParts, measureJsonSections, notesByteLength, RECENT_HISTORY_STEPS,
+  sectionAvailability, sectionAvailable, sectionsReducer,
+  type HistoryDepth,
 } from '../../../../editor/export/json-export';
+import { preparedExportRevision, subscribePreparedExport, takePreparedFileChoices } from '../../../../editor/export/prepared';
+import { exportUnavailable, exportWords } from '../../../../editor/export/availability';
 import { skin } from '../../../design/window-skin';
 import { roleFont } from '../../../design/text-weight';
 import { ActionButton } from '../../../primitives/ActionButton';
@@ -25,13 +28,13 @@ import { Spinner } from '../../../primitives/Spinner';
 import { Switch } from '../../../primitives/Switch';
 import { WindowBody, WindowFooter } from '../../../primitives/Window';
 import { HelpBubble } from './HelpBubble';
-import { useAttribution } from './use-attribution';
+import { setMapNotes, useAttribution } from './use-attribution';
 import { MapReviewStatus } from './review/MapReviewStatus';
 import { useExportNotice } from './review/ExportNotice';
 import { useMapReview } from './review/use-map-review';
 import { useTextReview } from './review/use-text-review';
 import { REVIEW_FIELD_LABEL } from './review/review-fields';
-import { AnimatedTotal, NotesFields, notesByteLen, rowDesc, SectionRow } from './json/JsonParts';
+import { AnimatedTotal, NotesFields, rowDesc, SectionRow } from './json/JsonParts';
 import type { I18nKey } from '../../../../i18n/keys';
 import { useSettledValue } from '../../../primitives/use-settled-value';
 
@@ -57,14 +60,19 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const t = useT();
   const gridState = useEditorStore((s) => s.gridState);
   const commandExecutor = useEditorStore((s) => s.commandExecutor);
-  const available = { generation: !!gridState?.generation, provenance: !!gridState?.provenance };
+  const available = sectionAvailability(gridState);
   const [chosen, dispatch] = useReducer(sectionsReducer, available, initialSections);
+  // Choices prepared outside the window are taken as the panel mounts and as they arrive.
+  const prepared = useSyncExternalStore(subscribePreparedExport, preparedExportRevision);
+  useEffect(() => {
+    const choices = takePreparedFileChoices();
+    if (choices) dispatch({ type: 'apply', choices });
+  }, [prepared]);
 
   const attribution = useAttribution(open);
   const sections = effectiveSections(chosen, attribution.locked);
   // The title and description are the map's own, shared with the image export and the share code.
   useEditorStore((s) => s.gridState?.notes);
-  const setMapNotes = useEditorStore((s) => s.setMapNotes);
   const notesVal: MapNotes = useSettledValue(attribution.notes);
   const fileNotes = useMemo(() => clampNotes(notesVal), [notesVal]);
 
@@ -72,24 +80,27 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   const [historyCount, setHistoryCount] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [composing, setComposing] = useState(false);
-  const cancelExportPaint = useRef<() => void>(() => {});
-  const exportRevision = useRef(0);
+  const exportRun = useRef<AbortController | null>(null);
   const reviewParts = useMemo(() => jsonReviewParts(notesVal, sections.notes), [sections.notes, notesVal]);
   const textReview = useTextReview(open, reviewParts, sections.notes && composing);
   const issue = textReview.issue;
   const refusedFields = issue && typeof issue === 'object' ? issue.fields : [];
   const checking = (field: keyof MapNotes) => textReview.pending && reviewParts.some(part => part.field === field);
   const mapReview = useMapReview(open, false, false, sections.annotations);
-  const exportDisabled = exporting || mapReview.pending || !textReview.allowed || mapReview.result?.status === 'blocked';
+  // The words wait for the check's approval before Export is offered, and count only while they travel.
+  const exportDisabled = exportUnavailable({
+    exporting, composing: sections.notes && composing, map: { pending: mapReview.pending, blocked: mapReview.result?.status === 'blocked' },
+    words: exportWords(issue, textReview.allowed),
+  }, false);
   const noticeRevision = JSON.stringify([sections, notesVal, composing]);
   const notice = useExportNotice(open, noticeRevision, gridState, 'json');
 
+  const cancelExport = () => { exportRun.current?.abort(); exportRun.current = null; setExporting(false); };
   useEffect(() => {
-    // The counter, not a node: the cleanup bumps the same box the effect did.
-    const revision = exportRevision;
-    revision.current++;
-    setExporting(false);
-    return () => { revision.current++; cancelExportPaint.current(); };
+    // A change of the choices, the map or its check overtakes a run; so does closing. The box, not a
+    // node: the cleanup reads the same ref the effect did.
+    const run = exportRun;
+    return () => { run.current?.abort(); run.current = null; setExporting(false); };
   }, [open, noticeRevision, gridState, mapReview.revision]);
 
   // Measured in both formats once, after the loader paints, so Pretty-print only changes which set is summed.
@@ -104,31 +115,32 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
     });
   }, [open, gridState, commandExecutor, chosen.historyDepth]);
 
-  const notesBytes = sections.notes ? notesByteLen(fileNotes, sections.pretty) : 0;
+  const notesBytes = sections.notes ? notesByteLength(fileNotes, sections.pretty) : 0;
   const shown = sizes ? (sections.pretty ? sizes.pretty : sizes.compact) : null;
   const total = shown ? estimatedTotal(shown, sections, available, notesBytes) : null;
 
   async function handleExportClick() {
-    if (!open || exportDisabled) return;
-    const revision = exportRevision.current;
-    const mapCheck = mapReview.check().catch(() => null);
-    if (!await notice.request() || revision !== exportRevision.current) { mapReview.cancel(); return; }
-    const mapResult = await mapCheck;
-    if (!mapResult || mapResult.status === 'blocked' || revision !== exportRevision.current) return;
-    const { gridState: state, commandExecutor: executor } = useEditorStore.getState();
-    if (!state || !executor) return;
-    // The busy state paints before a potentially large history is serialized.
-    setExporting(true);
-    cancelExportPaint.current = onAfterPaint(() => {
-      if (revision !== exportRevision.current) return;
-      const written = writeJsonExport(sections, available, fileNotes ?? null);
-      setExporting(false);
-      if (written) onDone();
-    });
+    if (!open || exportDisabled || exportRun.current) return;
+    const controller = new AbortController();
+    exportRun.current = controller;
+    try {
+      const outcome = await exportJson({ sections, notes: fileNotes ?? null }, {
+        signal: controller.signal,
+        checkMap: () => mapReview.check(),
+        cancelMapCheck: () => mapReview.cancel(),
+        checkText: (parts) => textReview.check(parts),
+        confirmNotice: () => notice.request(),
+        // The busy state paints before a potentially large history is serialized.
+        begin: () => { setExporting(true); return afterPaint(); },
+      });
+      if (outcome.status === 'done') onDone();
+    } finally {
+      if (exportRun.current === controller) { exportRun.current = null; setExporting(false); }
+    }
   }
 
   const row = ({ key, desc, hint }: RowSpec) => {
-    const unavailable = (key === 'generation' && !available.generation) || (key === 'provenance' && !available.provenance);
+    const unavailable = !sectionAvailable(key, available);
     return (
       <SectionRow key={key} name={t(SECTION_LABELS[key])} desc={t(desc)} {...(hint ? { hint: t(hint) } : {})}
         checked={sections[key] && !unavailable} disabled={unavailable} onToggle={() => dispatch({ type: 'toggle', key })} bytes={shown?.[key]} />
@@ -142,9 +154,8 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
   );
 
   return (
-    // One scroller holds the save options and the map check; the pretty-print and total row and the
-    // buttons stand after it at the window's foot, on one line where the width allows, so the window
-    // never scrolls as a whole and a short window keeps its room for the scroller.
+    // One scroller holds the save options and the map check; the pretty-print and total row and, under
+    // it, the buttons stand after it at the window's foot, so the window never scrolls as a whole.
     <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
       {notice.notice}
       <WindowBody contentStyle={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP }}>
@@ -180,13 +191,15 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
         <MapReviewStatus result={mapReview.result} pending={mapReview.pending} onRetry={() => { mapReview.retry(); }} />
       </WindowBody>
       <WindowFooter style={{ marginTop: TOTAL_RULE_GAP, paddingTop: 12, borderTop: `1.5px solid ${skin.line}`, rowGap: 12 }}
-        tertiary={(
-          <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ ...roleFont('caption'), color: skin.ink, whiteSpace: 'nowrap' }}>{t('export.json_pretty')}</span>
-              <HelpBubble text={t('export.json_pretty_help')} />
+        lead={(
+          <span style={{ flex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ ...roleFont('caption'), color: skin.ink, whiteSpace: 'nowrap' }}>{t('export.json_pretty')}</span>
+                <HelpBubble text={t('export.json_pretty_help')} />
+              </span>
+              <Switch on={sections.pretty} onClick={() => dispatch({ type: 'toggle', key: 'pretty' })} label={t('export.json_pretty')} />
             </span>
-            <Switch on={sections.pretty} onClick={() => dispatch({ type: 'toggle', key: 'pretty' })} label={t('export.json_pretty')} />
             {total == null
               ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ ...roleFont('small'), color: skin.plateInk }}>{t('export.json_total')}:</span>
@@ -195,7 +208,7 @@ export function ExportJsonPanel({ open, onDone }: { open: boolean; onDone: () =>
               : <AnimatedTotal bytes={total} label={t('export.json_total')} />}
           </span>
         )}
-        cancel={<ActionButton appearance="secondary" onClick={() => { exportRevision.current++; cancelExportPaint.current(); textReview.cancel(); onDone(); }}>{t('export.json_btn_cancel')}</ActionButton>}
+        cancel={<ActionButton appearance="secondary" onClick={() => { cancelExport(); textReview.cancel(); onDone(); }}>{t('export.json_btn_cancel')}</ActionButton>}
         primary={(
           <ActionButton appearance="primary" onClick={handleExportClick} disabled={exportDisabled} busy={exporting}>
             {t('export.json_btn_export')}

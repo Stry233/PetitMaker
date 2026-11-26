@@ -3,6 +3,7 @@
  * picture of its own.
  */
 import { channelLuma } from '../../../core/base/color';
+import { boundsWhere } from '../../../core/grid/rect';
 import type { SourcePixels } from './stencil-sample';
 
 /** A rectangle of a source picture, in its own pixels. */
@@ -38,18 +39,10 @@ export function salientCrop(
   };
 
   // The subject's own frame: a crop is a choice inside it, never a way of finding it.
-  let x0 = src.width, y0 = src.height, x1 = -1, y1 = -1;
-  for (let y = 0; y < src.height; y++) {
-    for (let x = 0; x < src.width; x++) {
-      if (!inked(x, y)) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-  }
-  if (x1 < x0 || y1 < y0) return null;
-  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const frame = boundsWhere(src.width, src.height, inked);
+  if (!frame) return null;
+  const { x: x0, y: y0, w, h } = frame;
+  const x1 = x0 + w - 1, y1 = y0 + h - 1;
 
   const cols = Math.min(CROP_GRID, w), rows = Math.min(CROP_GRID, h);
   const cw = w / cols, ch = h / rows;

@@ -2,7 +2,8 @@
  * Drag-to-move as an edit: the session a press on a selected object begins, which previews the drop
  * as the pointer travels and commits it on release (one object as an atomic remove and place, a
  * plural selection as one group move), or reports why it was refused. A copy drag (Ctrl, EDIT-60)
- * carries a copy of the selection instead and places it whole, leaving the originals. The pointer
+ * carries a copy of the selection instead and places it whole, leaving the originals; of a placed
+ * blueprint selected whole it lays a copy as its placement does. The pointer
  * side keeps the drag threshold and reads the map point under the pointer; everything the drop
  * means is here.
  */
@@ -25,6 +26,8 @@ import type { Translate } from '../../../i18n/keys';
 import type { Arrangement } from '../../../state/clipboard';
 import { copyArrangement, pasteArrangement, planPaste, type PasteDoor } from '../../objects/arrangement';
 import { reportPaste, showCopyGhost } from './paste';
+import type { PlacementDrag } from '../blueprint/channel';
+import { showBlueprintGhost } from '../blueprint/blueprint-tool';
 
 /** What a drag reads and writes outside the map: the session's map, executor and selection, and the
  *  channel a refusal is reported on. */
@@ -38,6 +41,9 @@ export interface ObjectDragPort {
   /** Says what a copy drag left out, in `t`'s words. */
   notify(text: string, tone: NoticeTone): void;
   t: Translate;
+  /** The drag of a blueprint placement the selection holds, which moves it whole; absent or null,
+   *  a drag lifts the objects alone. */
+  placementDrag?(): PlacementDrag | null;
 }
 
 /** The view a preview draws on and a drop plays its landing cue in. */
@@ -85,6 +91,10 @@ export class ObjectDragSession {
   private lastGhostKey: string | null = null;
   /** A copy drag's arrangement and where its outline stood when it was picked up. */
   private copy: { arrangement: Arrangement; origin: MacroCoord } | null = null;
+  /** A held blueprint placement the drag moves whole or, with `copy`, lays a copy of
+   *  (`ObjectDragPort.placementDrag`): the drag it offers, the frame's top-left it stood at and the
+   *  placement cell the press grabbed. */
+  private placement: { drag: PlacementDrag; from: MacroCoord; grab: MacroCoord; copy: boolean } | null = null;
 
   constructor(private readonly port: ObjectDragPort) {}
 
@@ -95,6 +105,9 @@ export class ObjectDragSession {
     const obj = gs?.objects.get(anchorId);
     if (!gs || !obj) return false;
     this.copy = null;
+    this.placement = null;
+    // A placement just laid moves whole, its terrain with its objects, never its objects alone.
+    if (!copy && this.beginPlacement(grab, fallback, { object: anchorId })) return true;
     if (copy) {
       const taken = copyArrangement(gs, groupDragIds(this.port.selection(), anchorId) ?? [anchorId]);
       if (!taken.arrangement) return false;
@@ -111,10 +124,36 @@ export class ObjectDragSession {
     return true;
   }
 
+  /** Whether a press armed a move, until the drop or a cancel. */
+  get armed(): boolean { return this.objectId !== null || this.placement !== null; }
+
+  /** Begins a move of the placed blueprint group the selection is, or with `copy` a copy drag of it,
+   *  pressed on its object `on.object` or, without one, on cell `fallback` of its frame. Returns
+   *  whether it began. */
+  beginPlacement(grab: MapPoint | null, fallback: MacroCoord, on: { object?: string } = {}, copy = false): boolean {
+    const drag = this.port.placementDrag?.() ?? null;
+    const press = grab ? cellAtPoint(grab, PLACEMENT_GRID) : fallback;
+    const from = drag?.held(this.port.selection(), on.object !== undefined ? { object: on.object } : { cell: press }) ?? null;
+    if (!drag || !from) return false;
+    this.objectId = on.object ?? null;
+    this.copy = null;
+    this.placement = { drag, from, grab: press, copy };
+    this.lastGhostKey = null;
+    return true;
+  }
+
   /** Ends the session without committing anything. */
   cancel(): void {
     this.objectId = null;
     this.copy = null;
+    this.placement = null;
+  }
+
+  /** Where the dragged group `p`'s frame stands with the pointer at `point`. */
+  private placementAt(p: { from: MacroCoord; grab: MacroCoord }, point: MapPoint): MacroCoord {
+    const { from, grab } = p;
+    const cell = cellAtPoint(point, PLACEMENT_GRID);
+    return { x: from.x + cell.x - grab.x, y: from.y + cell.y - grab.y };
   }
 
   /** Draws the drop the pointer at `point` would make: the footprint wash and the moved bodies,
@@ -122,6 +161,15 @@ export class ObjectDragSession {
   preview(view: ObjectDragView, point: MapPoint): void {
     const gs = this.port.state();
     const executor = this.port.executor();
+    if (this.placement) {
+      const at = this.placementAt(this.placement, point);
+      const ghostKey = `placement|${at.x}|${at.y}`;
+      if (ghostKey === this.lastGhostKey) return;
+      this.lastGhostKey = ghostKey;
+      const plan = this.placement.drag.preview(at, this.placement.copy);
+      if (plan) showBlueprintGhost(view.overlay, plan);
+      return;
+    }
     const obj = this.objectId ? gs?.objects.get(this.objectId) : undefined;
     if (!obj || !executor || !gs) return;
     if (this.copy) {
@@ -150,7 +198,7 @@ export class ObjectDragSession {
         const size = getPlacedObjectSize(m);
         return getFootprint(m.position.x + dx, m.position.y + dy, size.w, size.h);
       });
-      view.overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { wash: 'placement', valid });
+      view.overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { placement: true, valid });
       // Each member keeps its whole-cell destination and takes the elevation its plan resolved
       // (half-cell anchors and terrain-snapped items).
       view.overlay.showObjectMove(members.map((m, i) => (
@@ -171,7 +219,7 @@ export class ObjectDragSession {
     const valid = plan.errors.length === 0;
     const at = plan.preview;
     const size = getPlacedObjectSize(at);
-    view.overlay.showGhost(cellSet(PLACEMENT_GRID, getFootprint(at.position.x, at.position.y, size.w, size.h)), { wash: 'placement', valid });
+    view.overlay.showGhost(cellSet(PLACEMENT_GRID, getFootprint(at.position.x, at.position.y, size.w, size.h)), { placement: true, valid });
     view.overlay.showObjectMove([at], valid);
   }
 
@@ -179,8 +227,17 @@ export class ObjectDragSession {
   commit(view: ObjectDragView, point: MapPoint): void {
     const movedId = this.objectId;
     const copy = this.copy;
+    const placement = this.placement;
     this.objectId = null;
     this.copy = null;
+    this.placement = null;
+    if (placement) {
+      const at = this.placementAt(placement, point);
+      if (at.x === placement.from.x && at.y === placement.from.y) return;
+      if (placement.copy) placement.drag.copy(at);
+      else placement.drag.move(at);
+      return;
+    }
     const gs = this.port.state();
     const executor = this.port.executor();
     const obj = movedId ? gs?.objects.get(movedId) : undefined;

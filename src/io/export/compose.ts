@@ -79,6 +79,12 @@ function requestedWidth(opts: ExportOptions, mapPx: PixelSize | undefined): numb
   return opts.resolution === 'original' && mapPx ? Math.max(RESOLUTION_WIDTHS.high, mapPx.w) : RESOLUTION_WIDTHS[opts.resolution];
 }
 
+/** The maker's band's height, in px, and the scale of a composition `width` px wide. */
+export function brandRowAt(width: number): { h: number; S: number } {
+  const S = width / BASE_WIDTH;
+  return { h: BRAND_H * S, S };
+}
+
 function scaleRect(r: Rect, S: number): Rect {
   return { x: Math.round(r.x * S), y: Math.round(r.y * S), w: Math.round(r.w * S), h: Math.round(r.h * S) };
 }

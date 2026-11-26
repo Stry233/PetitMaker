@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { planetEntryAmong, planetNameStatus, planetNameVerdict, uncheckedPlanetName, type NamedPlanetEntry } from '../../state/planet-name-verdict';
+import { planetEntryAmong, planetNameVerdict, uncheckedPlanetName, type NamedPlanetEntry } from '../../state/planet-name-verdict';
 import { __resetTextVerdicts, recordTextVerdict } from '../../state/text-verdicts';
 import type { MapTemplate } from '../../core/model/types';
 
@@ -13,7 +13,7 @@ describe('a custom planet name verdict', () => {
     const t = planet('custom-a', 'Bay');
     expect(planetNameVerdict(t, [entry('custom-a', 'Bay', false)])).toEqual({ status: 'pending', name: 'Bay', index: 0 });
     expect(planetNameVerdict(t, [entry('custom-b', 'X', true), entry('custom-a', 'Bay', true)])).toEqual({ status: 'approved', name: 'Bay', index: 1 });
-    expect(planetNameStatus(t, [entry('custom-a', '', true)])).toBe('refused');
+    expect(planetNameVerdict(t, [entry('custom-a', '', true)]).status).toBe('refused');
   });
 
   it('reads a name no entry carries from the page verdict, counting its default name from the library length', () => {
@@ -28,9 +28,5 @@ describe('a custom planet name verdict', () => {
     const copies = [entry('custom-a', 'Bay', true), entry('custom-a', 'Bay copy', true)];
     expect(planetEntryAmong(copies, planet('custom-a', 'Bay copy'))).toBe(copies[1]);
     expect(planetEntryAmong(copies, planet('custom-a', 'Renamed'))).toBeNull();
-  });
-
-  it('approves every built-in planet', () => {
-    expect(planetNameStatus(planet('hexia', ''), [])).toBe('approved');
   });
 });

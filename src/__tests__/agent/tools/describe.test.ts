@@ -31,11 +31,8 @@ const CALLS: { name: string; input: Record<string, unknown> }[] = [
   { name: 'scatter_objects', input: { catalogIds: ['flora-a'], count: 5, rect: { x1: 1, y1: 1, x2: 6, y2: 6 } } },
   { name: 'sculpt_terrace', input: { cx: 10, cy: 10, baseRadius: 6, tiers: 3 } },
   { name: 'carve_river', input: { points: [{ x: 1, y: 2 }, { x: 9, y: 9 }], width: 3 } },
-  ...['orchard', 'farm', 'garden', 'hamlet', 'waterfront', 'peak', 'nonesuch']
-    .map((theme) => ({ name: 'decorate_zone', input: { theme, x: 1, y: 2, w: 3, h: 4 } })),
-  { name: 'plant_forest', input: { x: 1, y: 2, w: 3, h: 4, density: 0.6 } },
-  { name: 'build_road_network', input: {} },
-  { name: 'frame_crossing', input: { x: 5, y: 6 } },
+  { name: 'copy_area', input: { x1: 2, y1: 2, x2: 6, y2: 5, copies: [{ x: 10, y: 2 }, { x: 18, y: 2 }] } },
+  { name: 'sculpt_wall', input: { x1: 2, y1: 2, x2: 20, y2: 8, crest: 3, flood: true } },
   { name: 'undo', input: { steps: 2 } },
   { name: 'update_plan', input: { stages: [{ label: 'Shape the hill' }, { label: 'Lay the paths' }, { label: 'Plant' }, { label: 'Review' }] } },
 ];
@@ -73,27 +70,24 @@ describe('describeToolCall (human-readable approvals)', () => {
     expect(describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 2, x2: 8, y2: 6 }, terrain: 'water', elevation: 0 } }, en))
       .toBe(`${en(toolVerbKey('paint_terrain'))} (water, layer 1, (2,2)→(8,6))`);
     expect(describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a', 'tree-b', 'tree-c'], count: 30 } }, en))
-      .toContain('30 × [Object, Object +1]');
+      .toContain(en('agent.dc_scatter', { n: 30, pool: 'Object, Object +1', where: en('agent.dc_selection') }));
     expect(describeToolCall({ name: 'carve_river', input: { points: [{ x: 1, y: 2 }, { x: 9, y: 9 }], width: 3 } }, en))
       .toContain('(1,2)→(9,9)');
   });
 
   it('[ASST-17] never emits JSON braces for any write tool with typical inputs', () => {
     for (const name of TOOL_NAMES.filter((n) => writesMap(TOOL_FACTS, n))) {
-      const text = describeToolCall({ name, input: { x: 1, y: 2, w: 3, h: 4, catalogId: 'path-overgrown-dirt', theme: 'farm' } }, en);
+      const text = describeToolCall({ name, input: { x: 1, y: 2, w: 3, h: 4, catalogId: 'path-overgrown-dirt' } }, en);
       expect(text).not.toMatch(/[{}"]/);
       expect(text).toContain(en(toolVerbKey(name)));
       if (name.includes('_')) expect(text).not.toContain(name);
     }
   });
 
-  it('describes where a pool sinks, how far a redo reaches and what rings a figure', () => {
-    const names = { catalog: (id: string) => (id === 'tree-peach' ? 'Peach' : undefined), object: () => undefined };
+  it('describes where a pool sinks, and how far a redo reaches', () => {
     expect(describeToolCall({ name: 'sink_pool', input: { x1: 20, y1: 30, x2: 34, y2: 40 } }, en))
       .toBe(`${en(toolVerbKey('sink_pool'))} ((20,30)→(34,40))`);
     expect(describeToolCall({ name: 'redo', input: { steps: 2 } }, en)).toBe(`${en(toolVerbKey('redo'))} (2 steps)`);
-    expect(describeToolCall({ name: 'draw_figure', input: { shape: 'heart', cx: 9, cy: 9, size: 12, ringId: 'tree-peach' } }, en, names))
-      .toContain('ringed with Peach');
   });
 
   it('names the plan being approved: stages counted, first three labels, +N tail past three', () => {
@@ -114,12 +108,15 @@ describe('describeToolCall (human-readable approvals)', () => {
     expect(describeToolCall({ name: 'update_plan', input: { stages: 'not-an-array' } }, en)).toBe(en(toolVerbKey('update_plan')));
   });
 
-  it('names a delegated task by its short label, over the full self-contained instructions', () => {
-    const input = { task: 'Complete, self-contained instructions: plant an oak grove north of the lake.', label: 'north grove' };
-    expect(describeToolCall({ name: 'delegate_task', input }, en)).toBe(`${en(toolVerbKey('delegate_task'))} (north grove)`);
+  it("names a helper by its brief's label and bounds", () => {
+    const input = { label: 'north grove', x1: 10, y1: 12, x2: 30, y2: 24, goal: 'An oak grove around a clearing.' };
+    const shown = describeToolCall({ name: 'delegate_task', input }, en);
+    expect(shown).toBe(`${en(toolVerbKey('delegate_task'))} (${en('agent.dc_helper', { label: 'north grove', area: '(10,12)→(30,24)' })})`);
   });
 
-  it('falls back to the task text itself when a delegated call carries no label', () => {
+  it('still names a helper call recorded with free text and no bounds', () => {
+    const labelled = { task: 'Complete, self-contained instructions: plant an oak grove north of the lake.', label: 'north grove' };
+    expect(describeToolCall({ name: 'delegate_task', input: labelled }, en)).toBe(`${en(toolVerbKey('delegate_task'))} (north grove)`);
     expect(describeToolCall({ name: 'delegate_task', input: { task: 'raise a hill' } }, en))
       .toBe(`${en(toolVerbKey('delegate_task'))} (raise a hill)`);
   });
@@ -143,9 +140,8 @@ describe('describeToolCall (human-readable approvals)', () => {
   it('[ASST-17] the localized line never borrows the English words', () => {
     const zh = describeToolCall({ name: 'paint_terrain', input: { rect: { x1: 2, y1: 2, x2: 8, y2: 6 }, terrain: 'mountain', elevation: 3 } }, tr('zh'));
     expect(zh).toBe(`${tr('zh')(toolVerbKey('paint_terrain'))} (第 4 层山体，(2,2)→(8,6))`);
-    expect(describeToolCall({ name: 'build_road_network', input: {} }, tr('zh'))).toBe(`${tr('zh')(toolVerbKey('build_road_network'))} (连通所有建筑)`);
     expect(describeToolCall({ name: 'scatter_objects', input: { catalogIds: ['tree-a'], count: 4 } }, tr('zh')))
-      .toBe(`${tr('zh')(toolVerbKey('scatter_objects'))} (4 × [${tr('zh')('agent.object_name')}] 于所选区域)`);
+      .toBe(`${tr('zh')(toolVerbKey('scatter_objects'))} (${tr('zh')('agent.dc_scatter', { n: 4, pool: tr('zh')('agent.object_name'), where: tr('zh')('agent.dc_selection') })})`);
   });
 
   it('stays compact: no locale doubles the English line', () => {

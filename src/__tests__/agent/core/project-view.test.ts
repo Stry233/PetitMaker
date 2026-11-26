@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { stubFacts } from '../../_support/tool-facts';
 import type { ToolFacts } from '../../../agent/core/tool-facts';
 import { append, createLog } from '../../../agent/core/log';
-import { derivePhase, deriveView, type JobView, type PanelView } from '../../../agent/core/project-view';
+import { derivePhase, deriveView, type AskRecord, type JobView, type PanelView } from '../../../agent/core/project-view';
 import type { SessionEventInput } from '../../../agent/core/types';
 import type { Part, PlanStage } from '../../../agent/core/types';
 
@@ -381,6 +381,20 @@ describe('deriveView', () => {
     append(planless, { kind: 'order', text: 'go', mapContext: '' });
     append(planless, { kind: 'toolResult', callId: 'c1', name: 'build_road', content: 'ok', isError: false, write: true });
     expect(deriveView(planless).current?.ops[0]?.stageIndex).toBeUndefined();
+  });
+
+  /** A call still arriving has no place in the log yet; every reader of stages finds it under the
+   *  stage being worked, so the rail and the stage figures agree. */
+  it('11d. files a call the live turn is still sending under the stage being worked', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    append(log, { kind: 'plan', stages: [{ label: 'a' }, { label: 'b' }, { label: 'c' }], revision: 1 });
+    append(log, { kind: 'stage', index: 1 });
+    const live: Part[] = [{ kind: 'tool', callId: 'arriving', name: 'build_road', input: {}, argsDone: false }];
+    expect(deriveView(log, { live }).current?.ops.map((op) => [op.callId, op.stageIndex])).toEqual([['arriving', 1]]);
+    // With every stage complete it stays reachable, under the last one.
+    append(log, { kind: 'stage', index: 3 });
+    expect(deriveView(log, { live }).current?.ops[0]?.stageIndex).toBe(2);
   });
 
   it('12. vitals accumulate cells/objects/reverts/jobs across settled jobs', () => {
@@ -1309,11 +1323,11 @@ describe('deriveView', () => {
       });
       append(log, {
         kind: 'toolResult', callId: 'c2', name: 'load_skill', content: 'b', isError: false,
-        detail: { skill: { name: 'site-analysis', kind: 'method', title: 'Site Analysis' } },
+        detail: { skill: { name: 'layout-patterns', kind: 'method', title: 'Layout Patterns' } },
       });
       expect(deriveView(log).current?.skills).toEqual([
         { name: 'river-crossing', kind: 'style', title: 'River Crossing' },
-        { name: 'site-analysis', kind: 'method', title: 'Site Analysis' },
+        { name: 'layout-patterns', kind: 'method', title: 'Layout Patterns' },
       ]);
 
       append(log, {
@@ -1321,7 +1335,7 @@ describe('deriveView', () => {
         detail: { skill: { name: 'river-crossing', kind: 'style', title: 'River Crossing' } },
       });
       expect(deriveView(log).current?.skills).toEqual([
-        { name: 'site-analysis', kind: 'method', title: 'Site Analysis' },
+        { name: 'layout-patterns', kind: 'method', title: 'Layout Patterns' },
         { name: 'river-crossing', kind: 'style', title: 'River Crossing' },
       ]);
     });
@@ -1463,6 +1477,44 @@ describe('deriveView', () => {
       const ops = deriveView(log).current?.ops ?? [];
       expect(ops.map((o) => o.status)).toEqual(['pending-gate', 'run']);
     });
+  });
+});
+
+describe('an answered ask says how it was answered', () => {
+  /** An option taken and a quick answer reach the log as the answer's words, like a typed sentence. */
+  function answered(words: string): AskRecord {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    append(log, {
+      kind: 'gateAsked', gateId: 'g1', scope: 'tool', summary: 'Which shore?',
+      quickAnswers: ['You decide', 'The bay'],
+      options: [{ cap: 'The north shore' }, { cap: 'The bay' }, { cap: 'The bay' }],
+    });
+    append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'words', words });
+    return deriveView(log).current!.asks[0]!;
+  }
+
+  it('reads words equal to an option as that option, by its index', () => {
+    expect(answered('The north shore')).toMatchObject({ verdict: 'words', answeredBy: 'option', picked: 0 });
+  });
+
+  it('reads equal captions as the first, and an option before a quick answer of the same words', () => {
+    expect(answered('The bay')).toMatchObject({ answeredBy: 'option', picked: 1 });
+  });
+
+  it('reads words equal to a quick answer as the quick answer, and any other sentence as typed', () => {
+    expect(answered('You decide')).toMatchObject({ answeredBy: 'quick' });
+    expect(answered('You decide').picked).toBeUndefined();
+    expect(answered('further up the river')).toMatchObject({ answeredBy: 'typed' });
+  });
+
+  it('says nothing of how for an approval, a decline or an open ask', () => {
+    const log = createLog(() => 0);
+    append(log, { kind: 'order', text: 'go', mapContext: '' });
+    append(log, { kind: 'gateAsked', gateId: 'g1', scope: 'tool', summary: 'Paint it?', options: [{ cap: 'Yes' }] });
+    expect(deriveView(log).current!.asks[0]!.answeredBy).toBeUndefined();
+    append(log, { kind: 'gateAnswered', gateId: 'g1', answer: 'skip' });
+    expect(deriveView(log).current!.asks[0]!.answeredBy).toBeUndefined();
   });
 });
 

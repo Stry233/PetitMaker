@@ -5,14 +5,15 @@
 import { ActionButton } from '../../primitives/ActionButton';
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { CONTROL_CLEARANCE, useScrollRow } from '../../primitives/use-scroll-row';
-import { btnReset, cursors } from '../../design/styles';
-import { ACTIVE } from '../../design/tokens';
+import { btnReset, cursors, radii } from '../../design/styles';
+import { ACTIVE, rgbaOf } from '../../design/tokens';
 import { helpTargetAttr } from '../../session/help-targets';
-import type { HelpPageId } from '../../help/page-schema';
-import { SHELF_TABS, TEXT } from '../units';
+import type { HelpPageId } from '../../../editor/help/page-schema';
+import { SHELF_TABS } from '../units';
 import { BarText } from './bar-atoms';
 import { TouchReach } from '../../primitives/TouchReach';
 import { reveal } from './row-scroll';
+import { SCROLL_FADE } from '../../primitives/scroll-fade';
 import { useFrameZoom } from '../use-frame-zoom';
 import type { FrameLayout } from '../frame-plan';
 
@@ -31,33 +32,33 @@ export function namesIndent(bar: FrameLayout['bar']): number {
   return bar.tabsLeft === undefined ? 0 : bar.tabsLeft - SHELF_TABS.left;
 }
 
-/** How far a cut name is softened at an end the row can still travel toward, in css px. A name
- *  sliced at a hard vertical edge — which on the object shelf is exactly where the search field
- *  begins — reads as a drawing error rather than as a row that continues. */
-const FADE = 24;
-
 /** How far the fade reaches into the last whole name instead, in css px: about one glyph of a shelf
  *  label, which is enough to see dissolve. */
 const BITE = 26;
 
 /**
  * How wide the fade at one end must be to land on a name: a fade in the gutter between names shows
- * nothing, so it stretches back to bite part of the last whole name.
+ * nothing, so it stretches back to bite part of the last whole name. A name sliced at a hard edge
+ * (on the object shelf, where the search field begins) reads as a drawing error, so a cut name takes
+ * the scrollers' own fade.
  */
 function fadeAt(row: HTMLElement, edge: number, atEnd: boolean): number {
   const tabs = [...row.children] as HTMLElement[];
-  if (tabs.some((el) => el.offsetLeft < edge && el.offsetLeft + el.offsetWidth > edge)) return FADE;
+  if (tabs.some((el) => el.offsetLeft < edge && el.offsetLeft + el.offsetWidth > edge)) return SCROLL_FADE;
   const near = atEnd
     ? tabs.filter((el) => el.offsetLeft + el.offsetWidth <= edge).pop()
     : tabs.find((el) => el.offsetLeft >= edge);
-  if (!near) return FADE;
+  if (!near) return SCROLL_FADE;
   // A tab's box carries `padX` either side of its word, so the ink stops short of both its edges.
   const ink = Math.max(0, near.offsetWidth - 2 * SHELF_TABS.padX);
   const bare = atEnd
     ? edge - (near.offsetLeft + near.offsetWidth - SHELF_TABS.padX)
     : near.offsetLeft + SHELF_TABS.padX - edge;
-  return Math.max(FADE, bare + Math.min(BITE, ink * 0.4));
+  return Math.max(SCROLL_FADE, bare + Math.min(BITE, ink * 0.4));
 }
+
+/** The fill of a tab, or a list entry, that something carried over it would be dropped into. */
+export const DROP_TARGET_FILL = rgbaOf(ACTIVE, 0.45);
 
 interface ShelfTabEntry<T extends string> {
   id: T;
@@ -65,32 +66,45 @@ interface ShelfTabEntry<T extends string> {
   /** Which Help Center page this tab's own kind answers with, where it differs from the shelf's
    *  own page (the generator's kinds each open a different tool). */
   helpTarget?: HelpPageId;
+  /** What the tab wears as a piece of a re-arrangement inside its surface (`primitives/morph.ts:morphScope`). */
+  piece?: Record<string, string>;
+  /** Attributes naming what the tab stands for to a carry that hit tests it, and handlers of its own
+   *  presses beyond the select (a folder's menu). */
+  attrs?: Record<string, unknown>;
+  /** Whether something carried is over the tab, which a release drops into it. */
+  target?: boolean;
 }
 
-function ShelfTabButton({ label, active, onSelect, helpTarget }: {
+function ShelfTabButton({ label, active, onSelect, helpTarget, piece, attrs, target }: {
   label: string;
   active: boolean;
   onSelect: () => void;
   helpTarget?: HelpPageId;
+  piece?: Record<string, string>;
+  attrs?: Record<string, unknown>;
+  target?: boolean;
 }) {
   const zoom = useFrameZoom();
   return (
     <ActionButton
       interaction="tile"
       {...(helpTarget ? helpTargetAttr(helpTarget) : {})}
+      {...piece}
+      {...attrs}
       role="tab"
       aria-selected={active}
       onClick={onSelect}
       onFocus={(e) => reveal(e.currentTarget)}
       style={{
         ...btnReset, position: 'relative', flex: 'none', pointerEvents: 'auto',
+        ...(target ? { background: DROP_TARGET_FILL, borderRadius: radii.sm } : null),
         cursor: cursors.clickable, padding: `0 ${SHELF_TABS.padX}px`,
         display: 'flex', flexDirection: 'column', alignItems: 'stretch',
         gap: SHELF_TABS.underlineGap,
       }}
     >
       {/* On the map, not on the plate: the band starts below this row. */}
-      <BarText size={TEXT.shelfTab} onMap>
+      <BarText role="title" onMap>
         {label}
       </BarText>
       {/* Drawn on the unchosen tabs too, transparent: a mark that appeared on selection would nudge
@@ -150,6 +164,9 @@ export function ShelfTabs<T extends string>({ label, tabs, active, onSelect }: {
           active={tab.id === active}
           onSelect={() => onSelect(tab.id)}
           {...(tab.helpTarget ? { helpTarget: tab.helpTarget } : {})}
+          {...(tab.piece ? { piece: tab.piece } : {})}
+          {...(tab.attrs ? { attrs: tab.attrs } : {})}
+          {...(tab.target ? { target: true } : {})}
         />
       ))}
     </div>

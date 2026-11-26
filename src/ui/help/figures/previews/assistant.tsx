@@ -3,15 +3,15 @@
  * moments from fixture projections. `SetupScreen` mounts under the pictured context, which stands its
  * network asks down; `ManageScreen` never mounts (it asks for model lists), so oversight shows its row.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { PreviewFrame } from './PreviewFrame';
 import { FIGURE_LEAST, useFigureRoom } from '../figure-scale';
 import { PanelShell } from '../../../agent/PanelShell';
 import { PANEL_PAD, PANEL_WIDTH } from '../../../agent/panel-skin';
 import { RegionVignette } from '../../../agent/composer/region-chip';
 import { Banner } from '../../../agent/desk/Banner';
+import { useMapShot } from '../../../agent/parts/map-shot';
 import { useEditorStore } from '../../../../state/store';
-import { renderThumbnail } from '../../../../view/map2d/capture/thumbnail';
 import { SetupScreen } from '../../../agent/connection/SetupScreen';
 import { OversightRow } from '../../../agent/connection/ManageScreen';
 import { type AskRecord, type JobView, type OpRow, type PanelView } from '../../../../agent/panel';
@@ -220,13 +220,7 @@ export function AgentTrailPreview() {
   const state = useEditorStore((s) => s.gridState);
   // The view_map row carries the very picture a live call would send: the open map, captured by
   // its own renderer. With no renderer yet the row stands on its chip alone, like a reloaded one.
-  const [shot, setShot] = useState<string | null>(null);
-  useEffect(() => {
-    if (!state) return undefined;
-    let live = true;
-    void renderThumbnail(state, 640).then((url) => { if (live) setShot(url); });
-    return () => { live = false; };
-  }, [state]);
+  const shot = useMapShot(state, 640, { hold: true });
   const job = makeJob({
     orderText: t('help.fig.trail_job'),
     orderAt: now - 90_000,

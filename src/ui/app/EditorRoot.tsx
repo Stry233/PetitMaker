@@ -1,7 +1,7 @@
 /*
  * The editor both editions mount: the reduced-motion and cursor gates, the locale, the input mode,
  * the dock fit, the shell around the map views and the floating chrome every edition shows. An
- * edition root supplies its map views, its session restore and the surfaces only it has.
+ * edition root supplies its map views and the surfaces only it has.
  */
 import { useEffect, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { MotionConfig } from 'framer-motion';
@@ -22,8 +22,9 @@ import { AnnotationEditor } from '../chrome/floating/AnnotationEditor';
 import { ContextMenu } from '../chrome/floating/ContextMenu';
 import { HoldRing } from '../chrome/floating/HoldRing';
 import { DeletePopover } from '../chrome/floating/DeletePopover';
-import type { RestoredAutosave } from '../../io/storage/autosave';
 import { installEditorSession } from '../../editor/session/install';
+import { SUPPORTS_ASSISTANT } from '../../platform/build/edition';
+import { assistantJobRunning, clearAssistantSession, watchRestoredSession } from '../shell/edition-surfaces';
 import { installInstalledImmersive } from '../../platform/device/installed-immersive';
 import { seconds } from '../design/motion';
 import { UiZoomShortcut } from './use-ui-zoom-shortcut';
@@ -42,10 +43,9 @@ function planeStyle(stage: HandoffStage): CSSProperties | undefined {
   return shift && { position: 'fixed', inset: 0, ...shift };
 }
 
-export function EditorRoot({ dockRef, onRestoreSession, splashActive, plane, beforeToasts, notices, after, children }: {
+export function EditorRoot({ dockRef, splashActive, plane, beforeToasts, notices, after, children }: {
   /** The strip the docked panel takes, which the frame and chrome fit beside (`design/scale.tsx:DockRef`). */
   dockRef: DockRef;
-  onRestoreSession: (save: RestoredAutosave) => void;
   splashActive?: boolean;
   /** Wraps the shell and its chrome in one plane that takes part in the splash's hand-off at
    *  `handoff`; omitted, they stand directly under the providers. */
@@ -61,9 +61,14 @@ export function EditorRoot({ dockRef, onRestoreSession, splashActive, plane, bef
 }) {
   useCursorVars(); // publish the DOM cursors to <html>, which every non-canvas surface reads
   // The editor's session wiring lives as long as the editor, whichever map view is mounted.
-  useEffect(() => installEditorSession({ frameFlashMs: seconds('planet.frame.flash') * 1000 }), []);
+  useEffect(() => installEditorSession({
+    frameFlashMs: seconds('planet.frame.flash') * 1000,
+    ...(SUPPORTS_ASSISTANT ? { onRestoreDeclined: clearAssistantSession, assistantJobRunning } : {}),
+  }), []);
+  // The assistant's session follows the map through a restore, where the edition has one.
+  useEffect(() => (SUPPORTS_ASSISTANT ? watchRestoredSession() : undefined), []);
   useEffect(() => installInstalledImmersive(), []);
-  // The Framer/DOM gate takes the effective value useMotionEnabled resolves for every gate.
+  // The Framer/DOM gate takes the effective value the session publishes for every gate.
   const reducedMotion = useMotionEnabled();
   const inputMode = useInputMode();
   const shape = useStoredLayoutShape();
@@ -75,7 +80,7 @@ export function EditorRoot({ dockRef, onRestoreSession, splashActive, plane, bef
   }, []);
   const content = (
     <>
-      <Shell onRestoreSession={onRestoreSession} splashActive={splashActive}>{children}</Shell>
+      <Shell splashActive={splashActive}>{children}</Shell>
       {beforeToasts}
       <ToastContainer />
       <CurveHandles />

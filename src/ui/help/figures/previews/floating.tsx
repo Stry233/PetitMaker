@@ -20,8 +20,9 @@ const PIECE = 'building-forest-cabin';
 /** The facing the pictured piece stands at, so the tick is on a row rather than on the first one. */
 const STANDING_AT = 90;
 
-/** Both cards stand in the figure's flow rather than at a screen position of their own, and the frame
- *  takes their own width, so a narrow column shrinks the figure whole rather than squeezing the card. */
+/** The delete card stands in the figure's flow rather than at a screen position of its own, and the
+ *  frame takes its own width, so a narrow column shrinks the figure whole rather than squeezing the
+ *  card; the menu, a floating menu, pictures itself in the flow. */
 const IN_FLOW: CSSProperties = { position: 'relative' };
 
 /** The menu on a piece that turns, beside the menu on terrain: the same card, the rows each target
@@ -41,7 +42,6 @@ export function ContextMenuPreview() {
           header={<MenuHeader item={item} name={item ? localizedName(item.name, locale) : PIECE} />}
           touch
           onPick={noop}
-          style={IN_FLOW}
         />
       </PreviewFrame>
     );
@@ -49,12 +49,8 @@ export function ContextMenuPreview() {
   return (
     <PreviewFrame height={240} fit width="max-content">
       <div style={{ display: 'flex', gap: 34, alignItems: 'flex-start' }}>
-        <ContextMenuFace
-          rows={objectMenuRows(t, STANDING_AT, !!item?.rotatable)}
-          onPick={noop}
-          style={IN_FLOW}
-        />
-        <ContextMenuFace rows={terrainMenuRows(t, false)} onPick={noop} style={IN_FLOW} />
+        <ContextMenuFace rows={objectMenuRows(t, STANDING_AT, !!item?.rotatable)} onPick={noop} />
+        <ContextMenuFace rows={terrainMenuRows(t, false)} onPick={noop} />
       </div>
     </PreviewFrame>
   );

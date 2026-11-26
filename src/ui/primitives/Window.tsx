@@ -16,6 +16,7 @@ import {
   animate, motion, motionValue, useReducedMotionConfig, useTransform, type AnimationPlaybackControls, type MotionValue,
 } from 'framer-motion';
 import { framerMotion } from '../design/motion';
+import { roleSize } from '../design/text-weight';
 import { WINDOW_ICON_BUTTON, skin, windowCard, windowIconButton, windowTitle } from '../design/window-skin';
 import { TouchReach } from './TouchReach';
 import { BackIcon, CloseIcon } from './line-glyphs';
@@ -58,10 +59,8 @@ const BODY_LEAST = 88;
 const BODY_SLACK = 16;
 /** The card height, in its own px, under which a window's head starts tucked: a phone held sideways. */
 const SHORT_CARD = 520;
-/** How far the body scrolls, in css px, while the title tucks from its full size to `TITLE_TUCKED`. */
+/** How far the body scrolls, in css px, while the title tucks from `title` to `head`. */
 const TUCK_RANGE = 56;
-/** The title's size once tucked, as a share of its full size. */
-const TITLE_TUCKED = 0.74;
 /** How much of the card's top padding the tucked head takes back, in css px, and the least height its
  *  title row keeps once tucked. */
 const HEAD_TUCK = 12;
@@ -284,12 +283,11 @@ function TuckedRow({ style, children }: { style: CSSProperties; children: ReactN
   return <motion.div style={{ ...style, marginTop, minHeight }}>{children}</motion.div>;
 }
 
-/** The title, its size following the body's scroll from full to `TITLE_TUCKED`, so a title that wraps
+/** The title, its size following the body's scroll from `title` to `head`, so a title that wraps
  *  gives its lines back to the body. It follows the finger; only `WindowBody`'s settle plays. */
 function TuckedTitle({ id, align, children }: { id: string; align?: 'start'; children: ReactNode }) {
   const tuck = useTuck();
-  const full = Number(windowTitle.fontSize);
-  const fontSize = useTransform(tuck, [0, 1], [full, full * TITLE_TUCKED]);
+  const fontSize = useTransform(tuck, [0, 1], [roleSize('title'), roleSize('head')]);
   return <motion.h2 id={id} data-window-title="" style={{ ...windowTitle, margin: 0, ...(align ? { textAlign: align } : null), fontSize }}>{children}</motion.h2>;
 }
 
@@ -326,9 +324,11 @@ export function WindowClose(props: EdgeButtonProps) {
 /**
  * The footer row: `tertiary` at the start on its own, then the way out (`cancel`) and the confirming
  * action (`primary`) at the end, in that order in every window. A row too wide for the card wraps
- * rather than pushing an action out of it.
+ * rather than pushing an action out of it. `lead` stands on a line of its own over them, across the
+ * footer's width.
  */
-export function WindowFooter({ cancel, primary, tertiary, style }: {
+export function WindowFooter({ lead, cancel, primary, tertiary, style }: {
+  lead?: ReactNode;
   cancel?: ReactNode;
   primary?: ReactNode;
   tertiary?: ReactNode;
@@ -357,6 +357,7 @@ export function WindowFooter({ cancel, primary, tertiary, style }: {
   const content = (
     <div ref={row} data-window-footer={joined ? 'joined' : 'apart'}
       style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: WINDOW_FOOTER_GAP, flex: 'none', ...style }}>
+      {lead ? <div style={{ flex: '1 0 100%', minWidth: 0, display: 'flex' }}>{lead}</div> : null}
       {tertiary ? <div style={{ marginInlineEnd: 'auto', display: 'flex' }}>{tertiary}</div> : null}
       {cancel}
       {primary}

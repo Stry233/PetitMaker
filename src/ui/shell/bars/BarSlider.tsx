@@ -3,9 +3,9 @@
  * and the drawn ticks are independent, and the knob travels between the outer ticks. A slider that cannot
  * act dims, takes the blocked cursor and stays (a one-stop range is that state).
  */
-import { presence } from '../../design/motion';
-import { clientPoint, viewportSize } from '../../../platform/device/viewport-space';
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { amplitude, presence } from '../../design/motion';
+import { viewportSize } from '../../../platform/device/viewport-space';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotionConfig, type MotionValue } from 'framer-motion';
 import { usePx } from '../../design/scale';
@@ -15,14 +15,12 @@ import { BarText, Plate } from './bar-atoms';
 import { TouchReach } from '../../primitives/TouchReach';
 import { useFrameZoom } from '../use-frame-zoom';
 import { PANEL_EDGE, PLATE, PLATE_INK } from '../../design/tokens';
-import { TEXT } from '../units';
-import { MOTIONS } from '../../design/motion/registry';
-import { useSliderGlide } from '../../primitives/use-slider-glide';
+import { useSliderInput } from '../../primitives/use-slider-input';
 import { visualRect } from '../../design/visual-rect';
 
 /** How far the bubble rises into place, in css px: the registry's own amplitude, since a distance
  *  typed at an element is the same unfindable decision a duration typed there is. */
-const RISE = MOTIONS['slider.reading'].amplitude ?? 0;
+const RISE = amplitude('slider.reading');
 
 /** Where the parts of a slider are drawn, in design px. */
 export interface SliderShape {
@@ -73,77 +71,23 @@ export function BarSlider({
 }: Props) {
   const { px } = usePx();
   const zoom = useFrameZoom();
-  const ref = useRef<HTMLDivElement>(null);
   const travel = useRef<HTMLSpanElement>(null);
-  /* The reading lives on the knob while it is hovered or dragged. */
-  const [hovered, setHovered] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const off = disabled || max <= min;
-  // Shown even while the slider refuses: its reading is where the reason goes.
-  const showReading = hovered || dragging;
-  const steps = Math.max(1, max - min);
-  const clamp = (v: number): number => Math.min(max, Math.max(min, v));
-  const current = clamp(value);
   // The knob's centre travels from `from` past the track's left end to `tail` short of its right end.
   const from = shape.first - shape.track.x;
   const tail = shape.track.x + shape.track.w - shape.last;
-  const share = (current - min) / steps;
-  // A value set from elsewhere (a tool switch onto another stored width) glides on the carried control's motion.
-  const glide = useSliderGlide(share, 'tool.control.morph');
-  // The value last reported: a drag reports a stop once as it crosses it, not on every pointer move,
-  // since each report is a store update every subscriber of the store hears.
-  const reported = useRef(current);
-  useLayoutEffect(() => { reported.current = current; }, [current]);
-  const set = (v: number): void => {
-    if (v === reported.current) return;
-    reported.current = v;
-    glide.own((v - min) / steps);
-    onChange(v);
-  };
-  // A coarse step for the arrow keys on a wide range: a hundred presses to cross a slider is a
-  // control no one uses twice.
-  const nudge = Math.max(1, Math.round(steps / 20));
-
-  // Measured as a fraction of the track's rect, never `px()`: rects and pointers are in screen px under the zoom.
-  const pick = (clientX: number): void => {
-    if (off) return;
-    const rect = travel.current ? visualRect(travel.current) : null;
-    if (!rect || rect.width === 0) return;
-    set(clamp(min + Math.round(((clientX - rect.left) / rect.width) * steps)));
-  };
+  const { props, ref, current, share, glide, reading } = useSliderInput<HTMLDivElement>({
+    min, max, value, onChange, label, ...(valueText ? { valueText } : {}), off, track: travel,
+    // A coarse step for the arrow keys on a wide range: a hundred presses to cross a slider is a
+    // control no one uses twice.
+    nudge: Math.max(1, Math.round((max - min) / 20)),
+    // A value set from elsewhere (a tool switch onto another stored width) glides on the carried control's motion.
+    elsewhere: 'tool.control.morph',
+  });
 
   return (
     <div
-      ref={ref}
-      role="slider"
-      tabIndex={off ? -1 : 0}
-      aria-label={label}
-      aria-disabled={off || undefined}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={current}
-      {...(valueText ? { 'aria-valuetext': valueText } : {})}
-      onPointerDown={(e) => {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        setDragging(true);
-        pick(clientPoint(e).x);
-      }}
-      onPointerMove={(e) => { if (e.buttons) pick(clientPoint(e).x); }}
-      onPointerUp={() => setDragging(false)}
-      onPointerCancel={() => setDragging(false)}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocus={() => setHovered(true)}
-      onBlur={() => setHovered(false)}
-      onKeyDown={(e) => {
-        if (off) return;
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') set(clamp(current + nudge));
-        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') set(clamp(current - nudge));
-        else if (e.key === 'Home') set(min);
-        else if (e.key === 'End') set(max);
-        else return;
-        e.preventDefault();
-      }}
+      {...props}
       style={{
         position: 'relative', width: fill ? '100%' : px(shape.track.w), height: px(shape.track.h),
         // The groove drawn in this box is a stadium and a focus ring follows its own element's
@@ -201,7 +145,7 @@ export function BarSlider({
       </span>
       {/* The bubble carries the reading above the track, deaf to the pointer and following the knob without lag. */}
       <AnimatePresence initial={false}>
-        {showReading ? (
+        {reading ? (
         <SliderReading
           key="reading"
           anchor={ref} share={share} drawn={glide.share} from={px(from)} tail={px(tail)}
@@ -238,7 +182,7 @@ function SliderReading({ anchor, share, drawn, from, tail, text }: {
         const zoom = rect && width > 0 ? rect.width / width : 0;
         const style = layer.current.style;
         // An anchor that measures nothing leaves the layer hidden rather than standing at the page origin.
-        const visibility = zoom > 0 ? 'visible' : 'hidden';
+        const visibility = zoom > 0 ? '' : 'hidden';
         if (style.visibility !== visibility) style.visibility = visibility;
         if (rect && zoom > 0) {
           const half = (bubble.current?.offsetWidth ?? 0) * zoom / 2;
@@ -268,7 +212,7 @@ function SliderReading({ anchor, share, drawn, from, tail, text }: {
         display: 'flex', alignItems: 'center', border: PANEL_EDGE,
       }}
     >
-      <BarText size={TEXT.label} color={PLATE_INK} weight={800}>{text}</BarText>
+      <BarText role="chip" color={PLATE_INK} weight={800}>{text}</BarText>
     </motion.span>
   );
   return pictured ? reading : createPortal(

@@ -8,25 +8,27 @@
  * surface decals. Both views convert cells to screen coordinates for the
  * screen-anchored React chrome (SelectionCard / ContextMenu / popovers).
  */
-import type { GridState, PlacedObject } from '../../../core/model/types';
+import type { GridState, PlacedObject, TerrainCell } from '../../../core/model/types';
 import type { Rect } from '../../../core/grid/rect';
 import type { CellSet, GridCell, GridCellRef, GridId, MapPoint, MixedCellSet } from '../../../core/grid/grids';
 import type { TrimmedCell } from '../../trim/trim-preview';
 import type { RowSpan } from '../../../core/grid/cell-spans';
-import type { GroupRotation } from '../../objects/group-rotation';
+import type { FlipAxes, GroupRotation } from '../../objects/group-rotation';
 import type { PlanetFrame } from '../../../core/model/planet';
+import type { CellZone } from '../../../core/game/zones';
 import type { MapAnnotation } from '../../../core/model/annotations';
+import type { CellEdges } from '../../../core/model/annotation/dimensions';
 
-/** The glyph a preview card carries: the four content glyphs plus the two tool glyphs the design
- *  draws. Each view draws them from its own art. */
-export type PreviewIcon = 'ground' | 'mountain' | 'water' | 'eraser' | 'trim';
+/** The glyph a preview card carries: the tool acting (a placement draws the real thing instead).
+ *  Each view draws it from its own art. */
+export type PreviewIcon = 'eraser' | 'trim';
 
 /**
  * What a ghost is asking for: the preview card, in the state the operation is in.
  *
- * `icon` names the glyph the card carries: what is being laid (ground/road, mountain, water) or
- * which tool is acting (eraser, trim), and `null` is a card with no glyph at all, which is what
- * smart planting shows (a macro lays a composition, not one surface).
+ * `icon` names the glyph the card carries, the tool acting (eraser, trim), and `null` is a card
+ * with no glyph at all, which is what smart planting shows (a macro lays a composition, not one
+ * surface).
  */
 export interface PreviewCell {
   icon: PreviewIcon | null;
@@ -34,14 +36,38 @@ export interface PreviewCell {
   valid: boolean;
 }
 
-/** A placement's wash: the footprint tinted by whether the drop would be accepted. */
-export interface PlacementWash {
-  wash: 'placement';
+/** A terrain-grid cell a placement builds, as its planner lays it: the terrain the cell will hold,
+ *  its layer and corner cuts included. */
+export interface GhostBlock { x: number; y: number; terrain: TerrainCell }
+
+/** A terrain cell as it stood before a placement laid it; null terrain is bare ground. */
+export interface GhostPrior { x: number; y: number; terrain: TerrainCell | null }
+
+/** A cell whose ground a placement turns, as its planner turns it (a planet session's layer 0). */
+export interface GhostGround { x: number; y: number; zone: CellZone }
+
+/**
+ * A placement's paint: the footprint outlined, and marked refused when the drop would be. What the
+ * placement lays comes from the tool's own planner and is drawn as the real thing: `blocks` as
+ * terrain, `tiles` as their road surface, `ground` as its zone's ground; bodies arrive through `showPlacementGhost` and
+ * `showGroupPlacementGhost`.
+ */
+export interface PlacementPaint {
+  placement: true;
   valid: boolean;
+  blocks?: readonly GhostBlock[];
+  tiles?: readonly PlacedObject[];
+  ground?: readonly GhostGround[];
 }
 
-/** A ghost's paint: a placement wash or the preview card. A tool reports validity; the view colours it. */
-export type GhostPaint = PlacementWash | PreviewCell;
+/** A ghost's paint: a placement or the preview card. A tool reports validity; the view colours it. */
+export type GhostPaint = PlacementPaint | PreviewCell;
+
+/** A region's dimension guides: the edges they measure, in map cells, and the ink scale they draw at. */
+export interface RegionGuides {
+  edges: CellEdges;
+  scale: number;
+}
 
 export interface ViewProjection {
   /** The map point under a screen point, in cells and unrounded (2D: inverse camera transform; 3D:
@@ -82,9 +108,9 @@ export type GhostRequest =
 export interface ToolOverlay {
   /** `trim` is what auto-trim will do to the shape: the corners, Γ patches or road end caps and
    *  bends it will leave, each naming the side it connects on; views without trimmed shapes draw
-   *  squares. `losses` is what the press would cost (coatings replaced, plantings refused), drawn in
-   *  the warning tint beside the gain wash. `paint` is a placement wash or the preview card
-   *  ; either reports validity and the view picks the colour.
+   *  squares. `losses` is what the press would cost (coatings replaced, plantings refused, cells a
+   *  placement skips), drawn in the warning tint beside the gain. `paint` is a placement or the
+   *  preview card; either reports validity and the view picks the colour.
    *  A cell may name its own grid, since one macro run changes terrain and objects at once; trim
    *  and card belong to the ghost's own grid, and cells on another grid draw as a plain footprint. */
   showGhost(cells: MixedCellSet, paint: GhostPaint, trim?: readonly TrimmedCell[], losses?: readonly GhostCell[]): void;
@@ -98,12 +124,18 @@ export interface ToolOverlay {
    *  flat body (a road) with its exact box, as terrain always is. */
   showSelection(rect: Rect, grid: GridId, opts?: SelectionOpts): void;
   clearSelection(): void;
+  /** A placement's turn: `blocks`, as the map now holds them, swing in from the pose before the turn
+   *  about `pivot` (placement-grid cells) on the group rotation's clock, over the same cells as they
+   *  stood before the placement (`prior`, null terrain for bare ground); with `flip` they open out
+   *  from their mirror across those axes on the flip's clock instead; reduced motion shows nothing. */
+  turnBlocks?(blocks: readonly GhostBlock[], prior: readonly GhostPrior[], pivot: { x: number; y: number }, sweepDeg: number, flip?: FlipAxes): void;
   showHover(rect: Rect, grid: GridId): void;
   clearHover(): void;
   /** One acknowledgement over every set, each on its own grid: one undo step can hold a terrain
    *  change and an object change, and the two lie on different grids. */
   flashCommit(sets: readonly CellSet[], opts?: { color?: number }): void;
-  showBuildableRegion(cells: CellSet, dimensionScale?: number): void;
+  /** The region's wash, with its dimension guides when `guides` is given. */
+  showBuildableRegion(cells: CellSet, guides?: RegionGuides): void;
   clearBuildableRegion(): void;
   /**
    * The standing region breathing once: it dips to `1 - dip` of its own opacity and comes back,
@@ -137,16 +169,18 @@ export interface ToolOverlay {
    *  road in any view, use the footprint ring from `showSelection`. Cleared by clearSelection;
    *  `append` behaves as in showSelection. */
   showObjectSelection?(objectId: string, append?: boolean): void;
-  /** The item itself (3D: its mesh, 2D: its sprite), translucent and validity-tinted, at the hover
-   *  cell; callers pair it with the cell ghost, which carries the footprint and validity. */
+  /** The item itself (3D: its model, 2D: its sprite), translucent and tinted when refused, at the
+   *  hover cell; callers pair it with the cell ghost, which carries the footprint and validity. */
   showPlacementGhost(ghost: PlacementGhost, valid: boolean): void;
   /** A drag-to-move's drop preview: the moved objects at their destinations, sharing one validity
    *  tint, since a group move is all-or-nothing (3D moves the bodies themselves and marks their
    *  origins, 2D draws placement ghosts). Cleared by clearGhost. */
   showObjectMove(destinations: readonly PlacedObject[], valid: boolean): void;
   /** One body per member at its own position, all sharing one validity tint (the group form of
-   *  `showPlacementGhost`). Replaces whatever the last call drew. */
-  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void;
+   *  `showPlacementGhost`). With `onBuilt` each member stands at its own elevation rather than on
+   *  the map's surface, for terrain the same placement builds (its `blocks`). Replaces whatever the
+   *  last call drew. */
+  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean, onBuilt?: boolean): void;
   /** The note the next press would lay (a measurement end, a route point or segment, a tag chip),
    *  drawn as the notes layer draws it at a ghost's strength; `label` is a chip's drawn tag text.
    *  Replaces whatever the last call drew; cleared by clearGhost. */
@@ -200,26 +234,36 @@ export interface EditorView {
   hideLoupe(): void;
 }
 
-/** Camera verbs the pointer machine drives. Each verb self-applies (no
- *  separate transform call): 2D = viewport offset/zoom, 3D = orbit camera. */
+/** A box on the screen in client px. */
+export interface ScreenBox { left: number; top: number; width: number; height: number }
+
+/** Camera verbs the pointer machine drives. Each verb self-applies (no separate transform call):
+ *  2D = viewport offset, zoom and heading, 3D = orbit camera. */
 export interface ViewCamera {
   pan(dx: number, dy: number): void;
   /** Stepped zoom at a screen anchor (a discrete mouse notch). */
   zoomStep(dir: 1 | -1, anchorX: number, anchorY: number): void;
   /** Stepped zoom for the camera buttons, eased (a camera glide) rather than instant. */
   zoomStepAnimated(dir: 1 | -1): void;
+  /** One turn step for the camera buttons, eased as the zoom buttons are, in a view that turns;
+   *  `dir: 1` carries the near side of the map to the right, as a drag to the right does. */
+  turnStep?(dir: 1 | -1): void;
   /** Smooth magnitude zoom (pinch / ctrl+wheel), factor > 1 zooms in. */
   zoomBy(factor: number, anchorX: number, anchorY: number): void;
-  /** Orbit by screen deltas — 3D only. The machine's right-drag calls
-   *  orbit ?? pan, so the 2D view pans where the 3D view orbits. */
+  /** Turn by screen deltas: the horizontal travel turns the view and, where the view can tilt, the
+   *  vertical travel tilts it. The machine's right drag calls orbit ?? pan, so a camera without a
+   *  turn (the export shot editor) pans instead. */
   orbit?(dx: number, dy: number): void;
   /** The drag that was moving the camera has ended. A view with inertia coasts from the velocity
    *  its pan/orbit verbs were carrying; a view without one omits this and stops dead. */
   endGesture?(): void;
   /** Re-frame the whole map, eased (the fit control and shortcut). */
   fitToMap(): void;
-  /** Two-finger twist → yaw, radians (3D only); positive turns the ground counter-clockwise on
-   *  screen, with fingers that turned that way. */
+  /** Glide until the map rectangle `box` (in map cells) fills the screen box `into` as far as it fits,
+   *  centred in it, at the heading and tilt the view holds. */
+  fitBox?(box: Rect, into: ScreenBox): void;
+  /** Two-finger twist → turn, radians; positive turns the ground counter-clockwise on screen, with
+   *  fingers that turned that way. */
   orbitTwist?(dRadians: number): void;
   /** Camera tilt as 0..1 across the view's polar range (3D only). */
   tilt?(value: number): void;

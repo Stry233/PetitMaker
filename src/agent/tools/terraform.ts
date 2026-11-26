@@ -4,22 +4,26 @@
  * step, like the build brushes. carve_river is Smart Build's river
  * (`tools/macros` `buildRiver`) authored by the model.
  */
-import { TerrainType, type Command, type GridState, type MacroCoord } from '../../core/model/types';
+import { TerrainType, type Command, type MacroCoord } from '../../core/model/types';
 import { isInBounds, cellKey } from '../../core/grid/rect';
 import { edgeCutGeneratedTerrain } from '../../tools/trim';
 import { clamp } from '../../core/base/math';
 import { BASE_SUPPORT, ELEVATION_MAX, TERRAIN_GRID } from '../../core/game/profile';
 import { cellSet } from '../../core/grid/grids';
+import { wholeCellsInRegion } from '../../core/grid/footprint';
 import { TOOL_DEFAULTS } from './defaults';
 import type { AgentToolDeps } from './deps';
-import { clipBuildable } from './cells';
-import { argError } from './feedback';
+import { clipPaintable, terrainRectUnder, terrainUnder } from './cells';
+import { argError, groundPlaces } from './feedback';
+import { getCell } from '../../core/model/grid-model';
+import { NEIGHBORS4 } from '../../core/grid/directions';
+import { surfaceElevation } from '../../core/domain/terrain/terrain-surface';
 import { cellItem, coordProps, corners, missingScalars, smoothEdges } from './geometry';
 import { bool, int, list, obj, oneOf, req } from './schema';
 import { defineTool, type ToolOutcome } from './spec';
 import { runStroke, runStrokeBody } from './stroke';
 import {
-  buildRiver, sculptTerrace as sculptTerraceCells, sculptWall as sculptWallBands, sinkPoolCourt, wallRectAtEdge, RIVER_WIDTH_MAX,
+  buildRiver, sculptTerrace as sculptTerraceCells, sculptWall as sculptWallBands, sinkPoolCourt, wallRectAtEdge, ISLET_PITCH, RIVER_WIDTH_MAX,
 } from '../../tools/macros';
 import type { EditContext } from '../../core/commands/edit-context';
 import { BUILDABLE_ZONES, bridgeSpanText } from './game-terms';
@@ -31,10 +35,17 @@ import { BUILDABLE_ZONES, bridgeSpanText } from './game-terms';
  * model chooses itself (waypoints, centers, every other tool's cells) stay under the stroke
  * runners' all-or-nothing region rule.
  */
-export function regionClip(deps: AgentToolDeps): Set<string> | null {
+function regionClip(deps: AgentToolDeps): Set<string> | null {
   const region = deps.getRegion();
   if (region.length === 0) return null;
-  return new Set(region.map((c) => cellKey(c.x, c.y)));
+  // The generators grow terrain, so they are held to the ground the region's cells rest on.
+  return new Set(terrainUnder(region, deps.getState()).map((c) => cellKey(c.x, c.y)));
+}
+
+/** The object cells that stand wholly on a rectangle of terrain cells, as inclusive corners; null for none. */
+function objectRectOn(t: { x1: number; y1: number; x2: number; y2: number }): { x1: number; y1: number; x2: number; y2: number } | null {
+  const r = t.x2 >= t.x1 && t.y2 >= t.y1 ? wholeCellsInRegion([{ x: t.x1, y: t.y1 }, { x: t.x2, y: t.y2 }]) : null;
+  return r ? { x1: r.x, y1: r.y, x2: r.x + r.w - 1, y2: r.y + r.h - 1 } : null;
 }
 
 export const sculptTerraceTool = defineTool({
@@ -65,7 +76,8 @@ function sculptTerrace(
   const state = deps.getState();
   const clip = regionClip(deps);
   const { tiers: tierCells, commands, clipped: clippedAny } = sculptTerraceCells(
-    state, { cx, cy, baseRadius, tiers, seed }, (cells) => clipBuildable(cells, state).cells, clip,
+    // The blob is grown in the model's cells and laid as the ground under them, so it is centred on cell (cx,cy).
+    state, { cx, cy, baseRadius, tiers, seed }, (cells) => clipPaintable(terrainUnder(cells, state), state).cells, clip,
   );
   if (clip && (tierCells[0]?.length ?? 0) === 0) {
     return argError('the terrace footprint lies entirely outside the selected region, move cx,cy inside it.');
@@ -75,7 +87,7 @@ function sculptTerrace(
   return runStroke(
     deps,
     commands,
-    () => `Sculpted a ${tierCells.length}-tier organic terrace around (${cx},${cy}) (seed ${seed}, ${all.length} base cells, ${smooth} cliffs${clipNote}).`,
+    () => `Sculpted a ${tierCells.length}-tier organic terrace around (${cx},${cy}) (seed ${seed}, ${smooth} cliffs${clipNote}).`,
     {
       snapshot: cellSet(TERRAIN_GRID, all),
       afterApply: (exec) => edgeCutGeneratedTerrain({ state: state, execute: (c: Command) => exec.execute(c) }, tierCells.flat(), smooth),
@@ -96,7 +108,7 @@ export const sculptWallTool = defineTool({
     edge: oneOf(['N', 'S', 'E', 'W'], { description: `Site the wall AS the map's boundary: abutting this edge of the buildable ${BUILDABLE_ZONES}, spanning it, depth rows deep (overrides the corners). A backing wall is a boundary condition, not a centerpiece.` }),
     depth: int({ min: 7, max: 30, description: `Rows deep when edge is given (default ${TOOL_DEFAULTS.wallDepth}).` }),
     crest: int({ min: 2, max: ELEVATION_MAX, description: `Crest elevation (default ${TOOL_DEFAULTS.wallCrest}; lowered automatically if the rect is too shallow for the insets).` }),
-    flood: bool({ description: 'Sink a crest pool (water at crest elevation inside a 1-cell rim).' }),
+    flood: bool({ description: 'Sink a crest pool (water at crest elevation inside its own rim).' }),
     smooth: smoothEdges('round (default) trims the outer cliffs organically; rect keeps them crisp.'),
   }),
   access: 'write',
@@ -110,22 +122,28 @@ function sculptWall(
 ): ToolOutcome {
   const state = deps.getState();
   const { width: mw, height: mh } = state.template;
-  let ix1 = input.x1 ?? NaN, iy1 = input.y1 ?? NaN, ix2 = input.x2 ?? NaN, iy2 = input.y2 ?? NaN;
   const { edge } = input;
+  // The wall's ground, in terrain cells: sited at the edge of the buildable ground, or under the given rectangle.
+  let ground: { x1: number; y1: number; x2: number; y2: number };
   if (edge) {
     const sited = wallRectAtEdge(state, edge, input.depth ?? TOOL_DEFAULTS.wallDepth);
     if (!sited) return argError(`the map has no buildable ${BUILDABLE_ZONES} to stand a wall on.`);
-    ({ x1: ix1, y1: iy1, x2: ix2, y2: iy2 } = sited);
+    ground = sited;
   } else if (missingScalars(input, ['x1', 'y1', 'x2', 'y2']).length > 0) {
     return argError('sculpt_wall needs the band rect corners x1,y1,x2,y2, or edge ("N"|"S"|"E"|"W") with depth.', 'edge: "N", depth: 14, crest: 8, flood: true');
+  } else {
+    ground = terrainRectUnder({ x1: input.x1!, y1: input.y1!, x2: input.x2!, y2: input.y2! });
   }
-  const x1 = clamp(Math.min(ix1, ix2), 0, mw - 1);
-  const x2 = clamp(Math.max(ix1, ix2), 0, mw - 1);
-  const y1 = clamp(Math.min(iy1, iy2), 0, mh - 1);
-  const y2 = clamp(Math.max(iy1, iy2), 0, mh - 1);
+  const x1 = clamp(ground.x1, 0, mw - 1);
+  const x2 = clamp(ground.x2, 0, mw - 1);
+  const y1 = clamp(ground.y1, 0, mh - 1);
+  const y2 = clamp(ground.y2, 0, mh - 1);
   const w = x2 - x1 + 1;
   const h = y2 - y1 + 1;
-  if (w < 7 || h < 7) return argError(`the wall band is ${w}x${h}; it needs at least 7 cells on each side for one inset step.`);
+  // The cells that stand wholly on the wall's ground, which is what the model reads and names.
+  const on = objectRectOn({ x1, y1, x2, y2 });
+  const grow = on ? w - (on.x2 - on.x1 + 1) : 0;
+  if (w < 7 || h < 7 || !on) return argError(`the wall band is ${w - grow}x${h - grow}; it needs at least ${7 - grow} cells on each side for one inset step.`);
   const askedCrest = input.crest ?? TOOL_DEFAULTS.wallCrest;
   const flood = input.flood === true;
   const wall = sculptWallBands(state, { x1, y1, x2, y2 }, askedCrest, flood, regionClip(deps));
@@ -136,7 +154,7 @@ function sculptWall(
   return runStroke(
     deps,
     commands,
-    () => `Raised a ${bands.length}-band wall (${w}x${h}, crest elevation ${crest}${crest < askedCrest ? `, lowered from ${askedCrest} to fit the band's depth` : ''}${flood ? `, crest pool ${poolCells.length} cells` : ''}). The crest is flat and pavable.`,
+    () => `Raised a ${bands.length}-band wall under (${on.x1},${on.y1})-(${on.x2},${on.y2}) (crest elevation ${crest}${crest < askedCrest ? `, lowered from ${askedCrest} to fit the band's depth` : ''}${flood ? `, crest pool ${poolCells.length} cells` : ''}). The crest is flat and pavable.`,
     {
       snapshot: cellSet(TERRAIN_GRID, mountainCells),
       afterApply: (exec) => edgeCutGeneratedTerrain({ state: state, execute: (c: Command) => exec.execute(c) }, mountainCells, smooth),
@@ -145,15 +163,15 @@ function sculptWall(
 }
 
 /**
- * Build a raised bench and its contained pool in one legal stroke. `islets:true` keeps a step-three
- * lattice of bench cells inside the water for a matching `scatter_objects` grid.
+ * Build a raised bench and its contained pool in one legal stroke. `islets:true` keeps blocks of
+ * bench inside the water, each the ground of one object cell, on a lattice a `scatter_objects` grid matches.
  */
 export const sinkPoolTool = defineTool({
-  description: 'Sink a POOL COURT in one legal stroke: a 1-cell bench rim (mountain at `elevation`) holding water at the bench\'s own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves a step-3 lattice of bench islets inside the water (the parterre grid; plant it with scatter_objects pattern "grid" step 3). For terraced pool courts; ground-level lakes stay paint_terrain/draw_figure work.',
+  description: `Sink a POOL COURT in one legal stroke: a narrow bench rim (mountain at \`elevation\`) along the rectangle's edge holding water at the bench's own height — the containment the water rules demand, so it cannot revert half-built. islets:true leaves bench islets inside the water, each holding one object and ${ISLET_PITCH} cells from the next (the parterre grid; the result names the scatter_objects call that plants them). For terraced pool courts; ground-level lakes stay paint_terrain work.`,
   input: obj({
     ...corners,
     elevation: int({ min: 1, max: BASE_SUPPORT.reach, description: `Bench and water height (default ${TOOL_DEFAULTS.poolElevation}).` }),
-    islets: bool({ description: 'Leave the step-3 islet lattice inside the water.' }),
+    islets: bool({ description: 'Leave the lattice of plantable islets inside the water.' }),
     smooth: smoothEdges('round (default) trims the bench corners; rect keeps them crisp.'),
   }),
   access: 'write',
@@ -167,22 +185,33 @@ function sinkPool(
 ): ToolOutcome {
   const state = deps.getState();
   const { width: mw, height: mh } = state.template;
-  const { x1: ix1, y1: iy1, x2: ix2, y2: iy2 } = input;
+  const ground = terrainRectUnder(input);
   // 1-cell margin off the literal map edge: V-WTR-02 treats off-map neighbors as uncapped.
-  const x1 = clamp(Math.min(ix1, ix2), 1, mw - 2), x2 = clamp(Math.max(ix1, ix2), 1, mw - 2);
-  const y1 = clamp(Math.min(iy1, iy2), 1, mh - 2), y2 = clamp(Math.max(iy1, iy2), 1, mh - 2);
+  const x1 = clamp(ground.x1, 1, mw - 2), x2 = clamp(ground.x2, 1, mw - 2);
+  const y1 = clamp(ground.y1, 1, mh - 2), y2 = clamp(ground.y2, 1, mh - 2);
   const w = x2 - x1 + 1, h = y2 - y1 + 1;
-  if (w < 5 || h < 5) return argError(`the pool rect is ${w}x${h}; it needs at least 5 cells each way for a 1-cell rim around 3x3 of water.`);
+  const on = objectRectOn({ x1, y1, x2, y2 });
+  const grow = on ? w - (on.x2 - on.x1 + 1) : 0;
+  if (w < 5 || h < 5 || !on) return argError(`the pool rect is ${w - grow}x${h - grow}; it needs at least ${5 - grow} cells each way for a rim around the water.`);
+  // Objects stand on the water's own cells only inside the rim, one cell in from the rectangle.
+  const wet = objectRectOn({ x1: x1 + 1, y1: y1 + 1, x2: x2 - 1, y2: y2 - 1 });
   const elevation = input.elevation ?? TOOL_DEFAULTS.poolElevation;
   const islets = input.islets === true;
   const court = sinkPoolCourt({ x1, y1, x2, y2 }, elevation, islets, regionClip(deps));
   if (!court) return argError('the pool rect lies entirely outside the selected region, move it inside.');
-  const { commands, cells: inRect, water, islets: isletCount } = court;
+  const { commands, cells: inRect } = court;
+  // Each islet is the ground of exactly one object cell.
+  const stands = court.islets.map((islet) => objectRectOn(islet)).filter((c) => c !== null);
+  const xs = stands.map((c) => c.x1), ys = stands.map((c) => c.y1);
+  const isletNote = !islets ? ''
+    : stands.length === 0 ? '; it is too small to hold an islet'
+      : `, ${stands.length} islet(s) in it, each the ground of one object cell: scatter_objects pattern "grid" step ${ISLET_PITCH} `
+        + `over (${Math.min(...xs)},${Math.min(...ys)})-(${Math.max(...xs)},${Math.max(...ys)}) plants one on each`;
   const smooth = input.smooth ?? 'round';
   return runStroke(
     deps,
     commands,
-    () => `Sunk a ${w}x${h} pool court at elevation ${elevation}: ${water.length} water cell(s) inside a 1-cell bench rim${islets ? `, ${isletCount} islet(s) on the step-3 lattice (scatter_objects pattern "grid" step 3 plants the parterre)` : ''}.`,
+    () => `Sunk a pool court under (${on.x1},${on.y1})-(${on.x2},${on.y2}) at elevation ${elevation}: water${wet ? ` under (${wet.x1},${wet.y1})-(${wet.x2},${wet.y2})` : ''} inside a bench rim along the rectangle's edge${isletNote}.`,
     {
       snapshot: cellSet(TERRAIN_GRID, inRect),
       afterApply: (exec) => edgeCutGeneratedTerrain({ state: state, execute: (c: Command) => exec.execute(c) }, inRect, smooth),
@@ -195,23 +224,13 @@ export const carveRiverTool = defineTool({
   description: `Carve a MEANDERING river through waypoints (a smooth curve through every waypoint, constant width, rounded banks): Smart Build's river. It runs downhill from its higher end, drops over a terrace step in a framed waterfall, and opens into a small pool at a dry end. Use 3-5 waypoints with sideways offsets for natural bends; straight 2-point calls are for canals. Banks stay bridgeable where the width is ${bridgeSpanText()}.`,
   input: obj({
     points: req(list(cellItem, { minItems: 2, maxItems: 6, description: 'Waypoints from source to mouth.' })),
-    width: int({ min: 2, max: RIVER_WIDTH_MAX, description: `Channel width (default ${TOOL_DEFAULTS.riverWidth}).` }),
+    width: int({ min: 2, max: RIVER_WIDTH_MAX, description: `Channel width (default ${TOOL_DEFAULTS.riverWidth}). An even width is centred on the waypoints' cells; an odd one lies half a cell up and left of them.` }),
     smooth: smoothEdges("Bank corner style (default 'round')."),
   }),
   access: 'write',
   example: 'points: [{"x":8,"y":10},{"x":16,"y":14},{"x":24,"y":12}]',
   run: carveRiver,
 });
-
-/** Every water cell of the map, as `y * width + x`. */
-function waterKeys(state: GridState): Set<number> {
-  const out = new Set<number>();
-  const { width, height } = state.template;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    if (state.cells[y]![x]!.terrain?.type === TerrainType.Water) out.add(y * width + x);
-  }
-  return out;
-}
 
 async function carveRiver(deps: AgentToolDeps, input: { points: MacroCoord[]; width?: number; smooth?: 'round' | 'rect' }): Promise<ToolOutcome> {
   const { points } = input;
@@ -225,28 +244,39 @@ async function carveRiver(deps: AgentToolDeps, input: { points: MacroCoord[]; wi
   const from = points[0]!, to = points[points.length - 1]!;
   const exec = deps.getExecutor();
   const kit: EditContext = { state, executor: exec, registry: exec.getRegistry() };
-  const region = deps.getRegion();
-  const before = waterKeys(state);
+  const region = terrainUnder(deps.getRegion(), state);
   const stroke = await runStrokeBody(deps, 'the river', () => buildRiver(kit, {
     from, to, anchors: points, width, trim: smooth, ...(region.length > 0 ? { region } : {}),
   }));
   if ('refusal' in stroke) return stroke.refusal;
-  const { result, detail } = stroke;
+  const { result, detail, ground } = stroke;
   if (result.code) {
-    const at = (result.blocked ?? []).slice(0, 3).map((c) => `(${c.x},${c.y})`).join(', ');
+    const blocked = result.blocked ?? [];
+    const at = blocked.length > 0 ? groundPlaces(blocked, 3) : '';
     const within = region.length > 0 ? ' inside the selected region' : '';
+    // A river begun below a pool or a lip, rather than inside it, stops where its width meets ground
+    // or water standing higher than its source, since it runs only downhill.
+    const surface = (c: MacroCoord): number => surfaceElevation(getCell(state.cells, c.x, c.y)?.terrain);
+    // The macro reads its waypoints on the terrain grid, so the source's height is read there too.
+    const start = surface(from);
+    const higher = blocked.find((c) => surface(c) > start || NEIGHBORS4.some(([dx, dy]) => {
+      const n = { x: c.x + dx, y: c.y + dy };
+      return getCell(state.cells, n.x, n.y)?.terrain?.type === TerrainType.Water && surface(n) > start;
+    }));
+    const why = higher
+      ? ` At ${groundPlaces([higher])} the ${width}-wide channel meets ground or water higher than where the river begins, and a river runs only downhill: begin it inside the pool it flows from, so that it leaves the pool at the pool's level and falls from there, or keep its course clear of the higher ground by more than half its width.`
+      : ' Keep both ends and the course on open buildable ground clear of objects, the source end higher than the mouth, or narrow the river.';
     return {
       isError: true,
-      content: `No river was carved: no ${width}-wide channel runs downhill from one end to the other between (${from.x},${from.y}) and (${to.x},${to.y})${within}${at ? `, blocked at ${at}` : ''}. Keep both ends and the course on open buildable ground clear of objects, or narrow the river.`,
+      content: `No river was carved: no ${width}-wide channel runs downhill from one end to the other between (${from.x},${from.y}) and (${to.x},${to.y})${within}${at ? `, blocked at ${at}` : ''}.${why}`,
     };
   }
-  const carved: MacroCoord[] = [];
-  for (const k of waterKeys(state)) if (!before.has(k)) carved.push({ x: k % mw, y: Math.floor(k / mw) });
-  const levels = new Set(carved.map((c) => state.cells[c.y]![c.x]!.terrain?.elevation ?? 0)).size;
+  const carved = ground.filter((c) => getCell(state.cells, c.x, c.y)?.terrain?.type === TerrainType.Water);
+  const levels = new Set(carved.map((c) => surfaceElevation(getCell(state.cells, c.x, c.y)?.terrain))).size;
   deps.onFlash?.([cellSet(TERRAIN_GRID, carved)]);
   return {
     isError: false,
-    content: `Carved a width-${width} river through ${points.length} waypoint(s): ${carved.length} water cell(s), ${smooth} banks${levels > 1 ? `, over ${levels - 1} waterfall step(s)` : ''}.`,
+    content: `Carved a width-${width} river through ${points.length} waypoint(s), ${smooth} banks${levels > 1 ? `, over ${levels - 1} waterfall step(s)` : ''}.`,
     detail,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CURSOR_IDS, FORBIDDABLE, type CursorId } from '../../../../assets/cursors/cursor-spec';
+import { CURSORS, FORBIDDABLE, type CursorId } from '../../../../assets/cursors/cursor-spec';
 import { CommandType, TerrainType } from '../../../../core/model/types';
 import { ToolType } from '../../../../state/editing/vocabulary';
 import { ToolManager } from '../../../../tools/pointer/runtime/tool-manager';
@@ -23,7 +23,7 @@ beforeEach(resetStore);
 // The tool types `tool-set.ts:createTools` registers; a test below holds this list to the whole enum.
 const REGISTERED_TOOL_TYPES: ToolType[] = [
   ToolType.Hand, ToolType.TerrainBrush, ToolType.Eraser, ToolType.ObjectPlacer, ToolType.EdgeCut,
-  ToolType.Macro, ToolType.Annotate,
+  ToolType.Macro, ToolType.Annotate, ToolType.Blueprint,
 ];
 
 describe('every registered tool names a cursor from the catalogue', () => {
@@ -34,7 +34,7 @@ describe('every registered tool names a cursor from the catalogue', () => {
     for (const type of REGISTERED_TOOL_TYPES) {
       manager.setActiveTool(type);
       const id = manager.getActiveCursor();
-      expect(CURSOR_IDS, `${type} -> ${id}`).toContain(id);
+      expect(Object.keys(CURSORS), `${type} -> ${id}`).toContain(id);
     }
   });
 
@@ -50,7 +50,7 @@ describe('every registered tool names a cursor from the catalogue', () => {
 describe('the build brush names its material', () => {
   it('follows the content type, not the shape', () => {
     const state = makeState(10, 10);
-    const ctx = makeToolCtx(state, makeExecutor(state), 1, 1, { shape: 'rect' });
+    const ctx = makeToolCtx(state, makeExecutor(state), 1, { shape: 'rect' });
     const tool = new DrawingTool();
     arm(ctx, { contentType: 'mountain' });
     expect(tool.cursor(ctx)).toBe('mountain');
@@ -64,7 +64,7 @@ describe('the build brush names its material', () => {
     const state = makeState(10, 10);
     state.lockedLayers.add(1);
     const exec = makeExecutor(state);
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'mountain' });
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'mountain' });
     const tool = new DrawingTool();
     expect(tool.canActAt!({ x: 3, y: 3 }, ctx)).toBe(false);
     state.lockedLayers.clear();
@@ -83,7 +83,7 @@ describe('the build brush names its material', () => {
       },
     });
     const tool = new DrawingTool();
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'mountain' });
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'mountain' });
     expect(tool.canActAt!({ x: 4, y: 4 }, ctx)).toBe(true); // mountain may rise over the road
 
     arm(ctx, { contentType: 'water' });
@@ -95,7 +95,7 @@ describe('the build brush names its material', () => {
     setTerrain(state, 4, 4, TerrainType.Mountain, 2); // already built to elevation 2
     state.lockedLayers.add(3); // the next level up (the real target) is locked; level 1 (ctx.arming.floor) is not
     const exec = makeExecutor(state);
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'mountain' });
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'mountain' });
     const tool = new DrawingTool();
     // A probe that used ctx.arming.floor (1, unlocked) directly would wrongly say true here.
     expect(tool.canActAt!({ x: 4, y: 4 }, ctx)).toBe(false);
@@ -111,7 +111,7 @@ describe('the build brush names its material', () => {
     const exec = makeExecutor(state);
     const tool = new DrawingTool();
     for (const floor of [2, 3]) {
-      const ctx = makeToolCtx(state, exec, 1, floor, { contentType: 'mountain' });
+      const ctx = makeToolCtx(state, exec, 1, { contentType: 'mountain' });
       expect(tool.canActAt!({ x: 3, y: 3 }, ctx), `build floor ${floor}`).toBe(true);
       // The final target alone is refused, so the two questions really differ.
       expect(exec.getRegistry().validatePreCommand({
@@ -125,7 +125,7 @@ describe('the build brush names its material', () => {
     const state = makeState(10, 10);
     setTerrain(state, 5, 5, TerrainType.Mountain, ELEVATION_MAX);
     const exec = makeExecutor(state);
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'mountain' });
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'mountain' });
     const tool = new DrawingTool();
     expect(tool.canActAt!({ x: 5, y: 5 }, ctx)).toBe(true);
   });
@@ -190,7 +190,7 @@ describe('the eraser answers for what its click removes', () => {
     const ctx = makeToolCtx(state, exec);
     const tool = new EraserTool();
     expect(tool.canActAt!({ x: 1, y: 1 }, ctx)).toBe(true); // nothing to erase
-    const hidden = makeToolCtx(state, exec, 1, 1, { layerVisibility: { 3: false } });
+    const hidden = makeToolCtx(state, exec, 1, { layerVisibility: { 3: false } });
     expect(tool.canActAt!({ x: 6, y: 6 }, hidden)).toBe(true); // eraseAt `continue`s past it
   });
 
@@ -204,7 +204,7 @@ describe('the eraser answers for what its click removes', () => {
         rotation: 0, elevation: 0,
       },
     });
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'road' });
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'road' });
     const tool = new EraserTool();
     expect(tool.canActAt!({ x: 3, y: 3 }, ctx)).toBe(true); // an ordinary coating comes right up
     expect(tool.canActAt!({ x: 9, y: 9 }, ctx)).toBe(true); // no coating: nothing refused
@@ -217,7 +217,7 @@ describe('the placer names what the click will do', () => {
     const exec = makeExecutor(state);
     const tool = new ObjectPlacerTool();
     expect(tool.cursor(makeToolCtx(state, exec))).toBe('select');
-    expect(tool.cursor(makeToolCtx(state, exec, 1, 1, { armedItem: 'tree-apple' }))).toBe('place');
+    expect(tool.cursor(makeToolCtx(state, exec, 1, { armedItem: 'tree-apple' }))).toBe('place');
   });
 
   it('is select over a terrain selection, since a terrain cell cannot be dragged', () => {
@@ -253,7 +253,7 @@ describe('the placer names what the click will do', () => {
 
     let lastPaint: GhostPaint | null = null;
     const ctx = {
-      ...makeToolCtx(state, exec, 1, 1, { armedItem: stall.id }),
+      ...makeToolCtx(state, exec, 1, { armedItem: stall.id }),
       overlay: { ...HEADLESS_OVERLAY, showGhost(_c: unknown, paint: GhostPaint) { lastPaint = paint; }, clearGhost() {} },
     } as never as import('../../../../tools/pointer/runtime/types').ToolContext;
     const tool = new ObjectPlacerTool();
@@ -272,7 +272,7 @@ describe('the placer names what the click will do', () => {
     const state = makeState(12, 12);
     const exec = makeExecutor(state);
     const item = getCatalogItem('bridge-plank')!;
-    const ctx = makeToolCtx(state, exec, 1, 1, { armedItem: item.id });
+    const ctx = makeToolCtx(state, exec, 1, { armedItem: item.id });
     const tool = new ObjectPlacerTool();
     // Flat grass has no gap to span.
     expect(tool.canActAt!({ x: 5, y: 5 }, ctx)).toBe(false);
@@ -297,7 +297,7 @@ describe('tools read from the context, not the store', () => {
     setStoreState({
       ...armedEditMode({ content: 'mountain', tool: ToolType.TerrainBrush }),
     });                                 // the store says mountain…
-    const ctx = makeToolCtx(state, exec, 1, 1, { contentType: 'water' });       // …the context says water
+    const ctx = makeToolCtx(state, exec, 1, { contentType: 'water' });       // …the context says water
     const tool = new EraserTool();
     tool.onPointerDown(cell({ x: 3, y: 3 }), point({ x: 3, y: 3 }), ctx);
     tool.onPointerUp(cell({ x: 3, y: 3 }), point({ x: 3, y: 3 }), ctx);
@@ -310,7 +310,7 @@ describe('tools read from the context, not the store', () => {
     const exec = makeExecutor(state);
     setStoreState({ ...armedEditMode({ item: null, tool: ToolType.ObjectPlacer }) });
     const tool = new ObjectPlacerTool();
-    expect(tool.cursor(makeToolCtx(state, exec, 1, 1, { armedItem: 'tree-apple' }))).toBe('place');
+    expect(tool.cursor(makeToolCtx(state, exec, 1, { armedItem: 'tree-apple' }))).toBe('place');
     expect(tool.cursor(makeToolCtx(state, exec))).toBe('select');
   });
 });
@@ -322,7 +322,7 @@ describe('ToolContext carries the arming', () => {
     const manager = new ToolManager(makeStubView(), exec, state, editorToolWiring());
     setStoreState({
       placementRotation: 90, autoEdgeCut: 'round', layerVisibility: { 3: false },
-      tileMaterial: 'path-park-stone', layerPinned: true, drawingBrushSize: 4,
+      tileMaterial: 'path-park-stone', terrainThickness: 3, drawingBrushSize: 4,
       ...armedEditMode({ tool: ToolType.Macro, content: 'road', macro: 'raise' }),
     });
     manager.setActiveTool(ToolType.Eraser);      // setActiveTool refreshes
@@ -337,12 +337,11 @@ describe('ToolContext carries the arming', () => {
     setStoreState(armedEditMode({ tool: ToolType.ObjectPlacer, item: 'tree-apple' }));
     expect(manager.getContext().arming.armedItem).toBe('tree-apple');
     expect(ctx.macroContext.state).toBe(state);
-    // The water brush asks per cell whether a hand chose the build floor.
-    expect(ctx.arming.layerPinned).toBe(true);
+    expect(ctx.arming.terrainThickness).toBe(3);
 
     setStoreState({
       placementRotation: 0, autoEdgeCut: 'off', layerVisibility: {}, tileMaterial: 'path-overgrown-dirt',
-      activeLayer: 0, layerPinned: false, displayLayer: null, drawingBrushSize: 1,
+      terrainThickness: 1, displayLayer: null, drawingBrushSize: 1,
       ...armedEditMode({ content: 'mountain', item: null, macro: null, tool: ToolType.TerrainBrush }),
     });
   });

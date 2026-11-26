@@ -22,7 +22,10 @@ import { z } from '../../design/styles';
 import { isCoatingItem } from '../../../core/model/traits';
 import { PLACEMENT_GRID } from '../../../core/game/profile';
 import { HOVER_BOX, SELECTION_MARKS, bracketArm, ringRadius } from '../../../view/shared/overlay/selection-marks';
-import { cellKey } from '../../../core/grid/rect';
+import { groupScreenBox } from './projected-box';
+import { cellKey, rectsBounds } from '../../../core/grid/rect';
+import { groupsSelectable, selectedGroup } from '../../../state/placed-groups';
+import { mapGroups } from '../../../core/model/placed-group';
 
 const { stroke: STROKE, edge: EDGE, pad: PAD, groupPad: GROUP_PAD, ringStroke: RING_STROKE, ringEdge: RING_EDGE, ringLimit: RING_LIMIT } = SELECTION_MARKS;
 
@@ -54,11 +57,16 @@ const HOVER_FILL = rgbaOf(ON_DARK, HOVER_BOX.fillAlpha);
 const alphaHex = (alpha: number) => Math.round(alpha * 255).toString(16).padStart(2, '0');
 const hoverInk = `${INK}${alphaHex(HOVER_BOX.edgeAlpha)}`;
 
-/** The screen box of what is hovered: an object's projected body, or a terrain cell. */
+/** The screen box of what is hovered: a placed blueprint's whole in Blueprint mode (the target is then
+ *  its frame), else an object's projected body, or a terrain cell. */
 function hoverBox(proj: ViewProjection): Box | null {
   const target = hoverTarget();
   if (!target || target.grid !== PLACEMENT_GRID) return null;
   const gs = useEditorStore.getState().gridState;
+  if (gs && groupsSelectable(useEditorStore.getState())) {
+    const group = mapGroups(gs).find((g) => g.frame.x === target.x && g.frame.y === target.y && g.frame.w === target.w && g.frame.h === target.h);
+    if (group) return groupScreenBox(proj, gs, group);
+  }
   for (const obj of gs?.objects.values() ?? []) {
     if (obj.position.x !== target.x || obj.position.y !== target.y) continue;
     const size = getPlacedObjectSize(obj);
@@ -84,15 +92,17 @@ export function SelectionMarks() {
     if (!proj?.objectScreenBox) { svg.innerHTML = ''; lastKey.current = ''; return; }
     const hover = hoverBox(proj);
     const hoverSvg = hover ? `<rect x="${hover.x}" y="${hover.y}" width="${hover.w}" height="${hover.h}" rx="${HOVER_BOX.radius}" fill="${HOVER_FILL}" stroke="${hoverInk}" stroke-width="${HOVER_BOX.stroke}"/>` : '';
-    const lone = sel.length === 1 && sel[0]!.kind === 'object' && isRoad(sel[0]!.id);
-    const boxes = (lone ? [] : sel).map((ref) => memberBox(ref, proj)).filter((b): b is Box => !!b && b.w >= 0 && b.h >= 0);
+    const gs = useEditorStore.getState().gridState;
+    const group = selectedGroup(useEditorStore.getState());
+    const lone = !group && sel.length === 1 && sel[0]!.kind === 'object' && isRoad(sel[0]!.id);
+    const whole = group && gs ? groupScreenBox(proj, gs, group) : null;
+    const boxes = whole ? [whole] : (lone ? [] : sel).map((ref) => memberBox(ref, proj)).filter((b): b is Box => !!b && b.w >= 0 && b.h >= 0);
     if (boxes.length === 0) { svg.innerHTML = hoverSvg; lastKey.current = ''; return; }
     let d: string;
     let rings = '';
     if (boxes.length === 1) d = bracketPath(boxes[0]!, PAD);
     else {
-      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
-      d = bracketPath({ x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y }, GROUP_PAD);
+      d = bracketPath(rectsBounds(boxes)!, GROUP_PAD);
       if (boxes.length <= RING_LIMIT) rings = boxes.map(ringPath).join('');
     }
     const layer = (path: string, width: number, stroke: string) =>

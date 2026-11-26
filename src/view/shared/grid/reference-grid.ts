@@ -65,27 +65,33 @@ export function cellGridRects(template: MapTemplate, chunkStroke = 0): MapFrame[
 
 /** Non-overlapping rectangles keep dashed intersections at the same opacity as straight runs. */
 export function chunkGridRects(template: Pick<MapTemplate, 'width' | 'height' | 'chunkGrid'>, strokeCells: number): MapFrame[] {
-  const frame = mapFrame(template), axes = mapChunkAxes(template);
+  const axes = mapChunkAxes(template);
+  return chunkDashRects(mapFrame(template), axes.columns.map((span) => span.start), axes.rows.map((span) => span.start), strokeCells);
+}
+
+/** The chunk dashes over `frame` of lines at the cell positions `columns` and `rows`, each from the
+ *  frame's near edge on; its far edges carry a line too. */
+export function chunkDashRects(frame: MapFrame, columns: readonly number[], rows: readonly number[], strokeCells: number): MapFrame[] {
   const right = frame.x + frame.width, bottom = frame.y + frame.height;
   const width = Math.min(strokeCells, CHUNK_GRID_STYLE.dashCells / 2);
   const period = CHUNK_GRID_STYLE.dashCells + CHUNK_GRID_STYLE.gapCells;
   const halfDash = CHUNK_GRID_STYLE.dashCells / 2;
-  const strips = (starts: number[], low: number, high: number): [number, number][] =>
+  const strips = (starts: readonly number[], low: number, high: number): [number, number][] =>
     [...starts, high].map((at) => at === low ? [low, low + width] : at === high ? [high - width, high] : [at - width / 2, at + width / 2]);
-  const columns = strips(axes.columns.map((span) => span.start), frame.x, right);
-  const rows = strips(axes.rows.map((span) => span.start), frame.y, bottom);
+  const columnStrips = strips(columns, frame.x, right);
+  const rowStrips = strips(rows, frame.y, bottom);
   const rectangles: MapFrame[] = [];
   const add = (x: number, y: number, endX: number, endY: number): void => {
     if (endX > x && endY > y) rectangles.push({ x, y, width: endX - x, height: endY - y });
   };
-  for (const [x0, x1] of columns) {
+  for (const [x0, x1] of columnStrips) {
     for (let y = frame.y; y <= bottom; y += period) add(x0, Math.max(frame.y, y - halfDash), x1, Math.min(bottom, y + halfDash));
   }
-  for (const [y0, y1] of rows) {
+  for (const [y0, y1] of rowStrips) {
     for (let center = frame.x; center <= right; center += period) {
       let x = Math.max(frame.x, center - halfDash);
       const end = Math.min(right, center + halfDash);
-      for (const [cut0, cut1] of columns) {
+      for (const [cut0, cut1] of columnStrips) {
         if (cut1 <= x || cut0 >= end) continue;
         add(x, y0, Math.min(cut0, end), y1);
         x = Math.max(x, cut1);

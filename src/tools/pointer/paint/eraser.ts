@@ -24,6 +24,9 @@ import type { GridId, GridCell, MapPoint } from '../../../core/grid/grids';
 import { CONTENT_GRID } from '../../../state/editing/edit-mode';
 import { cellSet } from '../../../core/grid/grids';
 import { cellKey } from '../../../core/grid/rect';
+import { surfaceElevation } from '../../../core/domain/terrain/terrain-surface';
+import { strokeThickness, surfaceLayerAt } from './paint-plan';
+import { showStrokeLayer } from './display-layer';
 
 /** Whether the eraser for `ctx`'s surface takes terrain of `type`. In the planet session the terrain
  *  eraser also takes a pond, so it clears the water before it turns that ground to sea. */
@@ -41,7 +44,22 @@ function groundPeel(coord: MacroCoord, cell: MacroCell | null, ctx: CurveToolCon
   return peelCommand(coord.x, coord.y, cell, { waterEraser: ctx.arming.contentType === 'water', groundEditable: true });
 }
 
-/** Erases only the selected surface, with one undo entry per gesture. */
+/** How many layers a stroke takes off a cell: the stroke's thickness for mountain, one for water. */
+const depthOf = (ctx: CurveToolContext): number => (ctx.arming.contentType === 'mountain' ? strokeThickness(ctx) : 1);
+
+/** The height a stroke started on `start` lowers its cells to, never below the ground. */
+const bottomOf = (start: number, ctx: CurveToolContext): number => Math.max(0, start - depthOf(ctx));
+
+/** Whether a stroke started on `start` takes from `cell`: its top stands on the start, or below it and
+ *  above the stroke's bottom. A top on the ground is layer 0, which only water at ground level, and in
+ *  the planet session bare ground, give up. */
+function reaches(cell: MacroCell | null, start: number, ctx: CurveToolContext): boolean {
+  const top = surfaceElevation(cell?.terrain);
+  return top === start || (top < start && top > bottomOf(start, ctx));
+}
+
+/** Erases only the selected surface, from the layer the press starts on down by the armed thickness,
+ *  with one undo entry per gesture. */
 export class EraserTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.Eraser;
   magnifies(): boolean { return true; }
@@ -55,6 +73,7 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
       ).every(obj => ctx.validateCommand(removeObjectCommand(obj)).length === 0);
     }
     const cell = getCell(ctx.state.cells, coord.x, coord.y);
+    if (this.start !== null && !reaches(cell, this.start, ctx)) return true;
     const ground = groundPeel(coord, cell, ctx);
     if (ground !== undefined) return !ground || ctx.validateCommand(ground).length === 0;
     if (!cell?.terrain || ctx.arming.layerVisibility[cell.terrain.elevation] === false || !erasesHere(cell.terrain.type, ctx)) return true;
@@ -69,6 +88,9 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
   private erasing = false;
   /** The open stroke, begun at each press. */
   private stroke: Stroke | null = null;
+  /** The top of the cell the gesture in progress started on (its press, a curve's first anchor), the
+   *  highest layer it takes; null between gestures, when a probe asks as a fresh press would. */
+  private start: number | null = null;
   private strokeCells = new Set<string>();
   /** The press in progress: a freehand drag, a dragged figure, or the curve's anchor chain. */
   private readonly gesture = new ShapeGesture();
@@ -78,6 +100,10 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
   onPointerDown(coord: GridCell, _point: MapPoint, ctx: CurveToolContext): void {
     this.refreshDraft(ctx);
     if (ctx.curve.isOpen()) { ctx.curve.end(); if (ctx.arming.eraserShape === 'curve') return; }
+    if (ctx.arming.eraserShape !== 'curve' || this.chain.length === 0) {
+      this.start = surfaceLayerAt(coord, ctx);
+      showStrokeLayer(this.start, ctx);
+    }
     if (ctx.arming.eraserShape === 'curve') {
       this.draftContext = { state: ctx.state, content: ctx.arming.contentType };
       this.erasing = true;
@@ -134,9 +160,10 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
 
   private commitCurve(ctx: CurveToolContext): void {
     const anchors = this.chain.points.map(p => ({ ...p }));
+    const start = this.start ?? surfaceLayerAt(anchors[0]!, ctx);
     const stroke = ctx.beginStroke();
     this.strokeCells.clear();
-    this.eraseAt(splineCells(anchors, ctx.arming.brushSize), ctx);
+    this.eraseAt(splineCells(anchors, ctx.arming.brushSize), ctx, start);
     const violations = finishEraserStroke(ctx, stroke);
     this.reset(); ctx.overlay.clearGhost();
     if (violations.length) {
@@ -145,7 +172,7 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
     } else {
       const preimage = new StrokePreimage();
       preimage.record(stroke.entries());
-      adjustErasedCurve(anchors, preimage, ctx, (cells, frozen) => { this.strokeCells.clear(); this.eraseAt(cells, frozen); });
+      adjustErasedCurve(anchors, preimage, ctx, (cells, frozen) => { this.strokeCells.clear(); this.eraseAt(cells, frozen, start); });
     }
   }
 
@@ -185,23 +212,31 @@ export class EraserTool implements Tool<GridId, CurveToolContext> {
 
   private reset(): void {
     this.erasing = false; this.gesture.clear(); this.strokeCells.clear();
-    this.draftContext = null;
+    this.draftContext = null; this.start = null;
   }
 
-  /** Terrain peels before ground peels: a block bleeds onto the ground up and left of it, so that
-   *  ground can only become sea once the dab has peeled the block away. */
-  private eraseAt(cells: MacroCoord[], ctx: CurveToolContext): void {
+  /** Lowers the cells a stroke started on `start` reaches (`reaches`) to its bottom, a layer at a time
+   *  through the peel, stopping at a refusal or a top on a hidden layer. Terrain peels before ground
+   *  peels: a block bleeds onto the ground up and left of it, so that ground can only become sea once
+   *  the dab has peeled the block away. */
+  private eraseAt(cells: MacroCoord[], ctx: CurveToolContext, start = this.start ?? 0): void {
     if (ctx.arming.contentType === 'road') { eraseTileCells(cells, ctx); return; }
+    const bottom = bottomOf(start, ctx);
+    const waterEraser = ctx.arming.contentType === 'water';
     const bare: MacroCoord[] = [];
     for (const c of cells) {
       const key = cellKey(c.x, c.y);
       if (this.strokeCells.has(key)) continue;
       const cell = getCell(ctx.state.cells, c.x, c.y);
+      if (!reaches(cell, start, ctx)) continue;
       if (groundPeel(c, cell, ctx) !== undefined) { bare.push(c); continue; }
-      if (!cell?.terrain || !erasesHere(cell.terrain.type, ctx) || ctx.arming.layerVisibility[cell.terrain.elevation] === false) continue;
       this.strokeCells.add(key);
-      const cmd = peelCommand(c.x, c.y, cell, { waterEraser: ctx.arming.contentType === 'water' });
-      if (cmd) ctx.execute(cmd);
+      for (let step = 0, now = cell; step < depthOf(ctx) && now?.terrain; step++, now = getCell(ctx.state.cells, c.x, c.y)) {
+        const hidden = ctx.arming.layerVisibility[now.terrain.elevation] === false;
+        if ((step > 0 && surfaceElevation(now.terrain) <= bottom) || !erasesHere(now.terrain.type, ctx) || hidden) break;
+        const cmd = peelCommand(c.x, c.y, now, { waterEraser });
+        if (!cmd || !ctx.execute(cmd).success) break;
+      }
     }
     for (const c of bare) {
       const ground = groundPeel(c, getCell(ctx.state.cells, c.x, c.y), ctx);

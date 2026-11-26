@@ -12,9 +12,12 @@ import { shiftGrass } from '../../../../pipelines/planet-scan/ground/grass-shift
 import { SCAN_PROFILE } from '../../../../pipelines/planet-scan/profile';
 import { scannedPlanet } from '../../../../pipelines/planet-scan/to-template';
 import { SHORE_MODEL, type ShoreModel } from '../../../../pipelines/planet-scan/ground/shore-model';
-import { bareGridState } from '../../../../core/model/template';
 import { groundUnderRim } from '../../../../core/model/shore';
-import { sessionPlanet } from '../../../../editor/operations/planet-session';
+import { enterPlanetSession, leavePlanetSession } from '../../../../editor/operations/planet-session';
+import { newMap } from '../../../../editor/operations/map';
+import { editorPort } from '../../../../editor/session/context';
+import { useEditorStore } from '../../../../state/store';
+import { sessionCut } from '../../../_support/planet-session';
 import { ScanError } from '../../../../pipelines/planet-scan/errors';
 import type { FramePosition } from '../../../../pipelines/planet-scan/track/scan-solve';
 import {
@@ -648,13 +651,20 @@ describe('scans that make no planet', () => {
 it('gives a scanned planet the id the planet editor gives the same ground', () => {
   const planet = scannedPlanet(withoutPlaza.reading, []);
   const { cols, rows } = withoutPlaza.reading;
-  const zones = Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => {
-    const g = withoutPlaza.reading.ground[y * cols + x];
-    return g === GRASS ? CellZone.Grass : g === SAND ? CellZone.Beach : CellZone.Void;
-  }));
-  const state = bareGridState({ id: 'canvas', name: { en: '' }, width: cols, height: rows, zones, landmarks: []});
-  const p = templateAnchor(planet.template)!;
-  const landmark = planetLandmarkObject(ANCHOR_LANDMARK, { x: p.x + planet.frame.x0, y: p.y + planet.frame.y0 }, 0);
-  state.objects.set(landmark.id, landmark);
-  expect(sessionPlanet(state)!.template.id).toBe(planet.template.id);
+  newMap(editorPort, 'hexia');
+  enterPlanetSession(editorPort, null);
+  try {
+    // The same ground on the planet editor's blank canvas, cell for cell from its corner.
+    const canvas = useEditorStore.getState().gridState!;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const g = withoutPlaza.reading.ground[y * cols + x];
+      canvas.cells[y]![x]!.zone = g === GRASS ? CellZone.Grass : g === SAND ? CellZone.Beach : CellZone.Void;
+    }
+    const p = templateAnchor(planet.template)!;
+    const landmark = planetLandmarkObject(ANCHOR_LANDMARK, { x: p.x + planet.frame.x0, y: p.y + planet.frame.y0 }, 0);
+    canvas.objects.set(landmark.id, landmark);
+    expect(sessionCut()!.template.id).toBe(planet.template.id);
+  } finally {
+    leavePlanetSession(editorPort);
+  }
 });

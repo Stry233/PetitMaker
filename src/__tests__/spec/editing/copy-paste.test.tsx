@@ -21,6 +21,7 @@ import { ToolManager, type ActiveView, type ToolOverlay } from '../../../tools/p
 import { editorToolWiring } from '../../../editor/session/tool-wiring';
 import { COMMAND_BY_ID, type CommandContext } from '../../../editor/commands/commands';
 import { installClipboardBridge, pasteAtCell } from '../../../editor/editing/clipboard';
+import { runCommand } from '../../../editor/commands/run';
 import { installSelectionViewSync } from '../../../view/shared/overlay/selection-view-sync';
 import { encodeArrangement } from '../../../io/clipboard/payload';
 import { useEditorStore } from '../../../state/store';
@@ -39,6 +40,7 @@ const ROSE = 'flower-rose';
 const DAISY = 'flower-daisy';
 const ROAD = 'path-overgrown-dirt';
 const CABIN = 'building-forest-cabin';
+const RAMP = 'ramp-park-steps';
 const noop = (): void => {};
 /** The selection marks the overlay was last told to draw: the rects of `showSelection` since the
  *  last `clearSelection`, on the grid each lies on. */
@@ -353,17 +355,40 @@ describe('pasting', () => {
     key('selection.copy');
     hover(origin);
     // An L of a region: its top row is too short for the row of four, its second row holds it.
-    s().setRegion([...rect({ x: origin.x + 2, y: origin.y + 5 }, 2, 1), ...rect({ x: origin.x + 1, y: origin.y + 6 }, 6, 2)]);
+    // Generate's scope shows, and guides a paste, in Generate mode.
+    s().setEditMode({ mode: 'generate' });
+    s().setRegion([...rect({ x: origin.x + 2, y: origin.y + 5 }, 2, 1), ...rect({ x: origin.x + 1, y: origin.y + 6 }, 6, 2)], 'generator');
     await pasteKey();
     expect([0, 1, 2, 3].map((i) => at(w, { x: origin.x + 1 + i, y: origin.y + 6 }).map((o) => o.catalogId)))
       .toEqual([[ROSE], [DAISY], [ROSE], [DAISY]]);
+  });
+
+  spec('EDIT-54', "Ctrl+V reads only a region on screen: Generate's scope in Generate mode, the assistant's while its panel is open, never a frame left behind", async () => {
+    const { w, at: origin, flowers } = row();
+    select(...flowers);
+    key('selection.copy');
+    const inside = rect({ x: origin.x + 1, y: origin.y + 6 }, 6, 2);
+    const landsInside = (copy: readonly PlacedObject[]) => copy.some((o) => inside.some((c) => c.x === o.position.x && c.y === o.position.y));
+    for (const owner of ['agent', 'blueprint', 'generator'] as const) {
+      s().setRegion(inside, owner);
+      const before = w.state.objects.size;
+      await pasteKey();
+      expect(added(w, before).length, owner).toBe(4);
+      expect(landsInside(added(w, before)), owner).toBe(false);
+    }
+    s().setAssistantOpen(true);
+    s().setRegion(inside, 'agent');
+    const before = w.state.objects.size;
+    await pasteKey();
+    expect(landsInside(added(w, before))).toBe(true);
   });
 
   spec('EDIT-54', 'the abab row grows into abababab with one Ctrl+V into a region painted beside it', async () => {
     const { w, at: origin, flowers } = row();
     select(...flowers);
     key('selection.copy');
-    s().setRegion(rect({ x: origin.x + 4, y: origin.y }, 4, 1));
+    s().setEditMode({ mode: 'generate' });
+    s().setRegion(rect({ x: origin.x + 4, y: origin.y }, 4, 1), 'generator');
     await pasteKey();
     const line = [...w.state.objects.values()].filter((o) => o.position.y === origin.y && !o.locked)
       .sort((a, b) => a.position.x - b.position.x).map((o) => o.catalogId);
@@ -393,11 +418,11 @@ describe('pasting', () => {
     expect(toasts).not.toContain('There is no room for the copy here or nearby');
   });
 
-  spec('EDIT-56', 'the menu Paste places one copy with its top-left on the pressed cell and selects it', () => {
+  spec('EDIT-56', 'the menu Paste places one copy with its top-left on the pressed cell and selects it', async () => {
     const { w, at: origin, flowers } = row();
     select(...flowers);
     key('selection.copy');
-    pasteAtCell({ x: origin.x + 5, y: origin.y + 4 });
+    expect(await runCommand('selection.paste', { x: origin.x + 5, y: origin.y + 4 })).toMatchObject({ ok: true });
     const daisies = objectsOf(w, DAISY).filter((o) => o.position.y === origin.y + 4);
     expect(daisies.map((o) => o.position)).toEqual([{ x: origin.x + 6, y: origin.y + 4 }, { x: origin.x + 8, y: origin.y + 4 }]);
     expect(selected()).toHaveLength(4);
@@ -463,6 +488,28 @@ describe('pasting', () => {
     const added = [...w.state.objects.values()].slice(plan);
     expect(added).toHaveLength(3);
     expect(new Set(added.map((o) => surfaceElevationAt(w.state, o.position.x, o.position.y))).size).toBe(1);
+  });
+
+  spec('EDIT-58', 'a copied ramp lands against the matching cliff of a plateau of the same shape, turned as it was', () => {
+    const w = world();
+    const origin = w.openGround(26, 12);
+    const from = { x: origin.x + 3, y: origin.y + 3 }, to = { x: origin.x + 15, y: origin.y + 3 };
+    plateau(w, from, 6, 6, 1);
+    plateau(w, to, 6, 6, 1);
+    const ramps = [{ x: from.x + 3, y: from.y }, { x: from.x, y: from.y + 3 }].map((c) => placeItem(w, RAMP, c)!);
+    expect(ramps.map((r) => r.rotation)).toEqual([180, 270]);
+    open(w);
+    for (const ramp of ramps) {
+      select(ramp);
+      key('selection.copy');
+      const outline = objectRect(ramp);
+      const before = w.state.objects.size;
+      pasteAtCell({ x: Math.floor(outline.x) + 12, y: Math.floor(outline.y) });
+      const [copy] = added(w, before);
+      expect(copy && { y: copy.position.y, rotation: copy.rotation, elevation: copy.elevation })
+        .toEqual({ y: ramp.position.y, rotation: ramp.rotation, elevation: 1 });
+      expect(Math.abs(copy!.position.x - (ramp.position.x + 12))).toBeLessThanOrEqual(0.5);
+    }
   });
 
   spec('EDIT-59', 'a one-of-a-kind building already on the planet is left out of a paste, the rest placed, and the toast says why', () => {

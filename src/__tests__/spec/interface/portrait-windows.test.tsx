@@ -215,7 +215,7 @@ async function stylize(): Promise<HTMLElement> {
 }
 
 /** Save and share opened at `section`. */
-async function share(section: 'keep' | 'friend' | 'game'): Promise<HTMLElement> {
+async function share(section: 'keep' | 'friend' | 'stats'): Promise<HTMLElement> {
   mount(<ShareWindow />, 'touch', 'portrait');
   act(() => { useEditorStore.getState().openShare(section); });
   return screen.findByRole('dialog', { name: 'Save and share' });
@@ -240,7 +240,7 @@ const FRAMED: FramedWindow[] = [
     name: 'Import planet',
     open: () => {
       act(() => { useEditorStore.getState().setModal('planetImport', true); });
-      mount(<PlanetImportWindow open onClose={() => {}} onScanned={() => true} onPickFile={() => {}} canEdit />, 'touch', 'portrait');
+      mount(<PlanetImportWindow open onClose={() => {}} onPickFile={() => {}} canEdit />, 'touch', 'portrait');
       return screen.getByRole('dialog', { name: 'Import planet' });
     },
     fixed: (dialog) => [close(dialog), within(dialog).getByTestId('planet-import-cancel')],
@@ -310,8 +310,8 @@ const FRAMED: FramedWindow[] = [
     fixed: (dialog) => [close(dialog), button(dialog, 'Cancel'), button(dialog, 'Export image')],
   },
   {
-    name: 'Save and share, Into the game',
-    open: () => share('game'),
+    name: 'Save and share, Map stats',
+    open: () => share('stats'),
     fixed: (dialog) => [close(dialog)],
   },
   {

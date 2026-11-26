@@ -46,3 +46,28 @@ it('fits the default 2D view to the saved island', () => {
     renderer.destroy();
   }
 });
+
+describe('live capture at a heading', () => {
+  it('[UI-67] bakes the map unturned and unpanned, and gives the live view back its turn', () => {
+    const renderer = new MapRenderer(new EventBus<EditorEvents>(), document.createElement('div'), 400, 300);
+    const baked: number[][] = [];
+    const raster = renderer.app.renderer as unknown as Record<string, unknown>;
+    raster.generateTexture = (world: PIXI.Container) => {
+      const m = world.localTransform;
+      baked.push([m.a, m.b, m.c, m.d, m.tx, m.ty].map((v) => v + 0));
+      return { destroy: () => {} };
+    };
+    raster.extract = { canvas: () => document.createElement('canvas') };
+    try {
+      renderer.initMap(makeState(20, 12), null, false);
+      renderer.asEditorView().camera.orbitTwist!(0.9);
+      const world = (renderer as unknown as { worldContainer: PIXI.Container }).worldContainer;
+      const live = [world.rotation, world.pivot.x, world.pivot.y, world.position.x, world.position.y, world.scale.x];
+      renderer.capture({ maxPx: 256 });
+      expect(baked).toEqual([[1, 0, 0, 1, 0, 0]]);
+      expect([world.rotation, world.pivot.x, world.pivot.y, world.position.x, world.position.y, world.scale.x]).toEqual(live);
+    } finally {
+      renderer.destroy();
+    }
+  });
+});

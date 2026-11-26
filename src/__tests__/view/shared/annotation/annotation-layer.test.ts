@@ -13,6 +13,8 @@ import { setReducedMotion, __resetMotionState } from '../../../../platform/chann
 import type { AnnotationsState, MeasureNote, ZoneNote } from '../../../../core/model/annotations';
 import type { MacroCoord } from '../../../../core/model/types';
 import { TILE_SIZE } from '../../../../view/map2d/geometry/world';
+import { beatClock } from '../../../_support/beat-clock';
+import { animConfig } from '../../../../view/shared/motion/anim-config';
 import { ANNOTATION_LINE, annotationLineCells } from '../../../../view/shared/annotation/annotation-line';
 
 const data = (): AnnotationsState => ({
@@ -137,12 +139,32 @@ describe('AnnotationLayer', () => {
 
   it('with motion on, a removed note LEAVES: its node stands while its fade runs', () => {
     setReducedMotion(false);
-    const layer = new AnnotationLayer(() => {});
+    const loop = beatClock();
+    const layer = new AnnotationLayer(() => {}, loop.play);
+    const d = data();
+    layer.draw(d, OPTS);
+    loop.frame(0);
+    loop.frame(animConfig.noteFade.durationMs);
+    layer.draw({ ...d, items: d.items.filter((n) => n.id !== 't1') }, OPTS);
+    loop.frame(1000);
+    // Still mounted mid-fade: the tick, not the draw, retires it.
+    loop.frame(1000 + animConfig.noteFade.durationMs / 2);
+    expect(passes(layer).label.children).toHaveLength(3);
+    expect(loop.frame(1000 + animConfig.noteFade.durationMs)).toBe(false);
+    expect(passes(layer).label.children).toHaveLength(2);
+    layer.destroy();
+  });
+
+  it('settles every fade where it is heading once the view stops drawing', () => {
+    setReducedMotion(false);
+    const loop = beatClock();
+    const layer = new AnnotationLayer(() => {}, loop.play);
     const d = data();
     layer.draw(d, OPTS);
     layer.draw({ ...d, items: d.items.filter((n) => n.id !== 't1') }, OPTS);
-    // Still mounted mid-fade: the tick, not the draw, retires it.
-    expect(passes(layer).label.children).toHaveLength(3);
+    loop.settle();
+    expect(passes(layer).label.children).toHaveLength(2);
+    expect(passes(layer).label.children.every((part) => part.alpha === 1)).toBe(true);
     layer.destroy();
   });
 

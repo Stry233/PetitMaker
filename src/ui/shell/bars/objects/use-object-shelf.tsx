@@ -4,33 +4,24 @@
  * Each shape keeps its own reach, carry and scroll state.
  */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MutableRefObject } from 'react';
-import { disarmOutsideCategory, toggleArmedItem, toggleArmedMacro, toggleItemPick } from '../../../../editor/editing/object-shelf';
-import { ItemCategory } from '../../../../config/catalog/categories';
+import { disarmOutsideCategory, showPlanting } from '../../../../editor/editing/object-shelf';
+import type { ItemCategory } from '../../../../config/catalog/categories';
 import type { CatalogItem } from '../../../../core/model/types';
 import { useLocale, useT } from '../../../../i18n/context';
-import { getCatalogByCategory, getCatalogItem } from '../../../../state/catalog';
+import { categorySearchTerms } from '../../../../i18n/terms/category-terms';
 import { getObjectIndex } from '../../../../state/object-index';
-import { placesOneAtATime } from '../../../../state/object-geometry';
+import { objectShelfView, openingCategory, revealingCard, shelfItems, type ShelfView } from '../../../../state/object-shelf-view';
 import { useEditorStore } from '../../../../state/store';
 import { armedItemOf, armedMacroOf, armedPicksOf } from '../../../../state/editing/edit-mode';
-import { macroForShelfCategory } from '../../../../tools/macros';
+import { macroForShelfCategory } from '../../../../tools/macros/facts';
+import { useUiPreview } from '../../../design/preview';
 import { btnReset, cursors, radii } from '../../../design/styles';
 import { PLATE, PLATE_INK } from '../../../design/tokens';
 import { ActionButton } from '../../../primitives/ActionButton';
 import { useMapRevision } from '../../../session/use-map-revision';
-import { TEXT } from '../../units';
 import { BarText } from '../bar-atoms';
 import { ShelfTabs } from '../ShelfTabs';
-import { TABS, shelfItems } from './object-shelf';
-
-/** The category the shelf opens on: the armed item's or planting card's, so returning reopens where the
- *  visitor was, else the tab `left` names. */
-function initialCategory(itemId: string | null, macro: string | null, left: ItemCategory | null = null): ItemCategory {
-  const armed = itemId
-    ? getCatalogItem(itemId)?.category
-    : macro ? TABS.find((tab) => macroForShelfCategory(tab.category) === macro)?.category : undefined;
-  return TABS.find((tab) => tab.category === (armed ?? left))?.category ?? TABS[0]!.category;
-}
+import { useRunCommand } from '../../use-shell-commands';
 
 /**
  * `only` narrows the row to the items a caller can use; `pick` makes the shelf a chooser that reports an
@@ -59,7 +50,7 @@ export interface ObjectShelfModel {
   searching: boolean;
   items: readonly CatalogItem[];
   /** The categories that still hold something under `only`; a sourced row has none. */
-  tabs: typeof TABS;
+  tabs: ShelfView['tabs'];
   selectTab: (category: ItemCategory) => void;
   counts: ReadonlyMap<string, number> | null;
   selectedItemId: string | null;
@@ -86,15 +77,18 @@ export function useObjectShelf({ only, pick, posedQuery, source, leftTab }: Obje
   const gridState = useEditorStore((s) => s.gridState);
   const eventBus = useEditorStore((s) => s.eventBus);
   const sourced = useEditorStore((s) => !!s.planetSession) && !!source;
+  const run = useRunCommand();
 
-  const [category, setCategory] = useState<ItemCategory>(() => initialCategory(selectedItemId, armedMacro, leftTab?.current));
+  const [category, setCategory] = useState<ItemCategory>(
+    () => openingCategory({ itemId: selectedItemId, macro: armedMacro }, macroForShelfCategory, leftTab?.current),
+  );
   useEffect(() => { if (leftTab) leftTab.current = category; }, [leftTab, category]);
   const [innerQuery, setInnerQuery] = useState('');
   const [pendingReveal, setPendingReveal] = useState(() => pick ? null : selectedItemId);
   useEffect(() => {
     if (pick) return;
     const reveal = ({ catalogId }: { catalogId: string }) => {
-      setCategory(initialCategory(catalogId, null));
+      setCategory(openingCategory({ itemId: catalogId, macro: null }, macroForShelfCategory));
       setInnerQuery('');
       setPendingReveal(catalogId);
     };
@@ -112,24 +106,20 @@ export function useObjectShelf({ only, pick, posedQuery, source, leftTab }: Obje
   // The row re-renders per card hover and per scroll tick; the catalog ranking only owes the
   // renders where its own inputs moved.
   const all = useMemo(
-    () => (sourced ? source!() : shelfItems(query, category, locale)),
+    () => (sourced ? source!() : shelfItems(query, category, locale, categorySearchTerms(locale))),
     [sourced, source, query, category, locale],
   );
-  const items = useMemo(() => (only ? all.filter(only) : all), [all, only]);
-  const tabs = useMemo(
-    () => (sourced ? [] : only ? TABS.filter((tab) => getCatalogByCategory(tab.category).some(only)) : TABS),
-    [only, sourced],
+  const chooser = !!pick;
+  const { items, tabs, searching, patchId, brushes, paints } = useMemo(
+    () => objectShelfView({ query, category, all, ...(only ? { only } : {}), chooser, sourced, patchOf: macroForShelfCategory }),
+    [query, category, all, only, chooser, sourced],
   );
-  const searching = !sourced && query.trim().length > 0;
-  const patchId = macroForShelfCategory(category);
-  const revealing = pendingReveal && !query && category === getCatalogItem(pendingReveal)?.category ? pendingReveal : null;
+  // The Smart Build key arms the planting card this row shows; a pictured shelf shows it none.
+  const pictured = useUiPreview();
+  useEffect(() => (patchId && !pictured ? showPlanting(patchId) : undefined), [patchId, pictured]);
+  const revealing = revealingCard(pendingReveal, query, category);
   const revealed = useCallback(() => setPendingReveal(null), []);
 
-  /** The planting card stands first, only in the categories it plants and never in a search; a
-   *  narrowed or sourced shelf offers none, since a patch is not an item a caller can use. */
-  const showsPatch = !searching && !!patchId && !only && !sourced;
-  const brushes = !pick && !sourced;
-  const paints = useMemo(() => items.some((item) => !placesOneAtATime(item)), [items]);
   return {
     brushes, paints,
     pick, category, query, setQuery: setInnerQuery, sourced, searching, items, tabs, counts, selectedItemId, armedMacro,
@@ -140,14 +130,13 @@ export function useObjectShelf({ only, pick, posedQuery, source, leftTab }: Obje
       // item's own category is how the shelf reopens on it.
       disarmOutsideCategory(next);
     },
-    patch: showsPatch ? { selected: armedMacro === patchId, onToggle: () => toggleArmedMacro(patchId!) } : null,
+    patch: patchId ? { selected: armedMacro === patchId, onToggle: () => run('objects.planting', { macro: patchId }) } : null,
     isSelected: (id) => (pick ? pick.current === id : picks.includes(id)),
     toggleItem: (id, multi = false) => {
       // A chooser reports. Arming here would put the map under a placement cursor and light the
       // object block, for a press that was answering a generator's question.
       if (pick) { pick.onPick(id); return; }
-      if (multi) toggleItemPick(id);
-      else toggleArmedItem(id);
+      run('objects.arm', multi ? { item: id, add: true } : { item: id });
     },
     revealing, revealed,
   };
@@ -171,7 +160,7 @@ export function NoMatch({ model, style }: { model: ObjectShelfModel; style: CSSP
   const t = useT();
   return (
     <div style={{ pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, ...style }}>
-      <BarText size={TEXT.label} onMap>
+      <BarText role="note" onMap>
         {t('shelf.no_match', { q: model.query.trim() })}
       </BarText>
       <ActionButton
@@ -183,7 +172,7 @@ export function NoMatch({ model, style }: { model: ObjectShelfModel; style: CSSP
           borderRadius: radii.pill, background: PLATE,
         }}
       >
-        <BarText size={TEXT.label} color={PLATE_INK}>{t('shelf.clear_search')}</BarText>
+        <BarText role="action" color={PLATE_INK}>{t('shelf.clear_search')}</BarText>
       </ActionButton>
     </div>
   );

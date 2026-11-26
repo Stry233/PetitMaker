@@ -26,7 +26,7 @@ export const SEAM_HANDLE = { h: 24, grip: { w: 40, h: 5 } } as const;
 const GRIP_INK = { light: inkTint(0.2), dark: rgbaOf(ON_DARK, 0.35) } as const;
 
 export function SeamHandle({
-  label, zoom, value, clamp, onDrag, onRelease, onStep, follows = false, style, reach = { top: false }, gripReach, plate = 'light', testId, morph, arrive, helpTarget,
+  label, zoom, value, clamp, onDrag, onRelease, onStep, follows = false, style, reach = { top: false }, gripReach, plate = 'light', testId, morph, arrive, helpTarget, marks,
 }: {
   /** The separator's accessible name. */
   label: string;
@@ -62,6 +62,8 @@ export function SeamHandle({
   arrive?: MotionId;
   /** The Help topic What's this? opens for it. */
   helpTarget?: HelpTarget;
+  /** Data attributes its owner marks it with, such as a tour target. */
+  marks?: Readonly<Record<`data-${string}`, string>>;
 }) {
   // A strip as wide as the window: it takes each box exactly, its grip too small to show the stretch.
   const marked = useMorph(morph ?? '', 'fill');
@@ -135,6 +137,7 @@ export function SeamHandle({
       tabIndex={0}
       data-testid={testId}
       {...helpAttributes(helpTarget)}
+      {...marks}
       {...(morph ? marked : {})}
       onPointerDown={down}
       onPointerMove={move}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cssMotion, framerMotion, outMotion, seconds } from '../../../../ui/design/motion';
-import { CSS_CURVES } from '../../../../ui/design/motion/curves';
-import { bezierOf, springs } from '../../../../ui/design/styles';
+import { arrangementFadeCss, arrangementFades, cssMotion, fadeShares, framerMotion, outMotion, seconds, travelSeconds } from '../../../../ui/design/motion';
+import { CSS_CURVES, bezierOf, springs } from '../../../../ui/design/motion/curves';
+import { DURATIONS } from '../../../../ui/design/motion/durations';
 
 /** A damped spring's travel from 0 to 1 at `t` seconds, released from rest. */
 function springAt({ stiffness, damping, mass }: { stiffness: number; damping: number; mass: number }, t: number): number {
@@ -40,15 +40,41 @@ describe('shared motion adapters', () => {
 });
 
 describe('the CSS twin of a spring curve', () => {
-  it('follows the gentle spring over its settle, overshoot included', () => {
-    const settle = 0.5;
-    const css = CSS_CURVES.gentle.slice('cubic-bezier('.length, -1).split(',').map(Number);
+  it('follows the stiff spring over its settle, so a CSS transition on it moves as the Framer one does', () => {
+    const settle = DURATIONS.quick;
+    const css = CSS_CURVES.stiff.slice('cubic-bezier('.length, -1).split(',').map(Number);
     let worst = 0;
-    for (let i = 0; i <= 50; i++) worst = Math.max(worst, Math.abs(bezierAt(css, i / 50) - springAt(springs.gentle, (i / 50) * settle)));
+    for (let i = 0; i <= 50; i++) worst = Math.max(worst, Math.abs(bezierAt(css, i / 50) - springAt(springs.stiff, (i / 50) * settle)));
     expect(worst).toBeLessThan(0.025);
-    // The fast-arrival tween it stood in for strays far further from the spring.
-    let punchy = 0;
-    for (let i = 0; i <= 50; i++) punchy = Math.max(punchy, Math.abs(bezierAt(bezierOf('punchy'), i / 50) - springAt(springs.gentle, (i / 50) * settle)));
-    expect(punchy).toBeGreaterThan(0.1);
+    // And it does not overshoot, since the spring does not visibly either.
+    for (let i = 0; i <= 50; i++) expect(bezierAt(css, i / 50)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('a re-arrangement\'s fades of what only one arrangement shows', () => {
+  const ID = 'shell.row.fade' as const;
+  const shares = fadeShares(ID);
+
+  it('fades out by the travel\'s outShare and in from its inAt, read off the travel\'s own progress', () => {
+    const { in: arrive, out: leave } = arrangementFades(ID);
+    const curve = bezierOf('punchy');
+    const d = seconds(ID);
+    const [inAt, inFor, outFor] = [arrive.delay as number, arrive.duration as number, leave.duration as number];
+    // Where the travel stands as each fade ends or starts.
+    expect(bezierAt(curve, outFor / d)).toBeCloseTo(shares.out, 2);
+    expect(bezierAt(curve, inAt / d)).toBeCloseTo(shares.in, 2);
+    expect(inAt + inFor).toBeCloseTo(d);
+    // At every moment each fade has gone the share of its own span the travel has gone, as the morph's
+    // keyframed fades do, rather than running the travel's whole curve again inside its span.
+    for (let i = 0; i <= 20; i++) {
+      const out = (i / 20) * outFor, into = inAt + (i / 20) * inFor;
+      expect(bezierAt(leave.ease as unknown as number[], out / outFor)).toBeCloseTo(bezierAt(curve, out / d) / shares.out, 2);
+      expect(bezierAt(arrive.ease as unknown as number[], (into - inAt) / inFor)).toBeCloseTo((bezierAt(curve, into / d) - shares.in) / (1 - shares.in), 2);
+    }
+    const css = (ease: unknown) => `cubic-bezier(${(ease as number[]).join(', ')})`;
+    expect(arrangementFadeCss(ID, true, ['opacity'])).toBe(`opacity ${inFor}s ${css(arrive.ease)} ${inAt}s`);
+    expect(arrangementFadeCss(ID, false, ['opacity'])).toBe(`opacity ${outFor}s ${css(leave.ease)}`);
+    expect(arrangementFades(ID, true)).toEqual({ in: { duration: 0 }, out: { duration: 0 } });
+    expect(travelSeconds(ID, 1)).toBeCloseTo(d);
   });
 });

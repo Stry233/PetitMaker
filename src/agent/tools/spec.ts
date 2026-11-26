@@ -4,6 +4,7 @@
  * (`agent/core/types.ts`) so a tool depends on nothing above it: the two meet only where the
  * executor adapts a `ToolResult` into the core's `ExecutedResult`.
  */
+import type { GateLevel } from '../core/tool-facts';
 import type { ToolAccess, ToolResultDetail } from '../core/types';
 import type { AgentToolDeps } from './deps';
 import type { AnyObjField, Infer, ObjField, Shape } from './schema';
@@ -20,12 +21,16 @@ export interface ToolSpec<S extends Shape = Shape> {
   /** `write` edits the map and passes the approval gate; `wide` edits beyond what its arguments
    *  name and is gated on every call under checkpoint oversight. */
   access: ToolAccess;
-  /** Offered to the parent job only, never to a delegated helper. */
-  parentOnly?: boolean;
   /** A successful call is a look at the map, so it reviews the edits before it. */
   verifies?: boolean;
   /** Draws planning annotations: a plan drawn with it is filed through the plan protocol. */
   sketches?: boolean;
+  /** A successful call is work the user asked for though it edits no map, so a job that made one
+   *  has delivered and its close is not sent back for edits. */
+  delivers?: boolean;
+  /** The approval one call needs where its arguments decide it, read before the arguments are
+   *  checked; absent, `access` decides. */
+  gate?(deps: AgentToolDeps, input: Record<string, unknown>): GateLevel;
   /** A minimal valid call in the tool's flat argument shape, shown beside an argument refusal. */
   example?: string | (() => string);
   /** Absent exactly for the protocol tools in `core/protocol.ts`, which the loop or the executor answers. */

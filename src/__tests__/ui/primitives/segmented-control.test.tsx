@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 /** `SegmentedControl`: a pressed-state choice whose plate slides to the chosen slot. */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 import { SegmentedControl } from '../../../ui/primitives/SegmentedControl';
 import { spec } from '../../_support/spec';
+import { InputModeProvider } from '../../../ui/design/input-mode';
+import { GESTURE_TIMING } from '../../../platform/input/gesture-timing';
 
 afterEach(cleanup);
 
@@ -83,8 +85,43 @@ describe('the slide', () => {
     rerender(view('a'));
     const from = parseFloat(pillOf(container).style.left);
     rerender(view('c'));
+    // Framer writes even an instant change on its next frame.
+    await act(() => new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); }));
     const seen = await sampleSlide(pillOf(container));
     expect(seen[0]).toBeGreaterThan(from);
     expect(seen.every((x) => x === seen[0])).toBe(true);
+  });
+});
+
+describe('options drawn as glyphs', () => {
+  const NAMES: Record<Opt, string> = { a: 'Grid', b: 'List', c: 'Cards' };
+  const glyphs = (mode: 'pc' | 'touch', onChange: (o: Opt) => void = () => {}) => render(
+    <InputModeProvider inputMode={mode}>
+      <SegmentedControl idPrefix="glyphs" value="a" options={OPTIONS} onChange={onChange}
+        render={(o) => <svg data-testid={`glyph-${o}`} />} label={(o) => NAMES[o]} />
+    </InputModeProvider>,
+  );
+
+  it('names each glyph by its hover title with a mouse', () => {
+    glyphs('pc');
+    for (const o of OPTIONS) expect(screen.getByRole('button', { name: NAMES[o] }).getAttribute('title')).toBe(NAMES[o]);
+  });
+
+  spec('UI-29', 'in touch mode a held glyph segment shows its name, and the release picks nothing', () => {
+    vi.useFakeTimers();
+    try {
+      const picked = vi.fn();
+      glyphs('touch', picked);
+      const list = screen.getByRole('button', { name: 'List' });
+      expect(list.getAttribute('title')).toBeNull();
+      fireEvent.pointerDown(list, { pointerType: 'touch' });
+      act(() => { vi.advanceTimersByTime(GESTURE_TIMING.touch.holdMs); });
+      expect(screen.getByText('List')).toBeTruthy();
+      fireEvent.pointerUp(list, { pointerType: 'touch' });
+      fireEvent.click(list, { detail: 1 });
+      expect(picked).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

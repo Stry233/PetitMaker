@@ -1,5 +1,6 @@
 // The session's illustration takes, never persisted. A map edit retires every take captured before
-// it; React observes the store through useSyncExternalStore, and the illustration studio writes it.
+// it; React observes the store through useSyncExternalStore. The studio's jobs mint takes, and a take
+// is chosen or retired through its command (`editor/commands/export.ts`).
 import type { EventBus } from '../core/commands/event-bus';
 import type { EditorEvents } from './editing/events';
 import { onMapEdited } from '../core/commands/map-edits';

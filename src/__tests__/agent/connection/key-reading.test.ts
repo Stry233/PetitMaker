@@ -71,6 +71,42 @@ describe('the key reading', () => {
     stop();
   });
 
+  it('offers the recoveries its standing calls for: back to the key while it waits, the same key or a provider by hand once refused', async () => {
+    const { listModels, answers } = held();
+    const reading = createKeyReading({ entry: 'key', listModels, pictured: false });
+    const stop = reading.start();
+    expect(reading.get().repairs).toEqual([]);
+    reading.editKey(KEY);
+    expect(reading.get().repairs, 'the idle advance is pending').toEqual(['reenter']);
+    reading.confirmNow();
+    expect(reading.get().repairs, 'the check is in flight').toEqual(['reenter']);
+    answers[0]!.reject(unauthorized());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reading.get().repairs).toEqual(['recheck', 'manual']);
+    stop();
+    useAgentConnection.getState().pinProvider('custom');
+    const custom = createKeyReading({ entry: 'key', listModels, pictured: false });
+    expect(custom.get().repairs, 'a custom provider with no address asks for it').toEqual(['address']);
+  });
+
+  it('may be left before a key is held or once the connection is whole, and refuses in between', async () => {
+    const { listModels } = held();
+    const onLeave = vi.fn();
+    const reading = createKeyReading({ entry: 'key', listModels, onLeave, pictured: false });
+    const stop = reading.start();
+    expect(reading.get().canLeave, 'no key is held yet').toBe(true);
+    reading.editKey(KEY);
+    reading.confirmNow();
+    expect(reading.get().canLeave, 'a key is held and no model is chosen').toBe(false);
+    reading.leave();
+    expect(onLeave).not.toHaveBeenCalled();
+    useAgentConnection.getState().setModel('claude-opus');
+    expect(reading.get().canLeave).toBe(true);
+    reading.leave();
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('starts no timer in a pictured screen', async () => {
     const { listModels } = held();
     const reading = createKeyReading({ entry: 'key', listModels, pictured: true });
@@ -79,5 +115,17 @@ describe('the key reading', () => {
     await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
     expect(listModels).not.toHaveBeenCalled();
     stop();
+  });
+});
+
+describe('where setup opens', () => {
+  it('asks for a key at the key entry even over a whole connection, and checks the held key at the resume entry', async () => {
+    const { listModels } = held();
+    useAgentConnection.getState().connectKey('claude', KEY);
+    useAgentConnection.getState().setModel('claude-opus');
+    expect(createKeyReading({ entry: 'key', listModels, pictured: false }).get().phase).toBe('key');
+    expect(createKeyReading({ entry: 'resume', listModels, pictured: false }).get().phase).toBe('checking');
+    useAgentConnection.getState().forgetKey('claude');
+    expect(createKeyReading({ entry: 'resume', listModels, pictured: false }).get().phase).toBe('key');
   });
 });

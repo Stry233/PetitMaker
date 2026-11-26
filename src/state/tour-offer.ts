@@ -1,13 +1,16 @@
 /**
  * The tour's offer record: which tour version this browser has been offered (the `tourSeen` pref,
- * a decimal version; the first tour wrote '1'), and what a visit does about it. The current version
- * is the tour definition's (`ui/chrome/tour/version.ts:TOUR_VERSION`), passed in.
+ * a decimal version; the first tour wrote '1'), and what a visit does about it. The version this
+ * build offers is `TOUR_VERSION` (`tour-version.ts`, which a rig reads without this module's imports).
  *
  * A visit decides once, from the record as the page found it: the loading screen's warm list, the
  * first-launch check and What's new all read `visitStanding`, so the offer this page records never
  * changes what the page decided, whichever of them reads first.
  */
 import { readStoredPref, writePref } from '../platform/storage/prefs';
+import { TOUR_VERSION } from './tour-version';
+
+export { TOUR_VERSION };
 
 /** Where this browser stands with tour `version`: offered it or a newer one (or its storage cannot
  *  be read, so an offer would repeat on every visit), never offered any tour, or offered an older one. */
@@ -26,7 +29,7 @@ function standingOf(record: string | null | undefined, version: number): TourSta
   return Number.isFinite(seen) && seen >= version ? 'offered' : 'older';
 }
 
-export function tourStanding(version: number): TourStanding {
+function tourStanding(version: number): TourStanding {
   return standingOf(storedRecord(), version);
 }
 
@@ -36,10 +39,22 @@ let visit: { version: number; record: string | null | undefined; standing: TourS
 
 /** Where this browser stood with tour `version` as this page found it, before any offer it
  *  recorded. A record something else wrote since (another tab) is read as a new visit. */
-export function visitStanding(version: number): TourStanding {
+function visitStanding(version: number): TourStanding {
   const record = storedRecord();
   if (visit?.version !== version || visit.record !== record) visit = { version, record, standing: standingOf(record, version), acted: false };
   return visit.standing;
+}
+
+/** Where this browser stood with the tour this build offers as this page found it, whatever the
+ *  page has recorded since. */
+export function tourVisitStanding(): TourStanding {
+  return visitStanding(TOUR_VERSION);
+}
+
+/** Whether the offer is answered for this build's tour: the tour ran or was waived, or this
+ *  browser cannot keep the answer. Until then a visit may be a frame away from opening it. */
+export function tourSettled(): boolean {
+  return tourStanding(TOUR_VERSION) === 'offered';
 }
 
 /** Records tour `version` as offered; a refused write leaves it to offer itself again next time. */

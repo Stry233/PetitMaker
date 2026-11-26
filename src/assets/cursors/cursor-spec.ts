@@ -109,8 +109,6 @@ export const CURSORS: Readonly<Record<CursorId, CursorSpec>> = {
   help: { hotspot: [2, 2], fallback: 'help', hasArt: false },
 };
 
-export const CURSOR_IDS = Object.keys(CURSORS) as CursorId[];
-
 /**
  * The cursors the DOM shows, and the custom property each is published under.
  *

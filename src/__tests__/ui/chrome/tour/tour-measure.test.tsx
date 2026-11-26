@@ -49,14 +49,14 @@ describe('measureTargets on an engine that measures zoomed subtrees in their own
 
 describe('measureTargets over several targets', () => {
   it('rings the box around every target shown, and skips one that is not', () => {
-    render(<><div {...tourTargetAttr('brush')} /><div {...tourTargetAttr('eraser')} /><div {...tourTargetAttr('add-layer')} /></>);
+    render(<><div {...tourTargetAttr('brush')} /><div {...tourTargetAttr('eraser')} /><div {...tourTargetAttr('fit')} /></>);
     const at = (id: string, left: number, top: number) => {
       (document.querySelector(`[data-tour-target="${id}"]`) as HTMLElement).getBoundingClientRect = () =>
         ({ x: left, y: top, width: 20, height: 10, top, left, right: left + 20, bottom: top + 10, toJSON: () => ({}) }) as DOMRect;
     };
     at('brush', 10, 50);
     at('eraser', 40, 60);
-    expect(measureTargets(['brush', 'eraser', 'add-layer'])).toEqual({ left: 10, top: 50, width: 50, height: 20 });
+    expect(measureTargets(['brush', 'eraser', 'fit'])).toEqual({ left: 10, top: 50, width: 50, height: 20 });
   });
 
   it('points at the first carrier on screen when several elements carry one target', () => {

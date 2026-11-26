@@ -14,7 +14,7 @@ vi.mock('../../../../platform/build/build-info', async (importOriginal) => {
 });
 import { HELP_TABLES, installHelpTables, translations } from '../../../_support/locale-tables';
 import { translateFor } from '../../../../i18n/context';
-import { helpFacts } from '../../../../ui/help/facts';
+import { readerFacts } from '../../../../ui/help/facts';
 import { LOCALES, type Locale } from '../../../../core/model/locale';
 import type { TextKey } from '../../../../i18n/keys';
 
@@ -87,7 +87,7 @@ const labelOf = ({ plain, elided }: InterfaceStrings, shown: string): string | u
 
 /** A span of Help source with its tokens and facts filled in. */
 function render(locale: Locale, span: string): string {
-  const facts = helpFacts(locale);
+  const facts = readerFacts(locale);
   return span
     .replace(UI_TOKEN, (_, key: string) => translateFor(locale, key as TextKey))
     .replace(/\{([a-zA-Z]+)\}/g, (whole, name: string) => (name in facts ? String(facts[name]) : whole));

@@ -4,15 +4,17 @@
  * the store with the whole column mounted, so a panel-local copy of the region would fail.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { MotionConfig } from 'framer-motion';
 
 import { EventBus } from '../../../core/commands/event-bus';
-import { setRegionBrushHandler } from '../../../tools/pointer/region';
+import { setRegionBrushHandler } from '../../../view/interaction/pointer/region-channel';
+import { watchAgentRegionBrush, watchRegionOverlay } from '../../../editor/editing/region-brush';
 import type { GridState, MacroCoord } from '../../../core/model/types';
 import type { EditorEvents } from '../../../state/editing/events';
 import { createDefaultRegistry } from '../../../rules';
 import { useEditorStore } from '../../../state/store';
+import { regionOf } from '../../../state/editing/region';
 import { I18nProvider } from '../../../i18n/context';
 import { append } from '../../../agent/core/log';
 import { useAgentSession, panelView } from '../../../agent/session/store';
@@ -24,6 +26,8 @@ import { PROVIDER_IDS, type ProviderId } from '../../../agent/providers/defaults
 import { makeState } from '../../_support/map-state';
 import { createExecutor } from '../../../state/executor';
 import { panelProps } from '../../_support/agent-panel';
+import { translations } from '../../_support/locale-tables';
+import { watchBackKey } from '../../../editor/back/back-out';
 
 const backing = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -62,7 +66,7 @@ function installMap(): GridState {
   const bus = new EventBus<EditorEvents>();
   const executor = createExecutor(gs, createDefaultRegistry(), bus);
   useEditorStore.setState({
-    gridState: gs, commandExecutor: executor, eventBus: bus, region: [], selectingRegion: false,
+    gridState: gs, commandExecutor: executor, eventBus: bus, regions: {}, selectingRegion: false,
   });
   return gs;
 }
@@ -74,7 +78,7 @@ async function mountColumn(withShell = false): Promise<ReturnType<typeof render>
   const tree = (open: boolean) => (
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        {withShell ? <Shell onRestoreSession={() => {}}><div /></Shell> : <PanelColumn open={open} />}
+        {withShell ? <Shell><div /></Shell> : <PanelColumn open={open} />}
       </I18nProvider>
     </MotionConfig>
   );
@@ -95,7 +99,7 @@ async function mountColumn(withShell = false): Promise<ReturnType<typeof render>
 }
 
 const paint = async (cells: MacroCoord[]) => {
-  await act(async () => { useEditorStore.getState().setRegion(cells); });
+  await act(async () => { useEditorStore.getState().setRegion(cells, 'agent'); });
 };
 
 /** A job in flight, so the job zone holds a ticket for the marking state to fold. */
@@ -105,8 +109,11 @@ function orderInFlight(): void {
   append(l, { kind: 'checkpoint', undoIndex: 0, label: 'job' });
 }
 
+/** The back key, as the shell holds it. */
+let releaseBackKey = (): void => {};
 beforeEach(() => {
   backing.clear();
+  releaseBackKey = watchBackKey();
   useEditorStore.getState().setEditMode({ mode: null });
   useEditorStore.getState().setAssistantOpen(false);
   installMap();
@@ -117,9 +124,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  releaseBackKey();
   setRegionBrushHandler(null);
   useEditorStore.setState({
-    gridState: null, commandExecutor: null, region: [], selectingRegion: false,
+    gridState: null, commandExecutor: null, regions: {}, selectingRegion: false,
   });
 });
 
@@ -133,12 +141,12 @@ describe('the chip is a view of the store\'s painted region', () => {
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
 
     await paint([]);
-    expect(queryByTestId('composer-region-chip')).toBeNull();
+    await waitFor(() => expect(queryByTestId('composer-region-chip')).toBeNull());
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('false');
   });
 
   it('docks for a region the store was already holding when the panel opened', async () => {
-    await act(async () => { useEditorStore.getState().setRegion(rect(4, 7, 6, 8)); });
+    await act(async () => { useEditorStore.getState().setRegion(rect(4, 7, 6, 8), 'agent'); });
     const { getByTestId } = await mountColumn();
     expect(getByTestId('composer-region-chip').getAttribute('title')).toBe('In this region, 6 cells');
     expect(getByTestId('composer-region-mark').getAttribute('data-lit')).toBe('true');
@@ -166,8 +174,8 @@ describe('the chip is a view of the store\'s painted region', () => {
     await paint(rect(2, 2, 5, 5));
 
     await act(async () => { fireEvent.click(getByTestId('region-chip-clear')); });
-    expect(useEditorStore.getState().region).toEqual([]);
-    expect(queryByTestId('composer-region-chip')).toBeNull();
+    expect(regionOf(useEditorStore.getState(), 'agent')).toEqual([]);
+    await waitFor(() => expect(queryByTestId('composer-region-chip')).toBeNull());
   });
 });
 
@@ -188,7 +196,7 @@ describe('the marking state', () => {
     expect(scope.textContent).toContain('Done');
     const field = getByTestId('composer-input') as HTMLInputElement;
     expect(field.disabled).toBe(true);
-    expect(field.placeholder).toBe('The map has the pencil');
+    expect(field.placeholder).toBe(translations.en['agent.composer_marking']);
     expect(queryByTestId('job-ticket')).toBeNull();
     expect(getByTestId('panel-job-zone').querySelector('[data-scroll-content]')!.childElementCount).toBe(0);
     // The way out stays pressable.
@@ -223,7 +231,7 @@ describe('the marking state', () => {
   /** The shelf mounts its own screen for markings it arms. */
   it('stands no screen over a marking the map\'s own tools armed', async () => {
     const { queryByTestId } = await mountColumn();
-    await act(async () => { useEditorStore.getState().setSelectingRegion(true); });
+    await act(async () => { useEditorStore.getState().setSelectingRegion(true, 'generator'); });
     expect(queryByTestId('shell-scope-screen')).toBeNull();
   });
 
@@ -237,47 +245,63 @@ describe('the marking state', () => {
     expect(useEditorStore.getState().assistantOpen).toBe(true);
   });
 
-  /** Choosing a build mode puts the region brush away (`edit.ts`), and the panel follows the store. */
-  it('folds back when a mode switch puts the brush away under it', async () => {
+  /** Choosing a build mode is moving on, so it ends the marking and the panel folds back; the region
+   *  stays painted and the mark button picks the brush up again. */
+  it('[ASST-11] folds back when a mode switch ends the marking, keeping the region for the mark button', async () => {
     orderInFlight();
     const { getByTestId, queryByTestId } = await mountColumn();
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
     expect(useEditorStore.getState().selectingRegion).toBe(true);
     expect(queryByTestId('job-ticket')).toBeNull();
+    await act(async () => { useEditorStore.getState().commitRegion(rect(4, 7, 6, 8)); });
 
     await act(async () => { useEditorStore.getState().setEditMode({ mode: 'mountain' }); });
 
     expect(useEditorStore.getState().selectingRegion).toBe(false);
+    expect(regionOf(useEditorStore.getState(), 'agent')).toEqual(rect(4, 7, 6, 8));
     const field = getByTestId('composer-input') as HTMLInputElement;
     expect(field.disabled).toBe(false);
-    expect(field.placeholder).toBe('Add a note for the next step');
     expect(queryByTestId('job-ticket')).not.toBeNull();
+    expect(queryByTestId('composer-region-chip'), 'the region it kept docks as the chip').not.toBeNull();
+    await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
+    expect(useEditorStore.getState()).toMatchObject({ selectingRegion: true, regionSelectionOwner: 'agent' });
+    expect(useEditorStore.getState().regionUndoLane, 'the stroke it painted can still be undone').toHaveLength(1);
   });
 
   /** `selectingRegion` outranks every tool in `resolvePress`, so a marking left behind a closed panel
    *  would capture every press on the map. */
   it('peels the marking it armed when the panel folds, and takes the outline with it', async () => {
     const clearOutline = vi.spyOn(host.buildableRegion, 'clear');
+    const stopOverlay = watchRegionOverlay();
+    const stopRelease = watchAgentRegionBrush();
+    await act(async () => { useEditorStore.getState().setAssistantOpen(true); });
     const { getByTestId, fold } = await mountColumn();
     await act(async () => { fireEvent.click(getByTestId('composer-region-mark')); });
     expect(useEditorStore.getState().selectingRegion).toBe(true);
     clearOutline.mockClear();
 
+    await act(async () => { useEditorStore.getState().setAssistantOpen(false); });
     await fold();
 
     expect(useEditorStore.getState().selectingRegion).toBe(false);
     expect(clearOutline).toHaveBeenCalled();
     clearOutline.mockRestore();
+    stopRelease();
+    stopOverlay();
   });
 
-  /** The map's scope screen sets the same store flag, so the panel tracks which marking it armed. */
+  /** The map's scope screen sets the same store flag, so the session tracks whose marking it is. */
   it('leaves a marking the map\'s own tools armed exactly where it is', async () => {
+    const stopRelease = watchAgentRegionBrush();
+    await act(async () => { useEditorStore.getState().setAssistantOpen(true); });
     const { fold } = await mountColumn();
-    await act(async () => { useEditorStore.getState().setSelectingRegion(true); });
+    await act(async () => { useEditorStore.getState().setSelectingRegion(true, 'generator'); });
 
+    await act(async () => { useEditorStore.getState().setAssistantOpen(false); });
     await fold();
 
     expect(useEditorStore.getState().selectingRegion).toBe(true);
+    stopRelease();
   });
 
   it('re-docks the chip with what the marking painted', async () => {

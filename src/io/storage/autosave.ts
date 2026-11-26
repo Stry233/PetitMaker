@@ -7,7 +7,7 @@ import { buildSaveFile } from '../save/json-codec';
 import { parseSave } from '../save/parse';
 import { isInputRefusal } from '../save/import-error';
 import { readParsedSaveCamera } from '../save/camera';
-import type { LandmarkClearance } from '../../state/landmark-clearance';
+import type { LandmarkClearance } from '../../tools/repair';
 import { loadParsedSave } from '../import/open-save';
 import { encodeHistory, decodeHistory, type HistorySection } from '../save/history-codec';
 import { prefStorageAvailable, readStoredPref, removePref, writePref } from '../../platform/storage/prefs';
@@ -17,6 +17,7 @@ import type { PersistedCamera, SaveFile } from '../save/format';
 import { COMPRESS_RECORD_AT, fitsRecordRestoreLimit, decodeRecord, encodeRecord } from './record-codec';
 import { encodeRecordInWorker } from './record-compress';
 import { AUTOSAVE_DEBOUNCE_MS, autosaveWorthy } from './facts';
+import { debouncedWrite } from '../../platform/async/debounced-write';
 
 const HISTORY_STEPS = 60;
 type AutosaveFile = SaveFile & { autosave: 1; history?: HistorySection };
@@ -62,14 +63,12 @@ function writeSnapshot(record: string): boolean {
 }
 
 export function createAutosave(sources: AutosaveSources): Autosave {
-  let timer: ReturnType<typeof setTimeout> | null = null;
   let compression: AbortController | null = null;
   let revision = 0;
   let suspended = false;
   let held = false;
-  /** The debounced write waiting to happen, kept so backgrounding the tab can still make it. */
-  let pending: { state: GridState; revision: number } | null = null;
-  let lifecycleBound = false;
+  /** The write that came due while held, made once the hold ends. */
+  let parked: { state: GridState; revision: number } | null = null;
 
   const history = (state: GridState): HistorySection | undefined => {
     const entries = sources.history(state);
@@ -80,7 +79,7 @@ export function createAutosave(sources: AutosaveSources): Autosave {
    *  hidden or unloaded may never run another task. */
   const write = (state: GridState, current: number, immediate: boolean): void => {
     if (suspended) return;
-    if (held) { pending = { state, revision: current }; return; }
+    if (held) { parked = { state, revision: current }; return; }
     if (!prefStorageAvailable()) return;
     const save: AutosaveFile = { ...buildSaveFile(state, sources.camera()), autosave: 1, history: history(state) };
     let json = JSON.stringify(save);
@@ -109,26 +108,9 @@ export function createAutosave(sources: AutosaveSources): Autosave {
     }).finally(() => { if (compression === controller) compression = null; });
   };
 
-  const flush = (): void => {
-    const owed = pending;
-    if (!owed) return;
-    pending = null;
-    if (timer !== null) clearTimeout(timer);
-    timer = null;
-    write(owed.state, owed.revision, true);
-  };
-
-  /** Bound on the first scheduled save, since before that there is nothing owed. */
-  const bindLifecycle = (): void => {
-    if (lifecycleBound || typeof document === 'undefined') return;
-    lifecycleBound = true;
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush();
-    });
-    // Safari does not reliably report a hidden state when the page is being replaced or frozen.
-    // A page entering the back-forward cache hears it too, where the write is merely early.
-    window.addEventListener('pagehide', flush);
-  };
+  const owed = debouncedWrite<{ state: GridState; revision: number }>(
+    AUTOSAVE_DEBOUNCE_MS, (o, flushing) => write(o.state, o.revision, flushing),
+  );
 
   return {
     schedule(state, reason = 'edit') {
@@ -136,33 +118,25 @@ export function createAutosave(sources: AutosaveSources): Autosave {
       const current = ++revision;
       compression?.abort();
       compression = null;
-      if (timer !== null) clearTimeout(timer);
-      bindLifecycle();
-      pending = { state, revision: current };
-      timer = setTimeout(() => {
-        timer = null;
-        pending = null;
-        write(state, current, false);
-      }, AUTOSAVE_DEBOUNCE_MS);
+      owed.schedule({ state, revision: current });
     },
-    flush,
+    flush: () => owed.flush(),
     setHeld(on) {
       if (on === held) return;
-      if (on) flush();
+      if (on) owed.flush();
       held = on;
-      const owed = pending;
-      // An owed save whose debounce still runs is written as it ends.
-      if (on || !owed || timer !== null) return;
-      pending = null;
-      write(owed.state, owed.revision, false);
+      if (on) return;
+      const due = parked;
+      parked = null;
+      // A save still owed is newer than the one that came due, and is written as its debounce ends.
+      if (due && !owed.owed()) write(due.state, due.revision, false);
     },
     clear() {
       revision++;
       compression?.abort();
       compression = null;
-      if (timer !== null) clearTimeout(timer);
-      timer = null;
-      pending = null;
+      owed.cancel();
+      parked = null;
       removePref('autosave');
       removePref('autosaveHistory');
     },
@@ -211,7 +185,7 @@ function readHistory(state: GridState, save: Partial<AutosaveFile>, migrated: Pa
  * (corrupt, or saved by a newer build: parseSave refuses it). Never throws; a fault other than a
  * refused input is logged.
  */
-export function readAutosave(): RestoredAutosave | null {
+function readAutosave(): RestoredAutosave | null {
   const stored = readStoredPref('autosave');
   const json = stored.available ? stored.raw : null;
   if (!json) return null;

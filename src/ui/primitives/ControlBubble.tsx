@@ -15,7 +15,7 @@ const GAP = 8;
 
 const face: CSSProperties = {
   background: skin.plate, color: skin.ink, border: `1px solid ${skin.line}`, borderRadius: radii.md,
-  padding: '4px 10px', fontFamily: font.family, ...roleFont('caption'), whiteSpace: 'nowrap', boxShadow: shadows.float,
+  padding: '4px 10px', fontFamily: font.family, ...roleFont('label'), whiteSpace: 'nowrap', boxShadow: shadows.float,
   pointerEvents: 'none',
 };
 

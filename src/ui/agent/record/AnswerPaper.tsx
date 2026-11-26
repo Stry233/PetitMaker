@@ -8,19 +8,18 @@ import { Pill } from '../../primitives/Pill';
 import type { CSSProperties } from 'react';
 
 import { ArchiveFoot } from './ArchiveCard';
-import { ASK_SPINE, QuickRow } from './GateBlock';
+import { ASK_SPINE_PAD, AskSpine, QuickRow } from './GateBlock';
 import { useToggleSet } from '../hooks/use-toggle-set';
 import { PAPER } from '../parts/paper';
-import { readCount } from '../derive/job-stats';
+import { type JobView, readCount } from '../../../agent/panel';
 import { Icon, type IconId } from '../parts/sprite';
 import { ModelProse } from '../parts/model-prose';
 import { ThoughtRow } from './ThoughtsBox';
 import { recede } from '../panel-skin';
-import { ACTIVE, MUTED, PLATE, PLATE_INK } from '../../design/tokens';
+import { MUTED, PLATE, PLATE_INK } from '../../design/tokens';
 import { font, radii } from '../../design/styles';
 import { roleFont } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
 import type { I18nKey } from '../../../i18n/keys';
 
 /** What the paper's quiet stamp says the job was. */
@@ -140,11 +139,11 @@ export function AnswerPaper({
       data-stamp={stamp}
       style={{
         ...PAPER,
-        // The spine replaces the left border while the question stands, exactly as the gate card's
-        // does, and retires with the question.
-        ...(asking ? { borderLeft: `${ASK_SPINE}px solid ${ACTIVE}` } : {}),
+        // The gate card's spine while the question stands; it retires with the question.
+        ...(asking ? { position: 'relative', paddingLeft: ASK_SPINE_PAD } : {}),
       }}
     >
+      {asking && <AskSpine settled={false} />}
       <span data-testid="answer-stamp" style={STAMP}>
         <Icon id={spec.icon} size={12} />
         {t(spec.key)}

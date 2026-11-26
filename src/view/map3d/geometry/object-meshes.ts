@@ -77,17 +77,6 @@ export function bodyRoute(state: GridState, id: string): BodyRoute {
   return objectInstance(state, obj) ? 'instanced' : 'none';
 }
 
-export function buildObjectInstances(state: GridState): Map<string, ObjectInstance[]> {
-  const groups = new Map<string, ObjectInstance[]>();
-  for (const obj of state.objects.values()) {
-    const resolved = objectInstance(state, obj);
-    if (!resolved) continue;
-    const list = groups.get(resolved.groupKey);
-    if (list) list.push(resolved.inst); else groups.set(resolved.groupKey, [resolved.inst]);
-  }
-  return groups;
-}
-
 /**
  * One object's instance + group. Group keys: 'm:<catalogId>' = a bespoke
  * per-item model (config-driven, scale 1 since the model is authored at the

@@ -7,6 +7,7 @@ import { easingCss, seconds } from '../../design/motion';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { useEditorStore } from '../../../state/store';
 import { brushSizeOf } from '../../../state/editing/edit-mode';
+import { useRunCommand } from '../use-shell-commands';
 
 /** Set where the control fills the width its row leaves it (the upright tool row), its track
  *  narrowing to that width down to `BRUSH_MIN_TRACK`. */
@@ -56,7 +57,6 @@ export function BrushSizeControl({ value, onChange, of }: { value: number; onCha
  *  itself, so a drag re-renders the slider and not the toolbar around it. */
 export function LiveBrushSize({ of }: { of: 'brush' | 'route' }) {
   const value = useEditorStore((s) => (of === 'route' ? s.annotationRouteWidth : brushSizeOf(s)));
-  const setBrushSize = useEditorStore((s) => s.setBrushSize);
-  const setRouteWidth = useEditorStore((s) => s.setAnnotationRouteWidth);
-  return <BrushSizeControl value={value} onChange={of === 'route' ? setRouteWidth : setBrushSize}/>;
+  const run = useRunCommand();
+  return <BrushSizeControl value={value} onChange={(size) => run('brush.size', { value: size })}/>;
 }

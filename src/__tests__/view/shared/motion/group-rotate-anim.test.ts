@@ -14,6 +14,8 @@ import { animConfig, easeOutBack } from '../../../../view/shared/motion/anim-con
 import { TILE_SIZE } from '../../../../view/map2d/geometry/world';
 import { setReducedMotion, __resetMotionState } from '../../../../platform/channels/motion-state';
 import { OBJECT_CHILD } from '../../../../view/map2d/draw/object-children';
+import type { PlayBeat } from '../../../../view/shared/viewport/frame-loop';
+import { beatClock } from '../../../_support/beat-clock';
 
 /** A stand-in for an object wrapper: its tagged icon is the child the arc spin tweens. */
 function wrapper(x: number, y: number, withIcon: boolean): PIXI.Container {
@@ -30,27 +32,16 @@ function wrapper(x: number, y: number, withIcon: boolean): PIXI.Container {
 
 const iconOf = (c: PIXI.Container) => c.children.find((k) => k.name === OBJECT_CHILD.icon)!;
 
-/** Runs a tween on a controllable clock: `step(ts)` runs exactly the callbacks the previous frame
- *  scheduled, and the per-frame callback count is kept. */
-function withFakeRaf(): { step: (ts: number) => void; scheduledPerFrame: number[]; restore: () => void } {
-  let queue: FrameRequestCallback[] = [];
-  let scheduled = 0;
+/** Runs a tween on the frame loop's clock: `step(ts)` steps every live beat at `ts`, and whether a
+ *  beat still runs after each frame is kept (1 or 0). */
+function onFrameLoop(): { play: PlayBeat; step: (ts: number) => void; scheduledPerFrame: number[]; readonly played: number } {
+  const clock = beatClock();
   const scheduledPerFrame: number[] = [];
-  const spy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-    queue.push(cb);
-    scheduled++;
-    return queue.length;
-  });
   return {
-    step: (ts: number) => {
-      const due = queue;
-      queue = [];
-      scheduled = 0;
-      for (const cb of due) cb(ts);
-      scheduledPerFrame.push(scheduled);
-    },
+    play: clock.play,
+    step: (ts: number) => { scheduledPerFrame.push(clock.frame(ts) ? 1 : 0); },
     scheduledPerFrame,
-    restore: () => spy.mockRestore(),
+    get played() { return clock.played; },
   };
 }
 
@@ -113,12 +104,12 @@ describe('animateGroupRotation (2D)', () => {
       { id: 'c', from: { x: 6.5, y: 4.5 }, spun: true },
     ]);
     const rest = new Map([...map].map(([id, w]) => [id, { x: w.x, y: w.y }]));
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
 
     const { durationMs, overshoot } = animConfig.groupRotation;
     for (const frac of [0, 0.3, 0.6]) {
-      raf.step(frac * durationMs);
+      loop.step(frac * durationMs);
       const e = easeOutBack(frac, overshoot);
       for (const m of turn.members) {
         const expected = arcOffset(arcMotion(turn.pivot, m.from), Math.PI / 2, e);
@@ -127,21 +118,19 @@ describe('animateGroupRotation (2D)', () => {
         expect(w.y - rest.get(m.id)!.y).toBeCloseTo(expected.dy * TILE_SIZE, 6);
       }
     }
-    raf.restore();
   });
 
-  it('drives all members from a SINGLE rAF, never one per member', () => {
+  it('drives all members from a SINGLE beat, never one per member', () => {
     const map = new Map<string, PIXI.Container>(
       [...Array(8)].map((_, i) => [`m${i}`, wrapper(i, 0, true)] as const),
     );
     const turn = turnOf([...map.keys()].map((id, i) => ({ id, from: { x: i, y: 0 }, spun: true })));
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
-    raf.step(0);
-    raf.step(animConfig.groupRotation.durationMs * 0.5);
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
+    loop.step(0);
+    loop.step(animConfig.groupRotation.durationMs * 0.5);
     // One callback per frame whatever the member count.
-    expect(raf.scheduledPerFrame).toEqual([1, 1]);
-    raf.restore();
+    expect(loop.scheduledPerFrame).toEqual([1, 1]);
   });
 
   it('starts every member at the same phase: at t=0 they sit at their PRE-turn positions', () => {
@@ -150,33 +139,31 @@ describe('animateGroupRotation (2D)', () => {
       { id: 'a', from: { x: 4.5, y: 4.5 }, spun: true },
       { id: 'c', from: { x: 6.5, y: 4.5 }, spun: true },
     ]);
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
-    raf.step(0);
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
+    loop.step(0);
     // Both were on the row y=4.5 before the turn (a at x=4.5, c at x=6.5; centres), so anchors
     // sit half a tile up-left of them.
     expect(map.get('a')!.x + TILE_SIZE / 2).toBeCloseTo(4.5 * TILE_SIZE, 6);
     expect(map.get('a')!.y + TILE_SIZE / 2).toBeCloseTo(4.5 * TILE_SIZE, 6);
     expect(map.get('c')!.x + TILE_SIZE / 2).toBeCloseTo(6.5 * TILE_SIZE, 6);
     expect(map.get('c')!.y + TILE_SIZE / 2).toBeCloseTo(4.5 * TILE_SIZE, 6);
-    raf.restore();
   });
 
   it('spins a rotatable member on its own axis, on the same clock', () => {
     const map = new Map<string, PIXI.Container>([['house', wrapper(5, 3, true)]]);
     const turn = turnOf([{ id: 'house', from: { x: 4.5, y: 4.5 }, spun: true }]);
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
     const { durationMs, overshoot } = animConfig.groupRotation;
-    raf.step(0);
+    loop.step(0);
     // Back-dated by the full sweep at t=0 (the command already left the icon at its final angle).
     expect(iconOf(map.get('house')!).rotation).toBeCloseTo(-Math.PI / 2, 6);
-    raf.step(0.5 * durationMs);
+    loop.step(0.5 * durationMs);
     expect(iconOf(map.get('house')!).rotation)
       .toBeCloseTo(spinOffset(Math.PI / 2, easeOutBack(0.5, overshoot)), 6);
-    raf.step(durationMs);
+    loop.step(durationMs);
     expect(iconOf(map.get('house')!).rotation).toBe(0);
-    raf.restore();
   });
 
   it('gives a CARRIED member no self-spin: it travels the arc without turning', () => {
@@ -184,15 +171,14 @@ describe('animateGroupRotation (2D)', () => {
     const carried = wrapper(5, 5, true);            // an icon exists; it must not be touched
     const map = new Map<string, PIXI.Container>([['flower', carried]]);
     const turn = turnOf([{ id: 'flower', from: { x: 6.5, y: 4.5 }, spun: false }]);
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
     const { durationMs } = animConfig.groupRotation;
-    raf.step(0);
+    loop.step(0);
     expect(iconOf(carried).rotation).toBe(0);
     expect(carried.x).not.toBe(5 * TILE_SIZE);      // but it did travel
-    raf.step(0.5 * durationMs);
+    loop.step(0.5 * durationMs);
     expect(iconOf(carried).rotation).toBe(0);
-    raf.restore();
   });
 
   it('lands every member exactly on its rest pose and stops scheduling', () => {
@@ -201,17 +187,16 @@ describe('animateGroupRotation (2D)', () => {
       { id: 'a', from: { x: 4.5, y: 4.5 }, spun: true },
       { id: 'c', from: { x: 6.5, y: 4.5 }, spun: false },
     ]);
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
-    raf.step(0);
-    raf.step(animConfig.groupRotation.durationMs);
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
+    loop.step(0);
+    loop.step(animConfig.groupRotation.durationMs);
     expect(map.get('a')!.x).toBe(5 * TILE_SIZE);
     expect(map.get('a')!.y).toBe(3 * TILE_SIZE);
     expect(map.get('c')!.x).toBe(5 * TILE_SIZE);
     expect(map.get('c')!.y).toBe(5 * TILE_SIZE);
     expect(iconOf(map.get('a')!).rotation).toBe(0);
-    expect(raf.scheduledPerFrame).toEqual([1, 0]);   // the settling frame schedules nothing
-    raf.restore();
+    expect(loop.scheduledPerFrame).toEqual([1, 0]);   // the settling frame schedules nothing
   });
 
   it('keeps turning the rest of the body when one member dies mid-flight', () => {
@@ -220,29 +205,27 @@ describe('animateGroupRotation (2D)', () => {
       { id: 'a', from: { x: 4.5, y: 4.5 }, spun: true },
       { id: 'c', from: { x: 6.5, y: 4.5 }, spun: true },
     ]);
-    const raf = withFakeRaf();
-    animateGroupRotation(map, turn, () => {});
-    raf.step(0);
+    const loop = onFrameLoop();
+    animateGroupRotation(map, turn, loop.play);
+    loop.step(0);
     map.get('a')!.destroy();
-    expect(() => raf.step(animConfig.groupRotation.durationMs * 0.5)).not.toThrow();
+    expect(() => loop.step(animConfig.groupRotation.durationMs * 0.5)).not.toThrow();
     expect(map.get('c')!.x).not.toBe(5 * TILE_SIZE);
-    raf.restore();
   });
 
   it('under reduced motion applies NO transform and schedules nothing: everything is already home', () => {
     setReducedMotion(true);
     const a = wrapper(5, 3, true), c = wrapper(5, 5, true);
     const map = new Map<string, PIXI.Container>([['a', a], ['c', c]]);
-    const raf = withFakeRaf();
+    const loop = onFrameLoop();
     animateGroupRotation(map, turnOf([
       { id: 'a', from: { x: 4.5, y: 4.5 }, spun: true },
       { id: 'c', from: { x: 6.5, y: 4.5 }, spun: false },
-    ]), () => {});
-    expect(raf.scheduledPerFrame).toEqual([]);
-    expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
+    ]), loop.play);
+    expect(loop.scheduledPerFrame).toEqual([]);
+    expect(loop.played).toBe(0);
     expect([a.x, a.y, c.x, c.y]).toEqual([5 * TILE_SIZE, 3 * TILE_SIZE, 5 * TILE_SIZE, 5 * TILE_SIZE]);
     expect(iconOf(a).rotation).toBe(0);
-    raf.restore();
   });
 });
 
@@ -252,27 +235,25 @@ describe('the SINGLE-object spin is unchanged', () => {
     // touches only the icon.
     const w = wrapper(5, 3, true);
     const map = new Map<string, PIXI.Container>([['a', w]]);
-    const raf = withFakeRaf();
-    animateRotation(map, 'a', { fromDeg: 0, toDeg: 90 }, () => {});
+    const loop = onFrameLoop();
+    animateRotation(map, 'a', { fromDeg: 0, toDeg: 90 }, loop.play);
     const { durationMs, overshoot } = animConfig.rotation;
-    raf.step(0);
+    loop.step(0);
     expect(iconOf(w).rotation).toBe(0);
     expect([w.x, w.y]).toEqual([5 * TILE_SIZE, 3 * TILE_SIZE]);
-    raf.step(0.5 * durationMs);
+    loop.step(0.5 * durationMs);
     expect(iconOf(w).rotation).toBeCloseTo((Math.PI / 2) * easeOutBack(0.5, overshoot), 6);
     expect([w.x, w.y]).toEqual([5 * TILE_SIZE, 3 * TILE_SIZE]);
-    raf.step(durationMs);
+    loop.step(durationMs);
     expect(iconOf(w).rotation).toBeCloseTo(Math.PI / 2, 10);
-    raf.restore();
   });
 
   it('is a no-op under reduced motion', () => {
     setReducedMotion(true);
     const w = wrapper(5, 3, true);
-    const raf = withFakeRaf();
-    animateRotation(new Map([['a', w]]), 'a', { fromDeg: 0, toDeg: 90 }, () => {});
-    expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
+    const loop = onFrameLoop();
+    animateRotation(new Map([['a', w]]), 'a', { fromDeg: 0, toDeg: 90 }, loop.play);
+    expect(loop.played).toBe(0);
     expect(iconOf(w).rotation).toBe(0);
-    raf.restore();
   });
 });

@@ -54,7 +54,7 @@ const shown = (p: MacroPreview): { added: string[]; removed: string[] } => ({
 /** The bar's Smart Build tool over the world, with `macro` armed, driven by pointer presses. */
 function bar(w: SpecWorld, macro: string, ghosts: unknown[] = [], over: ToolCtxOver = {}) {
   const overlay = { ...HEADLESS_OVERLAY, showGhost: (cells: unknown) => { ghosts.push(cells); } };
-  const ctx = makeToolCtx(w.state, w.sandbox.executor, 3, 1, { armedMacro: macro, armingEpoch: 1, layerPinned: true, overlay, ...over });
+  const ctx = makeToolCtx(w.state, w.sandbox.executor, 3, { armedMacro: macro, armingEpoch: 1, overlay, ...over });
   const tool = new MacroTool();
   const at = (c: MacroCoord) => [cell(c), point({ x: c.x * 2, y: c.y * 2 })] as const;
   return {

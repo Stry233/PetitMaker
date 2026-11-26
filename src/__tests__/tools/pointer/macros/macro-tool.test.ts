@@ -25,7 +25,7 @@ function installMap(): { state: GridState; exec: CommandExecutor } {
 
 function ctxFor(state: GridState, exec: CommandExecutor, over: ToolCtxOver = {}) {
   const overlay = { showGhost: vi.fn(), clearGhost: vi.fn() };
-  const ctx = makeToolCtx(state, exec, 1, 1, { armedMacro: 'raise', overlay: overlay as any, ...over });
+  const ctx = makeToolCtx(state, exec, 1, { armedMacro: 'raise', overlay: overlay as any, ...over });
   return { ctx, overlay };
 }
 

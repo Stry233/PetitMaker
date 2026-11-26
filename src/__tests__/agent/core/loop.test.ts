@@ -201,6 +201,23 @@ describe('runJob core flows', () => {
     expect(secondMessages.some((m) => m.role === 'tool' && m.results.some((r) => r.content === 'placed tree'))).toBe(true);
   });
 
+  it('a plan of several regions is told to hand each to a helper; a short plan is not', async () => {
+    const planResult = async (labels: string[]): Promise<string> => {
+      const log = createLog(() => 0);
+      append(log, { kind: 'order', text: 'build', mapContext: '' });
+      const adapter = createScriptedAdapter([
+        toolTurn([{ callId: 'p1', name: 'update_plan', args: { stages: labels.map((label) => ({ label })) } }]),
+        textTurn('building on'),
+      ]);
+      await runJob(log, makeDeps({ adapter, executor: makeExecutor({ result: () => ({ content: 'ok', isError: false }) }), oversight: 'yolo' }));
+      const filed = eventsOf(log).find((e) => e.kind === 'toolResult' && e.callId === 'p1');
+      return filed?.kind === 'toolResult' ? filed.content : '';
+    };
+    const helper = makeExecutor({ result: () => ({ content: 'ok', isError: false }) }).facts.guides.helper;
+    expect(await planResult(['paths', 'homes', 'orchard', 'pond garden'])).toContain(helper);
+    expect(await planResult(['a pond', 'its flowers'])).not.toContain(helper);
+  });
+
   it('a third plan filing is churn the loop refuses itself, keeping the second plan standing', async () => {
     const log = createLog(() => 0);
     append(log, { kind: 'order', text: 'build', mapContext: '' });
@@ -229,10 +246,10 @@ describe('runJob core flows', () => {
     seedOrder(log, 'build a town');
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'plan-1', name: 'update_plan', args: { stages: [{ label: 'streets' }] } }]),
-      toolTurn([{ callId: 'c2', name: 'build_road_network', args: {} }]),
+      toolTurn([{ callId: 'c2', name: 'clear_area', args: {} }]),
       textTurn('done'),
     ]);
-    const executor = makeExecutor({ writeNames: new Set(['build_road_network']), wideNames: new Set(['build_road_network']) });
+    const executor = makeExecutor({ writeNames: new Set(['clear_area']), wideNames: new Set(['clear_area']) });
     const deps = makeDeps({ adapter, executor, oversight: 'checkpoint' });
 
     const promise = runJob(log, deps);
@@ -250,7 +267,7 @@ describe('runJob core flows', () => {
 
     expect(outcome).toBe('done');
     expect(eventsOf(log).some((e) => e.kind === 'plan')).toBe(true);
-    expect(executor.calls).toEqual([{ callId: 'c2', name: 'build_road_network', args: {} }]);
+    expect(executor.calls).toEqual([{ callId: 'c2', name: 'clear_area', args: {} }]);
   });
 
   it('strict oversight gates a write; skip executes nothing (the projection synthesizes the result) and allow executes', async () => {
@@ -455,6 +472,8 @@ describe('runJob core flows', () => {
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ isError: true });
     expect(results[0]?.kind === 'toolResult' && results[0].content).toMatch(/Reissue the calls with complete arguments/);
+    // The panel tells the loop's note from a tool's own failure by this field, not by the words.
+    expect(deriveView(log).jobs[0]?.ops[0]).toMatchObject({ status: 'error', detail: { loopNote: true } });
     expect(adapter.requests).toHaveLength(2);
   });
 
@@ -1649,6 +1668,46 @@ describe('the delivery nudge', () => {
 
     expect(outcome).toBe('done');
     expect(systemNotes(log)).toHaveLength(0);
+  });
+
+  /** An app action changes the app, not the map, and a Help answer is read through one; a job that
+   *  ran one did what it was asked, so its close settles without the zero-edit nudge. */
+  const APP_TOOLS = [...BUILD_TOOLS, { name: 'run_app_action', description: 'stand-in', parameters: {} }];
+
+  it('a job that ran an app action delivered it: its close settles without a nudge', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'switch to the 3D view');
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'c1', name: 'run_app_action', args: { id: 'view.mode', value: '3d' } }]),
+      textTurn('The map is in the 3D view now.'),
+    ]);
+    const deps = makeDeps({ adapter, executor: writeExecutor(), tools: APP_TOOLS });
+
+    const outcome = await runJob(log, deps);
+
+    expect(outcome).toBe('done');
+    expect(systemNotes(log)).toHaveLength(0);
+    expect(adapter.requests).toHaveLength(2);
+  });
+
+  it('an app action that failed is not delivery: the close is still nudged', async () => {
+    const log = createLog(() => 0);
+    seedOrder(log, 'switch to the 3D view');
+    const adapter = createScriptedAdapter([
+      toolTurn([{ callId: 'c1', name: 'run_app_action', args: { id: 'view.mode', value: '3d' } }]),
+      textTurn('The map is in the 3D view now.'),
+      textTurn('The 3D view is not available on this device.'),
+    ]);
+    const executor = makeExecutor({
+      writeNames: new Set(['paint_terrain']),
+      result: () => ({ content: 'ERROR: this device has no 3D view', isError: true }),
+    });
+    const deps = makeDeps({ adapter, executor, tools: APP_TOOLS });
+
+    const outcome = await runJob(log, deps);
+
+    expect(outcome).toBe('done');
+    expect(systemNotes(log)).toHaveLength(1);
   });
 
   it('a reverted write is not delivery: the close is still nudged', async () => {

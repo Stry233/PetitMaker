@@ -134,11 +134,6 @@ function waterTop(state: GridState, x: number, y: number): number {
   return t && t.type === TerrainType.Water ? solidTopOf(t, TerrainType.Water) : 0;
 }
 
-export function buildTerrainMeshes(state: GridState): TerrainMeshes {
-  const { width, height } = state.template;
-  return buildRegion(state, 0, 0, width, height);
-}
-
 /** Terrain meshes for one storage bucket (`BUCKET_SIZE` square). Cells read their neighbors
  *  through GridState (never sibling meshes), so a chunk meshes identically
  *  whether built alone or as part of the whole map — the editor rebuilds only
@@ -427,19 +422,33 @@ function emitWater(r: Region, t: TerrainCell, at: CellAt): void {
   emitTrimmedWater(r, at, { tier: top, corners: t.corners!, innerFans: false, yBottom: 0 });
 }
 
-function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry1: number): TerrainMeshes {
-  const { width, height } = state.template;
-  const r: Region = {
+function newRegion(state: GridState): Region {
+  return {
     state, frame: mapFrame(state.template), riverbed: groundWaterSurfaces(state),
     solid: emptyMesh(), ground: emptyMesh(), water: emptyMesh(), fall: emptyMesh(),
   };
+}
+
+function cellAt(state: GridState, x: number, y: number): CellAt {
+  const { width, height } = state.template;
+  const c0 = cellCornerWorld(x, y, width, height, PLACEMENT_GRID);
+  const t0 = cellCornerWorld(x, y, width, height, TERRAIN_GRID);
+  return { x, y, gx0: c0.x, gz0: c0.z, x0: t0.x, z0: t0.z };
+}
+
+/** A mountain or water cell's blocks. */
+function emitBlocks(r: Region, t: TerrainCell, at: CellAt): void {
+  if (t.type === TerrainType.Mountain) emitMountain(r, t, at);
+  else if (t.type === TerrainType.Water) emitWater(r, t, at);
+}
+
+function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry1: number): TerrainMeshes {
+  const r = newRegion(state);
   for (let y = ry0; y < ry1; y++) {
     for (let x = rx0; x < rx1; x++) {
       const cell = getCell(state.cells, x, y);
       if (!cell) continue;
-      const c0 = cellCornerWorld(x, y, width, height, PLACEMENT_GRID);
-      const t0 = cellCornerWorld(x, y, width, height, TERRAIN_GRID);
-      const at: CellAt = { x, y, gx0: c0.x, gz0: c0.z, x0: t0.x, z0: t0.z };
+      const at = cellAt(state, x, y);
       if (zoneSurface(cell.zone) === 'land') emitLand(r, cell.zone, at);
       else emitSea(r, at);
       const t = cell.terrain;
@@ -448,9 +457,20 @@ function buildRegion(state: GridState, rx0: number, ry0: number, rx1: number, ry
       // complement as the recessed water reveal.
       if (t.type === TerrainType.None && !!t.corners && t.corners.some((c) => c !== 'square')) {
         pushRevealBacking(r, t, 0, neighborsOf(state, x, y), { x0: at.x0, z0: at.z0 });
-      } else if (t.type === TerrainType.Mountain) emitMountain(r, t, at);
-      else if (t.type === TerrainType.Water) emitWater(r, t, at);
+      } else emitBlocks(r, t, at);
     }
   }
   return { solid: r.solid, ground: r.ground, water: r.water, fall: r.fall };
+}
+
+/** The mountain and water blocks of `cells` alone, read against every neighbour `state` holds, so
+ *  a wall a neighbour hides is left out as the map's own meshes leave it out. No ground, sea or
+ *  islet cut: what a placement ghost shows of the terrain it lays. */
+export function buildCellBlocks(state: GridState, cells: readonly { x: number; y: number }[]): Pick<TerrainMeshes, 'solid' | 'water' | 'fall'> {
+  const r = newRegion(state);
+  for (const { x, y } of cells) {
+    const t = getCell(state.cells, x, y)?.terrain;
+    if (t) emitBlocks(r, t, cellAt(state, x, y));
+  }
+  return { solid: r.solid, water: r.water, fall: r.fall };
 }

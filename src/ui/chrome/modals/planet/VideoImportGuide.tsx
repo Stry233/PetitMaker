@@ -7,7 +7,7 @@
  * its poster with a play button and plays only when asked.
  */
 import { ActionButton } from '../../../primitives/ActionButton';
-import { useRef, useState, type CSSProperties, type DragEvent } from 'react';
+import type { CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useT } from '../../../../i18n/context';
 import type { ImportFailure } from '../../../../pipelines/planet-scan';
@@ -18,10 +18,11 @@ import { skin } from '../../../design/window-skin';
 import { Disclosure } from '../../../primitives/Disclosure';
 import { LoopVideo } from '../../../primitives/LoopVideo';
 import { ImportDropZone } from '../import/ImportDropZone';
+import { useFilePick } from '../../../primitives/use-file-pick';
 import { acceptsVideo, VIDEO_ACCEPT } from '../../../../io/import/facts';
 import { SCAN_EXAMPLE, SCAN_EXAMPLE_SIZE } from './scan-example';
 import { openHelp } from '../../../session/help-targets';
-import { VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from './video-guide';
+import { VIDEO_GUIDE_HELP, VIDEO_STEPS, videoFixAnchor } from '../../../../editor/help/video-guide';
 
 /** Each refusal's copy key; every locale defines each (`planet-import-window.test.tsx`). */
 export const FAILURE_COPY = {
@@ -84,22 +85,12 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
   onFile: (file: File) => void;
 }) {
   const t = useT();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [over, setOver] = useState(false);
-  const pick = () => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } };
-  const take = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOver(false);
-    // A video among several files is the one taken; any other file goes to `onFile` to be routed.
-    const files = Array.from(e.dataTransfer.files ?? []);
-    const file = files.find(acceptsVideo) ?? files[0];
-    if (file) onFile(file);
-  };
+  const file = useFilePick({ accept: VIDEO_ACCEPT, onFile });
+  // A video among several files is the one taken; any other file goes to `onFile` to be routed.
+  const take = (files: File[]) => onFile(files.find(acceptsVideo) ?? files[0]!);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <input ref={fileRef} type="file" hidden accept={VIDEO_ACCEPT} data-testid="scan-file"
-        onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) onFile(f); }} />
+      <input {...file.input} data-testid="scan-file" />
       <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', gap: 20, alignItems: stacked ? 'stretch' : 'center' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <ol style={listStyle} data-testid="scan-steps">
@@ -121,9 +112,7 @@ export function VideoImportGuide({ failure, stacked, onFile }: {
           </Disclosure>
         )}
       </AnimatePresence>
-      <ImportDropZone dragOver={over} busy={false} label={t('planet.scan_drop')} onClick={pick}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(true); }}
-        onDragLeave={() => setOver(false)} onDrop={take} />
+      <ImportDropZone busy={false} label={t('planet.scan_drop')} onClick={file.pick} onFiles={take} />
     </div>
   );
 }

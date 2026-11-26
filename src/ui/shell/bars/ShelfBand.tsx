@@ -1,6 +1,6 @@
 /** The shelves' backing: a band across the window's foot that cards stand up out of (`units.ts:PLATE_BAND`),
  *  as tall as the frame's plan makes it (`frame-plan.ts:FrameLayout.bar`) from its container's foot. */
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties, type DOMAttributes } from 'react';
 import { useReducedMotionConfig } from 'framer-motion';
 import { cssMotion, seconds } from '../../design/motion';
 import { visualRect } from '../../design/visual-rect';
@@ -12,7 +12,7 @@ import { LANDSCAPE_BAR } from '../frame-plan';
 import { PLATE_BAND } from '../units';
 
 /** The root custom property by which a held handle grows or shrinks the upright band past React, in
- *  frame px; its owner clears it as the hold ends (`controls/ModeRow.tsx`). */
+ *  frame px; its writer clears it as the hold ends (`use-handle-follow.ts`). */
 export const BAR_PANEL_DRAG_VAR = '--bar-panel-drag';
 
 /** Marks the upright bar's band, whose top edge the panels standing on it clip to while it moves. */
@@ -79,8 +79,12 @@ function clipTenants(e: TransitionEvent): void {
  * `morph` names it as a piece of the chrome's morph, which takes it box to box: a band holds nothing
  * that could stretch.
  */
-export function ShelfBand({ tone = 'dark', height, upright = false, bare = false, glide = true, testId = 'bar-plate', morph }: {
+export function ShelfBand({ tone = 'dark', height, upright = false, bare = false, glide = true, testId = 'bar-plate', morph, piece, pull }: {
   tone?: 'dark' | 'cream'; height?: number; upright?: boolean; bare?: boolean; morph?: string;
+  /** What it wears as a piece of a re-arrangement inside its surface (`primitives/morph.ts:morphScope`). */
+  piece?: Record<string, string>;
+  /** Pointer handlers for a band a finger pulls to resize what stands on it. */
+  pull?: Pick<DOMAttributes<HTMLSpanElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel'>;
   /** False while the height follows a finger, which it then takes at once, `BAR_PANEL_DRAG_VAR` added. */
   glide?: boolean;
   testId?: string;
@@ -97,7 +101,7 @@ export function ShelfBand({ tone = 'dark', height, upright = false, bare = false
     return () => band.removeEventListener('transitionrun', clipTenants);
   }, [upright, reduced]);
   const h = height ?? bar.height;
-  const piece = useMorph(morph ?? '', 'fill');
+  const marked = useMorph(morph ?? '', 'fill');
   const shape: CSSProperties = upright
     ? {
       left: 0, right: 0, bottom: 0, height: glide ? h : `calc(${h}px + var(${BAR_PANEL_DRAG_VAR}, 0px))`, borderRadius: `${radii.lg}px ${radii.lg}px 0 0`,
@@ -112,7 +116,9 @@ export function ShelfBand({ tone = 'dark', height, upright = false, bare = false
     <span
       data-testid={testId}
       ref={ref}
-      {...(morph ? piece : {})}
+      {...(morph ? marked : {})}
+      {...piece}
+      {...pull}
       {...(upright ? { [BAR_BAND_ATTR]: '' } : {})}
       style={{
         position: 'absolute', boxSizing: 'border-box', ...shape,
@@ -122,6 +128,7 @@ export function ShelfBand({ tone = 'dark', height, upright = false, bare = false
         transition: [grow(glide ? ['height'] : []), cssMotion('shell.bar.expand', ['background-color', 'border-top-color'])].filter(Boolean).join(', '),
         // Solid: the shelf root lets the map through around it, but a press or drag on the band is the shelf's.
         pointerEvents: bare ? 'none' : 'auto',
+        ...(pull ? { touchAction: 'none' } : {}),
       }}
     />
   );

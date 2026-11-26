@@ -84,20 +84,6 @@ const demote = (kind: TileKind): TileKind | null => {
 export const coverCap = (treeShare: number): number =>
   Math.min(COVER_MAX, TILE_YIELD / (1 + 3 * clamp(treeShare, 0, 1)));
 
-/** The bounding box of a set of flat indices. */
-export function boxOf(cells: ReadonlySet<number>, W: number): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const i of cells) {
-    const x = i % W, y = (i / W) | 0;
-    if (x < x0) x0 = x;
-    if (x > x1) x1 = x;
-    if (y < y0) y0 = y;
-    if (y > y1) y1 = y;
-  }
-  if (!isFinite(x0)) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-}
-
 /** One block of the tiling: where it sits, and the index its element is drawn from. */
 interface Tile { rect: Rect; key: string; cells: number }
 

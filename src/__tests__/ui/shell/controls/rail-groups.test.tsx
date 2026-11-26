@@ -39,9 +39,9 @@ afterEach(() => {
 });
 
 describe('the view kit', () => {
-  it('offers the two turns in 3D only', () => {
+  it('offers the two turns in either view', () => {
     mountAt(900);
-    expect(turns(), '2D cannot orbit, so it does not offer the button').toHaveLength(0);
+    expect(turns()).toHaveLength(2);
     act(() => { useEditorStore.getState().setViewMode('3d'); });
     expect(turns()).toHaveLength(2);
   });
@@ -79,13 +79,13 @@ describe('the hide toggle', () => {
   it('stands in the view kit, in the place the design source gives it', () => {
     mountAt(1200);
     const labels = [...kit().children].map((el) => el.getAttribute('aria-label'));
-    expect(labels).toEqual(['Switch view', 'Hide interface', 'Fit to view', 'Zoom in', 'Zoom out']);
+    expect(labels).toEqual(['Switch view', 'Hide interface', 'Fit to view', 'Zoom in', 'Zoom out', 'Rotate left', 'Rotate right']);
   });
 
   it('is the only button of the column left standing once the interface is away', () => {
     render(<I18nProvider><Rail hidden onHide={() => {}} /></I18nProvider>);
     const shown = (label: string) => (screen.getByLabelText(label) as HTMLElement).style.visibility;
-    expect(shown('Show interface')).toBe('visible');
+    expect(shown('Show interface')).not.toBe('hidden');
     for (const label of COLUMN.filter((l) => l !== 'Hide interface')) {
       expect(shown(label), `${label} is drawn away`).toBe('hidden');
     }

@@ -12,7 +12,7 @@
  * A house's doorstep strip (`buildingGate`) and every paved cell are reserved before any plant is
  * offered, through the same `PlaceCtx` gates the generator uses (`tryDecorate`).
  */
-import { cellKey, type Rect, mapGrid } from '../../../core/grid/rect';
+import { cellKey, cellsBounds, type Rect, mapGrid } from '../../../core/grid/rect';
 import { fnv1a32 } from '../../../core/base/hash';
 import type { GridState, MacroCoord, PlacedObject } from '../../../core/model/types';
 import type { CategoryRole } from '../../../core/model/traits';
@@ -48,14 +48,15 @@ const ACCENT_SALT = 0x2545f491;
 export function readGrammar(
   state: GridState, cells: readonly MacroCoord[], centre: { x: number; y: number },
 ): GrammarSite | null {
-  if (cells.length === 0) return null;
+  const box = cellsBounds(cells);
+  if (!box) return null;
   const W = state.template.width;
   const disc = new Set(cells.map((c) => c.y * W + c.x));
   const index = getObjectIndex(state);
 
   let building: PlacedObject | null = null;
   let nearest = Infinity;
-  for (const e of entriesNear(index, bounds(cells))) {
+  for (const e of entriesNear(index, box)) {
     if (!e.item || e.obj.locked || itemRole(e.item) !== 'home') continue;
     let touches = false;
     forEachFootprintCell(e.obj, (x, y) => { if (disc.has(y * W + x)) touches = true; });
@@ -169,7 +170,8 @@ function layBorder(
  *  block the door of the next one along. */
 function reserveNearbyGates(place: PlaceCtx, state: GridState, cells: readonly MacroCoord[]): void {
   const { inB, idx } = mapGrid(state.template.width, state.template.height);
-  const b = bounds(cells);
+  const b = cellsBounds(cells);
+  if (!b) return;
   const near = entriesNear(getObjectIndex(state), {
     x: b.x - GATE_REACH, y: b.y - GATE_REACH, w: b.w + 2 * GATE_REACH, h: b.h + 2 * GATE_REACH,
   });
@@ -191,18 +193,6 @@ function ringAround(r: Rect, d: number, W: number, H: number): MacroCoord[] {
   for (let x = x0; x <= x1; x++) { add(x, y0); add(x, y1); }
   for (let y = y0 + 1; y <= y1 - 1; y++) { add(x0, y); add(x1, y); }
   return out.sort((a, b) => a.y - b.y || a.x - b.x);
-}
-
-/** The cells' bounding rect — what the spatial index is asked over. */
-function bounds(cells: readonly MacroCoord[]): Rect {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of cells) {
-    if (c.x < x0) x0 = c.x;
-    if (c.y < y0) y0 = c.y;
-    if (c.x > x1) x1 = c.x;
-    if (c.y > y1) y1 = c.y;
-  }
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 const rectCentre = (r: Rect): { x: number; y: number } => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });

@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { __resetVisualRectProbe } from '../../ui/design/visual-rect';
+import { __resetZoomedRectsProbe } from '../../platform/device/browser-env';
 
 const PROBE = {
   x: 0, y: 0, left: 0, top: 0, width: 200, height: 10, right: 200, bottom: 10, toJSON: () => ({}),
@@ -11,7 +11,7 @@ const PROBE = {
  * `zoomOf` answers each element's own computed `zoom`. Returns the restore function.
  */
 export function poseLegacyZoom(zoomOf: (el: Element) => number): () => void {
-  __resetVisualRectProbe();
+  __resetZoomedRectsProbe();
   const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => PROBE);
   const real = window.getComputedStyle.bind(window);
   const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
@@ -27,6 +27,6 @@ export function poseLegacyZoom(zoomOf: (el: Element) => number): () => void {
   return () => {
     rectSpy.mockRestore();
     styleSpy.mockRestore();
-    __resetVisualRectProbe();
+    __resetZoomedRectsProbe();
   };
 }

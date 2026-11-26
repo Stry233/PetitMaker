@@ -6,8 +6,8 @@
  * `(seed, template, richness)` so it can run in a worker.
  */
 import { components, stepDistance } from '../../../../core/grid/cell-sets';
-import { flatIndex, indexBounds, type Rect } from '../../../../core/grid/rect';
-import { DIR_OFFSETS, NEIGHBORS4, NEIGHBORS8 } from '../../../../core/grid/directions';
+import { flatIndex, indexBounds, rectsBounds, type Rect } from '../../../../core/grid/rect';
+import { DIRECTIONS, DIR_OFFSETS, NEIGHBORS4, NEIGHBORS8 } from '../../../../core/grid/directions';
 import { makeRng, type Rng, mix, hash01, weightedIndex } from '../../../../core/base/rng';
 import { clamp01, lerpClamped } from '../../../../core/base/math';
 import type { DesignInput } from '../types';
@@ -52,6 +52,14 @@ export interface CompositionPlan {
   massCentroid: { x: number; y: number };
   /** Plate id per cell, -1 off the buildable planet. */
   plateOf: Int16Array;
+}
+
+/** The composition's high ground: the tier its highest plates stand at and the box they stand in.
+ *  A planet with no relief has tier 0 and an empty rect. */
+export function compositionPeak(plan: CompositionPlan): { tier: number; rect: Rect } {
+  const tier = plan.plates.reduce((m, p) => Math.max(m, p.tier), 0);
+  const rect = tier > 0 ? rectsBounds(plan.plates.filter((p) => p.tier === tier).map((p) => p.rect)) : null;
+  return { tier, rect: rect ?? { x: 0, y: 0, w: 0, h: 0 } };
 }
 
 // --- tunables ------------------------------------------------------------------------------------
@@ -156,7 +164,8 @@ export const MASS_OFFSET_MIN = 4;
 
 /** The coarse structure of one map: which archetype, which axis, and the plates that tile it. */
 export function planComposition(
-  { seed, template, richness, maxElevation: maxTier = ELEVATION_MAX }: DesignInput,
+  { seed, template, richness, maxElevation: maxTier = ELEVATION_MAX, land = landMask(template) }:
+    DesignInput & { land?: Uint8Array },
 ): CompositionPlan {
   const r = clamp01(richness);
   // The archetype is the first draw off the stream, and mulberry32 answers neighbouring seeds with
@@ -164,7 +173,6 @@ export function planComposition(
   // the time. Avalanching the seed first is what makes the choice vary across a batch.
   const rng = makeRng(mix(seed, 0x51a7c0de));
   const W = template.width, H = template.height;
-  const land = landMask(template);
   const box = landBox(land, W, H);
   const hub = hubCentre(template);
 
@@ -229,8 +237,6 @@ export function planComposition(
 
 interface ArchetypeChoice { archetype: CompositionArchetype; axis: Direction; crossAxis?: Direction }
 
-const CARDINALS: readonly Direction[] = ['north', 'east', 'south', 'west'];
-
 /** Draws the archetype against the richness-scaled weights, then the side or corner it faces. A
  *  wall's side is its id; every other archetype takes a seeded axis, which `resolveAxis` may replace
  *  with the direction its own mass ended up in. */
@@ -238,14 +244,14 @@ function chooseArchetype(rng: Rng, richness: number): ArchetypeChoice {
   const r = clamp01(richness);
   const index = weightedIndex(rng, ARCHETYPE_WEIGHTS.map((w) => Math.max(0, lerpClamped(w.low, w.high, r))));
   const archetype = ARCHETYPE_WEIGHTS[index]!.archetype;
-  const side = CARDINALS[rng.int(CARDINALS.length)]!;
+  const side = DIRECTIONS[rng.int(DIRECTIONS.length)]!;
   if (archetype === 'corner-highland') {
     const cross = side === 'north' || side === 'south'
       ? (rng.float() < 0.5 ? 'east' : 'west')
       : (rng.float() < 0.5 ? 'north' : 'south');
     return { archetype, axis: side, crossAxis: cross };
   }
-  for (const dir of CARDINALS) if (WALL_ARCHETYPE[dir] === archetype) return { archetype, axis: dir };
+  for (const dir of DIRECTIONS) if (WALL_ARCHETYPE[dir] === archetype) return { archetype, axis: dir };
   return { archetype, axis: side };
 }
 

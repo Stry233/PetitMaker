@@ -16,7 +16,7 @@
  */
 import { TerrainType, type GridState, type MacroCoord } from '../../model/types';
 import { getCell } from '../../model/grid-model';
-import { NEIGHBORS4, DIR_OFFSETS, PERP_DIRS, type Direction } from '../../grid/directions';
+import { DIRECTIONS, NEIGHBORS4, DIR_OFFSETS, PERP_DIRS, type Direction } from '../../grid/directions';
 import { cellKey } from '../../grid/rect';
 import { solidTopOf, surfaceElevation } from './terrain-surface';
 
@@ -73,7 +73,7 @@ export function waterfallFacesAt(state: GridState, x: number, y: number): Waterf
   if (!cell?.terrain || cell.terrain.type !== TerrainType.Water) return [];
   const elev = surfaceElevation(cell.terrain);
   const faces: WaterfallFace[] = [];
-  for (const dir of ['north', 'south', 'east', 'west'] as Direction[]) {
+  for (const dir of DIRECTIONS) {
     const { dx, dy } = DIR_OFFSETS[dir];
     if (cellElevation(state, x + dx, y + dy) >= elev) continue;
     const [perpA, perpB] = PERP_DIRS[dir];

@@ -9,17 +9,22 @@ import { eraseRecords } from './erase-records';
 import {
   clearMarks, loadLog, loadMarks, NO_MARKS, saveLog, saveMarks, type StorageHealth,
 } from './persist';
+import { debouncedWrite } from '../../platform/async/debounced-write';
 
 const SAVE_DEBOUNCE_MS = 500;
 
 interface AgentSessionState {
   log: SessionLog;
   live: readonly Part[] | null;
+  /** When the in-flight turn's parts last moved, in epoch ms; 0 before any did, as in a restored session. */
+  liveAt: number;
   epoch: number;
   setLive(parts: readonly Part[] | null): void;
   /** Ephemeral delegated-helper progress. It is neither persisted nor folded into the panel log. */
-  childLive: ChildProgress | null;
-  setChildLive(p: ChildProgress | null): void;
+  /** The helpers at work, by the call that started each. */
+  childLive: Readonly<Record<string, ChildProgress>>;
+  /** Sets or clears one call's helper; a null call clears them all. */
+  setChildLive(callId: string | null, p: ChildProgress | null): void;
   /** Storage condition shown to the user. Corruption persists until dismissed or cleared. */
   storageNotice: 'pruned' | 'lost' | 'corrupt' | null;
   /** Unreadable stored bytes retained for the recovery export until the notice is cleared. */
@@ -42,16 +47,9 @@ interface AgentSessionState {
   toolFacts: ProjectionFacts | undefined;
 }
 
-// The module-level timer and subscription follow whichever log the singleton store adopts.
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
+// The module-level save and subscription follow whichever log the singleton store adopts.
+const save = debouncedWrite<SessionLog>(SAVE_DEBOUNCE_MS, (log) => applyStorageHealth(saveLog(log)));
 let unwireLog: (() => void) | undefined;
-
-function cancelPendingSave(): void {
-  if (saveTimer !== undefined) {
-    clearTimeout(saveTimer);
-    saveTimer = undefined;
-  }
-}
 
 /* Coalesce token-rate live snapshots to display rate. Log appends flush pending data atomically,
  * while `setLive(null)` clears immediately after the committed assistant event. */
@@ -75,15 +73,16 @@ function liveDigest(parts: readonly Part[]): string {
   )).join('|');
 }
 
-/** Takes and clears the pending live snapshot as a Zustand state patch. */
-function takePendingLive(): { live: readonly Part[] } | undefined {
+/** Takes and clears the pending live snapshot as a Zustand state patch, stamped as a movement. */
+function takePendingLive(): { live: readonly Part[]; liveAt: number } | undefined {
   if (pendingLive === NO_PENDING) return undefined;
   const live = pendingLive;
   cancelPendingLive();
-  return { live };
+  return { live, liveAt: Date.now() };
 }
 
 const NO_SEQS: ReadonlySet<number> = new Set();
+const NO_HELPERS: Readonly<Record<string, ChildProgress>> = {};
 
 /** Adds a record ID without changing set identity when it is already present. */
 function withSeq(set: ReadonlySet<number>, seq: number): ReadonlySet<number> {
@@ -102,20 +101,12 @@ function applyStorageHealth(health: StorageHealth): void {
     : { storageNotice: health }));
 }
 
-function scheduleSave(log: SessionLog): void {
-  cancelPendingSave();
-  saveTimer = setTimeout(() => {
-    saveTimer = undefined;
-    applyStorageHealth(saveLog(log));
-  }, SAVE_DEBOUNCE_MS);
-}
-
 export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = create<AgentSessionState>((set, get) => {
   /** Replaces the active log subscription. */
   function wire(log: SessionLog): void {
     unwireLog?.();
     unwireLog = subscribe(log, () => {
-      scheduleSave(log);
+      save.schedule(log);
       // The first append turns a restored snapshot into a live session.
       set((s) => ({ ...takePendingLive(), epoch: s.epoch + 1, restored: false }));
     });
@@ -124,25 +115,19 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
   function adopt(log: SessionLog): void {
     wire(log);
     cancelPendingLive();
-    set({ log, live: null, epoch: 0, childLive: null, restored: false });
+    set({ log, live: null, liveAt: 0, epoch: 0, childLive: NO_HELPERS, restored: false });
   }
 
   // The initial empty log needs the same render and persistence subscription as an adopted log.
   const bootLog = createLog();
   wire(bootLog);
 
-  // Flush before adopting another log so a stale debounce cannot overwrite the replacement.
-  function flushPendingSave(): void {
-    if (saveTimer === undefined) return;
-    cancelPendingSave();
-    applyStorageHealth(saveLog(get().log));
-  }
-
   return {
     log: bootLog,
     live: null,
+    liveAt: 0,
     epoch: 0,
-    childLive: null,
+    childLive: NO_HELPERS,
     restored: false,
     filed: NO_SEQS,
     cleared: NO_SEQS,
@@ -158,7 +143,7 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       const filed = orderSeqs.reduce(withSeq, get().filed);
       const cleared = orderSeqs.reduce(withSeq, get().cleared);
       if (filed === get().filed && cleared === get().cleared) return;
-      cancelPendingSave();
+      save.cancel();
       const previous = get().log;
       const retained = eraseRecords(previous, cleared);
       if (retained !== previous) adopt(retained);
@@ -170,11 +155,16 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
     corruptRaw: null,
     dismissStorageNotice: () => set({ storageNotice: null, corruptRaw: null }),
     // Child progress arrives at tool rate and does not need frame coalescing.
-    setChildLive: (p) => set({ childLive: p }),
+    setChildLive: (callId, p) => set((s) => {
+      if (callId === null) return { childLive: NO_HELPERS };
+      const { [callId]: _gone, ...rest } = s.childLive;
+      return { childLive: p ? { ...rest, [callId]: p } : rest };
+    }),
     setLive: (parts) => {
       if (parts === null || !canAnimate()) {
         cancelPendingLive();
-        set((s) => ({ live: parts, epoch: s.epoch + 1 }));
+        // Clearing the parts is the turn closing, which the log stamps itself.
+        set((s) => ({ live: parts, epoch: s.epoch + 1, ...(parts ? { liveAt: Date.now() } : {}) }));
         return;
       }
       pendingLive = parts;
@@ -189,7 +179,7 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       });
     },
     clearSession: () => {
-      cancelPendingSave();
+      save.cancel();
       cancelPendingLive();
       const log = createLog();
       adopt(log);
@@ -199,7 +189,8 @@ export const useAgentSession: UseBoundStore<StoreApi<AgentSessionState>> = creat
       applyStorageHealth(saveLog(log)); // Persist the empty session immediately.
     },
     hydrate: () => {
-      flushPendingSave();
+      // Flush before adopting another log so a stale debounce cannot overwrite the replacement.
+      save.flush();
       // Rehydration cannot replace a log while its job is still appending.
       if (isJobActive(get().log)) return;
       const { log: loaded, corrupt, corruptRaw } = loadLog();

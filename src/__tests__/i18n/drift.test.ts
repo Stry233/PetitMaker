@@ -11,6 +11,7 @@ import { translateFor } from '../../i18n/context';
 import type { Translate } from '../../i18n/keys';
 import { countedBase } from '../_support/plural-keys';
 import { walkFiles } from '../_support/source-graph';
+import { MOTIONS } from '../../ui/design/motion/registry';
 
 const SRC = resolve(__dirname, '..', '..');
 
@@ -50,15 +51,17 @@ const SCRIPTS = resolve(__dirname, '..', '..', '..', 'scripts');
 const SCRIPT_TEXT = scriptFiles(SCRIPTS).map((f) => readFileSync(f, 'utf8'));
 
 /** Key-shaped strings from scripts/ in a namespace en declares, which drops dotted literals such as
- *  `Page.navigate` or `README.md`; a `DYNAMIC_PREFIXES` entry is an incomplete key, not a missing one. */
+ *  `Page.navigate` or `README.md`; a `DYNAMIC_PREFIXES` entry is an incomplete key, not a missing one,
+ *  and a registered motion's id names a motion, not a key. */
 function keysReferencedFromScripts(enKeySet: Set<string>): string[] {
   const namespaces = new Set([...enKeySet].map((k) => k.split('.')[0]));
-  return [...keyLikeStrings(SCRIPT_TEXT)].filter((k) => namespaces.has(k.split('.')[0]) && !isDynamic(k));
+  return [...keyLikeStrings(SCRIPT_TEXT)].filter((k) => namespaces.has(k.split('.')[0]) && !isDynamic(k) && !Object.hasOwn(MOTIONS, k));
 }
 
 /** Prefixes composed at runtime in a template literal; a key under one counts as used. Each names its
  *  call site, and one whose site is gone fails the "still composed" check, since it would hide orphans. */
 const DYNAMIC_PREFIXES: readonly string[] = [
+  'generate.facing_', // ui/shell/bars/generate/FacingChoice.tsx: t(`generate.facing_${o}`) per facing arrow
   'modal.settings_motion_', // ui/chrome/modals/settings/SettingsModal.tsx: t(`modal.settings_motion_${pref}`) per motion-pref row
   'modal.settings_quality3d_', // ui/chrome/modals/settings/SettingsModal.tsx: t(`modal.settings_quality3d_${q}`) per 3D-quality row
   'export.preset_', // ui/chrome/modals/export/ExportControls.tsx: t(`export.preset_${preset}`) and `${preset}_desc`

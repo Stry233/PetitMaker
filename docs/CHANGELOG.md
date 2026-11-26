@@ -4,6 +4,87 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1178] - 2026-11-25
+
+### Added
+
+- Added Blueprint mode, in the mode row, for saving part of a map and placing it again on any map of any planet. Choose New blueprint in the strip, or Save as blueprint on the selection card, and frame up to 32 by 32 cells. The blueprint keeps the ground with its heights and corner cuts, the water, and the objects inside the frame. To place it, pick its card and click the map or drag the card onto the map, pressing E to turn it or F to flip it first. Placing a blueprint adds to the map and never removes what is already there.
+- Added placed blueprints that move as one piece. In Blueprint mode, click or tap a placed blueprint to select all of it, then turn, flip, move, copy, paste or delete it together.
+- Added the blueprint library. The strip shows your blueprints with a tab for each folder and a search, and expands into the whole library, where you can arrange blueprints in folders, rename them and delete them. Your own blueprints go in My Blueprints, and the Examples folder holds twelve blueprints to start from. The library is kept in this browser and works with every map and planet.
+- Added blueprint files for sharing. Export selected blueprints, a folder or the whole library, and open a file with Import or by dropping it onto the window. A blueprint carries its author's name, and one you save from someone else's work names them under Adapted from.
+- Added fifteen items from the game: the Purple, Red and White Petunia, the Orange, Red and White Winter Adonis, the Bird of Paradise Bush, the Desert Rose Shrub, the Heavenly Bamboo Shrub, the Welcoming Pine, the Floradise Petal Bridge, the Azure Fluorite Steps, Heyu's Timeless Pine House, Manna's Peach Tassel House and Tika's Orchard Sprout House.
+- Added turning to the 2D view. Drag sideways with the right or middle button, slide sideways on a trackpad, twist two fingers, or use the turn buttons on the right. Fit to view turns the map back, and a saved map reopens at the angle you left it.
+- Added Flip, which mirrors two or more objects or a placed blueprint. Find it beside Rotate on the selection card and on the touch multi-select bar, or press F. Each press flips them left to right, then top to bottom, then both, then back.
+- Added signing in to the assistant with your own account instead of pasting a key: choose Sign in with OpenRouter, or Sign in with ModelScope on the mainland China site.
+- Added ModelScope as a provider for the assistant. Its free daily allowance needs a ModelScope account linked to a real-name Alibaba Cloud account and a verified email address.
+- Added app actions to the assistant. Ask it to change the language, the grid or the view, show, hide or lock layers, open a window, prepare a share picture or a save file, organise the blueprint library, or move your map to another planet, and it does so in the app. You confirm every download yourself, and blueprints you ask it to delete go into the Pending Deletion folder for you to delete. Under Strict it asks before each of these changes.
+- Added answers about the app to the assistant. Ask it how to do something, and it answers from Help and your own keyboard shortcuts, and can open the Help page for you.
+- Added the game's neighbours to the assistant. Ask it to build a home for a neighbour, and it places that neighbour's own house and decorates the yard with what they love.
+- Added Thickness to the mountain brush, its shapes and the mountain eraser, to build or remove one to three layers in one stroke. Press L to switch between them.
+- Added Top faces to Letter and Picture in Generate, to choose which way the top of the word or picture points on the map.
+- Added stepping back through an option's choices: hold Shift and press the key for Brush shape, Auto Trim, Font size, Line style or Thickness.
+- Added a Blueprints group to Help, and a Blueprint card with a demonstration and Show me to the welcome tips. The welcome tips appear once more for people who have seen them.
+
+### Changed
+
+- The code license changes from Apache-2.0 to the Functional Source License (FSL-1.1-ALv2), which permits use, modification and redistribution for any purpose other than a competing commercial product or service. Each version becomes available under Apache-2.0 two years after its release.
+- Terrain strokes work on the layer where you start them. A mountain stroke builds up from the surface you press on, the water brush lays water at that surface's height, and the erasers take away from the top they start on. The layer control shows that layer and opens the layer panel. Before, you chose the layer to build on in the layer panel. Add layer, Remove layer and the Layer up and Layer down shortcuts are removed.
+- In the 2D view, dragging with the right or middle button turns the map. To move the map, drag with the left button when no tool is picked, or hold Space and drag. Before, a right or middle drag moved the map.
+- In touch multi-select, the count and Done sit in the bar with the actions, so nothing covers the map. On an upright screen the actions scroll sideways when they do not fit. Before, the count and Done stood on a plate over the map, and on narrow phones Rotate and Delete were cut off at the screen's edges.
+- While you place objects, paint roads, mountains or water, or paste, the preview shows the result see-through where it will land, and red where it cannot be placed. Before, it showed a coloured marker.
+- Escape, and the back gesture on Android, back out of the last thing you opened or started, such as a menu, a selection or a picked tool. Before, Escape could close something else, such as the assistant's panel, and the back gesture left the installed app.
+- Picking something to place, or starting to paint a region, clears the selection, so the rotate key and Delete act on what you do next. Before, they acted on the earlier selection.
+- Generate and the assistant each keep their own painted region. Before, they shared one.
+- When the assistant asks before a step, the picture on its card shows the area the step changes up close. Before, it showed the whole map.
+- When the assistant builds a place, it shapes the ground first, then lays the paving, then plants, setting plants in rows, borders or patterns, with paths leading to doors and stairs and bridges where paths meet a change in height or water. Before, it often scattered plants at random.
+- Asked for a whole island, the assistant shapes the ground over several levels first, then builds four to six districts of different kinds, with several helpers working at the same time. A whole island takes a long time and many more requests, so it costs more with a provider that charges for use.
+- A helper the assistant hands work to edits only the area it was given and cannot undo the assistant's work. Before, a helper could edit anywhere in your painted region.
+- The assistant sends less to the provider on large maps and in long conversations, so it uses fewer tokens.
+- The assistant's panel is reworded in every language, most of all in Chinese.
+- Save and share's third tab is renamed Map stats. Before, it was named Into the game.
+- In Save and share, the picture fades into its new look when you change a setting or its text. Before, it switched at once.
+- Export Image in the 3D Preview opens the Before you export notice first, as every other export does. Before, the picture downloaded at once.
+- In Roads, switching between roads and prints returns to the surface you last used in each. Before, it returned to the first one once you had left Roads.
+- A shortcut style saved in an earlier release gives new commands such as Flip and Thickness their keys in that style. Before, new commands had no key and the style showed as custom.
+- In Notes, the row over selected notes offers Merge whenever two or more of them are zones, and Flip whenever any of them is a measurement. Before, every selected note had to be of that kind.
+- The pictures on the welcome tips' last card, and the picture a demonstration rests on when Motion is set to Reduced, show at the demonstration's full resolution. Before, they were at half its resolution.
+
+### Fixed
+
+- Fixed the selection card running off an upright phone's screen when several objects were selected, which cut off its Delete button.
+- Fixed the selection card's opened details scrolling with hard edges and past the card's rounded corners.
+- Fixed the mouse wheel zooming the map once the selection card's details had scrolled to their top or bottom.
+- Fixed some characters of Letter in Generate coming out misshapen at larger sizes on some devices.
+- Fixed a turn pressed while dragging a Paint line, rectangle or circle not reaching its preview until the pointer moved.
+- Fixed a Smart build river or road next to cut mountain corners showing as built when it could not be built.
+- Fixed the assistant failing to raise ground or lay water over an area that reaches the shore.
+- Fixed an assistant job ending with an error when the connection to the provider dropped partway through an answer.
+- Fixed eight English object names and two Chinese ones to match the game: Orange Canna, Agave Plant, Gardenia Bush, Avocado Tree, Baobab Tree, Taffean Flower Tree, Hexian Flower Tree and Mossy Stone Slope, and in Chinese 禾夏花树 and 塔法花树. Searching for peach tree or flame tree, or their old Chinese names, finds the two flower trees.
+- Fixed a planet read from a game video being lost when Import planet was closed before the planet editor could open.
+- Fixed the assistant carrying on with its job after you opened another map.
+- Fixed a painted region and a selection staying after you opened another map, so Generate, the assistant or Delete could act on the wrong cells.
+- Fixed a file dropped onto the window while you repaired a map by hand opening over the repair, so Cancel could not bring back the earlier map.
+- Fixed objects and notes on a hidden layer being selected, deleted or turned.
+- Fixed notes staying selected after you left Notes, so a colour or tag chosen later changed them.
+- Fixed ramps moving, turning or being refused when carried to another planet, moved with a selection or pasted.
+- Fixed objects turned a quarter turn, such as houses and bridges, drawing smaller in the 2D view.
+- Fixed the delete question standing away from its object, and a maze's start and end marks disappearing, when the 3D view was turned.
+- Fixed moving a maze's start or end laying the maze again after you had undone it.
+- Fixed the right-click menu and the delete question acting on the wrong object after an undo or a mode switch.
+- Fixed a locked object's right-click menu offering to turn it, and Delete asking for confirmation before saying the object is locked.
+- Fixed keyboard shortcuts acting on the map while a menu or question was open.
+- Fixed Keyboard Shortcuts accepting keys the browser or system uses, such as Enter, Tab or F5, which then never worked.
+- Fixed a trackpad pinch over a panel, bar or window zooming the map behind it.
+- Fixed the assistant's bigger writing box staying on the map after its panel closed or the interface was hidden.
+- Fixed Enter in Help's search opening the first result while you were choosing characters with an input method.
+- Fixed the tags in the footer text of Save and share's picture showing in English after you changed the language.
+- Fixed custom note tags with emoji written by the assistant coming back cut short after the map was saved and opened again.
+- Fixed jumps and sudden pops in the interface's animations when you switch between touch and mouse, resize the window or change the UI scale.
+- Fixed menus, field help bubbles, the touch magnifier, the ring on a picked card and the Map illustration window disappearing at once instead of fading out.
+- Fixed the confetti on the welcome tips' last card not covering the whole card, and hanging at the top before rushing down.
+- Fixed Map illustration cropping the pictures of a planet from My planets to the shape of a built-in planet.
+- Fixed the Tab key reaching the hidden Endpoint address field in Map illustration when a provider other than Custom endpoint was chosen.
+
 ## [2.0.916] - 2026-10-31
 
 ### Added

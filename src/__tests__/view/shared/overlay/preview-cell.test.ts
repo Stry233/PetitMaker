@@ -11,13 +11,13 @@ const CELLS_3X3 = Array.from({ length: 9 }, (_, i) => ({ x: 10 + (i % 3), y: 20 
 
 describe('preview cell — the paint', () => {
   it('tells a card from a placement wash', () => {
-    expect(isPreviewCell({ wash: 'placement', valid: true })).toBe(false);
-    expect(isPreviewCell({ icon: 'ground', valid: true })).toBe(true);
+    expect(isPreviewCell({ placement: true, valid: true })).toBe(false);
+    expect(isPreviewCell({ icon: 'eraser', valid: true })).toBe(true);
   });
 
   it('picks the palette by validity', () => {
-    expect(previewPalette({ icon: 'ground', valid: true })).toBe(PREVIEW_PALETTES.valid);
-    expect(previewPalette({ icon: 'ground', valid: false })).toBe(PREVIEW_PALETTES.invalid);
+    expect(previewPalette({ icon: 'eraser', valid: true })).toBe(PREVIEW_PALETTES.valid);
+    expect(previewPalette({ icon: 'eraser', valid: false })).toBe(PREVIEW_PALETTES.invalid);
   });
 
   it('carries a translucent background and solid marks', () => {
@@ -70,9 +70,9 @@ describe('preview cell — the frame over a footprint', () => {
   });
 
   it('keeps the icon at its own size, centred, however big the footprint', () => {
-    const art = PREVIEW_ICON_ART.mountain;
-    const one = previewIconRect({ x: 3, y: 4, w: 1, h: 1 }, 'mountain');
-    const many = previewIconRect({ x: 3, y: 4, w: 6, h: 2 }, 'mountain');
+    const art = PREVIEW_ICON_ART.trim;
+    const one = previewIconRect({ x: 3, y: 4, w: 1, h: 1 }, 'trim');
+    const many = previewIconRect({ x: 3, y: 4, w: 6, h: 2 }, 'trim');
     expect(one.w).toBeCloseTo(art.w, 6);
     expect(many.w).toBeCloseTo(art.w, 6);
     expect(many.h).toBeCloseTo(art.h, 6);

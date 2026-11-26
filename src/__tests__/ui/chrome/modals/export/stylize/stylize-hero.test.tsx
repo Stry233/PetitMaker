@@ -105,6 +105,19 @@ describe('the stylize hero', () => {
     expect(startButton().disabled).toBe(false);
   });
 
+  it('keeps the folded address out of reach until the custom endpoint asks for it', async () => {
+    await openHero(async () => ['a-model']);
+    // Folded, the field is neither tabbed to nor read out.
+    const field = () => screen.getByLabelText('Endpoint address', { selector: 'input' });
+    expect(field().closest('[inert]')).not.toBeNull();
+    expect(field().closest('[aria-hidden="true"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Provider'));
+    fireEvent.click(screen.getByText('Custom endpoint'));
+    expect(field().closest('[inert]')).toBeNull();
+    expect(field().closest('[aria-hidden="true"]')).toBeNull();
+  });
+
   it('falls back to a typed model where the endpoint will not enumerate', async () => {
     await openHero(async () => null);
 

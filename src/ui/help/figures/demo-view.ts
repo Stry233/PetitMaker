@@ -3,7 +3,7 @@
 import type { MapRenderer } from '../../../view/map2d/scene/map-renderer';
 import { annotationInkScale } from '../../../core/model/annotation/text-metrics';
 import { cellSet } from '../../../core/grid/grids';
-import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
+import { TERRAIN_GRID } from '../../../core/game/profile';
 import { noteTagLabel } from '../../../view/shared/annotation/draw-options';
 import type { SandboxWorld } from '../../../editor/sandbox/demo-world';
 import type { Furniture } from './demo-player';
@@ -32,10 +32,6 @@ export function createDemoView({ renderer, world, still, holdGhost, furniture }:
   return {
     clearGhost: () => { overlay().clearGhost(); holdGhost(false); },
     groupGhost: (members) => { overlay().showGroupPlacementGhost(members, true); holdGhost(true); },
-    paintGhost: (cells, icon = 'mountain') => {
-      if (cells) { overlay().showGhost(cellSet(icon === 'ground' ? PLACEMENT_GRID : TERRAIN_GRID, cells), { icon, valid: true }); holdGhost(true); }
-      else { overlay().clearGhost(); holdGhost(false); }
-    },
     region: (cells) => {
       if (cells) overlay().showBuildableRegion(cellSet(TERRAIN_GRID, cells));
       else overlay().clearBuildableRegion();

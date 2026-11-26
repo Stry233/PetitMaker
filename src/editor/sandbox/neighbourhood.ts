@@ -1,8 +1,11 @@
 /*
  * The lived-in map a Help figure plays inside: the designed generator's own run on a template, with
  * the figure's plot taken back to the template by the editor's own Clear, so the action stands in a
- * built neighbourhood the way a player's building plot does.
+ * built neighbourhood the way a player's building plot does. A scene's worlds are built from nothing
+ * but the template, its plot and fixed constants, so the same build gives the same worlds on any
+ * thread: `scene-world.worker.ts` builds them off the main thread and `scene-worlds.ts` keeps them.
  */
+import { DOOR } from '../../core/game/profile';
 import { placeObjectCommand, removeObjectCommand } from '../../core/model/command-build';
 import { findTrait } from '../../core/model/traits';
 import { getAllItems, getCatalogItem } from '../../state/catalog';
@@ -11,25 +14,46 @@ import { footprintCells } from '../../core/grid/footprint';
 import type { Rect } from '../../core/grid/rect';
 import { templateTerrainAt } from '../../core/model/template';
 import type { GridState, MacroCoord, TerrainType } from '../../core/model/types';
-import type { DesignedContext } from '../../tools/generation/designer';
 import { clearGenerated } from '../operations/generate';
 import { SandboxWorld } from './demo-world';
-
-/** A designed run's recipe, as Generate hands it to the designer. */
-export type NeighbourhoodRecipe = Omit<DesignedContext, 'state' | 'execute' | 'reg'>;
 
 /** Open cells between two rects, the larger of the two axes' gaps; 0 where they touch or overlap. */
 function rectGap(a: Rect, b: Rect): number {
   return Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), b.y - (a.y + a.h), a.y - (b.y + b.h), 0);
 }
 
-/** A fresh map of `templateId` built out by the designed generator under the full rules. */
-export function designedNeighbourhood(templateId: string | undefined, recipe: NeighbourhoodRecipe): GridState {
+/** One fixed designed run, as Generate hands it to the designer, so every visit sees the same neighbourhood. */
+const SCENE_RECIPE = { seed: 20260830, richness: 0.9, maxElevation: 4, mode: 'mixed', region: null } as const;
+
+/** Cells cleared around a plot: the deepest reach a rule has from a placement into its
+ *  surroundings, a house's doorstep, which also covers the spacing a neighbour keeps and the cell a
+ *  flat footprint's sweep reaches, so no rule reaches from the neighbourhood into the scene. */
+const PLOT_MARGIN = Math.ceil(DOOR.riseDepth);
+
+/** The cells a scene acts on, and the one-per-map items it places, which come off the neighbourhood
+ *  so they stay free to place. */
+export interface ScenePlot { cells: Rect; free: readonly string[] }
+
+/** The name a scene's cleared plot is kept under. */
+export const plotKeyOf = ({ cells, free }: ScenePlot): string => `${cells.x},${cells.y},${cells.w},${cells.h}|${free.join(',')}`;
+
+/** The cells a scene's world clears for `cells`: the plot grown by the margin. */
+export function plotClearing(cells: Rect): Rect {
+  return { x: cells.x - PLOT_MARGIN, y: cells.y - PLOT_MARGIN, w: cells.w + 2 * PLOT_MARGIN, h: cells.h + 2 * PLOT_MARGIN };
+}
+
+/** A fresh map of `templateId` built out by the scenes' one designed run under the full rules. */
+export function sceneNeighbourhood(templateId: string | undefined): GridState {
   const world = new SandboxWorld(templateId);
   world.beginStroke();
-  world.generateDesigned(recipe);
+  world.generateDesigned(SCENE_RECIPE);
   world.commit();
   return world.state;
+}
+
+/** `base` with `plot` and its margin cleared, the neighbourhood's objects kept clear of the plot. */
+export function scenePlot(base: GridState, plot: ScenePlot): GridState {
+  return clearedPlot(base, plotClearing(plot.cells), plot.free, plot.cells);
 }
 
 /**
@@ -45,7 +69,7 @@ export function designedNeighbourhood(templateId: string | undefined, recipe: Ne
  * reaches into what the scene places; one the rules refuse (one that stood on cleared rock) stays
  * cleared.
  */
-export function clearedPlot(base: GridState, plot: Rect, free: readonly string[] = [], keep?: Rect): GridState {
+function clearedPlot(base: GridState, plot: Rect, free: readonly string[] = [], keep?: Rect): GridState {
   const world = new SandboxWorld(undefined, { base });
   const region = footprintCells(plot.x, plot.y, plot.w, plot.h)
     .filter(({ x, y }) => world.state.cells[y]?.[x] !== undefined);

@@ -11,8 +11,10 @@ import tree_flame from './tree-flame.json';
 import tree_dragonblood from './tree-dragonblood.json';
 import tree_avocado from './tree-avocado.json';
 import tree_plum from './tree-plum.json';
+import tree_welcoming_pine from './tree-welcoming-pine.json';
 
 export const tree: CatalogItem[] = [
   tree_apple, tree_peach, tree_ginkgo, tree_fir, tree_bamboo, tree_cactus, tree_baobab, tree_mango, tree_flame,
   tree_dragonblood, tree_avocado, tree_plum,
+  tree_welcoming_pine,
 ] as CatalogItem[];

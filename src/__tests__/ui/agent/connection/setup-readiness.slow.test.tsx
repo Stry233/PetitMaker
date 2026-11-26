@@ -194,6 +194,8 @@ interface Row {
   name: string;
   /** The store before the screen mounts: a previous session, a pick made elsewhere. */
   before?: () => void;
+  /** Where the panel opens the screen: asking for a key unless it resumes a held one. */
+  entry?: 'resume';
   list?: () => Promise<string[]>;
   /** The events, in order. */
   drive: () => Promise<void> | void;
@@ -430,6 +432,7 @@ const ROWS: Row[] = [
   },
   {
     name: 'a session that comes back holding a key and no model',
+    entry: 'resume',
     before: () => { store().connectKey('claude', KEY.claude); },
     list: LISTS.named,
     drive: async () => { await act(async () => {}); },
@@ -438,6 +441,7 @@ const ROWS: Row[] = [
   },
   {
     name: 'a session that comes back holding a key against a server it cannot name',
+    entry: 'resume',
     before: () => {
       store().pinProvider('custom');
       store().connectKey('custom', KEY.gateway);
@@ -460,6 +464,7 @@ describe('every case the machine can be in', () => {
       renderWithI18n(
         <SetupScreen
           listModels={row.list ?? LISTS.named}
+          entry={row.entry ?? 'key'}
           onDone={onDone}
           onLeave={() => {}}
           onManage={onManage}

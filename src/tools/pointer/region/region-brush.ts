@@ -118,7 +118,7 @@ export function createRegionBrush(port: RegionBrushPort): RegionBrush {
   const footprint = (coord: MacroCoord, curve = curveThrough(coord)): MacroCoord[] => {
     const gs = port.grid();
     return regionShapeCells(port.tool(), coord, port.size(), {
-      anchor, curve, constrain: port.constrain(), minSide: port.request().minSide,
+      anchor, curve, constrain: port.constrain(), minSide: port.request().minSide, maxSide: port.request().maxSide,
       map: gs ? { w: gs.template.width, h: gs.template.height } : null,
     }).filter((c) => !gs || holdsRegion(gs, c.x, c.y));
   };
@@ -226,6 +226,7 @@ export function createRegionBrush(port: RegionBrushPort): RegionBrush {
     preview,
     done,
     cancel,
+    hasPending: curveStanding,
     cancelPending: () => {
       if (!curveStanding()) return false;
       abandon();

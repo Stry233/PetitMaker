@@ -15,7 +15,7 @@ import { usePlanetName } from '../../../chrome/modals/planet/use-planet-library'
 import { iconUrl } from '../../../../assets/icon-urls';
 import { DEFAULT_MAP, MAP_LIST } from '../../../../config/maps';
 import { ArrivalCard } from '../../../chrome/floating/ArrivalToast';
-import { ARRIVAL_LEAD_KEY } from '../../../chrome/floating/arrival-gate';
+import { ARRIVAL_LEAD_KEY } from '../../../chrome/floating/arrival-lines';
 import { useShownMap } from './share';
 
 const noop = () => {};

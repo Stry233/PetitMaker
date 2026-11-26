@@ -148,9 +148,9 @@ export const gridLabel: CSSProperties = {
   minWidth: 0,
 };
 
+/** The mark ending a row that opens something: a page here or a link out. */
 export const chevron: CSSProperties = {
-  fontSize: 16,
-  fontWeight: 700,
+  display: 'flex',
   color: skin.muted,
   flexShrink: 0,
 };

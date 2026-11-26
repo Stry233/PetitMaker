@@ -9,6 +9,7 @@
 import { fnv1a32 } from '../../../core/base/hash';
 import { makeRng } from '../../../core/base/rng';
 import { clamp01 } from '../../../core/base/math';
+import { smoothLattice } from '../../../core/base/noise';
 
 /** Per-instance variation seeded from content: the same tree at the same cell always jitters the
  *  same way, and a share-code round trip (which re-mints object ids) cannot move it. */
@@ -32,18 +33,8 @@ export function makeNoise(seed: number): NoiseField {
   const rnd = makeRng(seed).float;
   const table = new Float32Array(N * N);
   for (let i = 0; i < table.length; i++) table[i] = rnd();
-  const smooth = (t: number): number => t * t * (3 - 2 * t);
   const at = (xi: number, yi: number): number => table[((yi & (N - 1)) * N) + (xi & (N - 1))]!;
-
-  function noise2(x: number, y: number): number {
-    const xi = Math.floor(x);
-    const yi = Math.floor(y);
-    const u = smooth(x - xi);
-    const v = smooth(y - yi);
-    const a = at(xi, yi) * (1 - u) + at(xi + 1, yi) * u;
-    const b = at(xi, yi + 1) * (1 - u) + at(xi + 1, yi + 1) * u;
-    return a * (1 - v) + b * v;
-  }
+  const noise2 = (x: number, y: number): number => smoothLattice(at, x, y);
 
   const COS = Math.cos(0.7);
   const SIN = Math.sin(0.7);

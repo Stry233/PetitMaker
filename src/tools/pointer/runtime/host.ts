@@ -15,10 +15,11 @@ import { CurveSessions, type CurveChannel } from '../paint/curve-session';
 import type { AnnotationChannels, AnnotationEditVerbs } from '../annotate/channel';
 import type { MacroPressChannel } from '../macros/tool-context';
 import { PAGE_CLOCK, type HoldClock } from '../macros/hold-clock';
+import type { BlueprintChannel } from '../blueprint/channel';
 
 /** The feature channels a host carries beside the base contract, each declared by the feature that
  *  reads it; a tool names the ones it reads in its context type. */
-export type ToolChannels = MacroChannel & MacroPressChannel & AnnotationChannels & CurveChannel;
+export type ToolChannels = MacroChannel & MacroPressChannel & AnnotationChannels & CurveChannel & BlueprintChannel;
 
 /** The context the tool manager hands every tool: the base context and every channel. */
 export type HostedToolContext = ToolContext & ToolChannels;
@@ -46,6 +47,10 @@ export interface ToolHostDeps {
   holdClock?: HoldClock;
   /** Seeds dealt to the Smart Build tool (`MacroPressChannel.dealSeed`); absent, none. */
   dealSeed?: MacroPressChannel['dealSeed'];
+  /** Hears each blueprint the blueprint tool lays (`BlueprintChannel`); absent, nothing does. */
+  blueprintPlaced?: BlueprintChannel['blueprintPlaced'];
+  /** The editor's drag of a placement it holds selected (`BlueprintChannel`); absent, none. */
+  placementDrag?: BlueprintChannel['placementDrag'];
 }
 
 const noop = (): void => {};
@@ -78,6 +83,7 @@ export function createToolHost(deps: ToolHostDeps): ToolHost & ToolChannels {
     },
     execute: (cmd) => executor.execute(cmd),
     beginStroke: () => executor.beginStroke(),
+    hold: (body) => executor.transaction({}, () => body()),
     validateCommand: (cmd) => executor.validatePre(cmd),
     registry,
     historyDepth: () => executor.historyDepth(),
@@ -93,5 +99,7 @@ export function createToolHost(deps: ToolHostDeps): ToolHost & ToolChannels {
     annotationEdit: deps.annotationEdit ?? HEADLESS_ANNOTATION_EDIT,
     tagLabel: deps.tagLabel ?? ((tag) => tag),
     curve: deps.curve ?? new CurveSessions(),
+    blueprintPlaced: deps.blueprintPlaced ?? noop,
+    placementDrag: deps.placementDrag,
   };
 }

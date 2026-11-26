@@ -1,11 +1,10 @@
 import type { Rotation } from '../../../core/model/types';
 import type { CatalogEntry } from '../../../config/catalog/catalog-entry';
 import type { Stencil } from '../recipe';
+import { rotateExits } from '../../../core/grid/directions';
 
-/** Clockwise rotation of N/E/S/W exits. */
-function rotateStrokeConnections(mask: number, turns: number): number {
-  return ((mask << turns) | (mask >> (4 - turns))) & 15;
-}
+/** The exits of a line running east to west, N/E/S/W being 1/2/4/8. */
+const EAST_WEST = 2 | 8;
 
 /** Only catalog artwork with declared centerline exits can supply connected lettering. */
 export function strokeTilePalette(items: readonly CatalogEntry[], curved = false): Map<number, { catalogId: string; rotation: Rotation }> {
@@ -14,17 +13,19 @@ export function strokeTilePalette(items: readonly CatalogEntry[], curved = false
   for (const item of ordered) {
     if (!item.strokeConnections || !item.surfacePrint || item.disabled || item.ruleTBD || item.width !== 1 || item.height !== 1) continue;
     for (let turn = 0; turn < (item.rotatable ? 4 : 1); turn++) {
-      const mask = rotateStrokeConnections(item.strokeConnections, turn);
+      const mask = rotateExits(item.strokeConnections, turn);
       if (!palette.has(mask)) palette.set(mask, { catalogId: item.id, rotation: (turn * 90) as Rotation });
     }
   }
   return palette;
 }
 
-/** Open terminals use a straight tile; the catalog has no half-line endpoint piece. */
-export function strokeTileMask(stencil: Stencil, index: number): number {
+/** Open terminals use a straight tile; the catalog has no half-line endpoint piece. A lone mark runs
+ *  along the line of text, east to west in the stencil's own frame, turned with a picture facing
+ *  `facing`. */
+export function strokeTileMask(stencil: Stencil, index: number, facing: Rotation = 0): number {
   const mask = stencil.connections?.[index] ?? 0;
-  if (mask === 0) return 10;
-  if ((mask & (mask - 1)) === 0) return mask | rotateStrokeConnections(mask, 2);
+  if (mask === 0) return rotateExits(EAST_WEST, facing / 90);
+  if ((mask & (mask - 1)) === 0) return mask | rotateExits(mask, 2);
   return mask;
 }

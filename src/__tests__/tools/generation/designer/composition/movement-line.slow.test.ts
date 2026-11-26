@@ -8,11 +8,13 @@ import { describe, expect, it, vi } from 'vitest';
 // Synchronous generation batch; seconds per case under a loaded or instrumented run.
 vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
+import type { MapTemplate } from '../../../../../core/model/types';
 import { makeRng } from '../../../../../core/base/rng';
 import { flatIndex } from '../../../../../core/grid/rect';
-import { MASSIF_PEAK_FROM, planComposition } from '../../../../../tools/generation/designer/composition/composition';
+import { MASSIF_PEAK_FROM, planComposition, type CompositionPlan } from '../../../../../tools/generation/designer/composition/composition';
 import { planDesign } from '../../../../../tools/generation/designer/pipeline';
-import { planMovementLine } from '../../../../../tools/generation/designer/composition/movement-line';
+import { planMovementLine, type MovementLine } from '../../../../../tools/generation/designer/composition/movement-line';
+import { readPlanet } from '../../../../../tools/generation/designer/planet';
 import { styleOf } from '../../../../../tools/generation/designer/dressing/kits';
 import type { RegionPlan } from '../../../../../tools/generation/designer/types';
 
@@ -20,8 +22,12 @@ const SEEDS = [12345, 777, 42, 2026, 7, 31337, 90210, 1024];
 const hexia = MAP_TEMPLATES['hexia']!;
 const tafa = MAP_TEMPLATES['tafa']!;
 
-const lineFor = (seed: number, template = hexia, richness = 1): ReturnType<typeof planMovementLine> =>
-  planMovementLine({ seed, template, composition: planComposition({ seed, template, richness, maxElevation: 8 }), richness });
+/** The walk the pipeline draws for a composition, on the planet reading it is drawn over. */
+const walkOf = (seed: number, template: MapTemplate, composition: CompositionPlan, richness: number): MovementLine =>
+  planMovementLine({ seed, template, composition, richness, planet: readPlanet(template, composition) });
+
+const lineFor = (seed: number, template = hexia, richness = 1): MovementLine =>
+  walkOf(seed, template, planComposition({ seed, template, richness, maxElevation: 8 }), richness);
 
 describe('the movement line', () => {
   it('is the same walk from the same seed', () => {
@@ -33,7 +39,7 @@ describe('the movement line', () => {
   it('leaves the plaza through a market and finishes at a look-out', () => {
     for (const template of [hexia, tafa]) {
       for (const seed of SEEDS) {
-        const line = planMovementLine({ seed, template, composition: planComposition({ seed, template, richness: 1, maxElevation: 8 }), richness: 1 });
+        const line = walkOf(seed, template, planComposition({ seed, template, richness: 1, maxElevation: 8 }), 1);
         expect(line.stops.length).toBeGreaterThanOrEqual(2);
         expect(line.stops[0]!.role).toBe('market');
         expect(line.stops[line.stops.length - 1]!.role).toBe('lookout');
@@ -54,7 +60,7 @@ describe('the movement line', () => {
       for (const richness of [0.5, 1]) {
         for (const seed of wide) {
           const composition = planComposition({ seed, template, richness, maxElevation: 8 });
-          const line = planMovementLine({ seed, template, composition, richness });
+          const line = walkOf(seed, template, composition, richness);
           // Below a massif there is no summit to arrive at (the low-relief archetype at middle richness).
           if (composition.peakTier < MASSIF_PEAK_FROM) { flat++; continue; }
           const peak = Math.max(...composition.plates.map((p) => p.tier));
@@ -142,7 +148,7 @@ describe('the movement line', () => {
     let longer = 0;
     for (const seed of SEEDS) {
       const composition = planComposition({ seed, template: hexia, richness: 0.2, maxElevation: 8 });
-      const quiet = planMovementLine({ seed, template: hexia, composition, richness: 0.2 });
+      const quiet = walkOf(seed, hexia, composition, 0.2);
       const rich = lineFor(seed);
       if (rich.stops.length >= quiet.stops.length) longer++;
     }

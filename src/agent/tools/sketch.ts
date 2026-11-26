@@ -12,7 +12,8 @@ import { getObjectIndex } from '../../state/object-index';
 import { NEIGHBORS4 } from '../../core/grid/directions';
 import { cellCentre } from '../../core/grid/grid-convert';
 import { readMap, segmentRegions, waterBodies, type MapMasks, type Region } from '../../tools/reading';
-import { cellKey } from '../../core/grid/rect';
+import { cellKey, indexBounds } from '../../core/grid/rect';
+import { nearestRegionCell } from '../../core/grid/cell-sets';
 
 export type SketchKind = 'lane' | 'pond' | 'bridge' | 'grove';
 
@@ -63,13 +64,7 @@ function centroid(g: MapMasks, cells: readonly number[]): SketchPoint {
 /** The cell of `cells` nearest `to` — a figure has to land on ground the region actually holds, and
  *  a centroid of a crescent sits outside it. */
 function nearestCell(g: MapMasks, cells: readonly number[], to: SketchPoint): SketchPoint {
-  let best = cells[0]!;
-  let bestD = Infinity;
-  for (const i of cells) {
-    const d = (cellX(g, i) - to.x) ** 2 + (cellY(g, i) - to.y) ** 2;
-    if (d < bestD) { bestD = d; best = i; }
-  }
-  return { x: cellX(g, best), y: cellY(g, best) };
+  return nearestRegionCell(to, [...cells], g.W);
 }
 
 /** The cell of `cells` farthest from `from`. */
@@ -114,13 +109,8 @@ function deepestCell(g: MapMasks, cells: readonly number[]): SketchPoint {
 }
 
 function boxOf(g: MapMasks, cells: readonly number[]): { x0: number; y0: number; x1: number; y1: number } {
-  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-  for (const i of cells) {
-    const x = cellX(g, i); const y = cellY(g, i);
-    if (x < x0) x0 = x; if (x > x1) x1 = x;
-    if (y < y0) y0 = y; if (y > y1) y1 = y;
-  }
-  return { x0, y0, x1, y1 };
+  const r = indexBounds(cells, g.W);
+  return { x0: r.x, y0: r.y, x1: r.x + r.w - 1, y1: r.y + r.h - 1 };
 }
 
 /** Whether any cell of the region touches pavement or a crossing: the region can be walked to on a

@@ -18,19 +18,22 @@ import {
 } from '../../../../../state/catalog';
 import { useEditorStore } from '../../../../../state/store';
 import { pickSelection } from '../../../../../editor/editing/pick-selection';
+import { runCommand } from '../../../../../editor/commands/run';
 import { generateObjectId } from '../../../../../core/model/object-id';
 import { ScaleProvider } from '../../../../../ui/design/scale';
 import { ObjectShelf } from '../../../../../ui/shell/bars/objects/ObjectShelf';
 import { InputModeProvider } from '../../../../../ui/design/input-mode';
 import { spec } from '../../../../_support/spec';
 import { GESTURE_TIMING } from '../../../../../platform/input/gesture-timing';
-import { SCROLL, TABS, planetShelfItems, shelfItems } from '../../../../../ui/shell/bars/objects/object-shelf';
+import { SCROLL } from '../../../../../ui/shell/bars/objects/object-shelf';
+import { OBJECT_SHELF_TABS as TABS, planetShelfItems, shelfItems } from '../../../../../state/object-shelf-view';
+import { categorySearchTerms } from '../../../../../i18n/terms/category-terms';
 import { newMap } from '../../../../../editor/operations/map';
 import { editorPort } from '../../../../../editor/session/context';
 import { enterPlanetSession, leavePlanetSession } from '../../../../../editor/operations/planet-session';
 import { host } from '../../../../../editor/host/host';
 import { wheelPush } from '../../../../../ui/primitives/scroll-input';
-import { ShelfScrollbar } from '../../../../../ui/shell/bars/objects/ShelfScrollbar';
+import { ShelfScrollbar } from '../../../../../ui/shell/bars/ShelfScrollbar';
 import { makeState } from '../../../../_support/map-state';
 import { CATEGORIES, ItemCategory } from '../../../../../config/catalog/categories';
 import { LANDMARKS } from '../../../../../core/game/profile';
@@ -163,7 +166,7 @@ describe('search', () => {
   });
 
   it('never offers a road, which has no tab of its own', () => {
-    expect(shelfItems('road', ItemCategory.Building, 'en')
+    expect(shelfItems('road', ItemCategory.Building, 'en', categorySearchTerms('en'))
       .some((i) => i.category === ItemCategory.Road)).toBe(false);
   });
 
@@ -200,14 +203,14 @@ describe('search', () => {
   it('finds an item through an authored alias, in English', () => {
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'sakura' } });
-    expect(cardNames()).toContain('Peach Tree');
+    expect(cardNames()).toContain('Hexian Flower Tree');
   });
 
   it('finds an item through an authored alias, in Chinese', () => {
     useEditorStore.setState({ locale: 'zh' });
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '樱' } });
-    expect(cardNames()).toContain('桃花树');
+    expect(cardNames()).toContain('禾夏花树');
   });
 
   /** Both fixtures score the same with `fuzzyScore`, one on its name and one through an alias; the
@@ -224,7 +227,7 @@ describe('search', () => {
       width: 1, height: 1, loadValue: 0, rotatable: false, placementMode: 'point',
       traits: [], aliases: ['Zorbix'],
     });
-    const ids = shelfItems('zorbix', ItemCategory.Flora, 'en').map((i) => i.id);
+    const ids = shelfItems('zorbix', ItemCategory.Flora, 'en', categorySearchTerms('en')).map((i) => i.id);
     expect(ids.indexOf('test-shelf-rank-name')).toBeLessThan(ids.indexOf('test-shelf-rank-alias'));
   });
 });
@@ -237,6 +240,7 @@ describe('the scrollbar', () => {
       <I18nProvider>
         <ScaleProvider value={0.5}>
           <ShelfScrollbar
+            controls="shell-shelf-row"
             scrollLeft={scrollLeft}
             viewportW={viewportW}
             contentW={contentW}
@@ -352,7 +356,7 @@ describe('a card arms the item the map places', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
     fireEvent.click(within(row()).getByRole('button', { name: 'Apple Tree' }));
-    fireEvent.click(within(row()).getByRole('button', { name: 'Peach Tree' }));
+    fireEvent.click(within(row()).getByRole('button', { name: 'Hexian Flower Tree' }));
     expect(armedItemOf(useEditorStore.getState())).toBe('tree-peach');
     expect(within(row()).getByRole('button', { name: 'Apple Tree' })).toHaveProperty('ariaPressed', 'false');
   });
@@ -420,6 +424,20 @@ describe('switching category puts down a card that does not belong there', () =>
 });
 
 describe('the smart-planting card arms per tab', () => {
+  it('arms from the Smart Build key what the open tab\'s card arms, and nothing on a tab with no card', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));
+    await act(() => runCommand('tool.smart'));
+    expect(armedMacroOf(useEditorStore.getState())).toBe('patch-tree');
+    expect(within(row()).getByRole('button', { name: 'Smart planting' }).getAttribute('aria-pressed')).toBe('true');
+    await act(() => runCommand('tool.smart'));
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Buildings' }));
+    await act(() => runCommand('tool.smart'));
+    expect(armedMacroOf(useEditorStore.getState())).toBeNull();
+  });
+
   it('arms the tree-led planting from Trees and the flora-led one from Flora, never the same id', () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: 'Trees' }));

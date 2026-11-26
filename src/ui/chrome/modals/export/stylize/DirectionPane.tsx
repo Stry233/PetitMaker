@@ -15,8 +15,9 @@ import {
   CUSTOM_DIRECTION_ID, CUSTOM_PROMPT_MAX, appendFragment,
   type StylizeDirection,
 } from '../../../../../pipelines/stylize/facts';
-import { packSampleUrl } from './sample-assets';
-import { SampleTile, entering, fieldBox } from './stylize-parts';
+import { packSampleUrl } from '../../../../../assets/style-sample-urls';
+import { SampleTile, entering } from './stylize-parts';
+import { TextField } from '../../../../primitives/TextField';
 import { directionRow } from './DirectionBooklet';
 import { framerMotion } from '../../../../design/motion';
 
@@ -71,14 +72,8 @@ function WritingDesk({ text, onText }: { text: string; onText: (next: string) =>
   const t = useT();
   return (
     <>
-      <textarea
-        rows={3}
-        maxLength={CUSTOM_PROMPT_MAX}
-        value={text}
-        placeholder={t('stylize.custom_ph')}
-        onChange={(e) => onText(e.target.value)}
-        style={{ ...fieldBox, flex: 1, minHeight: 0, lineHeight: 1.55 }}
-      />
+      <TextField rows={3} on="inset" maxLength={CUSTOM_PROMPT_MAX} value={text} label={t('stylize.custom_ph')} placeholder={t('stylize.custom_ph')}
+        onChange={onText} style={{ flex: 1, minHeight: 0, lineHeight: 1.55 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingTop: 6 }}>
         {CHIP_KEYS.map((key) => (
           <ActionButton

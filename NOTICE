@@ -1,7 +1,16 @@
 PetitMaker (谷地工坊)
 Copyright 2026 PetitMaker contributors
 
-Licensed under the Apache License, Version 2.0; see LICENSE.
+Licensed under the Functional Source License, Version 1.1, ALv2 Future License
+(FSL-1.1-ALv2); see LICENSE. Each version becomes available under the Apache License,
+Version 2.0 on the second anniversary of the date it is made available. Versions made
+available up to and including v2.0.916 stay licensed under the Apache License, Version 2.0.
+
+The Licensor named in LICENSE is the copyright holders of the Software, the PetitMaker
+contributors. Contact: petit.maker@outlook.com
+
+The PetitMaker name and logo and the project's original art are not licensed under these
+terms; see docs/ASSET_LICENSES.md.
 
 This product includes third-party software; see docs/THIRD_PARTY_NOTICES.md, with the full
 license texts under licenses/.

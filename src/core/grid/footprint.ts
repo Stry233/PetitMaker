@@ -1,7 +1,7 @@
 /* The cells a footprint covers and rests on, on the placement and terrain grids. */
 import { GRIDS, PLACEMENT_GRID, TERRAIN_GRID } from '../game/profile';
 import { gridCellRun, gridCellsUnder, gridCellsUnderRect, onGrid, type GridCell } from './grids';
-import { cellKey, type Rect } from './rect';
+import { cellKey, cellsBounds, type Rect } from './rect';
 import type { MacroCoord, Rotation } from '../base/coords';
 
 /**
@@ -42,6 +42,16 @@ export function footprintTerrain(rect: Rect): Rect {
 /** The terrain cells `rect` rests on (`footprintTerrain`), row by row. */
 export function terrainCellsUnder(rect: Rect): MacroCoord[] {
   return gridCellsUnder(GRIDS[TERRAIN_GRID], rect);
+}
+
+/** The object-grid cells a region of terrain cells covers whole within its bounding box, or null for
+ *  none: a frame drawn on terrain whose captured ground is exactly the cells drawn. */
+export function wholeCellsInRegion(cells: readonly MacroCoord[]): Rect | null {
+  const box = cellsBounds(cells);
+  if (!box) return null;
+  const { offset } = GRIDS[TERRAIN_GRID];
+  const whole = wholeCellsOf({ x: box.x + offset.x, y: box.y + offset.y, w: box.w, h: box.h });
+  return whole.w > 0 && whole.h > 0 ? whole : null;
 }
 
 /** The object-grid cells `rect` covers whole; a cell it covers only in part is left out. */

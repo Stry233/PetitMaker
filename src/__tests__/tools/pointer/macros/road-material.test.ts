@@ -41,7 +41,7 @@ const settle = (): Promise<void> => new Promise((r) => { setTimeout(r, 0); });
 
 /** The endpoint gesture as a hand makes it, on a tool armed with the given context. */
 async function dragRoad(kit: Kit, over: ToolCtxOver, from: MacroCoord, to: MacroCoord): Promise<Set<string>> {
-  const ctx = makeToolCtx(kit.state, kit.executor, 1, 1, { armedMacro: 'road-link', ...over });
+  const ctx = makeToolCtx(kit.state, kit.executor, 1, { armedMacro: 'road-link', ...over });
   const tool = new MacroTool();
   tool.onActivate();
   const before = new Set(kit.state.objects.keys());

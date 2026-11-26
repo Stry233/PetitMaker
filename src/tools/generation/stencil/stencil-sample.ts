@@ -9,6 +9,7 @@ import { COMPACT_IMAGE_LIMIT, COVERAGE_ON } from './stencil';
 import { colorBucket } from './color';
 import { backgroundMask } from './stencil-backdrop';
 import { cropPixels, salientCrop, CROP_MAX_SIDE, type SourceRect } from './stencil-crop';
+import { boundsWhere, fitAspect } from '../../../core/grid/rect';
 
 export type { StencilSourceNature };
 
@@ -155,26 +156,17 @@ const TRIM_MIN_GAIN = 1.1;
 /** Where a picture lands inside its cell box: `object-fit: contain` in quadrant units, which is what
  *  the sampler works in. The one mapping between source pixels and cells. */
 function containFit(src: { width: number; height: number }, box: SampleBox): { scale: number; offX: number; offY: number } {
-  const qw = box.width * 2, qh = box.height * 2;
-  const scale = Math.min(qw / src.width, qh / src.height);
-  return { scale, offX: (qw - src.width * scale) / 2, offY: (qh - src.height * scale) / 2 };
+  const fit = fitAspect({ x: 0, y: 0, w: box.width * 2, h: box.height * 2 }, src.width / src.height);
+  return { scale: fit.w / src.width, offX: fit.x, offY: fit.y };
 }
 
 /** The bounding box of the covered cells, mapped back through the fit into the source's own pixels
  *  and rounded outward, so a trim can never cut into ink that was going to be built. */
 function buildingRect(stencil: Stencil, src: SourcePixels, box: SampleBox): SourceRect | null {
   const { width, height } = box;
-  let x0 = width, y0 = height, x1 = -1, y1 = -1;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if ((stencil.coverage[y * width + x] ?? 0) < COVERAGE_ON) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-  }
-  if (x1 < 0) return null;                       // nothing builds: there is no picture to fit
+  const built = boundsWhere(width, height, (x, y) => (stencil.coverage[y * width + x] ?? 0) >= COVERAGE_ON);
+  if (!built) return null;                       // nothing builds: there is no picture to fit
+  const { x: x0, y: y0 } = built, x1 = x0 + built.w - 1, y1 = y0 + built.h - 1;
   const { scale, offX, offY } = containFit(src, box);
   const left = Math.max(0, Math.floor((x0 * 2 - offX) / scale));
   const top = Math.max(0, Math.floor((y0 * 2 - offY) / scale));

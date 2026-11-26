@@ -1,14 +1,14 @@
 /**
  * The 3D view's object tweens: the placement plop, a single object's spin and a group's rigid-body
- * turn. Each runs off the instance's stored transform, so it composes with (and settles back to)
+ * turn or flip. Each runs off the instance's stored transform, so it composes with (and settles back to)
  * the real placement. Under reduced motion nothing is registered here and the instance stands at
  * its canonical transform.
  */
 import * as THREE from 'three';
 import type { GridState } from '../../../core/model/types';
 import type { GroupRotation } from '../../../tools/objects';
-import { animConfig, easeOutBack } from '../../shared/motion/anim-config';
-import { arcMotion, arcOffset, spinOffset, type ArcMotion } from '../../shared/motion/group-arc';
+import { animConfig } from '../../shared/motion/anim-config';
+import { arcMotion, arcOffset, flipOffset, flipSquash, groupEase, spinOffset, type ArcMotion } from '../../shared/motion/group-arc';
 import { plopScale, spinEase } from '../../shared/motion/object-beats';
 import { bodyRoute } from '../geometry/object-meshes';
 import { UP_AXIS, writeInstance, type DrawnSlot } from './object-layer';
@@ -35,9 +35,11 @@ export class ObjectMotion {
    *  `onFrame` is the ring's hook, called once per tick (not once per member) with the same progress. */
   private groupArc: {
     born: number; sweepRad: number;
+    /** A flip's pivot and axes, which squash and carry the members in place of the arc. */
+    flip: { pivot: { x: number; y: number }; axes: { x: boolean; y: boolean } } | null;
     /** `roadTrim` members have no instance to back-date — their body rides the trimmed-road mesh, so
      *  the tween displaces that mesh for them instead. */
-    members: Array<{ id: string; motion: ArcMotion; spun: boolean; roadTrim: boolean }>;
+    members: Array<{ id: string; from: { x: number; y: number }; motion: ArcMotion; spun: boolean; roadTrim: boolean }>;
     hasRoadTrim: boolean;
     onFrame?: (eased: number) => void;
   } | null = null;
@@ -48,12 +50,13 @@ export class ObjectMotion {
   turnGroup(turn: GroupRotation, onFrame?: (eased: number) => void): void {
     const state = this.host.state();
     const members = turn.members.map((m) => ({
-      id: m.id, spun: m.spun, motion: arcMotion(turn.pivot, m.from),
+      id: m.id, from: m.from, spun: m.spun, motion: arcMotion(turn.pivot, m.from),
       roadTrim: bodyRoute(state, m.id) === 'roadTrim',
     }));
     this.groupArc = {
       born: performance.now(),
       sweepRad: (turn.sweepDeg * Math.PI) / 180,
+      flip: turn.flip ? { pivot: turn.pivot, axes: turn.flip } : null,
       members,
       hasRoadTrim: members.some((m) => m.roadTrim),
       onFrame,
@@ -156,29 +159,34 @@ export class ObjectMotion {
   tickGroupArc(): boolean {
     const arc = this.groupArc;
     if (!arc) return false;
-    const cfg = animConfig.groupRotation;
-    const t = Math.min((performance.now() - arc.born) / cfg.durationMs, 1);
-    const e = t < 1 ? easeOutBack(t, cfg.overshoot) : 1;
+    const { flip } = arc;
+    const t = Math.min((performance.now() - arc.born) / animConfig.groupRotation.durationMs, 1);
+    const e = groupEase(t);
+    const offset = (m: (typeof arc.members)[number]) => (flip ? flipOffset(flip.pivot, m.from, flip.axes, e) : arcOffset(m.motion, arc.sweepRad, e));
+    // A flip squashes each body along the flipped ground axes, applied after its own yaw.
+    const squash = flip ? new THREE.Matrix4().makeScale(flip.axes.x ? flipSquash(e) : 1, 1, flip.axes.y ? flipSquash(e) : 1) : null;
     const roadOffsets = arc.hasRoadTrim ? new Map<string, { dx: number; dz: number }>() : null;
     for (const m of arc.members) {
       if (m.roadTrim) {
         if (roadOffsets && t < 1) {
-          const { dx, dy } = arcOffset(m.motion, arc.sweepRad, e);
+          const { dx, dy } = offset(m);
           roadOffsets.set(m.id, { dx, dz: dy });
         }
         continue;
       }
       for (const { group, slot, inst } of this.host.drawn(m.id)) {
         if (t >= 1) { writeInstance(group, slot, inst); continue; }
-        const { dx, dy } = arcOffset(m.motion, arc.sweepRad, e);
+        const { dx, dy } = offset(m);
         // Yaw runs opposite the screen-space spin offset (rot's slope is −π/180, as in tickSpins), so
         // a member back-dated by a clockwise-from-above turn settles onto its stored rotation.
         const yaw = inst.rotationY - (m.spun ? spinOffset(arc.sweepRad, e) : 0);
         const mat = new THREE.Matrix4().compose(
-          new THREE.Vector3(inst.x + dx, inst.y, inst.z + dy),
+          new THREE.Vector3(),
           new THREE.Quaternion().setFromAxisAngle(UP_AXIS, yaw),
           new THREE.Vector3(inst.scaleX, inst.scaleY, inst.scaleZ),
         );
+        if (squash) mat.premultiply(squash);
+        mat.setPosition(inst.x + dx, inst.y, inst.z + dy);
         group.mesh.setMatrixAt(slot, mat);
         group.mesh.instanceMatrix.needsUpdate = true;
       }

@@ -9,7 +9,7 @@
  * plumbing, no map knowledge, so the panel's call describer reads the same
  * contract without loading a tool.
  */
-import { bool, int, list, obj, oneOf, req } from './schema';
+import { bool, int, list, obj, oneOf, req, str } from './schema';
 
 export type FlatDefault = 'rect' | 'line';
 
@@ -42,6 +42,52 @@ export function normalizeGeometry(input: Record<string, unknown>, flatDefault: F
   return input;
 }
 
+/** The most rows and columns of a drawn shape that are read, and the most cells a character may stand for on a side. */
+const PICTURE_ROWS = 80, PICTURE_COLUMNS = 120, PICTURE_SCALE_MAX = 6;
+
+/** The most a run written as `mark{count}` repeats its mark. */
+const RUN_MAX = 999;
+
+/** A drawn row with every run written as `mark{count}` spelled out: "2{3}.{2}" is "222..". */
+export function drawnRow(row: string): string {
+  return row.replace(/(.)\{(\d{1,3})\}/gu, (_, mark: string, count: string) => mark.repeat(Math.min(RUN_MAX, Number(count))));
+}
+
+/**
+ * The rows of a drawing whose length differs from the commonest, as a sentence naming them, or null
+ * when every row is as long as the others.
+ */
+export function raggedRows(rows: readonly string[]): string | null {
+  const lengths = rows.map((row) => [...row].length);
+  const seen = new Map<number, number>();
+  for (const n of lengths) seen.set(n, (seen.get(n) ?? 0) + 1);
+  if (seen.size < 2) return null;
+  const usual = [...seen].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]![0];
+  const off = lengths.flatMap((n, i) => (n === usual ? [] : [`row ${i + 1} is ${n}`])).slice(0, 8);
+  return `${off.join(', ')} long where the others are ${usual}`;
+}
+
+/**
+ * The cells a shape drawn as rows of text marks, its top-left cell at x1,y1 (or x,y): every
+ * character but "." and a space is a cell, or a square of `scale` cells on a side. Empty where the
+ * input draws nothing or names no corner.
+ */
+export function pictureCells(input: Record<string, unknown>): { x: number; y: number }[] {
+  if (!Array.isArray(input.picture)) return [];
+  const ox = Number(input.x1 ?? input.x), oy = Number(input.y1 ?? input.y);
+  if (!Number.isFinite(ox) || !Number.isFinite(oy)) return [];
+  const asked = Math.trunc(Number(input.scale));
+  const scale = Number.isFinite(asked) ? Math.min(PICTURE_SCALE_MAX, Math.max(1, asked)) : 1;
+  const drawn: { x: number; y: number }[] = [];
+  (input.picture as unknown[]).slice(0, PICTURE_ROWS).forEach((row, dy) => {
+    [...drawnRow(String(row))].slice(0, PICTURE_COLUMNS).forEach((mark, dx) => {
+      if (mark === '.' || mark === ' ') return;
+      for (let j = 0; j < scale; j++) for (let i = 0; i < scale; i++) drawn.push({ x: ox + dx * scale + i, y: oy + dy * scale + j });
+    });
+  });
+  return drawn;
+}
+
 /** A rect given either nested or as flat corners, for the tools whose only
  *  shape is a rect (scatter_objects). */
 export function rectInput(input: Record<string, unknown>): { x1: number; y1: number; x2: number; y2: number } | undefined {
@@ -66,6 +112,7 @@ export function missingScalars(input: Record<string, unknown>, keys: string[]): 
 }
 
 import type { CellBox } from '../core/tool-facts';
+import { cellsBounds, rectsBounds, type Rect } from '../../core/grid/rect';
 
 export type { CellBox };
 
@@ -77,25 +124,27 @@ function boxOf(x1: number, y1: number, x2: number, y2: number): CellBox {
   };
 }
 
+const cellBox = (r: Rect | null): CellBox | undefined => (r ? { origin: { x: r.x, y: r.y }, width: r.w, height: r.h } : undefined);
+
 function listBox(raw: unknown): CellBox | undefined {
   if (!Array.isArray(raw)) return undefined;
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const item of raw) {
-    if (typeof item !== 'object' || item === null) continue;
+  const cells = raw.flatMap((item: unknown) => {
+    if (typeof item !== 'object' || item === null) return [];
     const x = Math.round(num((item as Record<string, unknown>).x));
     const y = Math.round(num((item as Record<string, unknown>).y));
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y);
-  }
-  return Number.isFinite(x1) ? boxOf(x1, y1, x2, y2) : undefined;
+    return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : [];
+  });
+  return cellBox(cellsBounds(cells));
 }
 
 /**
- * The cells a call's arguments name, as their bounding box: a rect, a line, a circle, a cell or path
- * list, or a single point. Undefined where the arguments name no place (an object id, a recipe).
+ * The cells a call's arguments name, as their bounding box: a drawn shape, a rect, a line, a circle,
+ * a cell or path list, or a single point. Undefined where the arguments name no place (an object id, a recipe).
  */
 export function callFootprint(input: Record<string, unknown> | undefined): CellBox | undefined {
   if (!input) return undefined;
+  const drawn = listBox(pictureCells(input));
+  if (drawn) return drawn;
   const g = normalizeGeometry(input);
   for (const key of ['rect', 'line'] as const) {
     const r = g[key] as Record<string, unknown> | undefined;
@@ -116,13 +165,7 @@ export function callFootprint(input: Record<string, unknown> | undefined): CellB
 
 /** The smallest box holding every one of `boxes`, or undefined where there are none. */
 function unionBox(boxes: readonly (CellBox | undefined)[]): CellBox | undefined {
-  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-  for (const b of boxes) {
-    if (!b) continue;
-    x1 = Math.min(x1, b.origin.x); y1 = Math.min(y1, b.origin.y);
-    x2 = Math.max(x2, b.origin.x + b.width - 1); y2 = Math.max(y2, b.origin.y + b.height - 1);
-  }
-  return Number.isFinite(x1) ? boxOf(x1, y1, x2, y2) : undefined;
+  return cellBox(rectsBounds(boxes.flatMap((b) => (b ? [{ x: b.origin.x, y: b.origin.y, w: b.width, h: b.height }] : []))));
 }
 
 /** What a job's record pictures: its painted region, else the union of its writes' footprints;
@@ -154,16 +197,18 @@ export const smoothEdges = (description: string) => oneOf([...SMOOTH_STYLES], { 
 /** The area, flat first: some guided decoders never emit an optional nested object, so every
  *  geometry is reachable through top-level scalars; the nested forms stay accepted beside them. */
 export const cellsOrRect = {
-  shape: oneOf(['rect', 'circle', 'line', 'cells'], {
-    description: 'Area form: "rect" fills x1,y1..x2,y2 (inclusive corners); "circle" fills radius r around cx,cy; "line" strokes x1,y1..x2,y2 at width; "cells" reads the cells array.',
+  shape: oneOf(['rect', 'circle', 'line', 'cells', 'picture'], {
+    description: 'Area form: "rect" fills x1,y1..x2,y2 (inclusive corners); "circle" fills radius r around cx,cy; "line" strokes x1,y1..x2,y2 at width; "cells" reads the cells array; "picture" reads a shape drawn as rows of text from x1,y1.',
   }),
   ...coordProps,
   cx: int(),
   cy: int(),
   r: int({ min: 1 }),
   width: int({ min: 1, description: 'Line stroke width (default 1).' }),
-  outline: bool({ description: 'With rect or circle: paint only the 1-cell border ring (e.g. a mountain rim to contain water).' }),
+  outline: bool({ description: 'With rect or circle: only the border cells (e.g. a mountain rim to contain water).' }),
   cells: list(cellItem, { description: 'Explicit cell list, for shape "cells".' }),
+  picture: list(str(), { description: 'For shape "picture": the shape drawn as rows of text, top row first, its top-left cell at x1,y1. "#" is a cell of the shape, "." is not. Draw any outline this way: a star, a letter, a crescent, an island with coves. Make the rows mirror images of themselves when the shape should be symmetric. Write a run of one mark as the mark and its count in braces: "#{12}.{4}" is twelve "#" then four ".".' }),
+  scale: int({ min: 1, max: PICTURE_SCALE_MAX, description: 'For shape "picture": how many cells each character stands for on a side (default 1). At 4 a row of 35 characters spans 140 cells, for outlines at island scale.' }),
   rect: obj(corners, { description: 'Nested alternative to shape "rect".' }),
   circle: obj({ cx: req(int()), cy: req(int()), r: req(int({ min: 1 })) }, { description: 'Nested alternative to shape "circle".' }),
   line: obj({ ...corners, width: int({ min: 1, description: 'Stroke width (default 1).' }) }, { description: 'Nested alternative to shape "line".' }),

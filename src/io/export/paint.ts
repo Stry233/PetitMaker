@@ -19,7 +19,8 @@ import { resolveFooter, DEFAULT_FOOTER, formatFooterDate } from './footer-templa
 import { ellipsize, wrapLines } from './canvas-helpers';
 import type { MapProvenanceSummary } from '../../core/provenance/types';
 import { badgeScale } from './render';
-import { EXPORT_CAPTION, EXPORT_CARD, EXPORT_MAP_PLACEHOLDER, EXPORT_ON_BADGE, EXPORT_PAPER, FRAME_INK, SURFACE_SECONDARY, TEXT_SECONDARY, rgbaOf } from '../../assets/brand-palette';
+import { EXPORT_CAPTION, EXPORT_CARD, EXPORT_MAP_PLACEHOLDER, EXPORT_ON_BADGE, EXPORT_PAPER, FRAME_INK, SURFACE_SECONDARY, TEXT_SECONDARY } from '../../assets/brand-palette';
+import { rgbaOf } from '../../core/base/color';
 import { drawBrand } from './brand-band';
 import { drawIsoCubeIcon, drawLayersStackIcon, drawMosaicIcon } from './icons';
 import type { Translate } from '../../i18n/keys';
@@ -64,6 +65,8 @@ export interface CompositionAssets {
     label: string;
     /** The localized maker line, or import invitation when a site is present. */
     powerText: string;
+    /** A QR for `url` the deployment's host made, drawn as given in place of one drawn here. */
+    qr?: CanvasImageSource | null;
   };
 }
 

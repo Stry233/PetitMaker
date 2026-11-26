@@ -11,18 +11,18 @@
  * `selection-view-sync.ts` gives: the store flip and the registration are separate moments.
  */
 import { onActiveViewChange, getActiveView } from '../../active-view';
-import type { ActiveView } from '../../../tools/pointer/runtime';
+import type { ActiveView, RegionGuides } from '../../../tools/pointer/runtime';
 import type { MacroCoord } from '../../../core/model/types';
 import { TERRAIN_GRID } from '../../../core/game/profile';
 import { cellSet, type CellSet } from '../../../core/grid/grids';
 
 /** The marks last asked for: the region's cells (null after a clear; an empty show is a clear)
  *  and the drape's cells (null after a clear). */
-let shown: { region: { cells: MacroCoord[]; dimensionScale?: number } | null; path: CellSet | null } = { region: null, path: null };
+let shown: { region: { cells: MacroCoord[]; guides?: RegionGuides } | null; path: CellSet | null } = { region: null, path: null };
 
-export function showBuildableRegion(cells: MacroCoord[], dimensionScale?: number): void {
-  shown = { ...shown, region: cells.length > 0 ? { cells: [...cells], dimensionScale } : null };
-  getActiveView()?.overlay.showBuildableRegion(cellSet(TERRAIN_GRID, cells), dimensionScale);
+export function showBuildableRegion(cells: MacroCoord[], guides?: RegionGuides): void {
+  shown = { ...shown, region: cells.length > 0 ? { cells: [...cells], ...(guides ? { guides } : null) } : null };
+  getActiveView()?.overlay.showBuildableRegion(cellSet(TERRAIN_GRID, cells), guides);
 }
 
 export function clearBuildableRegion(): void {
@@ -47,7 +47,7 @@ function syncMarksToView(view: ActiveView | null, previous: ActiveView | null): 
     previous.overlay.clearPath();
   }
   if (!view) return;
-  if (shown.region) view.overlay.showBuildableRegion(cellSet(TERRAIN_GRID, shown.region.cells), shown.region.dimensionScale);
+  if (shown.region) view.overlay.showBuildableRegion(cellSet(TERRAIN_GRID, shown.region.cells), shown.region.guides);
   if (shown.path) view.overlay.showPath(shown.path);
 }
 

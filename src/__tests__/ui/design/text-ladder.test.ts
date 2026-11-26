@@ -39,9 +39,9 @@ describe('the prose rung', () => {
     expect(TEXT_ROLES.note.px).toBeLessThan(TEXT_ROLES.label.px);
   });
 
-  /** It sits half a pixel over `chip`, since prose and a pill share a row; weight carries the rank. */
+  /** It shares `chip`'s size, since prose and a pill share a row; weight carries the rank. */
   it('is lighter than the pill it sits beside', () => {
-    expect(TEXT_ROLES.note.px - TEXT_ROLES.chip.px).toBeLessThanOrEqual(1);
+    expect(TEXT_ROLES.note.px).toBe(TEXT_ROLES.chip.px);
     expect(TEXT_ROLES.note.weight).toBeLessThan(TEXT_ROLES.chip.weight);
   });
 });

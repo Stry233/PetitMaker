@@ -6,47 +6,48 @@
 import { useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { useUiPreviewPose } from '../../../design/preview';
-import { OBJECT_SPACING, type ObjectBrush } from '../../../../state/editing/vocabulary';
+import { OBJECT_SPACING } from '../../../../state/editing/vocabulary';
+import { contextKeysDoing, toolbarLabel } from '../../../../state/keymap/toolbar';
 import { helpTargetAttr } from '../../../session/help-targets';
-import { QUAD, TEXT } from '../../units';
+import { QUAD } from '../../units';
 import { Action, BarText } from '../bar-atoms';
 import { BrushSizeControl } from '../BrushSizeControl';
 import { MapCaption } from '../MapCaption';
 import { ShapeOptions } from '../ShapeOptions';
 import { CAPTION_TOP, ToolPill, toolPillCentre } from '../ToolPill';
 import { ToolbarHost, type ToolbarSlot } from '../toolbar-morph';
+import { commandLabel } from '../terrain-cells';
 import { BRUSH_GLYPHS } from './brush-glyphs';
+import { useRunCommand } from '../../use-shell-commands';
 
 const HELP = { page: 'objects' as const, anchor: 'objects-batch' };
 
-/** Each way to place: its pill's place in the row, its name and the toolbar command its key runs. */
-const BRUSHES = [
-  { id: 'place', labelKey: 'objects.place', commandId: 'tool.brush' },
-  { id: 'paint', labelKey: 'objects.paint', commandId: 'tool.erase' },
-] as const satisfies readonly { id: ObjectBrush; labelKey: string; commandId: string }[];
+/** Each way to place, in key order: its name here and the toolbar command its key runs. */
+const BRUSHES = contextKeysDoing('objects', 'object-brush').map(({ id, action: { brush } }) => ({
+  id: brush, labelKey: toolbarLabel('objects', id) ?? commandLabel(id), commandId: id,
+}));
 
 export function ObjectBrushBar({ onDone }: { onDone: () => void }) {
   const t = useT();
   const posed = useUiPreviewPose()?.objectBrush;
   const liveBrush = useEditorStore((s) => s.objectBrush);
   const brush = posed?.brush ?? liveBrush;
-  const setBrush = useEditorStore((s) => s.setObjectBrush);
+  const run = useRunCommand();
   const liveShape = useEditorStore((s) => s.objectPaintShape);
   const shape = posed?.shape ?? liveShape;
-  const setShape = useEditorStore((s) => s.setObjectPaintShape);
   const painting = brush === 'paint';
   const active = BRUSHES.findIndex((b) => b.id === brush);
   const pills: ToolbarSlot[] = BRUSHES.map(({ id, labelKey, commandId }, index) => ({
     id: `brush-${id}`,
     node: <ToolPill helpTarget={HELP} glyph={BRUSH_GLYPHS[id]} label={t(labelKey)} commandId={commandId}
-      active={brush === id} centre={toolPillCentre(index, active)} onSelect={() => setBrush(id)} />,
+      active={brush === id} centre={toolPillCentre(index, active)} onSelect={() => run(commandId)} />,
   }));
   return <ToolbarHost testId="shell-object-brush" mapEdge={false} tone="dark" spec={{
     frameAttrs: helpTargetAttr('objects', 'objects-batch'),
     rows: [],
     pills,
     activePill: `brush-${brush}`,
-    options: painting ? [{ id: 'shape', node: <ShapeOptions value={shape} onChange={setShape} /> }] : [],
+    options: painting ? [{ id: 'shape', node: <ShapeOptions value={shape} onChange={(next) => run('tool.shape', { value: next })} /> }] : [],
     trailing: [
       { id: 'brush-done', node: <span style={{ display: 'flex', alignItems: 'center', marginLeft: 22 - QUAD.gap }}>
         <Action label={t('objects.brush_done')} primary onPress={onDone} />
@@ -62,11 +63,11 @@ function Spacing() {
   const posed = useUiPreviewPose()?.objectBrush;
   const liveSpacing = useEditorStore((s) => s.objectPaintSpacing);
   const spacing = posed?.spacing ?? liveSpacing;
-  const setSpacing = useEditorStore((s) => s.setObjectPaintSpacing);
+  const run = useRunCommand();
   const label = t('objects.spacing');
   // A root of its own, so the slider's lift stays inside the box the caption is measured from.
   return <div style={{ position: 'relative', width: '100%', display: 'flow-root' }}>
-    <BrushSizeControl value={spacing} onChange={setSpacing} of={{ ...OBJECT_SPACING, label }} />
-    <MapCaption top={CAPTION_TOP}><BarText onMap size={TEXT.label}>{label}</BarText></MapCaption>
+    <BrushSizeControl value={spacing} onChange={(next) => run('brush.size', { value: next })} of={{ ...OBJECT_SPACING, label }} />
+    <MapCaption top={CAPTION_TOP}><BarText onMap role="chip">{label}</BarText></MapCaption>
   </div>;
 }

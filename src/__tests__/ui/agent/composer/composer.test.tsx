@@ -6,6 +6,8 @@ import { I18nProvider, translate } from '../../../../i18n/context';
 import { Composer } from '../../../../ui/agent/composer/Composer';
 import { FIELD_MAX_LINES } from '../../../../ui/agent/composer/metrics';
 import type { ComposerRoute } from '../../../../agent/session/composer-routing';
+import { PanelShell } from '../../../../ui/agent/PanelShell';
+import { makeView, panelProps, Wrapper as PanelWrapper, type FlatPanelProps } from '../../../_support/agent-panel';
 
 const backing = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -479,6 +481,19 @@ describe('Composer: long text', () => {
       expect((getByTestId('composer-input') as HTMLTextAreaElement).value).toBe('');
     });
 
+    it('[UI-68] folds into the well with its words when the panel is put away, taking no input as it goes', async () => {
+      const { getByTestId, queryByTestId, rerender } = open();
+      const card = getByTestId('composer-expanded');
+      rerender(<Composer route="order" running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} away />);
+      expect(card.isConnected, 'the card still folds where it stood').toBe(true);
+      expect(card.closest('[inert]')).not.toBeNull();
+      expect(card.closest('[aria-hidden="true"]')).not.toBeNull();
+      await waitFor(() => expect(queryByTestId('composer-expanded')).toBeNull());
+      expect((getByTestId('composer-input') as HTMLTextAreaElement).value).toBe(PARAGRAPH);
+      rerender(<Composer route="order" running={false} onSend={noop} onStop={noop} onDropSuggestion={noop} />);
+      expect(queryByTestId('composer-expanded'), 'coming back opens no card by itself').toBeNull();
+    });
+
     it('leaves Enter and modified Enter to insert line breaks, and sends only from the button', () => {
       const { getByTestId, onSend } = open();
       const big = getByTestId('composer-expanded-input');
@@ -489,6 +504,27 @@ describe('Composer: long text', () => {
       fireEvent.click(getByTestId('composer-expanded-send'));
       expect(onSend).toHaveBeenCalledWith(PARAGRAPH);
     });
+  });
+});
+
+describe('Composer: the bigger field belongs to its panel', () => {
+  const PANEL: FlatPanelProps = {
+    view: makeView(), connected: true, now: 0, pinned: true,
+    onSend: noop, onStop: noop, onPause: noop, onGateAnswer: noop,
+  };
+  it.each<[string, Partial<FlatPanelProps>]>([
+    ['the panel closes', { open: false }],
+    ['the panel folds under the dock\'s sheet', { away: 'folded' }],
+    ['the interface hides', { veiled: true }],
+  ])('[UI-68] folds back into the well when %s', async (_name, change) => {
+    const view = render(<PanelShell {...panelProps(PANEL)} />, { wrapper: PanelWrapper });
+    const field = view.getByTestId('composer-input');
+    measureField(lineBox(field) * (FIELD_MAX_LINES + 2));
+    fireEvent.change(field, { target: { value: 'a long order '.repeat(40) } });
+    fireEvent.click(view.getByTestId('composer-expand'));
+    expect(view.queryByTestId('composer-expanded')).not.toBeNull();
+    view.rerender(<PanelShell {...panelProps({ ...PANEL, ...change })} />);
+    await waitFor(() => expect(view.queryByTestId('composer-expanded')).toBeNull());
   });
 });
 

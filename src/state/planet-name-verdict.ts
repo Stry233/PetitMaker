@@ -37,10 +37,6 @@ export function planetNameVerdict(template: MapTemplate, entries: readonly Named
   return { status: verdict === 'unchecked' ? 'pending' : verdict, name, index: entries.length };
 }
 
-export function planetNameStatus(template: MapTemplate, entries: readonly NamedPlanetEntry[]): PlanetNameStatus {
-  return isCustomTemplate(template) ? planetNameVerdict(template, entries).status : 'approved';
-}
-
 /** A custom planet's name that no entry carries and no check has answered yet. */
 export function uncheckedPlanetName(template: MapTemplate, entries: readonly NamedPlanetEntry[]): string | null {
   if (!isCustomTemplate(template) || planetEntryAmong(entries, template)) return null;

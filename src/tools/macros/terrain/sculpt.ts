@@ -3,7 +3,7 @@
  * Each returns the commands of one stroke and the cells it shaped; the caller runs the stroke and
  * the edge-cut pass. A `region` set, when given, holds the `cellKey` of every cell a form may take.
  */
-import { paintTerrainCommand } from '../../../core/model/command-build';
+import { mountainLadder, paintTerrainCommand } from '../../../core/model/command-build';
 import { TerrainType, type Command, type GridState, type MacroCoord } from '../../../core/model/types';
 import { circleCells } from '../../../core/grid/shapes';
 import { cellKey } from '../../../core/grid/rect';
@@ -174,13 +174,10 @@ export function sculptWall(
   }
   const bands = ladder.slice(0, bandCells.length);
   const crest = bands[bands.length - 1]!;
-  const commands: Command[] = [];
-  for (let e = 1; e <= crest; e++) {
-    // The band whose elevation first reaches `e` and every band above it stand at this rung.
-    const band = bands.findIndex((be) => be >= e);
-    const cells = bandCells[band]!;
-    if (cells.length > 0) commands.push(paintTerrainCommand(cells, TerrainType.Mountain, e));
-  }
+  // Each band is eroded out of the one below, so a cell's top is the highest band holding it.
+  const top = new Map<MacroCoord, number>();
+  bands.forEach((e, band) => { for (const c of bandCells[band]!) top.set(c, e); });
+  const commands: Command[] = mountainLadder(base, (c) => c, () => 0, (c) => top.get(c)!);
   const poolCells = flood ? erodeCells(bandCells[bands.length - 1]!, 1) : [];
   if (poolCells.length > 0) commands.push(paintTerrainCommand(poolCells, TerrainType.Water, crest));
   return { commands, base, bands, crest, poolCells };
@@ -191,19 +188,34 @@ interface PoolCourt {
   /** Every cell of the rect the court stands on. */
   cells: MacroCoord[];
   water: MacroCoord[];
-  islets: number;
+  /** The cells of each islet left dry, as inclusive corners. */
+  islets: { x1: number; y1: number; x2: number; y2: number }[];
+}
+
+/** An islet is this many terrain cells a side: the ground one object cell rests on. */
+const ISLET_SIDE = 2;
+/** From one islet's first cell to the next one's, the islet and the water between. */
+export const ISLET_PITCH = 4;
+
+/** Where islets start along one axis of the water `lo..hi`: as many as fit with water at both ends, centred. */
+function isletStarts(lo: number, hi: number): number[] {
+  const span = hi - lo + 1;
+  const count = Math.floor(span / ISLET_PITCH);
+  if (count < 1) return [];
+  const run = count * ISLET_PITCH - (ISLET_PITCH - ISLET_SIDE);
+  const first = lo + Math.floor((span - run) / 2);
+  return Array.from({ length: count }, (_, i) => first + i * ISLET_PITCH);
 }
 
 /**
  * A bench of mountain at `elevation` over a clamped rect, holding water at the bench's own height
- * inside a 1-cell rim. With `islets`, bench cells on a step-3 lattice stay dry inside the water.
- * Null when the region leaves no cell of the rect.
+ * inside a 1-cell rim. With `islets`, blocks of bench stay dry inside the water on a centred
+ * lattice, each the ground of one object cell. Null when the region leaves no cell of the rect.
  */
 export function sinkPoolCourt(
   rect: { x1: number; y1: number; x2: number; y2: number }, elevation: number, islets: boolean, region: Region,
 ): PoolCourt | null {
   const { x1, y1, x2, y2 } = rect;
-  const w = x2 - x1 + 1, h = y2 - y1 + 1;
   const cells: MacroCoord[] = [];
   for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) {
     if (region && !region.has(cellKey(x, y))) continue;
@@ -211,13 +223,20 @@ export function sinkPoolCourt(
   }
   if (cells.length === 0) return null;
   const commands: Command[] = [];
-  // The bench ladder bottom-up, every tier standing on the one below.
-  for (let e = 1; e <= elevation; e++) commands.push(paintTerrainCommand(cells, TerrainType.Mountain, e));
-  const water = cells.filter((c) => {
-    if (c.x === x1 || c.x === x2 || c.y === y1 || c.y === y2) return false;
-    if (islets && (c.x - x1 - 2) % 3 === 0 && (c.y - y1 - 2) % 3 === 0 && c.x >= x1 + 2 && c.y >= y1 + 2 && c.x <= x2 - 2 && c.y <= y2 - 2) return false;
-    return true;
-  });
+  commands.push(...mountainLadder(cells, (c) => c, () => 0, () => elevation));
+  const dry = new Set<string>();
+  const kept: PoolCourt['islets'] = [];
+  if (islets) {
+    for (const iy of isletStarts(y1 + 1, y2 - 1)) for (const ix of isletStarts(x1 + 1, x2 - 1)) {
+      const block: MacroCoord[] = [];
+      for (let dy = 0; dy < ISLET_SIDE; dy++) for (let dx = 0; dx < ISLET_SIDE; dx++) block.push({ x: ix + dx, y: iy + dy });
+      // An islet the region cuts would hold no whole object cell.
+      if (region && !block.every((c) => region.has(cellKey(c.x, c.y)))) continue;
+      for (const c of block) dry.add(cellKey(c.x, c.y));
+      kept.push({ x1: ix, y1: iy, x2: ix + ISLET_SIDE - 1, y2: iy + ISLET_SIDE - 1 });
+    }
+  }
+  const water = cells.filter((c) => c.x !== x1 && c.x !== x2 && c.y !== y1 && c.y !== y2 && !dry.has(cellKey(c.x, c.y)));
   commands.push(paintTerrainCommand(water, TerrainType.Water, elevation));
-  return { commands, cells, water, islets: Math.max(0, cells.length - water.length - (2 * w + 2 * h - 4)) };
+  return { commands, cells, water, islets: kept };
 }

@@ -23,12 +23,11 @@ interface Assembler {
   finish(): AssembledTurn;
 }
 
-/** Per-call bookkeeping alongside its `ToolPart`: the raw arg buffer is never re-derivable from
- *  `input` once parsed, so it is kept here rather than read back off the part. `lastKey` is the
- *  `JSON.stringify` of the last parse actually applied to the part, so a delta that grows the raw
- *  buffer but reparses to the same value (e.g. trailing whitespace) can skip the replace and keep
- *  both the part and its `input` at their old identity. */
-interface ToolState { index: number; raw: string; lastKey: string }
+/** Per-call bookkeeping alongside its `ToolPart`: the raw arg buffer, parsed once the call is
+ *  complete (`done`) or the stream ends (`finish`). Nothing reads a call's input while it arrives
+ *  (`view-job.ts` and `project-view.ts` take it only once `argsDone`), and reparsing the growing
+ *  buffer on every delta made a long call quadratic. */
+interface ToolState { index: number; raw: string }
 
 export function createAssembler(): Assembler {
   const parts: Part[] = [];
@@ -83,19 +82,12 @@ export function createAssembler(): Assembler {
         if (tools.has(ev.callId)) break;
         const index = parts.length;
         parts.push({ kind: 'tool', callId: ev.callId, name: ev.name, input: {}, argsDone: false });
-        tools.set(ev.callId, { index, raw: '', lastKey: '{}' });
+        tools.set(ev.callId, { index, raw: '' });
         break;
       }
       case 'tool-args': {
         const st = tools.get(ev.callId);
-        const part = st && parts[st.index];
-        if (!st || !part || part.kind !== 'tool') break; // no matching tool-start: nothing to attach the delta to
-        st.raw += ev.delta;
-        const input = parsePartial(st.raw);
-        const key = JSON.stringify(input);
-        if (key === st.lastKey) break; // reparses to the same value: keep the part and its input as they are
-        st.lastKey = key;
-        parts[st.index] = { ...part, input, rawInput: st.raw };
+        if (st) st.raw += ev.delta; // no matching tool-start: nothing to attach the delta to
         break;
       }
       case 'done': {
@@ -108,7 +100,7 @@ export function createAssembler(): Assembler {
           const st = tools.get(call.callId);
           const part = st && parts[st.index];
           if (st && part && part.kind === 'tool') {
-            const reconciled: ToolPart = { ...part, name: call.name, input: args ?? part.input, argsDone: true };
+            const reconciled: ToolPart = { ...part, name: call.name, input: args ?? parsePartial(st.raw), argsDone: true };
             if (args === undefined) reconciled.rawInput = call.rawArgs;
             else delete reconciled.rawInput;
             parts[st.index] = reconciled;
@@ -139,6 +131,11 @@ export function createAssembler(): Assembler {
     // close it, so finishing the turn is what marks it done.
     closeIfOpen(textIndex);
     closeIfOpen(reasoningIndex);
+    // A call the stream left unfinished keeps what of its arguments parses, with its raw buffer.
+    for (const st of tools.values()) {
+      const part = parts[st.index];
+      if (part?.kind === 'tool' && !part.argsDone && st.raw !== '') parts[st.index] = { ...part, input: parsePartial(st.raw), rawInput: st.raw };
+    }
     return {
       parts: parts.slice(), stop: stop ?? 'aborted', usage, raw, error,
       ...(quirks !== undefined ? { quirks } : {}),

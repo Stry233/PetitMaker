@@ -5,13 +5,21 @@
  * animations draw a transform that runs out to none (added to one a piece wears, or alone, which the
  * compositor runs through a busy main thread), and a piece a later commit moves while they run is drawn
  * on to its new box, so every piece ends exactly where the layout puts it; a piece found only after
- * fades in, and one found only before fades out where it stood.
+ * fades in, one found only before fades out where it stood, and one veiled (`visibility: hidden`) in
+ * one arrangement fades as it travels. Every move and fade of a pass runs on its motion's one curve and
+ * duration: what only one arrangement has fades where it stands, out over the first share of the
+ * travel and in after a later share (`design/motion:fadeShares`); a piece that rides another
+ * (`MORPH_RIDE_ATTR`) travels only with that one's box and crosses over between its two places; and
+ * a scoped morph that lifts (`morphScope`) draws its travelling pieces as copies in a layer over every
+ * clip around them, the pieces themselves showing again as the pass lands.
  * Content inside a piece that only one arrangement shows (`useMorphPresence`) fades the same way
  * within its piece. The page's morph (`measureMorph`, `playMorph`) carries the chrome's pieces; `morphScope` runs the
  * same morph inside one element apart from it, for a re-arrangement inside a piece.
  */
+import { useIsPresent } from 'framer-motion';
 import { createSignal } from '../../core/base/signal';
-import { easingCss, fadeEasingCss, outSeconds, seconds } from '../design/motion';
+import { easingCss, fadeShares, outSeconds, seconds } from '../design/motion';
+import { z as rungs } from '../design/styles';
 import type { MotionId } from '../design/motion/registry';
 import { useUiPreview } from '../design/preview';
 import { effectiveZoom, visualRect, type VisualRect } from '../design/visual-rect';
@@ -72,13 +80,47 @@ export const MORPH_SHAPE_ATTR = 'data-morph-shape';
  *  but `fill` and the default re-flows without saying so. */
 const MORPH_REFLOW_ATTR = 'data-morph-reflow';
 
-/** What a piece's root wears: its id, unique on the page, its `shape` where it has one, and whether
- *  its content `reflows` where its shape does not say so. A pictured subtree marks nothing. */
-export function useMorph(id: string, shape?: MorphShape, { reflows = false }: { reflows?: boolean } = {}): {
+/** On a piece that never travels a path of its own: it rides the piece or guide (`MORPH_GUIDE_ATTR`)
+ *  its value names, carried only by that box's movement, and where its place beside that box differs
+ *  between the arrangements it crosses over, its old self fading out and its new self in as for a
+ *  piece only one arrangement has. A piece of a row rides the piece it stands beside; a piece pinned
+ *  to a surface's corner rides that surface. With nothing to ride in both arrangements it fades where
+ *  it stands. */
+export const MORPH_RIDE_ATTR = 'data-morph-ride';
+/** The edges of the box a riding piece holds to, space separated; on an axis it names none it keeps
+ *  its share of that box. */
+export const MORPH_RIDE_AT_ATTR = 'data-morph-ride-at';
+/** On the picture inside a piece that, in another arrangement, is that picture alone (a card and a
+ *  details row's picture): in a lifting scope, travelling between a piece with a face and one without,
+ *  the picture travels between the face's own box and the other's, and the piece that has the face
+ *  travels around it, standing about the picture as it did on every frame, while all of it but the
+ *  face fades, out early as it leaves and in late as it arrives. */
+export const MORPH_FACE_ATTR = 'data-morph-face';
+
+/** On an element a morph measures, by its id, only as a box pieces ride: its owner draws its change
+ *  on the motion's curve and duration (the Blueprint band gliding its own edges). */
+export const MORPH_GUIDE_ATTR = 'data-morph-guide';
+
+export type RideEdge = 'left' | 'right' | 'top' | 'bottom';
+/** What a riding piece rides: the id of a piece or guide, and the edges of its box it holds to. */
+export interface Ride { on: string; at?: readonly RideEdge[] }
+
+/** What a riding piece wears beside its id. */
+export function rideAttrs(ride: Ride | undefined): Record<string, string> {
+  if (!ride) return {};
+  return { [MORPH_RIDE_ATTR]: ride.on, ...(ride.at?.length ? { [MORPH_RIDE_AT_ATTR]: ride.at.join(' ') } : {}) };
+}
+
+/** What a piece's root wears: its id, unique on the page, its `shape` where it has one, whether its
+ *  content `reflows` where its shape does not say so, and what it `ride`s. A pictured subtree marks
+ *  nothing, and nor does a piece on its way out of an `AnimatePresence`: it leaves on its own exit
+ *  where it stands, and its id is free for what arrives. */
+export function useMorph(id: string, shape?: MorphShape, { reflows = false, ride }: { reflows?: boolean; ride?: Ride } = {}): {
   [MORPH_ATTR]?: string; [MORPH_SHAPE_ATTR]?: MorphShape; [MORPH_REFLOW_ATTR]?: '';
 } {
-  if (useUiPreview()) return {};
-  return { [MORPH_ATTR]: id, ...(shape ? { [MORPH_SHAPE_ATTR]: shape } : {}), ...(reflows ? { [MORPH_REFLOW_ATTR]: '' } : {}) };
+  const present = useIsPresent();
+  if (useUiPreview() || !present) return {};
+  return { [MORPH_ATTR]: id, ...(shape ? { [MORPH_SHAPE_ATTR]: shape } : {}), ...(reflows ? { [MORPH_REFLOW_ATTR]: '' } : {}), ...rideAttrs(ride) };
 }
 
 /** Whether a piece's content re-flows between arrangements (`MORPH_REFLOW_ATTR`). */
@@ -111,6 +153,16 @@ function startOf(was: VisualRect, box: VisualRect, shape: string | null): { left
   return { left, top: was.top + was.height / 2 - (s * box.height) / 2, sx: s, sy: s };
 }
 
+/** A box's corner and size, in screen px. */
+type Box = { left: number; top: number; width: number; height: number };
+
+/** Where a piece standing in `box` starts so that its face, standing in `face`, starts where `startOf`
+ *  draws it from `was`: scaled with the face from the piece's top left corner. */
+function startAround(was: VisualRect, box: VisualRect, face: VisualRect, shape: string | null): { left: number; top: number; sx: number; sy: number } {
+  const f = startOf(was, face, shape);
+  return { left: f.left - f.sx * (face.left - box.left), top: f.top - f.sy * (face.top - box.top), sx: f.sx, sy: f.sy };
+}
+
 /** A piece as it stood before the re-arrangement, with what it needs to stand there again on its way out. */
 interface Was {
   el: HTMLElement;
@@ -134,12 +186,33 @@ interface Was {
   piece?: HTMLElement | null;
   /** The outermost layer the piece stands in that has a rung of its own, and that rung. */
   layer?: { el: HTMLElement; z: number } | null;
+  /** For a riding piece: what it rides (`MORPH_RIDE_ATTR`), the edges it holds to, and a copy of it as
+   *  it stood, to cross over from. */
+  ride?: { on: string; at: string | null; copy: HTMLElement };
+  /** For a piece holding a face (`MORPH_FACE_ATTR`): where the face stood. */
+  face?: VisualRect;
+  /** The picture its face, or the piece itself, showed, by its source; null for none. */
+  picture?: string | null;
+  /** For a piece set off from where the screen drew it (`morphFrom`): `box` is its face's where it has one. */
+  seen?: boolean;
+  /** For such a piece: a copy of what drew it there, as it stood. */
+  drew?: Was;
+}
+
+/** The picture `el` shows, by its source: its own where it is one, else the topmost inside it (a
+ *  picture is drawn over its plate). */
+function pictureOf(el: Element): string | null {
+  const all = el.querySelectorAll('img');
+  const img = el instanceof HTMLImageElement ? el : all[all.length - 1];
+  return img?.getAttribute('src') ?? null;
 }
 
 /** The pieces measured before a re-arrangement, by id, the content shown in only one arrangement that
  *  stood shown, by id, and the window they were measured in. */
 export interface MorphFirst {
   pieces: Map<string, Was>; shown: Map<string, Was>; view: { w: number; h: number }; scope: Scope;
+  /** The boxes of the guides pieces ride, by id (`MORPH_GUIDE_ATTR`). */
+  guides: Map<string, VisualRect>;
   /** Where a scoped morph's frame stood drawn as its pieces were measured (`Scope.frame`). */
   frame: VisualRect | null;
 }
@@ -159,8 +232,9 @@ export function onMorph(tell: (run: MorphRun) => void): () => void {
 
 const layouts = new Set<() => void>();
 
-/** Calls `place` just before a morph measures where its pieces end, for a piece placed from another
- *  piece's box (the character on her seat), so it stands at its new place when measured. */
+/** Calls `place` just before a morph measures where its pieces end, and again each time the pass
+ *  re-aims a piece a later commit moved, for a piece placed from another piece's box (the character on
+ *  her seat), so it stands at its new place when measured and ends where it rests. */
 export function onMorphLayout(place: () => void): () => void {
   layouts.add(place);
   return () => { layouts.delete(place); };
@@ -194,11 +268,17 @@ interface Scope {
   /** The running pass's clock (null while it is held): one of its moves on the time they set off at
    *  (`passClock`), whose start the compositor gives it, as it gives the others theirs. */
   clock: Animation | null;
+  /** Whether its travelling pieces are drawn as copies in a lifted layer (`morphScope`'s `lift`). */
+  lift?: boolean;
+  /** What the running pass lifted: the layers its copies stand in, and the animations hiding the
+   *  pieces they stand for; both go as the pass lands or ends. */
+  lifted: { layers: HTMLElement[]; hides: Animation[] };
 }
 
 const page: Scope = {
   within: () => (typeof document === 'undefined' ? null : document), attr: MORPH_ATTR, presence: MORPH_PRESENCE_ATTR,
   holder: () => document.documentElement, tell: (run) => morphs.emit(run), running: [], leaving: [], retire: null, pieces: [], raised: [], clock: null,
+  lifted: { layers: [], hides: [] },
 };
 
 /** Starts a pass: ends the one before and tells the followers of the new run, whose `settled`
@@ -223,6 +303,14 @@ function endPass(scope: Scope): void {
   scope.clock?.cancel();
   scope.clock = null;
   lower(scope);
+  land(scope);
+}
+
+/** Shows the pieces the pass lifted again and takes their copies away, in one frame. */
+function land(scope: Scope): void {
+  for (const hide of scope.lifted.hides) hide.cancel();
+  for (const layer of scope.lifted.layers) layer.remove();
+  scope.lifted = { layers: [], hides: [] };
 }
 
 /** Gives each layer the running pass raised back its own rung. */
@@ -299,13 +387,16 @@ function inheritedOf(el: HTMLElement): Was['inherited'] {
   }
   const parent = el.parentElement ? getComputedStyle(el.parentElement) : null;
   const type: [string, string][] = parent
-    ? [['color', parent.color], ['font-family', parent.fontFamily], ['font-size', parent.fontSize], ['line-height', parent.lineHeight]]
+    ? [['color', parent.color], ['font-family', parent.fontFamily], ['font-size', parent.fontSize], ['font-weight', parent.fontWeight], ['line-height', parent.lineHeight]]
     : [];
   return { zoom, style: [...type, ...vars] };
 }
 
 /** A computed opacity as a number; an engine that computes none draws it whole. */
 const opacityOf = (v: string) => (v === '' ? 1 : Number(v));
+
+/** How strongly a piece is drawn: its opacity, none where it stands hidden (a veiled control). */
+const shownOpacity = (style: CSSStyleDeclaration) => (style.visibility === 'hidden' ? '0' : style.opacity);
 
 /** Measures every piece where it stands now, a running morph included, and holds CSS transitions in
  *  pieces still until `playMorph`. Call it before the re-arrangement reaches the DOM. */
@@ -342,16 +433,27 @@ function measure(scope: Scope): MorphFirst {
   // from where they were last shown, in the window they were shown in.
   const view = { w: window.innerWidth, h: window.innerHeight };
   const last = scope === page && shownBoxes && (shownBoxes.view.w !== view.w || shownBoxes.view.h !== view.h) ? shownBoxes : null;
+  const clips = new Map<Element, Element | null>();
   for (const [id, el] of marked(scope)) {
     const live = visualRect(el);
-    const box = last?.boxes.get(id) ?? live;
+    // A piece a running lifted pass draws by a copy stands where that copy is drawn.
+    const copy = scope.lift ? scope.pieces.find((p) => p.real === el && p.el.isConnected)?.el : undefined;
+    const box = copy ? visualRect(copy) : (last?.boxes.get(id) ?? live);
     if (!drawn(box) || !drawn(live)) continue;
     if (clip && outside(box, clip)) continue;
+    // A lifted copy is drawn over every clip, so a piece its scroller wholly cuts off was not shown: it arrives.
+    if (scope.lift && !copy && cutOff(el, clips)) continue;
     const was = wasOf(el, box);
     const { dx, dy } = { dx: box.left - live.left, dy: box.top - live.top };
     shifts.set(el, { dx, dy });
+    const face = el.querySelector(`[${MORPH_FACE_ATTR}]`);
+    const faceBox = face ? visualRect(face) : null;
+    if (faceBox && drawn(faceBox)) was.face = shifted(faceBox, dx, dy);
+    if (scope.lift) was.picture = pictureOf(was.face ? face! : el);
     if (scope === page) was.layer = layerOf(el);
-    if (reflows(el)) {
+    const on = el.getAttribute(MORPH_RIDE_ATTR);
+    if (on !== null) was.ride = { on, at: el.getAttribute(MORPH_RIDE_AT_ATTR), copy: snapshot(el) };
+    else if (reflows(el)) {
       was.content = contentOf(el).map((copy) => ({ ...copy, box: shifted(copy.box, dx, dy) }));
       was.shares = layoutShares(el, el.getBoundingClientRect());
     }
@@ -365,9 +467,53 @@ function measure(scope: Scope): MorphFirst {
     const d = (outer && shifts.get(outer)) ?? { dx: 0, dy: 0 };
     shown.set(id, { ...wasOf(el, shifted(visualRect(el), d.dx, d.dy)), clip: around, piece: outer });
   }
+  const guides = new Map<string, VisualRect>();
+  for (const [id, el] of guidesOf(scope)) {
+    const box = visualRect(el);
+    if (drawn(box)) guides.set(id, box);
+  }
   scope.holder()?.setAttribute(MORPHING_ATTR, '');
   const frame = scope.frame?.() ?? null;
-  return { pieces, shown, view: last ? last.view : view, scope, frame: frame ? visualRect(frame) : null };
+  return { pieces, shown, guides, view: last ? last.view : view, scope, frame: frame ? visualRect(frame) : null };
+}
+
+/** Sets the piece `id` of `first` off from `box`, in screen px, where the screen drew it rather than
+ *  where it is laid out (a carried card's copy under the pointer as a release drops it among the
+ *  others): its face (`MORPH_FACE_ATTR`) as it is drawn then, where it has one, else the piece; one
+ *  measured nowhere, scrolled out of view, sets off from there too. `drew` is what drew it
+ *  there (that copy, standing over the page): a copy of it travels around the piece, standing about it
+ *  as it stood about `box` on every frame, and fades out early. Call it with the measure, before the
+ *  re-arrangement reaches the DOM. */
+export function morphFrom(first: MorphFirst, id: string, box: VisualRect, { drew }: { drew?: HTMLElement | null } = {}): void {
+  const was = first.pieces.get(id);
+  const el = was?.el ?? marked(first.scope).get(id);
+  if (!el?.isConnected) return;
+  const stood = drew?.isConnected ? { ...wasOf(drew, visualRect(drew)), el: snapshot(drew), parent: null } : undefined;
+  first.pieces.set(id, { ...(was ?? wasOf(el, box)), box, seen: true, ...(stood ? { drew: stood } : {}) });
+}
+
+/** The guides in `scope`, by id. */
+function guidesOf(scope: Scope): Map<string, HTMLElement> {
+  const out = new Map<string, HTMLElement>();
+  for (const el of scope.within()?.querySelectorAll<HTMLElement>(`[${MORPH_GUIDE_ATTR}]`) ?? []) {
+    const id = el.getAttribute(MORPH_GUIDE_ATTR)!;
+    if (!out.has(id)) out.set(id, el);
+  }
+  return out;
+}
+
+/** Where a riding piece holds to `box`: the edges `at` names, else its `share` of the box per axis. */
+function ridePoint(box: VisualRect, at: string | null, share: { x: number; y: number }): { x: number; y: number } {
+  const edges = at?.split(' ') ?? [];
+  const sx = edges.includes('left') ? 0 : edges.includes('right') ? 1 : share.x;
+  const sy = edges.includes('top') ? 0 : edges.includes('bottom') ? 1 : share.y;
+  return { x: box.left + sx * box.width, y: box.top + sy * box.height };
+}
+
+/** Where the centre of `of` stands across `box` per axis, kept to the box's own edges. */
+function shareIn(box: VisualRect, of: VisualRect): { x: number; y: number } {
+  const clamp = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5);
+  return { x: clamp((of.left + of.width / 2 - box.left) / box.width), y: clamp((of.top + of.height / 2 - box.top) / box.height) };
 }
 
 /** `box` moved by `dx`, `dy`. */
@@ -426,7 +572,7 @@ export function watchShownBoxes(): () => void {
 function wasOf(el: HTMLElement, box: VisualRect): Was {
   const style = getComputedStyle(el);
   const inherited = inheritedOf(el);
-  return { el, box, parent: el.parentElement, scale: inherited.zoom * zoomOf(el), opacity: style.opacity, z: style.zIndex, inherited };
+  return { el, box, parent: el.parentElement, scale: inherited.zoom * zoomOf(el), opacity: shownOpacity(style), z: style.zIndex, inherited };
 }
 
 /** The outermost element between `el` (itself included) and the body with a z-index of its own. */
@@ -481,7 +627,10 @@ function drawnKids(el: Element): HTMLElement[] {
 }
 
 /** What marks an element as itself on the page or to the morph, which a copy of it never wears. */
-const OWN_ATTRS = ['id', 'data-testid', MORPH_ATTR, MORPH_PIECE_ATTR, MORPH_PRESENCE_ATTR, MORPH_SHAPE_ATTR, MORPH_REFLOW_ATTR, MORPH_GROUP_ATTR, MORPH_RAISED_ATTR];
+const OWN_ATTRS = [
+  'id', 'data-testid', MORPH_ATTR, MORPH_PIECE_ATTR, MORPH_PRESENCE_ATTR, MORPH_SHAPE_ATTR, MORPH_REFLOW_ATTR, MORPH_GROUP_ATTR, MORPH_RAISED_ATTR,
+  MORPH_RIDE_ATTR, MORPH_RIDE_AT_ATTR, MORPH_GUIDE_ATTR,
+];
 const OWN_MARKED = OWN_ATTRS.map((attr) => `[${attr}]`).join(',');
 
 /** Takes every mark in `root`'s subtree off, itself included. */
@@ -578,6 +727,13 @@ function clipAround(el: Element, cache: Map<Element, Element | null>): Element |
   return found;
 }
 
+/** Whether the scroller or clip around `el` wholly cuts it off; rects are compared raw, as an element
+ *  and its clip share one zoom convention. */
+function cutOff(el: Element, cache: Map<Element, Element | null>): boolean {
+  const around = clipAround(el, cache);
+  return !!around && outside(el.getBoundingClientRect(), around.getBoundingClientRect());
+}
+
 /** The content of `scope` only one arrangement shows that is shown now, by id, with the clip around
  *  each. Rects are compared raw: an element and its clip share one zoom convention. */
 function shownContent(scope: Scope): Map<string, { el: HTMLElement; clip: Element | null }> {
@@ -597,7 +753,10 @@ function shownContent(scope: Scope): Map<string, { el: HTMLElement; clip: Elemen
 }
 
 /** A morph confined to one element: its pieces wear `MORPH_PIECE_ATTR`, and its passes neither end
- *  the page's nor tell its followers. */
+ *  the page's nor tell its followers. With `lift`, each piece that travels is drawn by a copy of it
+ *  standing in a layer of its own over the element's surface, its scrollers and every clip around
+ *  them, on the element's own rung, while the piece itself stands hidden in its place until the pass
+ *  lands or ends: nothing a piece passes cuts it, and nothing changes the element's scrolling. */
 interface MorphScope {
   /** Measures the pieces in `root`, those outside its own box (scrolled out of view) left to arrive. */
   measure(root: HTMLElement): MorphFirst;
@@ -607,12 +766,12 @@ interface MorphScope {
   stop(): void;
 }
 
-export function morphScope(): MorphScope {
+export function morphScope({ lift = false }: { lift?: boolean } = {}): MorphScope {
   let root: HTMLElement | null = null;
   let last: MorphRun = { settled: Promise.resolve() };
   const scope: Scope = {
     within: () => root, attr: MORPH_PIECE_ATTR, holder: () => root, clip: () => (root ? visualRect(root) : null), frame: () => root,
-    tell: (run) => { last = run; }, running: [], leaving: [], retire: null, pieces: [], raised: [], clock: null,
+    tell: (run) => { last = run; }, running: [], leaving: [], retire: null, pieces: [], raised: [], clock: null, lift, lifted: { layers: [], hides: [] },
   };
   return {
     measure(el) {
@@ -655,6 +814,15 @@ function carried(box: VisualRect, across: { x: number; y: number }): VisualRect 
 /** Where every move ends: no transform of the morph's own. */
 const MORPH_REST = 'translate(0px, 0px) scale(1)';
 
+/** The transform a copy wears, followed by a space, for a move written after it; empty for none. A
+ *  copy's own transform never changes, so a move written after it draws what one added to it would, and
+ *  the compositor runs it through a busy main thread, where Chromium runs an added move on the main
+ *  thread alone, lagging the pieces it travels with. */
+function copyTransform(el: HTMLElement): string {
+  const own = getComputedStyle(el).transform;
+  return !own || own === 'none' ? '' : `${own} `;
+}
+
 /** How far a `translate` of one px in a piece's own space moves it on screen, read off a probe. */
 const PROBE_PX = 100;
 
@@ -663,7 +831,9 @@ const PROBE_PX = 100;
 const CARD_STEPS = 8;
 
 /** A card's direct child, with where it stood laid out and the screen px per px of its own. */
-interface CardKid { el: HTMLElement; box: VisualRect; k: number; origin: Origin | null }
+/** A child a card carries at its content's even scale; `stood` for a copy of its old content, carried on
+ *  the same path from the size it stood at, so the two stay one over the other as they crossfade. */
+interface CardKid { el: HTMLElement; box: VisualRect; k: number; origin: Origin | null; stood?: boolean }
 
 /**
  * Draws each piece from its box in `first` to where it stands now on `motion`, as its `MorphShape`
@@ -677,9 +847,14 @@ interface CardKid { el: HTMLElement; box: VisualRect; k: number; origin: Origin 
  * `held` stands every piece where it stood until a later call plays the same `first`: the new
  * arrangement is committed but the window has not yet turned to it. `late` reads the page again a
  * frame on and sets off on the frame after, for what the commits size observers make after the
- * re-arrangement add, remove or re-flow.
+ * re-arrangement add, remove or re-flow. `fitCards` starts a card's content no larger than its old
+ * outline holds it, so a card turning to another arrangement keeps its foot inside its outline (UI-28);
+ * without it the content starts at the zoom it stood at, over its old content's copy, and the outline
+ * cuts off what stands past it (an input mode's re-size, UI-27).
  */
-export function playMorph(first: MorphFirst, motion: MotionId, { held = false, late = false }: { held?: boolean; late?: boolean } = {}): void {
+export function playMorph(
+  first: MorphFirst, motion: MotionId, { held = false, late = false, fitCards = true }: { held?: boolean; late?: boolean; fitCards?: boolean } = {},
+): void {
   const { scope } = first;
   const settle = startPass(scope);
   if (scope === page) for (const place of layouts) place();
@@ -697,8 +872,8 @@ export function playMorph(first: MorphFirst, motion: MotionId, { held = false, l
   const duration = seconds(motion) * 1000;
   const out = outSeconds(motion) * 1000;
   const easing = easingCss(motion);
-  // A fade on the travel's curve can cross most of its range in one frame; fades take their own.
-  const fade = fadeEasingCss(motion);
+  // Every fade runs on the travel's own curve.
+  const fade = easingCss(motion);
   // A scoped piece that arrives out of view has nothing to show, so it takes no animation.
   const clip = scope.clip?.() ?? null;
   const started: Animation[] = [];
@@ -710,30 +885,54 @@ export function playMorph(first: MorphFirst, motion: MotionId, { held = false, l
     left: new Set<string>(), shownIn: new Set<HTMLElement>(), shownOut: new Set<string>(), kids: new Set<HTMLElement>(),
     landed: new Set<HTMLElement>(),
   };
+  const shares = fadeShares(motion);
+  // The rung a lifting scope's copies stand on: its element's own, over everything inside it.
+  const liftRung = scope.lift ? liftRungOf(scope) : null;
   const fadeIn = (el: HTMLElement, { delay = 0, length = duration - delay }: { delay?: number; length?: number } = {}) => {
     const anim = el.animate([{ opacity: 0, offset: 0 }], { duration: length, delay, easing: fade, fill: 'backwards' });
     started.push(anim);
     return anim;
   };
-  const fadeOut = (was: Was, el: HTMLElement) => {
-    const leave = was.el.animate([{ opacity: was.opacity }, { opacity: 0 }], { duration: out, easing: fade, fill: 'forwards' });
-    const gone = () => { el.remove(); scope.leaving = scope.leaving.filter((g) => g !== el); };
-    leave.finished.then(gone, () => {});
-    scope.leaving.push(el);
-    started.push(leave);
+  /** Fades in what only the new arrangement has where it stands, after `shares.in` of the travel, on
+   *  the travel's own clock and curve. */
+  const arrive = (el: HTMLElement) => {
+    const anim = el.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: shares.in }], { duration, easing });
+    started.push(anim);
+    return anim;
   };
-  /** Fades a re-flowing piece's old content out where it stood, carried with the piece (a card's
-   *  stretching with its outline for as long as it shows), as its new content fades in. */
-  const crossfade = (was: Was, el: HTMLElement) => {
+  /** Takes a stand-in away once `anim` has faded it out. */
+  const goes = (el: HTMLElement, anim: Animation) => {
+    const gone = () => { el.remove(); scope.leaving = scope.leaving.filter((g) => g !== el); };
+    anim.finished.then(gone, () => {});
+    scope.leaving.push(el);
+    started.push(anim);
+    return anim;
+  };
+  const fadeOut = (was: Was, el: HTMLElement) =>
+    goes(el, was.el.animate([{ opacity: was.opacity }, { opacity: 0 }], { duration: out, easing: fade, fill: 'forwards' }));
+  /** Fades out what only the old arrangement had where it stood, over the first `shares.out` of the
+   *  travel, on the travel's own clock and curve. */
+  const leave = (was: Was, el: HTMLElement) => goes(el, was.el.animate(
+    [{ opacity: String(opacityOf(was.opacity)), offset: 0 }, { opacity: 0, offset: shares.out }, { opacity: 0, offset: 1 }], { duration, easing, fill: 'forwards' },
+  ));
+  /** Fades a re-flowing piece's old content out where it stood, carried with the piece (a card's along
+   *  its content's path, `CardKid.stood`), as its new content fades in, inside `into`: the piece, or
+   *  the copy a lifting scope draws it by. `under` is the scale `into` is drawn at as they stand in,
+   *  which their zoom undoes: `restand` puts each box back where it stood under that scale, but would
+   *  leave its type drawn that much smaller. Returns the copies standing in and their fades. */
+  const crossfade = (was: Was, el: HTMLElement, into: HTMLElement, shift = { dx: 0, dy: 0 }, under = 1): { copy: HTMLElement; fade: Animation }[] => {
     done.crossfaded.add(el);
-    for (const copy of was.content!) {
-      copy.el.style.zoom = String(copy.scale / effectiveZoom(el));
+    done.crossfaded.add(into);
+    const copies = was.content!.map((copy) => {
+      copy.el.style.zoom = String(copy.scale / (effectiveZoom(into) * under));
       // Stood back in the piece itself, it keeps the type and custom properties its own parent gave it.
       for (const [name, value] of copy.inherited.style) if (!copy.el.style.getPropertyValue(name)) copy.el.style.setProperty(name, value);
-      const stood: Was = { ...copy, parent: el };
-      fadeOut(stood, standIn(stood, placeOf(copy.box)));
-    }
-    fadeKids(el);
+      const stood: Was = { ...copy, parent: into };
+      const fade = fadeOut(stood, standIn(stood, shifted(placeOf(copy.box), shift.dx, shift.dy)));
+      return { copy: copy.el, fade };
+    });
+    fadeKids(into);
+    return copies;
   };
   /** Fades in a re-flowing piece's new content it has not yet faded. */
   const fadeKids = (el: HTMLElement) => {
@@ -744,10 +943,25 @@ export function playMorph(first: MorphFirst, motion: MotionId, { held = false, l
     }
   };
   const within = (set: Set<HTMLElement>, el: Element) => { for (const piece of set) if (piece.contains(el)) return true; return false; };
+  /** Draws `el` by a copy standing on `box` in the lifted layer, hiding it until the pass lands. */
+  const liftOut = (el: HTMLElement, box: VisualRect): HTMLElement => {
+    const copy = snapshot(el);
+    const layer = standIn({ ...wasOf(el, box), el: copy, parent: null, z: String(liftRung) }, box);
+    scope.lifted.layers.push(layer);
+    scope.lifted.hides.push(el.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 2 * duration + out }));
+    return copy;
+  };
+  /** How a piece that left fades out in a lifting scope where its parent left with it: on the lifted
+   *  rung, as everything travelling with it does, rather than on the page under the surface it stood on. */
+  const onLiftedRung = (was: Was): Was => (liftRung !== null && !was.parent?.isConnected ? { ...was, parent: null, z: String(liftRung) } : was);
+  /** Ids of the riding pieces whose new self stands where its old self stood beside what it rides, so
+   *  it rides whole and nothing crosses over. */
+  const solid = new Set<string>();
 
   /** Draws what the page shows now and the pass has not drawn yet. */
   const reconcile = () => {
     const now = marked(scope);
+    const guides = guidesOf(scope);
     const boxes = new Map<string, VisualRect>();
     const fresh: [string, HTMLElement][] = [];
     for (const [id, el] of now) if (done.pieces.get(id) !== el) { fresh.push([id, el]); boxes.set(id, visualRect(el)); }
@@ -757,80 +971,252 @@ export function playMorph(first: MorphFirst, motion: MotionId, { held = false, l
     for (const [id, el] of now) {
       const was = first.pieces.get(id);
       if (!was?.content?.length || done.crossfaded.has(el)) continue;
-      const carriedNow = done.pieces.get(id) === el ? followed.find((p) => p.el === el) : undefined;
+      const carriedNow = done.pieces.get(id) === el ? followed.find((p) => (p.real ?? p.el) === el) : undefined;
       const moved = carriedNow
         ? bare(carriedNow.anims, () => drawn(visualRect(el)) && contentMoved(was, el))
         : !!boxes.get(id) && drawn(boxes.get(id)!) && contentMoved(was, el);
       if (moved) reflowing.add(el);
     }
+    /** Where the piece or guide `id` that pieces ride stands laid out now, or null where it stands nowhere. */
+    const anchorNow = (id: string): VisualRect | null => {
+      const carriedNow = followed.find((p) => (p.real ?? p.el).getAttribute(scope.attr) === id);
+      if (carriedNow) return carriedNow.box;
+      const box = boxes.get(id) ?? (guides.get(id) ? visualRect(guides.get(id)!) : null);
+      return box && drawn(box) ? box : null;
+    };
+    const anchorWas = (id: string): VisualRect | null => {
+      const box = first.pieces.get(id)?.box ?? first.guides.get(id) ?? null;
+      return box ? placeOf(box) : null;
+    };
     // Every piece is read before any animation starts, then probed together and read once more: a read
     // after an animation starts recalculates the page's style, once per piece if they interleave.
     const reads: {
-      el: HTMLElement; was: Was; box: VisualRect; content: number; kids: CardKid[]; origin: Origin | null; opacity: string;
-      layer: { el: HTMLElement; z: number } | null; layout: string;
+      /** It travels to a face from a piece that was that picture alone; `crosses` where the picture differs. */
+      toFace: boolean; crosses: boolean;
+      el: HTMLElement; was: Was; box: VisualRect; content: number; origin: Origin | null; opacity: string;
+      layer: { el: HTMLElement; z: number } | null; layout: string; shape: string | null; start: { left: number; top: number; sx: number; sy: number };
     }[] = [];
     const arrivals: HTMLElement[] = [];
+    /** Stand-ins travelling around a piece (`Was.face`, `Was.drew`): each stays about it as it goes from
+     *  `from` to `to`, in screen px. */
+    const trails: { el: HTMLElement; from: Box; to: Box }[] = [];
+    /** Riding pieces found now: where each starts, as far from where it stands as what it rides moves. */
+    const riders: { el: HTMLElement; box: VisualRect; dx: number; dy: number; crosses: boolean; guided: boolean }[] = [];
     const frame = scope.frame?.() ?? null;
     const frameAt = frame ? visualRect(frame) : null;
     lag = frameAt && first.frame ? { dx: frameAt.left - first.frame.left, dy: frameAt.top - first.frame.top } : { dx: 0, dy: 0 };
+    const clips = new Map<Element, Element | null>();
     for (const [id, el] of fresh) {
       done.pieces.set(id, el);
       const box = boxes.get(id)!;
       if (!drawn(box)) continue;
       const was = first.pieces.get(id);
+      // Lifted, a piece travelling to where its scroller cuts it off would vanish as it lands: it fades
+      // out where it stood instead, as one only the old arrangement had.
+      if (was && !was.ride && liftRung !== null && cutOff(el, clips)) {
+        done.left.add(id);
+        const stood = was.el.isConnected ? { ...was, el: snapshot(was.el) } : onLiftedRung(was);
+        leave(stood, standIn(stood, placeOf(was.box)));
+        continue;
+      }
+      const on = el.getAttribute(MORPH_RIDE_ATTR);
+      if (on !== null) {
+        if (clip && outside(box, clip)) continue;
+        const from = anchorWas(on), to = anchorNow(on);
+        const at = el.getAttribute(MORPH_RIDE_AT_ATTR);
+        const share = to ? shareIn(to, box) : { x: 0.5, y: 0.5 };
+        const a = from && to ? ridePoint(from, at, share) : null, b = to ? ridePoint(to, at, share) : null;
+        const dx = a && b ? a.x - b.x : 0, dy = a && b ? a.y - b.y : 0;
+        // Its old self stood where its new self starts, at its size: it rides whole.
+        const stood = was ? placeOf(was.box) : null;
+        const whole = !!stood && !!a && Math.abs(stood.left - (box.left + dx)) < 1 && Math.abs(stood.top - (box.top + dy)) < 1
+          && Math.abs(stood.width - box.width) < 1 && Math.abs(stood.height - box.height) < 1;
+        if (whole) solid.add(id);
+        riders.push({ el, box, dx, dy, crosses: !whole, guided: !now.has(on) && guides.has(on) });
+        continue;
+      }
       if (!was) {
         if (!done.arrived.has(el) && (!clip || !outside(box, clip))) { done.arrived.add(el); arrivals.push(el); }
         continue;
       }
-      // A card's content keeps the zoom it stood at, measured before any probe moves it.
-      const card = el.getAttribute(MORPH_SHAPE_ATTR) === 'card';
+      // Between a piece with a face and one without, the picture travels between the face's box and the
+      // other piece's, and the piece with the face travels around it.
+      const face = liftRung !== null || was.seen ? el.querySelector<HTMLElement>(`[${MORPH_FACE_ATTR}]`) : null;
+      const faceBox = face ? visualRect(face) : null;
+      const facing = liftRung !== null && (was.face !== undefined) !== (faceBox !== null && drawn(faceBox));
+      const toFace = facing && !was.face;
+      // The same picture travels as itself; anything else crosses over from the old one as it departs.
+      const crosses = facing && (was.picture == null || was.picture !== pictureOf(toFace ? face! : el));
+      const shape = el.getAttribute(MORPH_SHAPE_ATTR);
+      // Its face sets off from the face's old box, where it travels to its face or the screen drew it.
+      const start = toFace || (was.seen && faceBox && drawn(faceBox))
+        ? startAround(placeOf(was.box), box, faceBox!, face!.getAttribute(MORPH_SHAPE_ATTR))
+        : startOf(placeOf(facing ? was.face! : was.box), box, shape);
+      const from = { left: start.left, top: start.top, width: start.sx * box.width, height: start.sy * box.height };
+      if (facing && (was.face || crosses)) {
+        done.left.add(id);
+        const own = was.el.isConnected ? { ...was, el: snapshot(was.el) } : was;
+        // A piece leaving its face travels over every clip; an old picture crossing over stands where it
+        // stood, on the lifted rung where its parent left with it.
+        const stood = !was.face && own.parent?.isConnected ? own : { ...own, parent: null, z: String(liftRung) };
+        const host = standIn(stood, placeOf(was.box));
+        if (was.face) trails.push({ el: stood.el, from, to: box });
+        leave(stood, host);
+      }
+      // What drew it where it sets off from travels around it, standing where it stood over the page, once.
+      const drew = was.drew;
+      if (drew) {
+        was.drew = undefined;
+        const host = standIn(drew, drew.box);
+        trails.push({ el: drew.el, from, to: box });
+        leave(drew, host);
+      }
+      if (toFace) done.arrived.add(el);
       reads.push({
-        el, was, box, content: card ? was.scale / effectiveZoom(el) : 1, kids: card ? cardKids(el) : [], origin: bareOrigin(el),
-        opacity: getComputedStyle(el).opacity, layer: was.layer ? layerOf(el) : null, layout: layoutIn(el, frame),
+        toFace, crosses, el, was, box, content: shape === 'card' ? was.scale / effectiveZoom(el) : 1, origin: bareOrigin(el),
+        opacity: shownOpacity(getComputedStyle(el)), layer: was.layer ? layerOf(el) : null, layout: layoutIn(el, frame), shape, start,
       });
     }
+    const still = ({ start: { left, top, sx, sy }, box }: { start: { left: number; top: number; sx: number; sy: number }; box: VisualRect }) =>
+      Math.abs(left - box.left) < 0.5 && Math.abs(top - box.top) < 0.5 && Math.abs(sx - 1) < 0.005 && Math.abs(sy - 1) < 0.005;
+    // A lifting scope draws each piece that travels by a copy in its lifted layer; one standing still
+    // stays itself.
+    const targets = reads.map((read) => (liftRung !== null && !still(read) ? liftOut(read.el, read.box) : read.el));
+    reads.forEach((read, i) => {
+      const target = targets[i]!;
+      // A piece travelling to its face arrives around it late, the face showing all the way.
+      const face = read.toFace ? target.querySelector<HTMLElement>(`[${MORPH_FACE_ATTR}]`) : null;
+      for (let n = face; n && n !== target && n.parentElement; n = n.parentElement) {
+        for (const kin of n.parentElement.children) if (kin !== n && kin instanceof HTMLElement) arrive(kin);
+      }
+      if (read.crosses) fadeIn(face ?? target, { length: out });
+    });
+    const riderTargets = riders.map(({ el, box, dx, dy }) => (liftRung !== null && (Math.abs(dx) >= 0.5 || Math.abs(dy) >= 0.5) ? liftOut(el, box) : el));
+    const lifted = targets.map((t, i) => t !== reads[i]!.el);
     const shift = `translate(${PROBE_PX}px, ${PROBE_PX}px)`;
-    const probes = reads.map(({ el }) => {
+    const moving = [...targets, ...riderTargets];
+    // A copy wears no transform of its own, and a card's children are read off what is drawn.
+    const origins = targets.map((t, i) => (lifted[i] ? bareOrigin(t) : reads[i]!.origin));
+    const kidsOf = targets.map((t, i) => (reads[i]!.shape === 'card' ? cardKids(t) : []));
+    const probes = moving.map((el) => {
       const probe = el.animate([{ transform: shift }, { transform: shift }], { duration, composite: 'add' });
       probe.pause();
       return probe;
     });
-    const probed = reads.map(({ el }) => visualRect(el));
+    const probed = moving.map((el) => visualRect(el));
+    const placed = moving.map((_, i) => (i < targets.length ? reads[i]!.box : riders[i - targets.length]!.box));
     for (const probe of probes) probe.cancel();
-    for (const el of arrivals) fadeIn(el, { delay: out });
-    reads.forEach(({ el, was, box, content, kids, origin, opacity, layer, layout }, i) => {
+    for (const el of arrivals) arrive(el);
+    // A stand-in travelling around a piece (one that left its face, or what drew it where it set off) is
+    // carried with it: scaled with it from its own top left corner, after the transform it wears (a
+    // carried copy is placed by one), it stands about the piece as it stood on every frame.
+    const trailAt = trails.map(({ el }) => ({ at: visualRect(el), w: parseFloat(el.style.width), h: parseFloat(el.style.height), own: copyTransform(el) }));
+    trails.forEach(({ el, from, to }, i) => {
+      const { at, w, h, own } = trailAt[i]!;
+      const sx = to.width / from.width, sy = to.height / from.height;
+      if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+      // Screen px per px of its own.
+      const kx = w > 0 ? at.width / w : 1, ky = h > 0 ? at.height / h : 1;
+      const tx = (to.left - at.left - sx * (from.left - at.left)) / kx, ty = (to.top - at.top - sy * (from.top - at.top)) / ky;
+      el.style.transformOrigin = '0px 0px';
+      const frames = [{ transform: `${own}${MORPH_REST}` }, { transform: `${own}translate(${tx}px, ${ty}px) scale(${sx}, ${sy})` }];
+      started.push(el.animate(frames, { duration, easing, fill: 'forwards' }));
+    });
+    // A card's old content stands in before the card moves, as far from its new corner as it stood from
+    // its old one, so the card's start and its content's carry together draw it where it stood.
+    const stoodIn = new Map<HTMLElement, CardKid[]>();
+    reads.forEach(({ el, was, box, shape }, i) => {
+      if (!reflowing.has(el) || shape !== 'card') return;
+      const into = targets[i]!;
+      const stood = placeOf(was.box);
+      // The card is the box its fixed copies stand in from the start, as its move would make it, without
+      // a transform of its own that a re-aimed move would read; given back once the last has faded.
+      const hint = into.style.willChange;
+      into.style.willChange = 'transform';
+      const copies = crossfade(was, el, into, { dx: box.left - stood.left, dy: box.top - stood.top });
+      void Promise.allSettled(copies.map(({ fade }) => fade.finished)).then(() => { into.style.willChange = hint; });
+      stoodIn.set(el, copies.map(({ copy }) => ({ el: copy, box: visualRect(copy), k: effectiveZoom(copy), origin: bareOrigin(copy), stood: true })));
+    });
+    reads.forEach(({ el, was, box, content, opacity, layer, layout, shape, start }, i) => {
+      const target = targets[i]!;
+      const kids = [...kidsOf[i]!, ...(stoodIn.get(el) ?? [])];
       // A piece that drops to a lower layer stands on its old one while it is carried, so it never
       // passes under what it stood over.
       if (layer && was.layer && layer.z < was.layer.z) raise(scope, layer.el, was.layer.z);
-      // Its own opacity (a tile behind a folded stack) runs from the one it stood at.
+      // Its own opacity (a tile behind a folded stack, a control veiled or unveiled) runs from the one it
+      // stood at; one veiled now stays drawn while it fades, wherever what holds it is drawn.
       if (Math.abs(opacityOf(was.opacity) - opacityOf(opacity)) > 0.005) {
-        started.push(el.animate([{ opacity: was.opacity }, { opacity }], { duration, easing: fade }));
+        const drawnOn = opacityOf(opacity) === 0 ? { visibility: 'inherit' } : {};
+        const frames = [{ opacity: String(opacityOf(was.opacity)), ...drawnOn }, { opacity: String(opacityOf(opacity)), ...drawnOn }];
+        started.push(target.animate(frames, { duration, easing: fade }));
       }
-      const kx = (probed[i]!.left - box.left) / PROBE_PX;
-      const ky = (probed[i]!.top - box.top) / PROBE_PX;
+      const kx = (probed[i]!.left - placed[i]!.left) / PROBE_PX;
+      const ky = (probed[i]!.top - placed[i]!.top) / PROBE_PX;
       if (Math.abs(kx) < 1e-3 || Math.abs(ky) < 1e-3) return;
-      const shape = el.getAttribute(MORPH_SHAPE_ATTR);
-      const { left, top, sx, sy } = startOf(placeOf(was.box), box, shape);
       const piece: Carried = {
-        el, box, kx, ky, origin, wasScale: shape === 'card' ? was.scale : null, content, kids, anims: [], layout, frameAt,
-        start: box, duration, since: 0,
+        el: target, ...(lifted[i] ? { real: el } : {}), box, kx, ky, origin: origins[i]!, shape, wasScale: shape === 'card' ? was.scale : null, content,
+        fit: fitCards, kids, anims: [], layout, frameAt, start: box, duration, since: 0,
       };
       // A piece standing still is followed too, so a later commit that lays it out elsewhere moves it on.
       followed.push(piece);
-      if (Math.abs(left - box.left) < 0.5 && Math.abs(top - box.top) < 0.5 && Math.abs(sx - 1) < 0.005 && Math.abs(sy - 1) < 0.005) return;
-      piece.start = { left, top, width: sx * box.width, height: sy * box.height };
-      piece.anims = movePiece(piece, { left, top, sx, sy }, kids, { duration, easing });
+      if (still({ start, box })) return;
+      piece.start = { left: start.left, top: start.top, width: start.sx * box.width, height: start.sy * box.height };
+      piece.anims = movePiece(piece, start, kids, { duration, easing });
       started.push(...piece.anims);
     });
+    // A riding piece is carried only as far as what it rides moves, on the travel's clock, crossing
+    // over where its place beside it changed. A lifted copy riding a piece has its move written after
+    // its own transform (`copyTransform`), so it keeps with that piece's; a live piece's move is added
+    // to the transform it wears, which may change under it, and so is one riding a guide, which keeps
+    // with the guide's own glide on the main thread.
+    const riderOwn = riderTargets.map((target, j) => (target === riders[j]!.el || riders[j]!.guided ? null : copyTransform(target)));
+    riders.forEach(({ el, dx, dy, crosses }, j) => {
+      const target = riderTargets[j]!, i = targets.length + j, own = riderOwn[j]!;
+      done.arrived.add(el);
+      if (crosses) arrive(target);
+      const kx = (probed[i]!.left - placed[i]!.left) / PROBE_PX, ky = (probed[i]!.top - placed[i]!.top) / PROBE_PX;
+      if ((Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) || Math.abs(kx) < 1e-3 || Math.abs(ky) < 1e-3) return;
+      const frames = [{ transform: `${own ?? ''}translate(${dx / kx}px, ${dy / ky}px)` }, { transform: `${own ?? ''}translate(0px, 0px)` }];
+      started.push(target.animate(frames, own === null ? { duration, easing, composite: 'add' } : { duration, easing }));
+    });
+    // Any other piece's old content stands in under its move's start, which carries it from the scale
+    // the piece starts at.
     for (const [id, el] of now) {
       const was = first.pieces.get(id);
-      if (was && reflowing.has(el)) crossfade(was, el);
+      if (!was || !reflowing.has(el) || done.crossfaded.has(el)) continue;
+      const read = reads.findIndex((r) => r.el === el);
+      const into = read >= 0 ? targets[read]! : el;
+      const carrier = followed.find((p) => p.el === into);
+      const under = carrier ? Math.sqrt((carrier.start.width / carrier.box.width) * (carrier.start.height / carrier.box.height)) : 1;
+      crossfade(was, el, into, undefined, under);
+    }
+    // A riding piece's old self crosses over: a copy of it, as it stood, rides what it rode to where
+    // that stands now, fading out where its new self fades in.
+    for (const [id, was] of first.pieces) {
+      if (!was.ride || done.left.has(id) || solid.has(id)) continue;
+      done.left.add(id);
+      const box = placeOf(was.box);
+      const from = anchorWas(was.ride.on), to = anchorNow(was.ride.on);
+      const stood: Was = liftRung === null
+        ? { ...was, el: was.ride.copy, parent: was.el.isConnected ? was.parent : null }
+        : { ...was, el: was.ride.copy, parent: null, z: String(liftRung) };
+      const host = standIn(stood, box);
+      leave(stood, host);
+      if (!from || !to) continue;
+      const share = shareIn(from, box);
+      const a = ridePoint(from, was.ride.at, share), b = ridePoint(to, was.ride.at, share);
+      const own = parseFloat(stood.el.style.width), k = own > 0 ? visualRect(stood.el).width / own : 1;
+      if (Math.abs(b.x - a.x) < 0.5 && Math.abs(b.y - a.y) < 0.5) continue;
+      const guided = !now.has(was.ride.on) && guides.has(was.ride.on), worn = guided ? '' : copyTransform(stood.el);
+      const frames = [{ transform: `${worn}translate(0px, 0px)` }, { transform: `${worn}translate(${(b.x - a.x) / k}px, ${(b.y - a.y) / k}px)` }];
+      started.push(stood.el.animate(frames, guided ? { duration, easing, composite: 'add' } : { duration, easing }));
     }
     // A piece the re-arrangement removed, at once or a commit later, fades out where it stood.
     for (const [id, was] of first.pieces) {
-      if (now.has(id) || done.left.has(id) || was.el.isConnected) continue;
+      if (was.ride || now.has(id) || done.left.has(id) || was.el.isConnected) continue;
       done.left.add(id);
-      fadeOut(was, standIn(was, placeOf(was.box)));
+      const stood = onLiftedRung(was);
+      leave(stood, standIn(stood, placeOf(was.box)));
     }
     if (!scope.presence) return;
     // Content inside an arriving piece arrives with it; inside a re-flowing one the crossfade carries it.
@@ -901,7 +1287,7 @@ export function playMorph(first: MorphFirst, motion: MotionId, { held = false, l
     const finished = allFinished(started);
     // A pass that has run carries nothing: a seat read inside a piece it drew (`restingRect`) is read
     // where the page lays it out again, so later resizes move the character with it.
-    void finished.then(() => { landing?.disconnect(); if (scope.running === started) { scope.pieces = []; lower(scope); } });
+    void finished.then(() => { landing?.disconnect(); if (scope.running === started) { scope.pieces = []; lower(scope); land(scope); } });
     settle(finished);
   };
   // A late pass reads the page again on the next frame, after the commits the first frame's size
@@ -933,8 +1319,13 @@ function bare<T>(anims: Animation[], read: () => T): T {
  *  content stood at as a share of its own, its animations, and its layout as `layoutIn` reads it. */
 interface Carried {
   el: HTMLElement; box: VisualRect; kx: number; ky: number; origin: Origin | null;
-  /** A card's: the screen px per px of its own it stood at, and its content's zoom as a share of its own. */
-  wasScale: number | null; content: number;
+  /** For a piece a lifting scope draws by a copy (`el`): the piece itself, whose layout it follows. */
+  real?: HTMLElement;
+  /** Its `MorphShape`, read off the piece, which a copy does not wear. */
+  shape: string | null;
+  /** A card's: the screen px per px of its own it stood at, its content's zoom as a share of its own, and
+   *  whether that content starts within the old outline (`playMorph`'s `fitCards`). */
+  wasScale: number | null; content: number; fit: boolean;
   kids: CardKid[]; anims: Animation[]; layout: string;
   /** Where its scope's frame stood drawn, screen px, when `box` was read; null for the page's pieces. */
   frameAt: VisualRect | null;
@@ -963,8 +1354,35 @@ function movePiece(
     if (sx !== 1 || sy !== 1) anims.push(el.animate([{ transformOrigin: '0px 0px' }, { transformOrigin: '0px 0px' }], { duration: timing.duration }));
     anims.push(el.animate([{ transform: `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})` }, { transform: MORPH_REST }], { ...timing, composite: 'add' }));
   }
-  if (kids.length) anims.push(...carryContent(el, box, kids, { sx, sy, content: piece.content }, timing));
+  if (kids.length) anims.push(...carryContent(el, box, kids, { sx, sy, content: piece.content, fit: piece.fit }, timing));
+  if (piece.shape === 'fill') {
+    const round = roundCorners(el, sx, sy, timing);
+    if (round) anims.push(round);
+  }
   return anims;
+}
+
+const CORNERS = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'] as const;
+
+/**
+ * A rounded plate stretched from `sx`, `sy` of its box keeps round corners: each corner's radius runs
+ * against the plate's scale on each axis, sampled in `CARD_STEPS` on the move's own curve, so the drawn
+ * corner stays the radius it wears. Null for a plate with square corners or no stretch.
+ */
+function roundCorners(el: HTMLElement, sx: number, sy: number, timing: { duration: number; easing: string }): Animation | null {
+  if (sx === 1 && sy === 1) return null;
+  const style = getComputedStyle(el);
+  const radii = CORNERS.map((corner) => parseFloat(style[corner]) || 0);
+  if (radii.every((r) => r === 0)) return null;
+  const frames: Keyframe[] = [];
+  for (let i = 0; i <= CARD_STEPS; i++) {
+    const p = i / CARD_STEPS;
+    const x = sx + (1 - sx) * p, y = sy + (1 - sy) * p;
+    const frame: Keyframe = { offset: p };
+    CORNERS.forEach((corner, k) => { frame[corner] = `${radii[k]! / x}px ${radii[k]! / y}px`; });
+    frames.push(frame);
+  }
+  return el.animate(frames, timing);
 }
 
 /** Where the layout puts `el`, transforms aside: its offsets up its offset parents and its size; inside
@@ -1051,8 +1469,9 @@ function follow(
     // starts or ends recalculates the page's style, once per piece if they interleave.
     const frame = scope.frame?.() ?? null;
     const moved = pieces.flatMap((piece) => {
-      if (!piece.el.isConnected) return [];
-      const layout = layoutIn(piece.el, frame);
+      const real = piece.real ?? piece.el;
+      if (!real.isConnected || !piece.el.isConnected) return [];
+      const layout = layoutIn(real, frame);
       return layout === piece.layout ? [] : [{ piece, layout }];
     });
     if (!moved.length) return true;
@@ -1077,12 +1496,14 @@ function follow(
       };
     });
     for (const { piece } of aims) {
+      // A copy in the lifted layer stands on the piece's new box first.
+      if (piece.real) restand(piece.el, visualRect(piece.real));
       piece.box = visualRect(piece.el);
       // Its size, and so its origin in px, and its zoom may have changed with its layout.
       piece.origin = bareOrigin(piece.el);
       if (piece.wasScale !== null) {
         piece.content = piece.wasScale / effectiveZoom(piece.el);
-        piece.kids = cardKids(piece.el);
+        piece.kids = [...cardKids(piece.el), ...piece.kids.filter((kid) => kid.stood && kid.el.isConnected)];
       }
     }
     const shift = `translate(${PROBE_PX}px, ${PROBE_PX}px)`;
@@ -1119,6 +1540,9 @@ function follow(
         started.push(anim);
       }
     });
+    // What stands on a re-aimed piece (the character on her seat) takes its place on the new box, and
+    // is followed from where it is drawn on the next frame.
+    if (scope === page) for (const place of layouts) place();
     return true;
   });
 }
@@ -1176,13 +1600,13 @@ function cardKids(card: HTMLElement): CardKid[] {
 /**
  * A card drawn from its old outline exactly (`sx`, `sy` of its own box) carries its content at an even
  * scale running from `content` to 1: each child takes the ratio of the two about the card's top left
- * corner, sampled in `CARD_STEPS`. The scale starts no larger than the old outline holds the content
- * at, so all of it stands inside the outline the whole way (a sheet's foot as well as its head); the
- * card still cuts off whatever stands past its outline: by its own overflow where it clips, or else by
- * a clip held for the motion, which repaints each frame.
+ * corner, sampled in `CARD_STEPS`. With `fit` the scale starts no larger than the old outline holds the
+ * content at, so all of it stands inside the outline the whole way (a sheet's foot as well as its head);
+ * the card cuts off whatever stands past its outline: by its own overflow where it clips, or else by a
+ * clip held for the motion, which repaints each frame.
  */
 function carryContent(
-  card: HTMLElement, box: VisualRect, kids: CardKid[], { sx, sy, content }: { sx: number; sy: number; content: number },
+  card: HTMLElement, box: VisualRect, kids: CardKid[], { sx, sy, content, fit }: { sx: number; sy: number; content: number; fit: boolean },
   timing: { duration: number; easing: string },
 ): Animation[] {
   const style = getComputedStyle(card);
@@ -1196,30 +1620,34 @@ function carryContent(
   // axis. Content that fits the new box and starts within the old outline stays within it all the way;
   // a card that clips (a scroller) shows nothing past its own box, so its content reaches no further.
   let reach = 0;
-  for (const { box: at } of kids) {
+  for (const { box: at, stood } of kids) {
+    if (stood) continue;
     const right = clipped ? Math.min(at.right, box.right) : at.right;
     const bottom = clipped ? Math.min(at.bottom, box.bottom) : at.bottom;
     reach = Math.max(reach, (right - box.left) / box.width / sx, (bottom - box.top) / box.height / sy);
   }
-  const from = reach > 0 ? Math.min(content, 1 / reach) : content;
+  const from = fit && reach > 0 ? Math.min(content, 1 / reach) : content;
   const scales: { offset: number; x: number; y: number }[] = [];
   for (let i = 0; i <= CARD_STEPS; i++) {
     const p = i / CARD_STEPS;
     const c = from + (1 - from) * p;
     scales.push(i === CARD_STEPS ? { offset: 1, x: 1, y: 1 } : { offset: p, x: c / (sx + (1 - sx) * p), y: c / (sy + (1 - sy) * p) });
   }
-  for (const { el, box: at, k, origin } of kids) {
+  for (const { el, box: at, k, origin, stood } of kids) {
     // The card's top left corner, in the child's own px from its own.
     const ox = (box.left - at.left) / k, oy = (box.top - at.top) / k;
+    // A copy of the old content stood at its old size, `1 / from` of the new content's at the start.
+    const f = stood ? 1 / from : 1;
+    const rest = (offset: number) => offset === 1 && f === 1;
     if (origin) {
       // A child with no transform of its own scales about its own origin, the translation holding
       // the card's corner still, so the compositor can run it.
       started.push(el.animate(scales.map(({ offset, x, y }) => ({
-        offset, transform: offset === 1 ? MORPH_REST : `translate(${(ox - origin.x) * (1 - x)}px, ${(oy - origin.y) * (1 - y)}px) scale(${x}, ${y})`,
+        offset, transform: rest(offset) ? MORPH_REST : `translate(${(ox - origin.x) * (1 - x * f)}px, ${(oy - origin.y) * (1 - y * f)}px) scale(${x * f}, ${y * f})`,
       })), timing));
     } else {
       started.push(el.animate([{ transformOrigin: `${ox}px ${oy}px` }, { transformOrigin: `${ox}px ${oy}px` }], { duration: timing.duration }));
-      started.push(el.animate(scales.map(({ offset, x, y }) => ({ offset, transform: offset === 1 ? MORPH_REST : `translate(0px, 0px) scale(${x}, ${y})` })), { ...timing, composite: 'add' }));
+      started.push(el.animate(scales.map(({ offset, x, y }) => ({ offset, transform: rest(offset) ? MORPH_REST : `translate(0px, 0px) scale(${x * f}, ${y * f})` })), { ...timing, composite: 'add' }));
     }
   }
   return started;
@@ -1264,15 +1692,29 @@ function standIn(was: Was, box: VisualRect): HTMLElement {
     margin: '0px', width: `${own.w}px`, height: `${own.h}px`, boxSizing: 'border-box', pointerEvents: 'none',
   });
   host.appendChild(el);
-  // Whatever its containing block, its zoom and the transform a running morph draws it under, the
-  // stand-in lands on its old box: one reading gives the screen px per px of its own on each axis.
+  restand(el, box, was.scale);
+  for (const [scroller, left, top] of scrolledIn.get(el) ?? []) { scroller.scrollLeft = left; scroller.scrollTop = top; }
+  return removable;
+}
+
+/** Stands a stand-in placed `position: fixed` on `box`: whatever its containing block, its zoom and the
+ *  transform a running morph draws it under, one reading gives the screen px per px of its own on each
+ *  axis. `scale` is the guess where it draws nothing. */
+function restand(el: HTMLElement, box: VisualRect, scale = 1): void {
+  const px = (v: string) => parseFloat(v) || 0;
+  const own = { left: px(el.style.left), top: px(el.style.top), w: px(el.style.width), h: px(el.style.height) };
   const at = visualRect(el);
-  const kx = at.width > 0 ? at.width / own.w : was.scale;
-  const ky = at.height > 0 ? at.height / own.h : was.scale;
+  const kx = at.width > 0 && own.w > 0 ? at.width / own.w : scale;
+  const ky = at.height > 0 && own.h > 0 ? at.height / own.h : scale;
   Object.assign(el.style, {
     left: `${own.left + (box.left - at.left) / kx}px`, top: `${own.top + (box.top - at.top) / ky}px`,
     width: `${box.width / kx}px`, height: `${box.height / ky}px`,
   });
-  for (const [scroller, left, top] of scrolledIn.get(el) ?? []) { scroller.scrollLeft = left; scroller.scrollTop = top; }
-  return removable;
+}
+
+/** The rung a lifting scope's layer stands on: that of the outermost layer its element stands in, over
+ *  everything of that layer as it comes later on the page, or what a control opened stands on. */
+function liftRungOf(scope: Scope): number {
+  const root = scope.holder();
+  return (root instanceof HTMLElement ? layerOf(root)?.z : null) ?? rungs.opened;
 }

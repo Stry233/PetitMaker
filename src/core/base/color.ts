@@ -28,6 +28,17 @@ export function numberToHexString(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
 
+/** A channel-wise `rgba()` of a 6-digit hex colour, for a value that must blend at an exact alpha. */
+export function rgbaOf(hex: string, alpha: number): string {
+  const [r, g, b] = hexChannels(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** Rec. 709 luma of three channels, in their own range: the brightness of linear-light pictures. */
+export function luma709(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 /** Rec. 601 luma of three channels, in their own range (0..255 in, 0..255 out). */
 export function channelLuma(r: number, g: number, b: number): number {
   return 0.299 * r + 0.587 * g + 0.114 * b;

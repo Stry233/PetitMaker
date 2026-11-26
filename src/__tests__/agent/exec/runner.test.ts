@@ -188,6 +188,37 @@ describe('exec/runner', () => {
     expect(deriveView(useAgentSession.getState().log).suggestion).toBeNull();
   });
 
+  it('files an order again only while no job runs, since a send then would be read as steering', async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: Adapter = {
+      async *stream() {
+        await waiting;
+        yield { t: 'text', delta: 'Done.' };
+        yield { t: 'done', stop: 'stop' };
+      },
+      async listModels() { return []; },
+    };
+    const runner = createRunner(makeCfg({ scripted: adapter }, true));
+    runner.send('Add a pond');
+    await flush();
+    expect(runner.active()).toBe(true);
+    const orders = () => eventsOf(useAgentSession.getState().log).filter((e) => e.kind === 'order').length;
+    const steers = () => eventsOf(useAgentSession.getState().log).filter((e) => e.kind === 'steer').length;
+    runner.resend('Add a pond');
+    expect(orders()).toBe(1);
+    expect(steers(), 'nothing is queued as steering either').toBe(0);
+    release();
+    await flush();
+    expect(runner.active()).toBe(false);
+    runner.resend(undefined);
+    expect(orders()).toBe(1);
+    runner.resend('Add a pond');
+    expect(orders()).toBe(2);
+    runner.stop();
+    await flush();
+  });
+
   it('does not publish or clear live output on a replacement session', async () => {
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });
@@ -380,7 +411,7 @@ describe('exec/runner', () => {
     const own = createLog();
     const live: (readonly Part[] | null)[] = [];
     const session: SessionPort = {
-      log: () => own, watch: () => () => {}, isFiled: () => false,
+      log: () => own, watch: () => () => {}, isFiled: () => false, fileAway: () => {},
       setLive: (parts) => live.push(parts), setChildLive: () => {},
     };
     const adapter = createScriptedAdapter([textTurn('All set. Want anything changed?')]);
@@ -522,7 +553,7 @@ describe('exec/runner', () => {
 
   /** Set-aside settles the job rather than hiding it: a paused job owns the composer's resume route,
    *  so a card merely put away would leave no way to a fresh order. */
-  it('setAside settles a held job as aborted, and leaves a live one to stop()', async () => {
+  it('setAside settles a held job as aborted and files its record, and leaves a live one to stop()', async () => {
     const adapter = createScriptedAdapter([
       toolTurn([{ callId: 'c1', name: 'inspect_region', args: { x1: 0, y1: 0, x2: 1, y2: 1 } }]),
       textTurn('never reached'),
@@ -535,13 +566,16 @@ describe('exec/runner', () => {
 
     const log = useAgentSession.getState().log;
     expect(deriveView(log).phase).toBe('paused');
+    const seq = deriveView(log).current!.orderSeq;
+    expect(useAgentSession.getState().filed.has(seq)).toBe(false);
 
-    runner.setAside();
+    runner.setAside(seq);
     const events = eventsOf(log);
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted' });
     expect(deriveView(log).phase).toBe('aborted');
+    expect(useAgentSession.getState().filed.has(seq)).toBe(true);
 
-    runner.setAside();
+    runner.setAside(seq);
     expect(eventsOf(log).filter((e) => e.kind === 'jobEnd')).toHaveLength(1);
   });
 
@@ -662,18 +696,21 @@ describe('exec/runner', () => {
     expect(deriveView(log).phase).toBe('idle');
   });
 
-  it('setAside is a no-op on a session that is not holding anything', async () => {
+  it('setAside settles nothing on a session that is not holding anything, and only files the record', async () => {
     const adapter = createScriptedAdapter([textTurn('done')]);
     const runner = createRunner(makeCfg({ scripted: adapter }));
 
-    runner.setAside();
+    runner.setAside(0);
     expect(eventsOf(useAgentSession.getState().log)).toHaveLength(0);
 
     runner.send('go');
     await flush();
-    const before = eventsOf(useAgentSession.getState().log).length;
-    runner.setAside();
-    expect(eventsOf(useAgentSession.getState().log)).toHaveLength(before);
+    const log = useAgentSession.getState().log;
+    const before = eventsOf(log).length;
+    const seq = deriveView(log).jobs[0]!.orderSeq;
+    runner.setAside(seq);
+    expect(eventsOf(log)).toHaveLength(before);
+    expect(useAgentSession.getState().filed.has(seq)).toBe(true);
   });
 
   it('[ASST-04] a throw during the job redacts a leaked key before it reaches the incident', async () => {
@@ -772,6 +809,39 @@ describe('exec/runner', () => {
     await flush();
     const order2 = eventsOf(useAgentSession.getState().log).find((e) => e.kind === 'order');
     expect((order2 as { region?: unknown } | undefined)?.region).toBeUndefined();
+  });
+
+  it('[ASST-26] another map taking the place of the one a job launched on stops it, with no request after', async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const adapter: Adapter = {
+      async *stream() {
+        await waiting;
+        yield { t: 'text', delta: 'too late' };
+        yield { t: 'done', stop: 'stop' };
+      },
+      async listModels() { return []; },
+    };
+    const leave: Array<() => void> = [];
+    const state = makeState(20, 20);
+    const exec = makeExecutor(state);
+    const deps: AgentToolDeps = {
+      getState: () => state, getExecutor: () => exec, getRegion: () => [],
+      onMapLeft: (listener) => { leave.push(listener); return () => { leave.splice(leave.indexOf(listener), 1); }; },
+    };
+    const runner = createRunner(makeCfg({ scripted: adapter, makeToolDeps: () => deps }));
+    runner.send('go');
+    await flush();
+    expect(runner.active()).toBe(true);
+    for (const listener of [...leave]) listener();
+    release();
+    await flush();
+    const log = useAgentSession.getState().log;
+    expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'aborted', stoppedBy: 'map-left' });
+    expect(deriveView(log).jobs.at(-1)?.stoppedBy, 'the panel reads why it stopped').toBe('map-left');
+    expect(JSON.stringify(eventsOf(log)), 'nothing the provider said after the swap lands').not.toContain('too late');
+    expect(runner.active()).toBe(false);
+    expect(leave, 'the watch ends with the job').toHaveLength(0);
   });
 
   it('[ASST-12] stop aborts: outcome aborted, no adapter call after', async () => {
@@ -892,8 +962,8 @@ describe('exec/runner', () => {
     // `launch()` hands one adapter to both the parent loop and the delegated child, so the script
     // runs in asking order: the parent's delegate call, the child's two turns, the parent's close.
     const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'd1', name: 'delegate_task', args: { task: 'raise a small hill' } }]),
-      toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
+      toolTurn([{ callId: 'd1', name: 'delegate_task', args: { label: 'hill', x1: 0, y1: 0, x2: 9, y2: 9, goal: 'raise a small hill' } }]),
+      toolTurn([{ callId: 'c1', name: 'draw_area', args: { x: 2, y: 2, reads_as: 'a hill', rows: ['11', '11'] } }]),
       textTurn('child done'),
       textTurn('All set with the helper task.'),
     ]);
@@ -916,14 +986,15 @@ describe('exec/runner', () => {
     const gate2 = pendingGate(log);
     expect(gate2).toBeDefined();
     expect(gate2!.gateId).not.toBe(gate1!.gateId);
-    expect(gate2!.summary).toContain('Painting terrain');
+    expect(gate2!.summary).toContain('Drawing the place');
     answerGate(log, gate2!.gateId, 'allow');
     await flush();
 
     log = useAgentSession.getState().log;
     const events = eventsOf(log);
     const delegateResult = events.find((e) => e.kind === 'toolResult' && e.callId === 'd1');
-    expect(delegateResult).toMatchObject({ content: 'child done', isError: false });
+    expect(delegateResult).toMatchObject({ isError: false });
+    expect(delegateResult?.kind === 'toolResult' && delegateResult.content).toContain('child done');
     expect(events[events.length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
     expect(deriveView(log).phase).toBe('idle');
     expect(runner.active()).toBe(false);
@@ -932,7 +1003,7 @@ describe('exec/runner', () => {
 
   it('the runner wires onChildProgress so the helper lane can watch the live child', async () => {
     const adapter = createScriptedAdapter([
-      toolTurn([{ callId: 'd1', name: 'delegate_task', args: { task: 'raise a small hill' } }]),
+      toolTurn([{ callId: 'd1', name: 'delegate_task', args: { label: 'hill', x1: 0, y1: 0, x2: 9, y2: 9, goal: 'raise a small hill' } }]),
       toolTurn([{ callId: 'c1', name: 'paint_terrain', args: { rect: { x1: 2, y1: 2, x2: 3, y2: 3 }, terrain: 'mountain', elevation: 1 } }]),
       textTurn('child done'),
       textTurn('All set with the helper task.'),
@@ -949,7 +1020,7 @@ describe('exec/runner', () => {
     await flush();
 
     // The child is waiting on its mirrored gate; the lane sees it before its first write lands.
-    expect(useAgentSession.getState().childLive).toEqual({ task: 'raise a small hill', ops: 0 });
+    expect(useAgentSession.getState().childLive).toEqual({ d1: { task: 'raise a small hill', label: 'hill', ops: 0 } });
 
     log = useAgentSession.getState().log;
     const gate2 = pendingGate(log);
@@ -957,7 +1028,7 @@ describe('exec/runner', () => {
     answerGate(log, gate2!.gateId, 'allow');
     await flush();
 
-    expect(useAgentSession.getState().childLive).toBeNull();
+    expect(useAgentSession.getState().childLive).toEqual({});
     log = useAgentSession.getState().log;
     expect(eventsOf(log)[eventsOf(log).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
   });
@@ -1483,5 +1554,62 @@ describe('history erasure reaches provider requests', () => {
     expect(JSON.stringify(eventsOf(current))).not.toContain('PRIVATE_');
     expect(eventsOf(current)[eventsOf(current).length - 1]).toMatchObject({ kind: 'jobEnd', outcome: 'done' });
     expect(runner.active()).toBe(false);
+  });
+
+  describe('an order under a standing fault', () => {
+    const orders = () => eventsOf(useAgentSession.getState().log).filter((e) => e.kind === 'order').length;
+
+    /** A settled job whose retries ran out on `cls`. */
+    function stall(cls: 'network' | 'overflow'): number {
+      const log = useAgentSession.getState().log;
+      const order = append(log, { kind: 'order', text: 'Add a pond', mapContext: '' });
+      append(log, { kind: 'incident', error: { cls, detail: 'no answer' } });
+      append(log, { kind: 'jobEnd', outcome: 'incident', undoIndex: 0 });
+      return order.seq;
+    }
+
+    it('is refused while the same fault would fail it, and taken once the job is set aside', async () => {
+      const adapter = createScriptedAdapter([textTurn('Done.')]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      const seq = stall('network');
+      expect(deriveView(useAgentSession.getState().log).phase).toBe('incident');
+
+      runner.send('Add a well');
+      await flush();
+      expect(orders(), 'the fault still stands').toBe(1);
+      expect(adapter.requests).toHaveLength(0);
+
+      runner.setAside(seq);
+      runner.send('Add a well');
+      await flush();
+      expect(orders()).toBe(2);
+      expect(adapter.requests.length).toBeGreaterThan(0);
+    });
+
+    it('files the same order again on a retry, which is the fault\'s own repair', async () => {
+      const adapter = createScriptedAdapter([textTurn('Done.')]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      stall('network');
+      runner.resend('Add a pond');
+      await flush();
+      expect(orders()).toBe(2);
+    });
+
+    it('is taken under a fault a different order repairs', async () => {
+      const adapter = createScriptedAdapter([textTurn('Done.')]);
+      const runner = createRunner(makeCfg({ scripted: adapter }));
+      stall('overflow');
+      runner.send('Add a well');
+      await flush();
+      expect(orders()).toBe(2);
+    });
+
+    it('is refused while no key is held', async () => {
+      const adapter = createScriptedAdapter([textTurn('Done.')]);
+      const runner = createRunner(makeCfg({ scripted: adapter, keyStanding: () => ({ connected: false }) }));
+      runner.send('Add a well');
+      await flush();
+      expect(orders()).toBe(0);
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { encodeGlyph } from '../../../../io/share/glyph/encode';
 import { BG, dataModuleRect, encodeGlyphV2 } from '../../../_support/glyph-v2';
-import { decodeGlyph } from '../../../../io/share/glyph/decode';
+import { readGlyph } from '../../../../io/share/glyph/decode';
 import { currentBandSize, type Tier } from '../../../../io/share/glyph/geometry';
 import { paletteForVersion } from '../../../../io/share/glyph/palette';
 
@@ -29,23 +29,23 @@ describe('glyph exact round-trip', () => {
   for (const n of [91, 300, 1100, 2000, 4200, 6800, 10033]) {
     it(`${n} B clean, standalone band`, () => {
       const g = encodeGlyph(payload(n), 12)!;
-      expect(eq(decodeGlyph(g.rgba, g.width, g.height), payload(n))).toBe(true);
+      expect(eq(readGlyph(g.rgba, g.width, g.height).payload, payload(n))).toBe(true);
       expect({ width: g.width, height: g.height }).toEqual(currentBandSize(12));
     });
   }
   it('decodes inside a composition with chrome above/below', () => {
     const g = encodeGlyph(payload(900), 12)!;
     const c = inComposition(g, 700, 8);
-    expect(eq(decodeGlyph(c.rgba, c.width, c.height), payload(900))).toBe(true);
+    expect(eq(readGlyph(c.rgba, c.width, c.height).payload, payload(900))).toBe(true);
   });
   it('decodes at a larger module base', () => {
     const g = encodeGlyph(payload(300), 18)!;
     expect(g.width).toBe(currentBandSize(18).width);
-    expect(eq(decodeGlyph(g.rgba, g.width, g.height), payload(300))).toBe(true);
+    expect(eq(readGlyph(g.rgba, g.width, g.height).payload, payload(300))).toBe(true);
   });
   it('fails safe on a random image (null, never bytes)', () => {
     const junk = payload(1584 * 360 * 4, 99);
-    expect(decodeGlyph(junk, 1584, 360)).toBeNull();
+    expect(readGlyph(junk, 1584, 360).payload).toBeNull();
   });
 
   it('retains finder separation for the v2 row-major transport', () => {
@@ -66,6 +66,6 @@ describe('glyph exact round-trip', () => {
       }
     }
 
-    expect(eq(decodeGlyph(rgba, g.width, g.height), payload(n))).toBe(true);
+    expect(eq(readGlyph(rgba, g.width, g.height).payload, payload(n))).toBe(true);
   });
 });

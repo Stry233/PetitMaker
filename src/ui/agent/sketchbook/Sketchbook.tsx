@@ -25,6 +25,7 @@ import { GARNISH, RITUALS, SCRIBBLE_BADGE_MS, SKETCH, type Beat } from './sketch
 import { LOADING_DOT, SCALE } from '../../shell/units';
 import { MASK_KEEP } from '../../design/drawing-palette';
 import { useEffectEvent } from '../../primitives/use-effect-event';
+import { useScriptedWalk } from '../../primitives/use-scripted-walk';
 
 /** Full-width card thumbnail size in CSS pixels. */
 const THUMB = { width: POSTCARD.width, height: 172 } as const;
@@ -309,51 +310,30 @@ interface SketchbookProps {
 export function Sketchbook({ ideas, onOrder, mapVersion }: SketchbookProps) {
   const t = useT();
   const reduced = useReducedMotionConfig() === true;
-  const [beat, setBeat] = useState(0);
-  const [wiping, setWiping] = useState(false);
   const capRef = useRef<HTMLSpanElement>(null);
   const character = useCharacterChannel();
+  /** The step whose idea has been wiped, named with the list it belongs to. */
+  const [wiped, setWiped] = useState<string | null>(null);
+
+  /**
+   * The one engine. Which idea is up is `beat`, the wipe lands `cycle - erase` before the next one,
+   * and the ritual sits inside the hold. Reduced motion runs none of it (the still below is what
+   * stands instead), and one idea alone needs no rotation, so the walk does not play for it (it
+   * would wipe a card with nothing to replace it). A list of another length starts over.
+   */
+  const beat = useScriptedWalk({ beatMs: SKETCH.cycle, active: !reduced && ideas.length >= 2, resetOn: ideas.length }, (step) => [
+    // The first beat is the card arriving, which the builder already drew: she takes up the pencil
+    // from the second on.
+    ...(step > 0 ? [[0, () => scribble(character)] as const] : []),
+    [SKETCH.ritual, () => ritual(character), SKETCH.ritualEvery],
+    [SKETCH.erase, () => setWiped(`${ideas.length}:${step}`)],
+  ]);
+  const wiping = wiped === `${ideas.length}:${beat}`;
 
   const idea = ideas.length > 0 ? ideas[beat % ideas.length]! : null;
   const words = idea
     ? { cap: t(idea.capKey, { dir: t(idea.dirKey), ...idea.params }), order: t(idea.orderKey, { dir: t(idea.dirKey), ...idea.params }) }
     : null;
-
-  /**
-   * The one engine. A single rAF loop off one clock: which idea is up is `beat`, the wipe lands
-   * `cycle - erase` before the next one, and the ritual sits inside the hold. Reduced motion runs
-   * none of it — the still below is what stands instead — and one idea alone needs no rotation, so
-   * the loop is not started at all for it (it would wipe a card with nothing to replace it).
-   */
-  useEffect(() => {
-    if (reduced || ideas.length < 2) return undefined;
-    const t0 = performance.now();
-    let frame = 0;
-    let at = -1;
-    let wiped = false;
-    let ritualled = false;
-    const tick = () => {
-      const now = performance.now() - t0;
-      const b = Math.floor(now / SKETCH.cycle);
-      if (b !== at) {
-        // The first beat is the card arriving, which the builder already drew: she takes up the
-        // pencil from the second on.
-        if (at >= 0) scribble(character);
-        at = b; wiped = false; ritualled = false;
-        setWiping(false);
-        setBeat(b);
-      }
-      const into = now - b * SKETCH.cycle;
-      if (!ritualled && into >= SKETCH.ritual) {
-        ritualled = true;
-        if (b % SKETCH.ritualEvery === SKETCH.ritualEvery - 1) ritual(character);
-      }
-      if (!wiped && into >= SKETCH.erase) { wiped = true; setWiping(true); }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [character, reduced, ideas.length]);
 
   /** The caption fades out, changes, then fades in (`sketchEngine.swapCap`); `capText` holds the shown words apart from the decided ones. It stands still on first paint and under reduced motion. */
   const first = useRef(true);

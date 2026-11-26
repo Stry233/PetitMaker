@@ -1,5 +1,6 @@
 /**
- * Whether the page is running inside an app's built-in browser rather than a real one.
+ * What kind of browser the page runs in: an app's built-in browser rather than a real one, and an
+ * engine older than the CSS zoom the interface is measured against.
  *
  * These WebViews (the in-app browsers of messaging and social apps) ship cut-down engines: some
  * lack WebGL2 or the File System Access API, some block downloads, some never fire
@@ -63,3 +64,32 @@ export function isInAppBrowser(): boolean {
   return isInAppBrowserUA(navigator.userAgent);
 }
 
+
+const PROBE_WIDTH = 200;
+const PROBE_ZOOM = 0.5;
+
+let rectsInScreenPx: boolean | null = null;
+
+/** A 200px box under zoom 0.5 measures 100 on a standardized engine and 200 on a legacy one; a
+ *  reading with no layout (jsdom) counts as screen pixels. */
+function probeZoomedRects(): boolean {
+  if (typeof document === 'undefined' || !document.body) return true;
+  const box = document.createElement('div');
+  box.style.cssText = `position:fixed;left:0;top:0;width:${PROBE_WIDTH}px;height:10px;zoom:${PROBE_ZOOM};visibility:hidden;pointer-events:none`;
+  document.documentElement.appendChild(box);
+  const width = box.getBoundingClientRect().width;
+  box.remove();
+  return Math.abs(width - PROBE_WIDTH) > 1;
+}
+
+/** Whether this engine reports a zoomed subtree's rects in screen pixels, as the standard has it;
+ *  Chromium before 128 reports them in the subtree's own CSS pixels. Probed once, at first use. */
+export function zoomedRectsAreVisual(): boolean {
+  if (rectsInScreenPx === null) rectsInScreenPx = probeZoomedRects();
+  return rectsInScreenPx;
+}
+
+/** Clears the cached probe so a test can pose another engine. */
+export function __resetZoomedRectsProbe(): void {
+  rectsInScreenPx = null;
+}

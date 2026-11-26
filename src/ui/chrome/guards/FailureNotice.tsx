@@ -1,10 +1,8 @@
 /** What a surface shows in place of itself once it has failed, as the `fallback` of a `RenderBoundary`:
  *  the failure in one sentence and the one action that recovers it. */
 import type { CSSProperties } from 'react';
-import { motion } from 'framer-motion';
 import { useT } from '../../../i18n/context';
-import { NoticeBar, noticeActionStyle } from '../../primitives/NoticeBar';
-import { useInteractionProfiles } from '../../design/input-mode';
+import { NoticeAction, NoticeBar } from '../../primitives/NoticeBar';
 
 /** The notice spans most of a narrow window and caps on a wide one. */
 const WIDTH: CSSProperties = { width: '92vw', maxWidth: 520 };
@@ -12,13 +10,10 @@ const WIDTH: CSSProperties = { width: '92vw', maxWidth: 520 };
 function FailureNotice({ testId, text, action, onAction }: {
   testId: string; text: string; action: string; onAction: () => void;
 }) {
-  const profiles = useInteractionProfiles();
   return (
     <NoticeBar role="alert" data-testid={testId} edge="bottom" offset={16} width={WIDTH} travel={12}>
       <span>{text}</span>
-      <motion.button type="button" style={{ ...noticeActionStyle, padding: '6px 12px' }} onClick={onAction} {...profiles.action}>
-        {action}
-      </motion.button>
+      <NoticeAction style={{ padding: '6px 12px' }} onClick={onAction}>{action}</NoticeAction>
     </NoticeBar>
   );
 }

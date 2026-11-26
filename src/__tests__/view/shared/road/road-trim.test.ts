@@ -1,7 +1,7 @@
 import { roadMaterialSettled } from '../../../../view/shared/road/material';
 import { beforeAll, describe, it, expect } from 'vitest';
 import { buildRoadTrimMeshes } from '../../../../view/map3d/geometry/road-mesh';
-import { buildObjectInstances } from '../../../../view/map3d/geometry/object-meshes';
+import { objectInstance } from '../../../../view/map3d/geometry/object-meshes';
 import { surfaceY } from '../../../../view/map3d/geometry/coords';
 import { type GridState, TerrainType } from '../../../../core/model/types';
 import { makeState } from '../../../_support/map-state';
@@ -14,7 +14,7 @@ const addRoad = (s: any, id: string, corners?: any, rotation = 0) =>
 /** These maps are paved in one material, so the split's single part is the road mesh. */
 const buildRoadTrimMesh = (s: GridState) =>
   buildRoadTrimMeshes(s)[0]?.mesh ?? { positions: [] as number[] };
-const instanceCount = (s: GridState) => [...buildObjectInstances(s).values()].reduce((n, l) => n + l.length, 0);
+const instanceCount = (s: GridState) => [...s.objects.values()].filter((obj) => objectInstance(s, obj)).length;
 const xCentroid = (m: { positions: number[] }) => {
   let sx = 0, n = 0;
   for (let i = 0; i < m.positions.length; i += 3) { sx += m.positions[i]!; n++; }

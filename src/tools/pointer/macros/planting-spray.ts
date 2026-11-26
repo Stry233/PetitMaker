@@ -5,7 +5,7 @@ import { cellKey } from '../../../core/grid/rect';
 import { mixedCellSet } from '../../../core/grid/grids';
 import { adjustContext } from '../paint/curve-session';
 import { onBuildableGround, type MacroToolContext } from './tool-context';
-import { applyMacro, applyMacroAsync, hasMacroBuildRunner, MACROS, type MacroId, type MacroOutcome } from '../../macros/run';
+import { applyMacro, buildMacroThen, landMacroRun, MACROS, type MacroBuild, type MacroId, type MacroOutcome } from '../../macros/run';
 import { previewMacroAsync } from '../../macros/runtime/preview';
 import { HOLD_BURST_MS, sprayRadius } from '../../macros/spray-size';
 import { LatestRequest } from './latest-request';
@@ -107,17 +107,12 @@ export class PlantingSpray {
       spray.changes += outcome.changes; spray.pending--;
       if (spray.done && spray.pending === 0) this.settle(spray);
     };
-    if (!hasMacroBuildRunner(ctx.macroContext)) {
-      let outcome: MacroOutcome;
-      try { outcome = applyMacro(ctx.macroContext, spray.id, opts); } catch (error) { this.fail(spray, error); return; }
-      after(outcome);
-      return;
-    }
-    this.applying = this.applying.then(async () => {
-      let outcome: MacroOutcome;
-      try { outcome = await applyMacroAsync(ctx.macroContext, spray.id, opts); } catch (error) { this.fail(spray, error); return; }
-      after(outcome);
-    });
+    // A stale base (the map moved while the worker built) builds again in-process.
+    const land = (built: MacroBuild | null, fresh: boolean): void => {
+      after((built && landMacroRun(ctx.macroContext, spray.id, opts, built, { trustBase: fresh })) ?? applyMacro(ctx.macroContext, spray.id, opts));
+    };
+    const queued = buildMacroThen(ctx.macroContext, spray.id, opts, { land, failed: (error) => this.fail(spray, error), queue: this.applying });
+    if (queued) this.applying = queued;
   }
 
   /** A landing that throws has rolled its own run back; the spray stops there and settles what

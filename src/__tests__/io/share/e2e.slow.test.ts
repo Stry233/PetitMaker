@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildShareCode, importFromRaster } from '../../../io/share';
 import type { ShareCodeMeta } from '../../../io/share/codec/payload';
-import { encodePng, decodePng } from '../../../io/share/raster/png-raster';
+import { encodePng, decodePng } from '../../_support/png-raster';
 import { canonicalize, canonicalBytes } from '../../../io/save/canonical';
 import { BG } from '../../_support/glyph-v2';
 import { CURRENT_VERSION } from '../../../io/save/format';

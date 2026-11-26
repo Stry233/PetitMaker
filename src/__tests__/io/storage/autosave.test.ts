@@ -5,7 +5,7 @@ vi.mock('../../../editor/host/host', () => ({
   host: { camera: { get2d: () => undefined, get3d: () => undefined } },
 }));
 
-import { createAutosave, readAutosave, readRestorableAutosave } from '../../../io/storage/autosave';
+import { createAutosave, readRestorableAutosave } from '../../../io/storage/autosave';
 import { AUTOSAVE_DEBOUNCE_MS, hasAutosave, autosaveWorthy } from '../../../io/storage/facts';
 import { autosave } from '../../../editor/session/autosave';
 import { gzipSync } from 'fflate';
@@ -75,7 +75,7 @@ describe('autosave', () => {
     vi.advanceTimersByTime(2000);
 
     expect(hasAutosave()).toBe(true);
-    const restored = readAutosave();
+    const restored = readRestorableAutosave();
     expect(restored).not.toBeNull();
     expect(restored!.state.template.id).toBe(DEFAULT_MAP.id);
     // Content survives the round-trip (compare encoded cells, ignoring timestamp).
@@ -102,7 +102,6 @@ describe('autosave', () => {
     state.annotations = undefined;
     autosave.schedule(state);
     vi.advanceTimersByTime(2000);
-    expect(autosaveWorthy(readAutosave()!.state)).toBe(false);
     expect(readRestorableAutosave()).toBeNull();
   });
 
@@ -116,7 +115,8 @@ describe('autosave', () => {
     autosave.schedule(empty);
     autosave.schedule(empty, 'initialize');
     vi.advanceTimersByTime(2000);
-    expect(autosaveWorthy(readAutosave()!.state)).toBe(false);
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBe(previous);
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   it('offers an empty map with undo history and can undo its last deletion', () => {
@@ -153,7 +153,7 @@ describe('autosave', () => {
     for (let attempt = 0; attempt < 3; attempt++) {
       autosave.schedule(state);
       vi.advanceTimersByTime(2000);
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored).not.toBeNull();
       state = restored!.state;
       expect(state.objects.get('pavement')?.catalogId).toBe('path-garden-stone');
@@ -169,7 +169,7 @@ describe('autosave', () => {
     autosave.schedule(state);
     vi.advanceTimersByTime(2000);
 
-    expect(readAutosave()!.state.objects.get('r')!.position).toEqual(ramp.position);
+    expect(readRestorableAutosave()!.state.objects.get('r')!.position).toEqual(ramp.position);
   });
 
   describe('camera (resume from last restores the view too)', () => {
@@ -179,7 +179,7 @@ describe('autosave', () => {
       autosave.schedule(makeWorkingMap());
       vi.advanceTimersByTime(2000);
 
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored!.camera).toEqual({
         view2d: { x: 111, y: -22, zoom: 1.4 },
         view3d: { az: 30, el: 20, dist: 0.7, tx: 1, tz: -1 },
@@ -192,14 +192,14 @@ describe('autosave', () => {
       autosave.schedule(makeWorkingMap());
       vi.advanceTimersByTime(2000);
 
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored!.camera).toEqual({ view2d: { x: 5, y: 5, zoom: 1 } });
     });
 
     it('a pre-camera autosave (written before this feature) restores the map and leaves the camera alone', () => {
       // Exactly what an older build's json-codec wrote: no `camera` key at all.
       localStorage.setItem(STORAGE_KEY, serialize(makeWorkingMap()));
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored).not.toBeNull();
       expect(restored!.state.template.id).toBe(DEFAULT_MAP.id);
       expect(restored!.camera).toBeUndefined(); // nothing to apply; never touches the live camera
@@ -217,7 +217,7 @@ describe('autosave', () => {
       vi.advanceTimersByTime(1000); // the original debounce now fires
 
       expect(hasAutosave()).toBe(true); // exactly the one write the content edit scheduled
-      expect(readAutosave()!.camera).toEqual({ view2d: { x: 999, y: 999, zoom: 2 } }); // the latest pose, not the stale one
+      expect(readRestorableAutosave()!.camera).toEqual({ view2d: { x: 999, y: 999, zoom: 2 } }); // the latest pose, not the stale one
     });
   });
 
@@ -233,14 +233,14 @@ describe('autosave', () => {
   });
 
   it('returns null when there is nothing to restore', () => {
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
     expect(hasAutosave()).toBe(false);
   });
 
   it('returns null on a corrupt autosave, as a refusal it does not log', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorage.setItem(STORAGE_KEY, '{not json');
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
     expect(errors).not.toHaveBeenCalled();
   });
 
@@ -252,17 +252,17 @@ describe('autosave', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const cut of [18, 40, Math.floor(body.length / 2), body.length - 8, body.length - 1]) {
       localStorage.setItem(STORAGE_KEY, body.slice(0, cut));
-      expect(readAutosave(), `cut at ${cut}`).toBeNull();
+      expect(readRestorableAutosave(), `cut at ${cut}`).toBeNull();
     }
     expect(errors).not.toHaveBeenCalled();
     localStorage.setItem(STORAGE_KEY, record);
-    expect(readAutosave()).not.toBeNull();
+    expect(readRestorableAutosave()).not.toBeNull();
   });
 
   it('returns null for an autosave whose cell list was cut mid-run', () => {
     const save = JSON.parse(serialize(makeWorkingMap())) as { cells: string };
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...save, autosave: 1, cells: save.cells.slice(0, save.cells.lastIndexOf(',')) }));
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   it('restores the map without undo when its history entry was cut short', () => {
@@ -275,7 +275,7 @@ describe('autosave', () => {
     }], 'all');
     const { after: _after, ...cut } = history.entries[0]!;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...save, autosave: 1, history: { ...history, entries: [cut] } }));
-    const restored = readAutosave();
+    const restored = readRestorableAutosave();
     expect(restored).not.toBeNull();
     expect(restored!.history).toBeUndefined();
     expect(JSON.parse(serialize(restored!.state)).cells).toBe(save.cells);
@@ -286,7 +286,7 @@ describe('autosave', () => {
       STORAGE_KEY,
       JSON.stringify({ version: CURRENT_VERSION + 1, templateId: DEFAULT_MAP.id, cells: '', objects: [], metadata: { savedAt: '' } }),
     );
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   it('clearing forgets the saved map', () => {
@@ -295,7 +295,7 @@ describe('autosave', () => {
     expect(hasAutosave()).toBe(true);
     autosave.clear();
     expect(hasAutosave()).toBe(false);
-    expect(readAutosave()).toBeNull();
+    expect(readRestorableAutosave()).toBeNull();
   });
 
   describe('undo history rides along', () => {
@@ -327,7 +327,7 @@ describe('autosave', () => {
       autosave.schedule(state);
       vi.advanceTimersByTime(2000);
 
-      const restored = readAutosave();
+      const restored = readRestorableAutosave();
       expect(restored!.history).toHaveLength(exec.historyDepth());
       // Restorable onto a fresh executor, which is what the resume flow does.
       const fresh = createExecutor(restored!.state, createDefaultRegistry());
@@ -342,7 +342,7 @@ describe('autosave', () => {
       const executor = withHistory(state, 5);
       localStorage.setItem(STORAGE_KEY, serialize(state));
       localStorage.setItem('petit-planet-autosave-history', JSON.stringify(encodeHistory(executor.getUndoEntries(), 60)));
-      expect(readAutosave()?.history).toHaveLength(executor.historyDepth());
+      expect(readRestorableAutosave()?.history).toHaveLength(executor.historyDepth());
     });
 
     it('keeps only the most recent HISTORY_STEPS entries', () => {
@@ -351,7 +351,7 @@ describe('autosave', () => {
       expect(exec.historyDepth()).toBeGreaterThan(60);
       autosave.schedule(state);
       vi.advanceTimersByTime(2000);
-      expect(readAutosave()!.history).toHaveLength(60);
+      expect(readRestorableAutosave()!.history).toHaveLength(60);
     });
 
     it('a map with no history restores with none, not with the last map\'s', () => {
@@ -359,13 +359,13 @@ describe('autosave', () => {
       withHistory(first, 3);
       autosave.schedule(first);
       vi.advanceTimersByTime(2000);
-      expect(readAutosave()!.history).toBeDefined();
+      expect(readRestorableAutosave()!.history).toBeDefined();
 
       // A later save with an empty stack must take the old history down with it.
       useEditorStore.setState({ commandExecutor: null });
       autosave.schedule(makeWorkingMap());
       vi.advanceTimersByTime(2000);
-      expect(readAutosave()!.history).toBeUndefined();
+      expect(readRestorableAutosave()!.history).toBeUndefined();
     });
 
     it('clearing forgets the history too', () => {
@@ -388,7 +388,7 @@ describe('autosave', () => {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
       saved.history.entries[0].after[0].coord = { x: 9999, y: 9999 };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-      expect(readAutosave()!.history).toBeUndefined();
+      expect(readRestorableAutosave()!.history).toBeUndefined();
     });
   });
 
@@ -403,7 +403,7 @@ describe('autosave', () => {
     host.camera.get2d = () => ({ x: 99, y: 0, zoom: 1 });
     autosave.schedule(makeWorkingMap());
     vi.advanceTimersByTime(2000);
-    expect(readAutosave()?.camera?.view2d?.x).toBe(99);
+    expect(readRestorableAutosave()?.camera?.view2d?.x).toBe(99);
     expect(localStorage.getItem('petit-planet-autosave-history')).toBeNull();
   });
 
@@ -460,7 +460,7 @@ describe('autosave', () => {
     autosave.schedule(makeWorkingMap());
     vi.advanceTimersByTime(2000);
     localStorage.setItem('petit-planet-autosave-history', '{"v":1,"entries":[]}');
-    expect(readAutosave()?.history).toBeUndefined();
+    expect(readRestorableAutosave()?.history).toBeUndefined();
   });
 
   describe('backgrounding the tab', () => {
@@ -479,7 +479,7 @@ describe('autosave', () => {
       expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
       hide();
       expect(hasAutosave()).toBe(true);
-      expect(readAutosave()?.state.template.id).toBe(DEFAULT_MAP.id);
+      expect(readRestorableAutosave()?.state.template.id).toBe(DEFAULT_MAP.id);
     });
 
     it('writes the pending save when the page is being unloaded', () => {
@@ -543,7 +543,7 @@ describe('autosave restore faults', () => {
     const fresh = await import('../../../io/storage/autosave');
     localStorage.setItem(STORAGE_KEY, serialize(makeWorkingMap()));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(fresh.readAutosave()).toBeNull();
+    expect(fresh.readRestorableAutosave()).toBeNull();
     expect(errors).toHaveBeenCalledWith('[autosave] restore failed', bug);
   });
 });
@@ -570,7 +570,7 @@ describe('createAutosave', () => {
     expect(executor.getUndoEntries().length).toBeGreaterThan(0);
     camera = { view2d: { x: 3, y: 4, zoom: 2 } };
     vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
-    const restored = readAutosave();
+    const restored = readRestorableAutosave();
     expect(restored?.camera).toEqual(camera);
     expect(restored?.history?.length ?? 0).toBe(executor.getUndoEntries().length);
     own.clear();

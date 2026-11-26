@@ -31,15 +31,16 @@ import { skin, WINDOW_ICON_BUTTON, windowFooterTertiary, windowTitle } from '../
 import { ActionButton } from '../../primitives/ActionButton';
 import { ModalShell } from '../../primitives/ModalShell';
 import { useGlidingChromeLift } from '../../primitives/chrome-layer';
-import { useHeightTransition } from '../../primitives/use-height-transition';
+import { useSizeGlide } from '../../primitives/use-size-glide';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { useScrollFade } from '../../primitives/scroll-fade';
 import { useSwapClip } from '../../primitives/use-swap-clip';
 import { useHandoffShift } from '../../session/splash-handoff';
-import { useLeavingView } from '../modals/WindowStep';
-import { playedReel, REEL_ASPECT, REEL_SIZE, reelFiles, reelForm } from './reels';
+import { useAway } from '../../primitives/away';
+import { REEL_ASPECT, REEL_SIZE } from '../../../assets/tour/reel-set';
+import { playedReel, reelFiles, reelForm } from './reels';
 import { REEL_SLIDE_VAR, reelEnlargement, reelRadius, TourReel } from './TourReel';
-import { TourRecap } from './TourRecap';
+import { RecapConfetti, TourRecap } from './TourRecap';
 import { SWIPE_PART_ATTR, SWIPE_VAR, useSwipeTurn } from './use-swipe-turn';
 import type { KeyHint, TourCard } from './deck';
 import type { TourController } from './use-tour';
@@ -179,7 +180,7 @@ type CrossingPartProps = { way: Way; lag: number; travel: Travel; swipes: boolea
 const CrossingPart = forwardRef<HTMLDivElement, CrossingPartProps>(
   function CrossingPart({ way, lag, travel, swipes, style, onArrived, children }, ref) {
     const reduced = useReducedMotionConfig();
-    const leaving = useLeavingView();
+    const leaving = useAway();
     // AnimatePresence hands a leaving part its latest `custom`: the way the run went to replace it.
     const variants = {
       before: (w: Way) => ({ opacity: 0, ...travelTo(travel, w * CROSS_TRAVEL) }),
@@ -293,8 +294,7 @@ export function TourDeck({ tour, open }: { tour: TourController; open: boolean }
     if (clip) void prefetchIntoCache(clip);
     if (nextFiles.poster) void prefetchIntoCache(nextFiles.poster);
   };
-  const bodyRef = useRef<HTMLDivElement>(null);
-  useHeightTransition(bodyRef, { motionId: 'tour.card.resize', resetKey: `${layout.form}:${phase.kind}` });
+  const { ref: bodyRef } = useSizeGlide<HTMLDivElement>({ axis: 'height', motionId: 'tour.card.resize', resetKey: `${layout.form}:${phase.kind}` });
   // How tall the sheet's content stands without the clip, at its natural height (the words unscrolled).
   // The words and the reel are watched as well as the screen: a capped body stands still while they
   // change. A part leaving in a crossing is no longer the card's.
@@ -345,7 +345,7 @@ export function TourDeck({ tour, open }: { tour: TourController; open: boolean }
       onClick={tour.back}
       aria-hidden={index === 0 || undefined}
       tabIndex={index === 0 ? -1 : undefined}
-      style={{ visibility: index === 0 ? 'hidden' : 'visible', padding: '10px 14px' }}
+      style={{ visibility: index === 0 ? 'hidden' : undefined, padding: '10px 14px' }}
     >{t('tour.back')}</ActionButton>
   );
   const nextButton = (
@@ -407,8 +407,9 @@ export function TourDeck({ tour, open }: { tour: TourController; open: boolean }
       ariaLabel={recap ? t('tour.recap_title') : t('tour.label')}
       testId="tour-deck"
       backdropStyle={backdrop}
-      cardStyle={{ ...sheet, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      cardStyle={{ ...sheet, position: 'relative', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
+      {recap && <RecapConfetti />}
       {/* The cards and the summary cross over as screens; between cards only the reel and the words do. */}
       <Crossing id={recap ? 'recap' : 'deck'} way={way} boxRef={bodyRef} style={{ flex: '0 1 auto' }}>
         {/* It never grows past its content: `rest` reads its height, and a screen stretched to a body still

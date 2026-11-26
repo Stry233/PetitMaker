@@ -1,8 +1,10 @@
 // The stylized band swap draws the generated picture, grid, plan notes and any AI disclosure into
 // one flat image, so preview and export can treat it like an ordinary captured map.
 // The disclosure is embedded in the map image so optional export bands cannot remove it.
-import { AI_TAG_FILL, AI_TAG_INK, rgbaOf } from '../../assets/brand-palette';
+import { AI_TAG_FILL, AI_TAG_INK } from '../../assets/brand-palette';
+import { rgbaOf } from '../../core/base/color';
 import { APP_FONT_FAMILY } from '../../assets/fonts/family';
+import { rrPath } from '../../view/shared/viewport/round-rect';
 
 export function composeStylizedBaseMap(
   stylized: CanvasImageSource, ink: HTMLImageElement | null, aiTag: string, grid: HTMLImageElement | null = null,
@@ -34,14 +36,7 @@ function drawAiWatermark(ctx: CanvasRenderingContext2D, w: number, h: number, la
   const margin = 14 * S;
   const x = w - margin - pillW;
   const y = h - margin - pillH;
-  const r = pillH / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + pillW, y, x + pillW, y + pillH, r);
-  ctx.arcTo(x + pillW, y + pillH, x, y + pillH, r);
-  ctx.arcTo(x, y + pillH, x, y, r);
-  ctx.arcTo(x, y, x + pillW, y, r);
-  ctx.closePath();
+  rrPath(ctx, { x, y, w: pillW, h: pillH }, pillH / 2);
   ctx.fillStyle = rgbaOf(AI_TAG_FILL, 0.5);
   ctx.fill();
   ctx.fillStyle = AI_TAG_INK;

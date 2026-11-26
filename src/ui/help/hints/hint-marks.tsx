@@ -5,9 +5,9 @@
 import type { CSSProperties } from 'react';
 import { radii } from '../../design/styles';
 import { useReadableWeight } from '../../design/scale';
-import { roleWeight } from '../../design/text-weight';
+import { roleFont, roleSize } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
-import type { MouseButton, MouseMark, ResolvedToken } from './catalogue';
+import type { MouseButton, MouseMark, ResolvedToken } from '../../../editor/help/key-tokens';
 import { FRAME_INK, ON_DARK, ACTIVE, TEXT_SECONDARY, inkTint } from '../../design/tokens';
 
 
@@ -15,18 +15,18 @@ const capStyle: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   minWidth: 22, height: 22, padding: '0 6px', borderRadius: radii.chip,
   background: ON_DARK, border: `1.5px solid ${inkTint(0.18)}`, borderBottomWidth: 3,
-  fontSize: 12, fontWeight: roleWeight('small'), color: FRAME_INK, lineHeight: 1, position: 'relative',
+  ...roleFont('small'), color: FRAME_INK, lineHeight: 1, position: 'relative',
 };
 
 const badgeStyle: CSSProperties = {
   position: 'absolute', top: -6, right: -7, background: ACTIVE,
-  border: `1.5px solid ${FRAME_INK}`, borderRadius: radii.pill, fontSize: 9,
-  padding: '0 2px', lineHeight: 1.3,
+  border: `1.5px solid ${FRAME_INK}`, borderRadius: radii.pill, fontSize: roleSize('small'),
+  padding: '0 2px', lineHeight: 1.1,
 };
 
 function RepeatBadge() {
   const weightAt = useReadableWeight();
-  return <span style={{ ...badgeStyle, fontWeight: weightAt(900, badgeStyle.fontSize as number) }}>×2</span>;
+  return <span style={{ ...badgeStyle, fontWeight: weightAt(900, roleSize('small')) }}>×2</span>;
 }
 
 function KeyCap({ label, x2 }: { label: string; x2?: boolean }) {
@@ -97,7 +97,7 @@ export function HintTokens({ tokens }: { tokens: readonly ResolvedToken[] }) {
         if (tok.kind === 'pan-stack') return <PanStack key={i} letters={tok.letters} />;
         if (tok.kind === 'mouse') return <MouseGlyph key={i} button={tok.button} mark={tok.mark} x2={tok.x2} />;
         const label = tok.sep === 'plus' ? '+' : t(`hint.sep.${tok.sep}`);
-        return <span key={i} style={{ fontSize: 11, fontWeight: weightAt(800, 11), color: TEXT_SECONDARY, padding: '0 2px' }}>{label}</span>;
+        return <span key={i} style={{ fontSize: roleSize('small'), fontWeight: weightAt(800, roleSize('small')), color: TEXT_SECONDARY, padding: '0 2px' }}>{label}</span>;
       })}
     </span>
   );

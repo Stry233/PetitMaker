@@ -5,6 +5,8 @@ import { deserialize } from '../../_support/save-file';
 import { decodeHistory, encodeHistory } from '../../../io/save/history-codec';
 import { applyOptionalSections } from '../../../io/import/sections-restore';
 import { makeState } from '../../_support/map-state';
+import { ID_MAX_LENGTH } from '../../../core/base/guards';
+import { decodeBlueprints, encodeBlueprints } from '../../../io/blueprint';
 
 /** The history section version this build writes. */
 const HISTORY_V = encodeHistory([], 'all').v;
@@ -60,6 +62,21 @@ describe('shared map and history object admission', () => {
     expect(result.dropped).toEqual(['history']);
     expect(installed).toBe(false);
     expect(state).toEqual(before);
+  });
+});
+
+describe('ids from a file', () => {
+  const longest = 'a'.repeat(ID_MAX_LENGTH);
+  it.each([
+    { id: longest, kept: true }, { id: `${longest}a`, kept: false }, { id: 'tree:1', kept: false }, { id: '', kept: false },
+  ])('keep $id on an object and a blueprint alike: $kept', ({ id, kept }) => {
+    const state = makeState(12, 12);
+    const saved = JSON.parse(serialize(state));
+    saved.objects = [{ ...object, id, x: 5, y: 5 }];
+    expect(deserialize(JSON.stringify(saved), state.template).objects.has(id)).toBe(kept);
+    const file = JSON.parse(encodeBlueprints([]));
+    file.records = [{ id, name: 'Plot', folder: null, author: null, origin: null, savedAt: 1, appVersion: '', body: { w: 1, h: 1, cells: [null, null, null, null], objects: [] }, thumbs: {} }];
+    expect('records' in decodeBlueprints(JSON.stringify(file))).toBe(kept);
   });
 });
 

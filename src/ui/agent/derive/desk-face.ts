@@ -2,27 +2,19 @@
  * The desk card's face as data. One ladder (`standing`) decides which state owns the card; paper,
  * glyph, control seat, face identity, pose and copy are each read off that one answer.
  */
-import {
-  type AskRecord,
-  type ErrorClass,
-  type JobView,
-  type PanelView,
-  type SessionPhase,
+import { type KeyRefusal,
+  type AskRecord, editCount, type ErrorClass, firstRepair, type JobView, keyGone, type PanelView, readCount, type RepairAct, type SessionPhase,
 } from '../../../agent/panel';
-import { MAX_TURN_ATTEMPTS } from '../../../agent/limits';
+import { MAX_TURN_ATTEMPTS, STALL_NOTICE_MS } from '../../../agent/limits';
 import type { Translate, I18nKey } from '../../../i18n/keys';
 import type { PoseName } from '../character/poses';
 import type { IconId } from '../parts/sprite';
-import { editCount, readCount } from './job-stats';
 import type { SetupFace, SetupStep } from '../connection/setup-parts';
 import type { PaperState } from '../panel-skin';
 import { fmtClock } from './clock';
 import { PHASE } from './phase';
-import { deskActLabel, REPAIR, type RepairAct } from './repair';
+import { deskActLabel, incidentWords, REPAIR } from './repair';
 import { skillTitle } from '../parts/skill-title';
-
-/** Silence threshold for the informational stall notice, in ms; not a failure classification. */
-const STALL_MS = 90_000;
 
 /** Live shell context that is not part of the replayable session projection. */
 export interface DeskContext {
@@ -37,6 +29,8 @@ export interface DeskContext {
   managing?: boolean;
   /** Display-ready live connection summary for the management face. */
   connectionMeta?: string;
+  /** How a refused key stands: one a sign-in returned is repaired by signing in again. */
+  keyRefusal?: KeyRefusal;
   /** Provenance of the past record replacing the job zone. */
   reading?: string;
   /** The setup step standing in the job zone. */
@@ -69,13 +63,6 @@ type Standing =
   | { kind: 'incident'; cls: ErrorClass; gone: boolean }
   | { kind: 'idle'; settled: Settled; job?: JobView }
   | { kind: 'phase'; phase: Exclude<SessionPhase, 'idle' | 'retrying' | 'incident'> };
-
-/** Whether a keyless session still has an active, paused, aborted or authentication-failed job to show. */
-export function keyGone(view: PanelView, connected: boolean, cls: ErrorClass | undefined): boolean {
-  if (connected) return false;
-  if (view.phase === 'incident') return cls === 'auth';
-  return PHASE[view.phase].inFlight || view.phase === 'paused' || view.phase === 'aborted';
-}
 
 function settledKind(view: PanelView, ctx: DeskContext): { job?: JobView; kind: Settled } {
   const job = view.jobs[view.jobs.length - 1];
@@ -184,11 +171,11 @@ export function deskSeat(view: PanelView, ctx: DeskContext = {}): DeskSeat | nul
   // Marking, management, records and setup carry their own controls.
   if (stand.kind !== 'retrying' && stand.kind !== 'phase') return null;
   // A keyless in-flight job stays stoppable but cannot offer a resumable pause.
-  if (ctx.connected === false && PHASE[view.phase].inFlight) return SEATS.stop;
-  if (view.phase === 'retrying' || view.phase === 'gated' || view.phase === 'pausing') return SEATS.stop;
-  if (PHASE[view.phase].running) return view.current !== undefined ? SEATS.pause : null;
-  if (view.phase === 'paused') return SEATS.resume;
-  return null;
+  const traits = PHASE[view.phase];
+  if (ctx.connected === false && traits.inFlight) return SEATS.stop;
+  if (traits.pausable) return view.current !== undefined ? SEATS.pause : null;
+  if (traits.inFlight) return SEATS.stop;
+  return traits.onHold ? SEATS.resume : null;
 }
 
 /** Face identity: a change flips the card, anything else repaints in place. */
@@ -367,15 +354,16 @@ export function buildFace(view: PanelView, ctx: DeskContext, now: number, active
       break;
     case 'incident': {
       const { cls } = stand;
-      // Any keyless incident restores a key before retrying.
-      const act = ctx.connected === false ? REPAIR.auth.act : REPAIR[cls].act;
+      // A refused key that came from a sign-in reads by its own words while a key is held.
+      const key = { connected: ctx.connected !== false, refusal: ctx.connected === false ? 'key' as const : ctx.keyRefusal ?? 'key' };
+      const act = firstRepair(cls, key);
       // Key failures name the provider, model failures the model, exhausted retries the attempts.
       const datum = cls === 'auth' ? ctx.providerName
         : cls === 'model' ? ctx.modelName
           : REPAIR[cls].exhausted ? t('agent.dock_after_tries', { n: MAX_TURN_ATTEMPTS }) : undefined;
       return {
         kind: 'act', paper, glyph,
-        word: stand.gone ? t('agent.dock_err_key_missing') : t(REPAIR[cls].errorWord),
+        word: stand.gone ? t('agent.dock_err_key_missing') : t(incidentWords(cls, key.refusal).errorWord),
         ...(datum ? { datum } : {}),
         act: { id: act, label: t(deskActLabel(act)) },
       };
@@ -414,7 +402,7 @@ function phaseFace(
     : undefined;
 
   const silence = traits.awaitingStream ? now - activeAt : 0;
-  const stallClock = silence >= STALL_MS ? fmtClock(silence / 1000) : null;
+  const stallClock = silence >= STALL_NOTICE_MS ? fmtClock(silence / 1000) : null;
   const heldAtSkip = phase === 'paused' && current?.ops[current.ops.length - 1]?.status === 'skipped';
   const picking = phase === 'gated' && (openAsk(view)?.options?.length ?? 0) > 0;
   const word = stallClock !== null ? t('agent.dock_still_thinking')

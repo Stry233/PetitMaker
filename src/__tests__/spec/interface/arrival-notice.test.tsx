@@ -12,7 +12,7 @@ import { getMapTemplate } from '../../../config/maps';
 import { createGrid } from '../../../core/model/grid-model';
 import { Shell } from '../../../ui/shell/Shell';
 import { ArrivalToast } from '../../../ui/chrome/floating/ArrivalToast';
-import { __resetArrivals, announceArrival } from '../../../ui/session/arrival-bus';
+import { __resetArrivals, announceArrival } from '../../../editor/session/arrival';
 import { TOUR_OFFERED, TOUR_SEEN_KEY } from '../../_support/tour';
 import { spec } from '../../_support/spec';
 import { ToastContainer } from '../../../ui/chrome/floating/Toast';
@@ -25,7 +25,7 @@ function mount() {
   render(
     <MotionConfig reducedMotion="always">
       <I18nProvider>
-        <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>
+        <Shell><div data-testid="map-views" /></Shell>
         <ArrivalToast splashActive={false} />
       </I18nProvider>
     </MotionConfig>,

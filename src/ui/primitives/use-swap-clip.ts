@@ -6,7 +6,10 @@
  * focus ring are not clipped at rest. Reduced motion has no travel to clip.
  */
 import { useState, type CSSProperties } from 'react';
-import { useReducedMotionConfig } from 'framer-motion';
+import { useReducedMotionConfig, type TargetAndTransition } from 'framer-motion';
+import { amplitude } from '../design/motion';
+import type { MotionId } from '../design/motion/registry';
+import { useTransition } from '../design/motion/use-motion';
 
 interface SwapClip {
   /** Spread on the box the arriving element stands in, which the travel must not overflow. */
@@ -33,7 +36,12 @@ function axesClip(axes: ClipAxes): CSSProperties {
 /** `key` is the arrival's key: each change of it clips until `settle` reports that arrival done, a
  *  return to an earlier key included. `fromRest` takes the first key as already standing, for an
  *  arrival that does not play on mount. */
-export function useSwapClip(key: string, { fromRest = false, axes = 'inline' }: { fromRest?: boolean; axes?: ClipAxes } = {}): SwapClip {
+export function useSwapClip(key: string, options: { fromRest?: boolean; axes?: ClipAxes } = {}): SwapClip {
+  const { clip, settle } = useTurns(key, options);
+  return { clip, settle };
+}
+
+function useTurns(key: string, { fromRest = false, axes = 'inline' }: { fromRest?: boolean; axes?: ClipAxes }): SwapClip & { turn: number } {
   const reduced = useReducedMotionConfig() === true;
   // `turn` counts key changes, so a settle reported for an earlier arrival never ends a later one.
   const [state, setState] = useState({ key, turn: 0, settled: fromRest });
@@ -45,7 +53,27 @@ export function useSwapClip(key: string, { fromRest = false, axes = 'inline' }: 
   const { turn } = shown;
   const travelling = !reduced && !shown.settled;
   return {
+    turn,
     clip: travelling ? axesClip(axes) : {},
     settle: () => setState((was) => (was.turn === turn && !was.settled ? { ...was, settled: true } : was)),
+  };
+}
+
+/** Marks a swap reel, the element that arrives on each turn of its key. */
+const SWAP_REEL_ATTR = 'data-swap-reel';
+
+/**
+ * A keyed reel arriving from aside, as a shelf's category swap brings its cards in: `reel` is spread on
+ * the motion element the caller keys with `key`, which comes in from `amplitude(motionId)` on the
+ * motion's transition, and `clip` on the box it stands in, which clips until that arrival lands. The
+ * leaving reel goes at once. `fromRest` stands the first key at once; later keys arrive.
+ */
+export function useSwapReel(key: string, { motionId = 'shelf.category.swap', ...options }: { motionId?: MotionId; fromRest?: boolean; axes?: ClipAxes } = {}) {
+  const { clip, settle, turn } = useTurns(key, options);
+  const transition = useTransition(motionId);
+  const initial: TargetAndTransition | false = options.fromRest && turn === 0 ? false : { opacity: 0, x: amplitude(motionId) };
+  return {
+    clip,
+    reel: { [SWAP_REEL_ATTR]: '', initial, animate: { opacity: 1, x: 0 }, transition, onAnimationComplete: settle },
   };
 }

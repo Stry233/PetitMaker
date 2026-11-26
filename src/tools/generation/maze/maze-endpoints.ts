@@ -15,6 +15,7 @@
  */
 import type { MacroCoord } from '../../../core/model/types';
 import { NEIGHBORS4 } from '../../../core/grid/directions';
+import { labelComponents } from '../../../core/grid/cell-sets';
 
 /** What an end turned out to be. */
 type EndKind = 'hole' | 'target';
@@ -188,31 +189,15 @@ function nearestWalkable(field: MazeField, to: MacroCoord, within?: (cell: Macro
  */
 export function mainland(field: MazeField): (cell: MacroCoord) => boolean {
   const { origin: o, dims: d } = field;
-  const label = new Int32Array(d.mazeW * d.mazeH).fill(-1);
-  let best = -1;
-  let bestSize = 0;
-  let next = 0;
-  for (let y = o.y; y < o.y + d.mazeH; y++) {
-    for (let x = o.x; x < o.x + d.mazeW; x++) {
-      if (!field.walkable(x, y) || label[slot(field, { x, y })] !== -1) continue;
-      const id = next++;
-      label[slot(field, { x, y })] = id;
-      const queue: MacroCoord[] = [{ x, y }];
-      for (let head = 0; head < queue.length; head++) {
-        const here = queue[head]!;
-        for (const [dx, dy] of NEIGHBORS4) {
-          const nx = here.x + dx!, ny = here.y + dy!;
-          if (!inField(field, nx, ny) || !field.walkable(nx, ny)) continue;
-          const s = slot(field, { x: nx, y: ny });
-          if (label[s] !== -1) continue;
-          label[s] = id;
-          queue.push({ x: nx, y: ny });
-        }
-      }
-      if (queue.length > bestSize) { bestSize = queue.length; best = id; }
-    }
+  const walk = new Uint8Array(d.mazeW * d.mazeH);
+  for (let y = 0; y < d.mazeH; y++) {
+    for (let x = 0; x < d.mazeW; x++) if (field.walkable(o.x + x, o.y + y)) walk[y * d.mazeW + x] = 1;
   }
-  return (cell) => inField(field, cell.x, cell.y) && label[slot(field, cell)] === best;
+  const { labels, sizes } = labelComponents(walk, d.mazeW, d.mazeH);
+  // The first largest in raster order, so a tie goes to the component met first.
+  let best = -1;
+  for (let k = 1; k < sizes.length; k++) if (best < 0 || sizes[k]! > sizes[best]!) best = k;
+  return (cell) => inField(field, cell.x, cell.y) && labels[slot(field, cell)] === best;
 }
 
 /**

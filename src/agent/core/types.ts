@@ -4,12 +4,17 @@ import type { RegionBounds } from '../../core/grid/rect';
 /** `config` identifies an invalid connection; `model` identifies a model unavailable there. */
 export type ErrorClass =
   | 'auth' | 'quota' | 'rate-limit' | 'overloaded' | 'network' | 'cors'
-  | 'overflow' | 'abort' | 'config' | 'model' | 'unknown';
+  | 'overflow' | 'abort' | 'config' | 'model' | 'account' | 'unknown';
 
 /** A failed turn. Producers must redact `detail` before constructing it. */
 export interface TurnError { cls: ErrorClass; detail: string; retryAfterMs?: number; status?: number }
 
 export type StopReason = 'stop' | 'tool-calls' | 'length' | 'error' | 'aborted';
+
+/** Why an aborted job stopped where the user did not stop it: another map took its map's place. The
+ *  runner aborts its signal with this reason, and `endJob` records it. */
+export type JobStopCause = 'map-left';
+export const MAP_LEFT: JobStopCause = 'map-left';
 
 /** Provider-interrupted turns excluded from replay, evaluation and reply suggestions. */
 export const DROPPED_STOPS: ReadonlySet<StopReason> = new Set<StopReason>(['aborted', 'error', 'length']);
@@ -117,6 +122,8 @@ export interface ToolResultDetail {
   damper?: true;
   /** Marks an identical failed call refused by the loop without another execution. */
   repeatRefused?: true;
+  /** The content is a loop-authored note standing where the tool's own answer would be. */
+  loopNote?: true;
   /** Ordered child operations retained after a delegated helper's child log closes. */
   childOps?: { name: string; status: ChildOpStatus; skill?: SkillRef }[];
   /** Incident class that ended a failed child job. */
@@ -125,8 +132,9 @@ export interface ToolResultDetail {
   violations?: { ruleId: string; message: string; params?: Record<string, string | number> }[];
 }
 
-/** A running helper job as the panel's lane shows it: its task, optional short label, the
- *  operation in flight and how many it has run. */
+/** A running helper job as the panel's lane shows it: its brief's goal as `task`, its short label,
+ *  the operation in flight and how many it has run. */
+/** What a delegated child is doing, for the row of the call that started it. */
 export interface ChildProgress { task: string; opName?: string; ops: number; label?: string }
 
 /** Region snapshot attached to an order when it is submitted. */
@@ -172,7 +180,7 @@ export type SessionEvent = Base & (
   // `summary` preserves the final turn's words. `question` marks a model-chosen question ending;
   // truncated and aborted fragments retain their text without entering the waiting state.
   // `undoIndex` pairs with the first checkpoint to bound the job's own undo entries.
-  | { kind: 'jobEnd'; outcome: JobOutcome; summary?: string; question?: boolean; undoIndex?: number }
+  | { kind: 'jobEnd'; outcome: JobOutcome; summary?: string; question?: boolean; undoIndex?: number; stoppedBy?: JobStopCause }
 );
 export type SessionEventInput =
   SessionEvent extends infer E ? (E extends Base & infer R ? R : never) : never;

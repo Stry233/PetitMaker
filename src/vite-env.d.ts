@@ -7,6 +7,8 @@ declare const __BUILD_NUMBER__: string;
 declare const __BUILD_SHA__: string;
 declare const __BUILD_DATE__: string;
 declare const __PETIT_EXPORT_SITE_MARK__: boolean;
+/** The Lite host id; read only through `platform/build/lite-hosts.ts`. */
+declare const __PETIT_LITE_HOST__: string | undefined;
 /** The deployment target id; read only through `platform/build/target.ts`. */
 declare const __PETIT_TARGET__: string | undefined;
 /** The map check's asset folder under the site root, content-hashed in web builds. */

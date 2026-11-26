@@ -21,6 +21,7 @@ import { candidateObject } from '../../objects/candidate';
 import { coatingStripFor } from '../../placement/coatings';
 import { ShapeGesture } from '../paint/gestures';
 import type { ToolContext } from '../runtime/types';
+import { ghostParts } from '../runtime/placement-ghost';
 
 /** Whether a press under `arming` paints: Paint chosen with every armed item one that may be laid
  *  many at a time (EDIT-69). */
@@ -129,7 +130,10 @@ export class ObjectPaint {
     }
     if (!this.gesture.drag.active || !this.origin) return;
     const end = this.gesture.drag.end(coord, shape, ctx.modifiers.constrain);
-    const key = `${shape}|${end.x},${end.y}`;
+    // Everything the figure's spots are laid from: a turn, a spacing or a pick changed mid-drag
+    // re-samples an unmoved pointer, and must draw at once.
+    const { placementRotation, objectPaintSpacing, picks } = ctx.arming;
+    const key = `${shape}|${end.x},${end.y}|${placementRotation}|${objectPaintSpacing}|${picks.join(',')}`;
     if (key === this.previewed) return;
     this.previewed = key;
     const cells = dragShapeCells(shape, this.origin, end, 1);
@@ -258,14 +262,13 @@ export class ObjectPaint {
     }
     const cells = taken.flatMap((obj) => slotCells({ item: getCatalogItem(obj.catalogId)!, anchor: obj.position, rotation: obj.rotation as Rotation }));
     if (taken.length === 0) {
-      ctx.overlay.showGhost(cellSet(PLACEMENT_GRID, refused), { wash: 'placement', valid: false });
+      ctx.overlay.showGhost(cellSet(PLACEMENT_GRID, refused), { placement: true, valid: false });
       ctx.overlay.showGroupPlacementGhost([], false);
       return;
     }
-    ctx.overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { wash: 'placement', valid: true }, undefined,
+    const { tiles, members } = ghostParts(taken);
+    ctx.overlay.showGhost(cellSet(PLACEMENT_GRID, cells), { placement: true, valid: true, tiles }, undefined,
       refused.map((c) => ({ ...c, grid: PLACEMENT_GRID })));
-    ctx.overlay.showGroupPlacementGhost(taken.map((obj) => ({
-      catalogId: obj.catalogId, x: obj.position.x, y: obj.position.y, rotation: obj.rotation, elevation: obj.elevation,
-    })), true);
+    ctx.overlay.showGroupPlacementGhost(members, true);
   }
 }

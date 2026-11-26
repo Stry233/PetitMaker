@@ -1,14 +1,14 @@
 import * as PIXI from 'pixi.js-legacy';
 import { QUADRANT_PX, TILE_SIZE, TERRAIN_GRID_OFFSET_PX } from '../geometry/world';
 import { getCell } from '../../../core/model/grid-model';
-import { chunkKey, cellKey } from '../../../core/grid/rect';
+import { chunkKey } from '../../../core/grid/rect';
 import { bucketOf, bucketCounts, bucketSpan } from '../../../core/grid/buckets';
 import { getTerrainColor, getZoneColor } from '../draw/terrain-color';
 import { TerrainType } from '../../../core/model/types';
 import type { GridState, MacroCoord, TerrainCell } from '../../../core/model/types';
 import { drawTrimmedBlock, QUADRANT_OFFSETS } from '../draw/trim-shapes';
 import { FillGraphics } from '../draw/fill-graphics';
-import { waterfallFaceMap, touchesWaterfallDependency } from '../../../core/domain/terrain/waterfall-geometry';
+import { WATERFALL_ARROW_LOOK, WaterfallFaceWatch, waterfallArrowTriangles } from '../../shared/terrain/waterfall-arrows';
 import { ChunkGrid, type CullRect } from './chunk-grid';
 import { NumberOverlay } from './number-overlay';
 import { cellRenderSpec, cellsAffectedByLayerToggle, hiddenSetFrom } from '../../shared/terrain/layer-visibility';
@@ -31,12 +31,12 @@ export class TerrainLayer {
    *  (a brush stroke issues dozens of commands). */
   private chunkGfx = new Map<string, PIXI.Graphics>();
   private dirtyChunks = new Set<string>();
-  private waterfallContainer: PIXI.Container;
+  /** Every waterfall arrow, in one fill-only Graphics kept above the chunk buckets. */
+  private readonly waterfallArrows = new FillGraphics();
   private chunks: ChunkGrid;
   /** Opens the owning renderer's render window. */
   constructor(readonly requestRender: () => void) {
     this.container = new PIXI.Container();
-    this.waterfallContainer = new PIXI.Container();
     this.chunks = new ChunkGrid(this.container);
     this.numbers = new NumberOverlay(requestRender);
   }
@@ -46,10 +46,8 @@ export class TerrainLayer {
     this.chunks.cull(rect);
   }
 
-  /** Cells that carried a waterfall face at the last drawWaterfallIndicators pass —
-   *  the "did the previous arrows overlap this edit" half of the recompute gate.
-   *  (The cellFaces map itself, kept for `.has` only — no copy.) */
-  private lastFaceCells: ReadonlyMap<string, unknown> = new Map();
+  /** The faces the arrows show, scanned from the live map. */
+  private readonly waterfalls = new WaterfallFaceWatch();
 
   private readonly numbers: NumberOverlay;
   public get numberContainer(): PIXI.Container { return this.numbers.container; }
@@ -87,8 +85,8 @@ export class TerrainLayer {
     // Without a map the floors are only recorded; the first full draw reads them.
     if (changed.length === 0 || !state) return;
     this.redrawCells(cellsAffectedByLayerToggle(state, changed), state);
-    // Waterfall arrows hide with their cell's layer, so any toggle re-derives them.
-    this.drawWaterfallIndicators(state);
+    // Waterfall arrows hide with their cell's layer; the faces themselves are the live map's.
+    this.drawWaterfallIndicators(state, false);
   }
 
   drawFull(state: GridState): void {
@@ -105,8 +103,8 @@ export class TerrainLayer {
     }
     this.flushDirty(state); // the initial build is synchronous
 
-    this.drawWaterfallIndicators(state);
-    this.container.addChild(this.waterfallContainer);
+    this.drawWaterfallIndicators(state, true);
+    this.container.addChild(this.waterfallArrows);
   }
 
   /** Mark the chunks these cells live in for repaint. The actual painting happens
@@ -120,9 +118,9 @@ export class TerrainLayer {
       this.dirtyChunks.add(chunkKey(c.cx, c.cy));
     }
 
-    // detectWaterfalls is a full-grid scan and this runs once per command (dozens per
-    // stroke), so skip it whenever the changed cells provably can't alter the face set.
-    if (this.touchesWaterfalls(coords, state)) this.drawWaterfallIndicators(state);
+    // The face scan reads the whole map and this runs once per command (dozens per stroke), so it
+    // runs only when the changed cells can alter the faces.
+    if (this.waterfalls.touchedBy(coords, state)) this.drawWaterfallIndicators(state, true);
   }
 
   /** Repaint every dirty chunk (each once). Called by the render loop right
@@ -136,12 +134,8 @@ export class TerrainLayer {
       this.repaintChunk(cx!, cy!, state);
     }
     this.dirtyChunks.clear();
-    // Repainting may have created new chunk buckets — re-hoist the waterfall
-    // arrows above them.
-    if (this.waterfallContainer.parent) {
-      this.waterfallContainer.parent.removeChild(this.waterfallContainer);
-    }
-    this.container.addChild(this.waterfallContainer);
+    // Repainting may have created new chunk buckets: the arrows go back above them.
+    this.container.addChild(this.waterfallArrows);
     this.requestRender();
     return n;
   }
@@ -166,20 +160,6 @@ export class TerrainLayer {
         this.paintCell(g, x, y, state);
       }
     }
-  }
-
-  /**
-   * Can this batch of changed cells possibly alter the waterfall face set? The dependency-
-   * footprint reasoning lives with the face definition (touchesWaterfallDependency in
-   * core/domain/terrain/waterfall-geometry); this adds only the renderer's half — a changed cell that
-   * carried a face at the last draw (the erase-a-whole-body case) also forces a recompute.
-   */
-  private touchesWaterfalls(coords: MacroCoord[], state: GridState): boolean {
-    for (const { x, y } of coords) {
-      if (this.lastFaceCells.has(cellKey(x, y))) return true;
-      if (touchesWaterfallDependency(state, x, y)) return true;
-    }
-    return false;
   }
 
   /**
@@ -223,57 +203,23 @@ export class TerrainLayer {
     }
   }
 
-  private drawWaterfallIndicators(state: GridState): void {
-    this.waterfallContainer.removeChildren();
-
-    const arrowSize = TILE_SIZE / 3;
-    const halfArrow = arrowSize / 2;
-
-    const cellFaces = waterfallFaceMap(state);
-    this.lastFaceCells = cellFaces;
-
-    for (const [key, dirs] of cellFaces) {
-      const [xStr, yStr] = key.split(',');
-      const x = Number(xStr), y = Number(yStr);
-      const cell = getCell(state.cells, x, y);
-      if (!cell?.terrain) continue;
-      if (this.hiddenLayers.has(cell.terrain.elevation)) continue;
-
-      const baseCx = x * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.x + TILE_SIZE / 2;
-      const baseCy = y * TILE_SIZE + TERRAIN_GRID_OFFSET_PX.y + TILE_SIZE / 2;
-      const count = dirs.length;
-      const offset = count > 1 ? arrowSize * 0.6 : 0;
-
-      for (const dir of dirs) {
-        const g = new PIXI.Graphics();
-        let cx = baseCx, cy = baseCy;
-
-        if (count > 1) {
-          if (dir === 'north') cy -= offset;
-          else if (dir === 'south') cy += offset;
-          else if (dir === 'west') cx -= offset;
-          else if (dir === 'east') cx += offset;
-        }
-
-        g.beginFill(0xffffff, 0.6);
-        switch (dir) {
-          case 'north':
-            g.drawPolygon([cx, cy - halfArrow, cx - halfArrow, cy + halfArrow, cx + halfArrow, cy + halfArrow]);
-            break;
-          case 'south':
-            g.drawPolygon([cx, cy + halfArrow, cx - halfArrow, cy - halfArrow, cx + halfArrow, cy - halfArrow]);
-            break;
-          case 'west':
-            g.drawPolygon([cx - halfArrow, cy, cx + halfArrow, cy - halfArrow, cx + halfArrow, cy + halfArrow]);
-            break;
-          case 'east':
-            g.drawPolygon([cx + halfArrow, cy, cx - halfArrow, cy - halfArrow, cx - halfArrow, cy + halfArrow]);
-            break;
-        }
-        g.endFill();
-        this.waterfallContainer.addChild(g);
-      }
+  /** Redraws the arrows, scanning the faces again first when `rescan`. */
+  private drawWaterfallIndicators(state: GridState, rescan: boolean): void {
+    const faces = rescan ? this.waterfalls.scan(state) : this.waterfalls.faces;
+    const g = this.waterfallArrows;
+    g.clear();
+    const shown = (x: number, y: number): boolean => {
+      const t = getCell(state.cells, x, y)?.terrain;
+      return !!t && !this.hiddenLayers.has(t.elevation);
+    };
+    const px = (v: number, offset: number): number => offset + v * TILE_SIZE;
+    g.beginFill(WATERFALL_ARROW_LOOK.color, WATERFALL_ARROW_LOOK.alpha);
+    for (const { points: p } of waterfallArrowTriangles(faces, shown)) {
+      const { x: ox, y: oy } = TERRAIN_GRID_OFFSET_PX;
+      g.drawPolygon([px(p[0], ox), px(p[1], oy), px(p[2], ox), px(p[3], oy), px(p[4], ox), px(p[5], oy)]);
     }
+    g.endFill();
+    this.requestRender();
   }
 
   // Layer-number raster overlay — delegated to NumberOverlay (its own texture /

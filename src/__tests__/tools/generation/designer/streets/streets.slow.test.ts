@@ -14,6 +14,7 @@ import {
 } from '../../../../_support/design-eval';
 import { LINE_W } from '../../../../../tools/generation/designer/composition/movement-line';
 import { planStreets } from '../../../../../tools/generation/designer/streets/streets';
+import { readPlanet } from '../../../../../tools/generation/designer/planet';
 import { DOMINANT_SHARE, type StreetPlan } from '../../../../../tools/generation/designer/streets/model';
 import { BRANCH_W, TRUNK_W } from '../../../../../tools/generation/designer/types';
 import { ELEVATION_MAX } from '../../../../../core/game/profile';
@@ -339,8 +340,9 @@ describe('determinism', () => {
       const seen = new Map<string, number>();
       for (const seed of SEEDS) {
         const composition = planComposition({ seed, template, richness: 0.6 });
-        const once = digest(planStreets({ seed, template, composition, richness: 0.6 }));
-        const twice = digest(planStreets({ seed, template, composition: planComposition({ seed, template, richness: 0.6 }), richness: 0.6 }));
+        const once = digest(planStreets({ seed, template, composition, richness: 0.6, planet: readPlanet(template, composition) }));
+        const again = planComposition({ seed, template, richness: 0.6 });
+        const twice = digest(planStreets({ seed, template, composition: again, richness: 0.6, planet: readPlanet(template, again) }));
         expect(twice, `${template.id}/${seed}: two runs of one seed`).toBe(once);
         seen.set(once, (seen.get(once) ?? 0) + 1);
       }

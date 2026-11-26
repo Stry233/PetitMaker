@@ -39,9 +39,9 @@ function setup(tool: ToolType, objects: PlacedObject[] = []) {
   for (const obj of objects) state.objects.set(obj.id, { ...obj });
   bumpObjectsVersion(state, { added: objects });
   useEditorStore.setState({
-    gridState: state, commandExecutor: executor, region: [], selectingRegion: false,
-    selection: objects.map((o) => ({ kind: 'object', id: o.id }) as const), layerPinned: false,
-    activeLayer: 1, autoEdgeCut: 'off',
+    gridState: state, commandExecutor: executor, regions: {}, selectingRegion: false,
+    selection: objects.map((o) => ({ kind: 'object', id: o.id }) as const), 
+    autoEdgeCut: 'off',
     ...armedEditMode({ tool, macro: null, item: null, content: 'mountain' }),
   });
   const manager = new ToolManager(makeStubView(), executor, state, editorToolWiring());
@@ -52,7 +52,7 @@ function setup(tool: ToolType, objects: PlacedObject[] = []) {
       clearSelection: vi.fn(), showSelection: vi.fn(), flashCommit: vi.fn(), showObjectMove: vi.fn() },
     camera: { pan: vi.fn(), zoomBy: vi.fn() }, ...headlessViewVerbs(),
   } as unknown as ActiveView;
-  manager.setActiveTool(tool); useEditorStore.setState({ activeLayer: 1 });
+  manager.setActiveTool(tool);
   registerToolManager(manager); setActiveView(view);
   const canvas = render(<Host />).getByTestId('canvas');
   const snapshot = () => JSON.stringify([state.cells, [...state.objects.values()]]);

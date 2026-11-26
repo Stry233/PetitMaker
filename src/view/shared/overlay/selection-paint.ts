@@ -3,6 +3,7 @@
  * the ring a single spin or a group turn carries through its animation.
  */
 import type { GridState, MacroCoord } from '../../../core/model/types';
+import type { Rect } from '../../../core/grid/rect';
 import type { BlockRef } from '../../../state/selection';
 import { getCell } from '../../../core/model/grid-model';
 import { getPlacedObjectSize } from '../../../state/object-geometry';
@@ -19,8 +20,8 @@ import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
  * elevation label and an entrance pop (`append=false`). A group clears once then
  * draws one ring per member with `append=true`: no per-member clear, no label (one
  * label can't speak for N members at possibly different elevations), no pop (it
- * would replay N times). Terrain is never multi-selected, so `refs.length > 1` is
- * all objects by construction. With nothing selected, `picked` (the picked block, EDIT-54) draws
+ * would replay N times). Terrain stands in a group only as the cells a blueprint placement laid,
+ * whose selection is drawn as its footprint, `outline`, in brackets. With nothing selected, `picked` (the picked block, EDIT-54) draws
  * the exact outline of that placement cell, unlabelled, since it names a place and not a layer.
  *
  * Callers: the pointer machine and the selection view sync.
@@ -30,8 +31,10 @@ export function paintSelection(
   gs: GridState,
   refs: readonly BlockRef[],
   showNumbers: boolean,
-  picked: MacroCoord | null = null,
+  { picked = null, outline = null }: { picked?: MacroCoord | null; outline?: Rect | null } = {},
 ): void {
+  // A placed blueprint is marked as one footprint in a house's brackets, whatever it holds.
+  if (outline) { overlay.clearSelection(); overlay.showSelection(outline, PLACEMENT_GRID); return; }
   if (refs.length === 0) {
     if (picked) overlay.showSelection({ x: picked.x, y: picked.y, w: 1, h: 1 }, PLACEMENT_GRID, { exact: true });
     else overlay.clearSelection();

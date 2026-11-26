@@ -22,17 +22,6 @@ export const CULL_MARGIN_PX = Math.ceil(LONGEST_BUCKETED_SIDE * (1 + SPRITE_OVER
 
 export interface CullRect { left: number; top: number; right: number; bottom: number }
 
-/** The world-space view rect (+ overscan margin) for a camera at `offset`/`zoom` over a
- *  `screenW`×`screenH` canvas — screen corners mapped through world = (screen + offset) / zoom. */
-export function cullRect(offsetX: number, offsetY: number, zoom: number, screenW: number, screenH: number): CullRect {
-  return {
-    left: offsetX / zoom - CULL_MARGIN_PX,
-    top: offsetY / zoom - CULL_MARGIN_PX,
-    right: (screenW + offsetX) / zoom + CULL_MARGIN_PX,
-    bottom: (screenH + offsetY) / zoom + CULL_MARGIN_PX,
-  };
-}
-
 /** Whether chunk (cx, cy) — a CHUNK_PX square at (cx·CHUNK_PX, cy·CHUNK_PX) — intersects `rect`. */
 export function chunkVisible(cx: number, cy: number, rect: CullRect): boolean {
   const x0 = cx * CHUNK_PX, y0 = cy * CHUNK_PX;

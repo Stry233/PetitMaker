@@ -29,9 +29,9 @@ const SEEDS = Array.from({ length: 24 }, (_, i) => 1 + i * 7919);
  * another seed.
  */
 function sculptLandmark(seed: number, template: MapTemplate, richness: number): LandmarkPlan | null {
-  const { composition, line, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
+  const { composition, planet, line, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
   return sculptTerrain({
-    template, composition, streets, plan, anchors, seed, richness, ground, line, maxElevation: 8, waterScale: 1,
+    template, composition, planet, streets, plan, anchors, seed, richness, ground, line, maxElevation: 8, waterScale: 1,
   }).landmark;
 }
 

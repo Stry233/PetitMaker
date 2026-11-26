@@ -10,8 +10,11 @@ import { PANEL_RIGHT } from '../../../../ui/shell/panel-frame';
 
 /** CSS px per frame px at uiZoom 1.8. */
 const F = 2.25;
-const READOUT_18 = { left: 862 / F, width: 187 / F };
-const GEAR_18 = { left: 903 / F, width: 63 / F };
+/** The panel's right edge in the window those boxes were measured in; the boxes move with the column's width so the overlap they pose stays the same. */
+const MEASURED_PANEL_RIGHT = 452;
+const SHIFT = PANEL_RIGHT - MEASURED_PANEL_RIGHT;
+const READOUT_18 = { left: 862 / F + SHIFT, width: 187 / F };
+const GEAR_18 = { left: 903 / F + SHIFT, width: 63 / F };
 /** The same count at uiZoom 1, far right of the column. */
 const READOUT_10 = { left: 1048 / 1.25, width: 104 / 1.25 };
 

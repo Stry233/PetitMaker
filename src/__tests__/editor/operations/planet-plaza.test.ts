@@ -217,7 +217,7 @@ describe('plaza in the planet session', () => {
     // The pointer holds the plaza by its centre (EDIT-51): its top-left lands half its size back.
     const held = (x: number, y: number) => ({ x: x + ANCHOR_LANDMARK.width / 2, y: y + ANCHOR_LANDMARK.height / 2 });
     const at = held(20.5, 20);
-    const ctx = { ...makeToolCtx(s.gridState, s.commandExecutor!, 1, 1, { armedItem: ANCHOR_LANDMARK.id }), point: point(at) };
+    const ctx = { ...makeToolCtx(s.gridState, s.commandExecutor!, 1, { armedItem: ANCHOR_LANDMARK.id }), point: point(at) };
     const ghost = placementHover(ANCHOR_LANDMARK.id, { x: Math.floor(at.x), y: Math.floor(at.y) }, ctx)!;
     expect(ghost.valid).toBe(true);
     expect(ghost.cells).toHaveLength(ANCHOR_LANDMARK.width * ANCHOR_LANDMARK.height);

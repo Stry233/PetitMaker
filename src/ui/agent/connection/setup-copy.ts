@@ -1,6 +1,6 @@
 import type { Translate, I18nKey } from '../../../i18n/keys';
 import { providerName } from '../../../i18n/terms/providers';
-import { isRegionSplit, type KeyShape, type ProviderId } from '../../../agent/panel';
+import { isRegionSplit, type KeyShape, type ProviderId, type SetupRepair } from '../../../agent/panel';
 import type { FloatMenuItem } from '../../primitives/FloatMenu';
 import { PROVIDER_ROSTER } from './setup-parts';
 
@@ -72,25 +72,13 @@ export function noteLine(a: {
   return null;
 }
 
-export type FootVerb = 'recheck' | 'manual' | 'address' | 'reenter';
-
 /** The foot's words. `recheck` carries two, chosen at the call site by what failed. */
-export const FOOT_LABEL: Record<FootVerb, I18nKey> = {
+export const FOOT_LABEL: Record<SetupRepair, I18nKey> = {
   recheck: 'agent.setup_use_this_key',
   manual: 'agent.setup_pick_provider',
   address: 'agent.setup_give_address',
   reenter: 'agent.setup_back',
 };
-
-/** Returns recovery actions for failures, missing endpoints and pending checks. */
-export function footVerbs(a: {
-  refused: boolean; needsEndpoint: boolean; waiting: boolean;
-}): FootVerb[] {
-  if (a.refused) return ['recheck', 'manual'];
-  if (a.needsEndpoint) return ['address'];
-  if (a.waiting) return ['reenter'];
-  return [];
-}
 
 /** Provider-menu items, with compatibility hints for ambiguous keys. */
 export function rosterItems(t: Translate, shape: KeyShape, pinned: boolean, regionProvider: ProviderId | null): FloatMenuItem[] {

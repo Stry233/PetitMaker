@@ -1,10 +1,9 @@
 /**
  * Publishes the DOM cursors to CSS, as custom properties on `<html>`, at the system-cursors
- * preference the store holds, and has the canvas controller re-resolve when it flips.
+ * preference the store holds; the canvas controller hears the same preference from the store.
  *
- * The same shape as `useMotionEnabled`: One writer stamps the root element, and everything
- * downstream reads it through plain CSS, so no component subscribes and nothing re-renders when
- * the values change. The values are zoom-independent by construction — the cursors are SVGs drawn
+ * One writer stamps the root element, and everything downstream reads it through plain CSS, so no
+ * component subscribes and nothing re-renders when the values change. The values are zoom-independent by construction — the cursors are SVGs drawn
  * at their intrinsic size, and no engine scales a cursor's drawn size by CSS zoom (verified by
  * probe on every engine) — so nothing here tracks the chrome or frame zoom.
  *
@@ -12,7 +11,6 @@
  * and the global rules in `cursors.css` are the readers.
  */
 import { useEffect } from 'react';
-import { refreshCursor } from '../../../view/interaction/cursor-controller';
 import { useEditorStore } from '../../../state/store';
 import { cursorCss } from '../../../assets/cursors/cursor-css';
 import { DOM_CURSORS, type CursorId, type DomCursorId } from '../../../assets/cursors/cursor-spec';
@@ -25,15 +23,10 @@ function applyCursorVars(system: boolean, root: HTMLElement | null = typeof docu
   }
 }
 
-/**
- * Re-resolve every cursor written ahead of a pointer event at preference `system` (default: the
- * store's, which the canvas controller reads): the custom properties, written once, and the canvas
- * controller, which skips a write whose resolved value matches what it last wrote. A flip changes
- * what every id resolves to without changing their inputs, so each has to be told.
- */
+/** Write the custom properties at preference `system` (default: the store's). A flip changes what
+ *  every id resolves to without changing their inputs, so they are written again. */
 export function publishCursorPreference(system: boolean = useEditorStore.getState().systemCursors): void {
   applyCursorVars(system);
-  refreshCursor();
 }
 
 /**

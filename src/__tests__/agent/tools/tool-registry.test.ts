@@ -4,8 +4,7 @@ import { writesMap } from '../../../agent/core/tool-facts';
 import { executeToolCall, TOOLS, TOOL_FACTS, TOOL_NAMES, wireSchemas, type AgentToolDeps } from '../../../agent/tools';
 
 /** The spec a name declares, read off the registry's own table. */
-const toolSpec = (name: string) => (TOOLS as Partial<Record<string, { run?: unknown; access?: unknown; parentOnly?: boolean }>>)[name];
-const parentOnly = (name: string): boolean => toolSpec(name)?.parentOnly === true;
+const toolSpec = (name: string) => (TOOLS as Partial<Record<string, { run?: unknown; access?: unknown }>>)[name];
 
 // Drift guard for the agent tool surface. Every derived view reads the one spec per tool, so these
 // pin what the specs must agree on: a tool either runs here or is a protocol tool, and write-ness is
@@ -53,18 +52,23 @@ describe('agent tool surface parity', () => {
     expect(schema.description).toMatch(/cuts off/i);
   });
 
-  it('offers a subagent every tool but the parent-only ones, and no way to delegate again', () => {
+  it('offers a helper only tools the lead also has, each of which runs here, and no way to delegate again', () => {
     const subNames = wireSchemas({ subagent: true }).map((s) => s.name);
-    for (const name of schemaNames) expect(subNames.includes(name), name).toBe(!parentOnly(name));
+    expect(subNames.length).toBeGreaterThan(0);
+    for (const name of subNames) {
+      expect(schemaNames, name).toContain(name);
+      expect(Boolean(toolSpec(name)!.run), name).toBe(true);
+    }
     expect(subNames).not.toContain('delegate_task');
   });
 
-  it('keeps every protocol tool, and the user-facing export, parent-only', () => {
-    for (const name of Object.values(PROTOCOL)) expect(parentOnly(name), name).toBe(true);
-    // export_map opens a dialog for the user to confirm, which a subagent never speaks to.
-    const exportMap = wireSchemas().find((s) => s.name === 'export_map')!;
-    expect(exportMap.description).toMatch(/for the user/i);
-    expect(parentOnly(exportMap.name)).toBe(true);
+  it('keeps the two app-action tools with the lead', () => {
+    // An app action changes what the user sees or opens a window for them, which a helper never speaks to.
+    const offered = wireSchemas({ subagent: true }).map((s) => s.name);
+    for (const name of ['list_app_actions', 'run_app_action']) {
+      expect(schemaNames, name).toContain(name);
+      expect(offered, name).not.toContain(name);
+    }
   });
 });
 

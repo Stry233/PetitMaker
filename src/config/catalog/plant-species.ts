@@ -45,6 +45,8 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = [
   { id: 'tree-apple', category: ItemCategory.Tree, tier: 2, habitat: { moisture: { at: 0.5, tol: 0.4 }, exposure: { at: 0.25, tol: 0.45 } } },
   { id: 'tree-peach', category: ItemCategory.Tree, tier: 1, habitat: { moisture: { at: 0.5, tol: 0.4 }, exposure: { at: 0.3, tol: 0.45 } } },
   { id: 'tree-plum', category: ItemCategory.Tree, tier: 1, habitat: { moisture: { at: 0.45, tol: 0.4 }, exposure: { at: 0.3, tol: 0.45 } } },
+  // A pine that leans out over cliffs: high, dry, open ground at an edge.
+  { id: 'tree-welcoming-pine', category: ItemCategory.Tree, tier: 3, habitat: { moisture: { at: 0.25, tol: 0.4 }, exposure: { at: 0.9, tol: 0.45 }, edge: { at: 0.85, tol: 0.5 } } },
 
   // Flora. The two ends of the moisture axis are sharp (the waterside lily, the dry agave), so a
   // planting that lands across a shoreline visibly sorts itself. The dry end is wide on exposure:
@@ -65,6 +67,11 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = [
   { id: 'plant-azalea', category: ItemCategory.Flora, tier: 2, habitat: { moisture: { at: 0.7, tol: 0.3 }, exposure: { at: 0.2, tol: 0.45 }, edge: { at: 0.8, tol: 0.6 } } },
   { id: 'plant-gardenia', category: ItemCategory.Flora, tier: 2, habitat: { moisture: { at: 0.65, tol: 0.35 }, exposure: { at: 0.2, tol: 0.45 } } },
   { id: 'shrub', category: ItemCategory.Flora, tier: 2, habitat: { moisture: { at: 0.5, tol: 0.6 }, edge: { at: 0.6, tol: 0.8 } } },
+  { id: 'flower-petunia', category: ItemCategory.Flora, tier: 1, habitat: { moisture: { at: 0.45, tol: 0.45 }, exposure: { at: 0.6, tol: 0.5 }, edge: { at: 0.7, tol: 0.6 } } },
+  { id: 'flower-adonis', category: ItemCategory.Flora, tier: 1, habitat: { moisture: { at: 0.6, tol: 0.35 }, exposure: { at: 0.25, tol: 0.45 } } },
+  { id: 'plant-bird-of-paradise', category: ItemCategory.Flora, tier: 3, habitat: { moisture: { at: 0.7, tol: 0.35 }, exposure: { at: 0.6, tol: 0.5 } } },
+  { id: 'plant-desert-rose', category: ItemCategory.Flora, tier: 2, habitat: { moisture: { at: 0.05, tol: 0.3 }, exposure: { at: 0.8, tol: 0.5 } } },
+  { id: 'plant-nandina', category: ItemCategory.Flora, tier: 2, habitat: { moisture: { at: 0.5, tol: 0.4 }, exposure: { at: 0.3, tol: 0.5 }, edge: { at: 0.75, tol: 0.6 } } },
 ];
 
 const BY_ID = new Map(PLANT_SPECIES.map((s) => [s.id, s]));

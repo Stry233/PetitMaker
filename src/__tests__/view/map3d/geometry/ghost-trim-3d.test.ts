@@ -132,7 +132,7 @@ function world(autoEdgeCut: 'off' | 'round') {
   const executor = makeExecutor(state);
   const ghost: { cells: MacroCoord[]; trim: readonly TrimmedCell[] }[] = [];
   const ctx = {
-    ...makeToolCtx(state, executor, 3, 2, { autoEdgeCut }),
+    ...makeToolCtx(state, executor, 3, { autoEdgeCut }),
     overlay: {
       showGhost(set: { cells: MacroCoord[] }, _c: number, trim?: readonly TrimmedCell[]) {
         ghost.push({ cells: set.cells, trim: trim ?? [] });
@@ -183,7 +183,7 @@ describe('the seam: one payload, both views', () => {
     const cells = [{ x: 5, y: 5 }, { x: 6, y: 5 }];
     const built = (trim?: readonly TrimmedCell[]) => {
       const o = new OverlayLayer3D({ state: () => s, requestRender: () => {} });
-      o.showGhost(mixedCellSet('terrain', cells), { wash: 'placement', valid: true }, trim);
+      o.showGhost(mixedCellSet('terrain', cells), { placement: true, valid: false }, trim);
       o.flush();
       const mesh = o.group.children.find((c) => (c as { isMesh?: boolean }).isMesh) as
         { geometry: { getAttribute(n: string): { count: number } } } | undefined;

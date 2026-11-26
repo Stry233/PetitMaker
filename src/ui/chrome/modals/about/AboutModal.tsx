@@ -73,8 +73,8 @@ function AboutBody({ titleId, onClose }: { titleId: string; onClose: () => void 
   const room = useWindowRoom() ?? Infinity;
   const fixed = useWindowFixedWidth();
 
-  const width = useSizeGlide<HTMLDivElement>(`${view.kind}|${wide}`, { axis: 'width', motionId: 'modal.resize' });
-  const height = useSizeGlide<HTMLDivElement>(`${view.kind}|${wide}|${locale}`, { axis: 'height', motionId: 'modal.resize' });
+  const width = useSizeGlide<HTMLDivElement>({ change: `${view.kind}|${wide}`, axis: 'width', motionId: 'modal.resize' });
+  const height = useSizeGlide<HTMLDivElement>({ change: `${view.kind}|${wide}|${locale}`, axis: 'height', motionId: 'modal.resize' });
   const gliding = width.gliding || height.gliding;
   /** The height About stood at as a document opened over it, which the document keeps. */
   const [docHeight, setDocHeight] = useState(DOC_FIRST_HEIGHT);

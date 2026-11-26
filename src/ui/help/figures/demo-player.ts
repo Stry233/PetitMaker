@@ -4,7 +4,7 @@ import { visualRect } from '../../design/visual-rect';
 import { fadeMask, SCROLL_FADE } from '../../primitives/scroll-fade';
 import { glQuality } from '../../../platform/device/device-quality';
 import { useEditorStore } from '../../../state/store';
-import { helpFacts } from '../facts';
+import { readerFacts } from '../facts';
 import { buildChecklist } from '../../../state/build-checklist';
 import { NEAR } from './use-in-view';
 import { queueStandup } from './standup-queue';
@@ -20,7 +20,7 @@ import { isMotionReduced } from '../../../platform/channels/motion-state';
 import type { GridState, Rotation } from '../../../core/model/types';
 import type { BlockRef } from '../../../state/selection';
 import type { Translate, TextKey } from '../../../i18n/keys';
-import { type TokenSpec } from '../hints/catalogue';
+import { type TokenSpec } from '../../../editor/help/key-tokens';
 import { createSignal } from '../../../core/base/signal';
 import { mapChunkAt } from '../../../core/grid/map-chunks';
 import type { MazeEnds } from '../../shell/bars/generate/MazeEndpoints';
@@ -31,6 +31,7 @@ import { prepareSceneWorld, sceneWorld, type DemoCtx, type DemoView, type HelpSc
 import { ease } from './scenes/common';
 import { PLACEMENT_GRID, TERRAIN_GRID } from '../../../core/game/profile';
 import type { MapPoint } from '../../../core/grid/grids';
+import { seconds } from '../../design/motion';
 
 interface Cam { dx: number; dy: number; z: number }
 export type Toast =
@@ -422,7 +423,7 @@ class Player {
     this.stepT += dt;
     const step = this.steps[this.si];
     if (step) {
-      const dur = step.dur ?? 400;
+      const dur = step.dur ?? seconds('help.figure.step') * 1000;
       if (this.from === null) {
         this.from = { cur: { ...this.cur }, cam: { ...this.cam } };
         this.panTo = null;
@@ -525,9 +526,15 @@ class Player {
     // A picked tool draws its own hover and ghost, as on the live map.
     if (this.ghostHeld || !onMap || this.world.toolPicked) {
       if (this.hoverCell) { this.overlay.clearHover(); this.hoverCell = null; }
-    } else if (this.hoverCell !== key) {
-      this.overlay.showHover({ x: hoverX, y: hoverY, w: 1, h: 1 }, TERRAIN_GRID);
-      this.hoverCell = key;
+    } else {
+      // In Blueprint mode the pointer anywhere in a placement's frame outlines the frame whole.
+      const frame = this.world.groupFrameAt(cell);
+      const shown = frame ? `frame:${frame.x},${frame.y},${frame.w},${frame.h}` : key;
+      if (this.hoverCell !== shown) {
+        if (frame) this.overlay.showHover(frame, PLACEMENT_GRID);
+        else this.overlay.showHover({ x: hoverX, y: hoverY, w: 1, h: 1 }, TERRAIN_GRID);
+        this.hoverCell = shown;
+      }
     }
   }
 
@@ -584,8 +591,9 @@ export interface DemoMap {
   curves: SandboxWorld['curve'];
   view: () => Pick<ActiveView, 'overlay' | 'projection'>;
   watch: (tell: () => void) => () => void;
-  /** The world's selection, its map and touch multi-select's latch, read live. */
-  selection: () => { selection: readonly BlockRef[]; gridState: GridState; latched: boolean };
+  /** The world's selection, its map and touch multi-select's latch, read live, with whether the
+   *  world stands in Blueprint mode and holds the selection card's details open. */
+  selection: () => { selection: readonly BlockRef[]; gridState: GridState; latched: boolean; groups: boolean; details: boolean };
   /** Calls `tell` whenever the selection, the latch or the objects change, with an edit's cause;
    *  returns the unsubscribe. */
   onSelection: (tell: (cause?: string) => void) => () => void;
@@ -718,7 +726,7 @@ export function standUpDemo(opts: DemoStandup): () => void {
     renderer = new Renderer(world.bus, canvasHost, W, H + opts.barH, { preferCanvas: glQuality() === 'lite' });
     // Tools a scene arms draw their previews on this figure's overlay, as the live tools draw on the map's.
     world.drawToolsOn(renderer.asEditorView().overlay);
-    const facts = helpFacts(useEditorStore.getState().locale);
+    const facts = readerFacts(useEditorStore.getState().locale);
     const view = renderer.asEditorView();
     // The projection answers in the column's px (the pointer's); the map's controls stand in the box.
     const live = view.projection;
@@ -729,7 +737,9 @@ export function standUpDemo(opts: DemoStandup): () => void {
     const boxView = { overlay: view.overlay, projection };
     opts.onMap({
       state: world.state, curves: world.curve, view: () => boxView, watch: (tell) => moved.subscribe(tell),
-      selection: () => ({ selection: world.selection, gridState: world.state, latched: world.multiSelectLatched }),
+      selection: () => ({
+        selection: world.selection, gridState: world.state, latched: world.multiSelectLatched, groups: world.blueprintMode, details: world.cardDetails,
+      }),
       onSelection: (tell) => world.watchSelection(tell),
     });
     player = new Player(

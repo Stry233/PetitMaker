@@ -18,31 +18,31 @@ import type { CurveToolContext } from './curve-session';
 import type { CursorId } from '../../../assets/cursors/cursor-spec';
 import { placeTileCell } from './tile-coating';
 import { strippableRefusal } from '../../placement/coatings';
-import type { ContentType } from './paint-plan';
-import type { PreviewCell, PreviewIcon } from '../runtime/view-seam';
-import { planPaint } from './paint-plan';
+import type { GhostGround, PlacementPaint } from '../runtime/view-seam';
+import type { MixedCellSet } from '../../../core/grid/grids';
+import { PLACEMENT_GRID } from '../../../core/game/profile';
+import { planPaint, strokeShownLayer, strokeStartAt } from './paint-plan';
 import { StrokePreimage, restoreStroke } from './restore';
 import { adjustContext, curveArmingKey } from './curve-session';
 import type { CurveAnchor } from '../../../core/base/spline';
-import { ruleToast, violationToast } from '../../../i18n/terms/rule-copy';
+import { violationToast } from '../../../i18n/terms/rule-copy';
 import type { GridId, GridCell, MapPoint } from '../../../core/grid/grids';
 import { CONTENT_GRID } from '../../../state/editing/edit-mode';
 import { cellSet } from '../../../core/grid/grids';
 import { StrokeCells, laysTiles, liveTrim, squareStroke } from './stroke-cells';
-import { FRESH_STROKE, trimOfCells, trimOfSpans } from './stroke-preview';
-import { settleStrokeLayer, showDabLayer } from './display-layer';
-import { layerNumber } from '../../../core/game/profile';
+import { FRESH_STROKE, strokeLay, trimOfCells, trimOfSpans } from './stroke-preview';
+import { spanCells } from '../../../core/grid/cell-spans';
+import type { TrimmedCell } from '../../trim/trim-preview';
+import { showStrokeLayer } from './display-layer';
 
 
 export type { ContentType } from './paint-plan';
 
-/** The glyph the preview card carries for each surface these brushes lay. A road/tile is the ground
- *  glyph: the design draws one plot-of-land mark for everything laid flat on the ground. */
-const CONTENT_ICON: Record<ContentType, PreviewIcon> = {
-  mountain: 'mountain',
-  water: 'water',
-  road: 'ground',
-};
+/** A stroke that only turns ground is outlined round the cells it turns, on the grid ground lies
+ *  on, so the outline and the ground it fills coincide. */
+function groundOutline(ground: readonly GhostGround[]): MixedCellSet {
+  return cellSet(PLACEMENT_GRID, ground.map(({ x, y }) => ({ x, y })));
+}
 
 export class DrawingTool implements Tool<GridId, CurveToolContext> {
   readonly id = ToolType.TerrainBrush;
@@ -62,7 +62,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
    *  already painted this stroke), which is a no-op rather than a refusal; a plan that refused
    *  the cell (a tile on water) is a refusal even though it issues nothing. */
   canActAt(coord: MacroCoord, ctx: CurveToolContext): boolean {
-    const plan = planPaint([coord], ctx, ctx.arming.contentType, FRESH_STROKE);
+    const plan = planPaint([coord], ctx, ctx.arming.contentType, FRESH_STROKE, this.start ?? undefined);
     const first = plan.commands[0];
     if (!first) return !plan.refused;
     const errors = ctx.validateCommand(first);
@@ -75,6 +75,10 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
 
   /** The open stroke: begun at each press, and at each curve tweak. */
   private stroke: Stroke | null = null;
+  /** The surface the gesture in progress started on (`strokeStartAt` of its press, a curve's first
+   *  anchor), which fixes what the whole gesture does; null between gestures, when a probe asks as a
+   *  fresh press would. */
+  private start: number | null = null;
   /** The press in progress: a freehand drag, a dragged figure, or the curve's anchor chain. */
   private readonly gesture = new ShapeGesture();
   /** The curve being drawn: a chain of anchors the path runs through (see `splinePath`). */
@@ -85,6 +89,8 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
   private curvePreimage = new StrokePreimage();
   /** The context the curve was painted with, frozen by `adjustContext`. */
   private curveCtx: CurveToolContext | null = null;
+  /** The surface the curve started on, which every adjustment lays from again. */
+  private curveStart = 0;
   /** The anchors the map currently reflects. Not the session's — those are already the new ones by
    *  the time a repaint is asked for, so a refusal has nothing to go back to without this. */
   private curveAnchors: CurveAnchor[] = [];
@@ -108,16 +114,18 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
       if (ctx.arming.shape === 'curve') return;
     }
     this.stroke = ctx.beginStroke();
-    // Start a fresh per-stroke cell record (used for road reconcile and auto edge-trim). A curve
-    // collects its anchor clicks into one stroke, so only its first point resets the record.
+    // Start a fresh per-stroke cell record (used for road reconcile and auto edge-trim) and read the
+    // surface the gesture starts on. A curve collects its anchor clicks into one stroke, so only its
+    // first point does either.
     if (ctx.arming.shape !== 'curve' || this.chain.length === 0) {
       this.laid.clear();
+      this.start = strokeStartAt(coord, ctx);
+      showStrokeLayer(strokeShownLayer(this.start, ctx), ctx);
     }
 
     switch (ctx.arming.shape) {
       case 'free': {
         this.gesture.beginFree(coord);
-        showDabLayer(coord, ctx);
         const dab = brushCells(coord.x, coord.y, ctx.arming.brushSize);
         this.paintCells(dab, ctx);
         liveTrim(dab, ctx, this.laid);
@@ -142,7 +150,6 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     if (ctx.arming.shape !== 'free') return;
     const dab = this.gesture.sweep(coord, ctx.arming.brushSize);
     if (!dab) return;
-    showDabLayer(coord, ctx);
     this.paintCells(dab, ctx);
     liveTrim(dab, ctx, this.laid);
   }
@@ -152,7 +159,11 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
    *  rectangle or circle previews as spans, so a map-size drag never expands to its cell list. */
   private showGesture(shown: GestureGhost, ctx: CurveToolContext): void {
     if ('cells' in shown) { this.ghost(shown.cells, ctx, shown.at); return; }
-    ctx.overlay.showGhostSpans(shown.spans, this.card(shown.at, ctx), this.grid(ctx), trimOfSpans(shown.spans, ctx, this.laid.tiles));
+    const start = this.start ?? strokeStartAt(shown.at, ctx);
+    const trim = trimOfSpans(shown.spans, ctx, this.laid.tiles, start);
+    const paint = this.paint(spanCells(shown.spans), ctx, shown.at, start, { trim });
+    if (paint.ground?.length && !paint.blocks?.length) { ctx.overlay.showGhost(groundOutline(paint.ground), paint); return; }
+    ctx.overlay.showGhostSpans(shown.spans, paint, this.grid(ctx), trim);
   }
 
   /** The live curve, previewed through the anchors placed so far plus wherever the cursor is. */
@@ -164,14 +175,16 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
   private commitCurve(ctx: CurveToolContext, at: MacroCoord): void {
     const anchors = this.chain.points.map((a) => ({ ...a }));
     this.curveCtx = adjustContext(ctx);
+    this.curveStart = this.start ?? strokeStartAt(anchors[0] ?? at, ctx);
     this.curvePreimage = new StrokePreimage();
     // The stroke began at the top of this onPointerDown; no command runs between the curve's
     // clicks, so it already holds the whole curve.
     this.layCurve(anchors, this.curveCtx);
     this.curveAnchors = anchors.map((a) => ({ ...a }));
     this.chain.clear();
+    this.start = null;
     ctx.overlay.clearGhost();
-    this.finishStroke(this.curveCtx, at);
+    this.finishStroke(this.curveCtx);
     this.curvePreimage.record(this.stroke?.entries() ?? []);
 
     // The anchors stay on the map so the curve can be tuned. They are not shown while it is being
@@ -192,9 +205,9 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     }
   }
 
-  /** Paint the curve at these anchors. */
+  /** Paint the curve at these anchors, from the surface it started on. */
   private layCurve(anchors: readonly CurveAnchor[], ctx: CurveToolContext): void {
-    this.paintCells(splineCells(anchors, ctx.arming.brushSize), ctx);
+    this.paintCells(splineCells(anchors, ctx.arming.brushSize), ctx, this.curveStart);
   }
 
   /**
@@ -229,7 +242,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     const ctx = this.curveCtx;
     if (!ctx) return;
     // The map still holds the previous curve: the ghost's trim is planned against the restore.
-    this.ghost(splineCells(anchors, ctx.arming.brushSize), ctx, undefined, this.curvePreimage.commands(ctx.state));
+    this.ghost(splineCells(anchors, ctx.arming.brushSize), ctx, undefined, this.curvePreimage.commands(ctx.state), this.curveStart);
   }
 
   /**
@@ -256,11 +269,12 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
       return;
     }
     this.layCurve(anchors, ctx);
+    showStrokeLayer(strokeShownLayer(this.curveStart, ctx), ctx);
     // A curve dragged off the map, or onto sea or a landmark, has every command refused or ignored — no
     // post-stroke violation to report, just a stroke that removed the old curve and laid no new one.
     const laidSomething = this.curveLaidAnything(splineCells(anchors, ctx.arming.brushSize), ctx);
     ctx.overlay.clearGhost();   // the map now shows what the ghost was promising
-    const violations = this.finishStroke(ctx, anchors[anchors.length - 1]);
+    const violations = this.finishStroke(ctx);
     if (violations.length === 0 && laidSomething) {
       this.curveAnchors = anchors.map((a) => ({ ...a }));
       this.curvePreimage.record(stroke.entries());
@@ -293,6 +307,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
   cancelPending(ctx: CurveToolContext): boolean {
     if (ctx.arming.shape === 'curve' && this.chain.length > 0) {
       this.chain.clear();
+      this.start = null;
       ctx.overlay.clearGhost();
       return true;
     }
@@ -314,7 +329,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     this.stroke = ctx.beginStroke();
     this.paintCells(figure.cells, ctx);
     ctx.overlay.clearGhost();
-    this.finishStroke(ctx, figure.end);
+    this.finishStroke(ctx);
   }
 
   /** The press never happened: a brush stroke's dabs are taken back without a redo step, a shape
@@ -325,6 +340,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     this.gesture.drag.clear();
     if (ctx.arming.shape !== 'curve' || this.chain.length === 0) {
       this.laid.clear();
+      this.start = null;
     }
     ctx.overlay.clearGhost();
   }
@@ -332,12 +348,9 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
   onPointerUp(coord: GridCell, _point: MapPoint, ctx: CurveToolContext): void {
     switch (ctx.arming.shape) {
       case 'free': {
-        // Settle the highlight on the last painted cell (where the brush actually
-        // ended), not the release point — so releasing on fresh ground stays on
-        // the floor instead of jumping to a stack the stroke crossed earlier.
-        const lastPainted = this.gesture.endFree() ?? coord;
+        this.gesture.endFree();
         ctx.overlay.clearGhost();
-        this.finishStroke(ctx, lastPainted);
+        this.finishStroke(ctx);
         break;
       }
 
@@ -359,12 +372,12 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
 
   /** Run the plan. The tile branch goes cell by cell through `placeTileCell`, which strips the
    *  coating it replaces before executing — the one part of a tile click a pure plan cannot hold. */
-  private paintCells(cells: MacroCoord[], ctx: CurveToolContext): void {
+  private paintCells(cells: MacroCoord[], ctx: CurveToolContext, start = this.start): void {
     if (laysTiles(ctx)) {
       for (const c of cells) placeTileCell(c, ctx, this.laid.tiles);
       return;
     }
-    const plan = planPaint(cells, ctx, ctx.arming.contentType, this.laid.terrain);
+    const plan = planPaint(cells, ctx, ctx.arming.contentType, this.laid.terrain, start ?? undefined);
     if (plan.clipped) ctx.reportGroundClipped?.();
     // Record the stroke's footprint (road reconcile + auto edge-trim read it) only after planning:
     // the plan must see the heights as they were before this batch, and a cell already in the set
@@ -386,43 +399,45 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
    * (a road stroke, cut end-caps and bends), so a square ghost promises something the click does
    * not produce. The preview runs the real trim pass (`stroke-preview.ts`).
    */
-  private ghost(cells: MacroCoord[], ctx: CurveToolContext, at?: MacroCoord, before: Command[] = []): void {
-    ctx.overlay.showGhost(cellSet(this.grid(ctx), cells), this.card(at ?? cells[0], ctx),
-      trimOfCells(cells, ctx, before, this.laid.tiles));
+  private ghost(cells: MacroCoord[], ctx: CurveToolContext, at?: MacroCoord, before: Command[] = [], held = this.start): void {
+    const aim = at ?? cells[0];
+    const start = held ?? (aim ? strokeStartAt(aim, ctx) : 0);
+    const trim = trimOfCells(cells, ctx, before, this.laid.tiles, start);
+    const paint = this.paint(cells, ctx, aim, start, { trim, before });
+    if (paint.ground?.length && !paint.blocks?.length) { ctx.overlay.showGhost(groundOutline(paint.ground), paint); return; }
+    ctx.overlay.showGhost(cellSet(this.grid(ctx), cells), paint, trim);
   }
 
-  /** The preview card this stroke shows: the glyph of the surface being laid, in the state the
+  /** The placement this stroke shows: what its plan from `start` lays (`strokeLay`), in the state the
    *  probed cell answers with — the same `canActAt` question the cursor's refusal badge asks, so a
-   *  red card and a badged cursor can never disagree. */
-  private card(at: MacroCoord | undefined, ctx: CurveToolContext): PreviewCell {
-    return {
-      icon: CONTENT_ICON[ctx.arming.contentType],
-      valid: !at || this.canActAt(at, ctx),
-    };
+   *  red ghost and a badged cursor can never disagree. A freehand press plans with the cells it
+   *  already laid, as its next dab does. */
+  private paint(
+    cells: readonly MacroCoord[], ctx: CurveToolContext, at: MacroCoord | undefined, start: number,
+    shown: { trim?: readonly TrimmedCell[]; before?: Command[] },
+  ): PlacementPaint {
+    const alreadyPainted = this.gesture.freehand ? this.laid.terrain : FRESH_STROKE;
+    return { placement: true, valid: !at || this.canActAt(at, ctx), ...strokeLay(cells, ctx, start, { ...shown, alreadyPainted }) };
   }
 
   /** Returns the post-stroke violations, so a caller that must be all-or-nothing can act on them.
    *  Roads riding or refusing the stroke's terrain change are the commit's own reconcile pass. */
-  private finishStroke(ctx: CurveToolContext, focus?: MacroCoord): ValidationError[] {
+  private finishStroke(ctx: CurveToolContext): ValidationError[] {
     const stroke = this.stroke;
     if (!stroke) return [];
     const isTile = laysTiles(ctx);
     const cells = this.laid.coords(ctx);
     // A shape the drag cut early can be built against later in the same drag, and the trim keeps
     // the shapes it finds, so the stroke's own cells go back to square before the sweep.
-    const { violations, committed, waterLayer, trimmed } = finishPaintStroke(ctx, {
+    const { violations, committed, trimmed } = finishPaintStroke(ctx, {
       stroke,
       terrainCells: isTile ? [] : cells,
       tileCells: isTile ? cells : [],
-      water: ctx.arming.contentType === 'water',
       trim: paintTrimMode(ctx),
       layerVisibility: ctx.arming.layerVisibility,
       beforeTrim: () => { if (this.laid.liveTrimmed) squareStroke(cells, ctx); },
     });
-    // A refused water stroke names the one layer that would take it, where there is exactly one.
-    if (violations.length > 0) {
-      ctx.notify(waterLayer !== null ? ruleToast(ctx.t, 'error.water_only_layer', { layer: layerNumber(waterLayer) }) : violationToast(ctx.t, violations[0]!), 'warning');
-    }
+    if (violations.length > 0) ctx.notify(violationToast(ctx.t, violations[0]!), 'warning');
 
     // Acknowledge a successful terrain/tile commit with one regional flash over the painted cells
     // (a rejected stroke gets the toast above). Only the discrete shape tools (line/curve/rect/
@@ -441,7 +456,7 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
       }
     }
 
-    settleStrokeLayer(ctx, focus, this.laid.terrain);
+    if (ctx.arming.shape !== 'curve') this.start = null;
     return violations;
   }
 
@@ -449,5 +464,6 @@ export class DrawingTool implements Tool<GridId, CurveToolContext> {
     if (ctx.curve.isOpen()) ctx.curve.end();
     this.gesture.clear();
     this.laid.clear();
+    this.start = null;
   }
 }

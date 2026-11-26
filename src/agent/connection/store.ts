@@ -31,6 +31,7 @@ function newCredentials(): CredentialStore {
         oversight: state.oversight,
         effort: state.effort,
         customBaseUrl: state.customBaseUrl || undefined,
+        ...(Object.keys(state.signedIn).length > 0 ? { signedIn: state.signedIn } : {}),
       };
     },
   });
@@ -54,6 +55,9 @@ export interface AgentConnectionState {
   keyed: readonly ProviderId[];
   /** Whether the user explicitly selected the provider; transient setup-flow state. */
   providerPinned: boolean;
+  /** When each held key that came from a sign-in was issued, in ms since the epoch. A pasted key has
+   *  no entry, so a refusal of it asks for a key and a refusal of a signed-in one for a new sign-in. */
+  signedIn: Partial<Record<ProviderId, number>>;
   /** Whether async sealed-key hydration is complete. */
   hydrated: boolean;
 
@@ -61,6 +65,8 @@ export interface AgentConnectionState {
   hydrate(): Promise<void>;
   /** Files a provider credential; a blank custom key explicitly configures an unauthenticated endpoint. */
   connectKey(provider: ProviderId, key: string): void;
+  /** Files the key a sign-in returned at `at`, and releases any provider pin: no key screen follows. */
+  connectSignedIn(provider: ProviderId, key: string, at: number): void;
   /** Revokes a provider key and aborts work using the armed provider before removal. */
   forgetKey(provider?: ProviderId): void;
   setProvider(provider: ProviderId): void;
@@ -145,6 +151,12 @@ export function runnerSettings(state: AgentConnectionState): ArmedConnection {
   return out;
 }
 
+/** `times` without `provider`'s entry. */
+function without(times: Partial<Record<ProviderId, number>>, provider: ProviderId): Partial<Record<ProviderId, number>> {
+  const { [provider]: _dropped, ...rest } = times;
+  return rest;
+}
+
 function emptyModels(): Record<ProviderId, string> {
   return Object.fromEntries(PROVIDER_IDS.map((id) => [id, ''])) as Record<ProviderId, string>;
 }
@@ -160,7 +172,7 @@ function credentialState(): Pick<AgentConnectionState, 'keyed' | 'customAuth' | 
 
 const INITIAL = {
   provider: 'claude', oversight: 'checkpoint', effort: {}, customBaseUrl: '', customAuth: 'key',
-  regionBaseUrl: undefined, keyed: [], providerPinned: false, hydrated: false,
+  regionBaseUrl: undefined, keyed: [], providerPinned: false, signedIn: {}, hydrated: false,
 } as const satisfies Partial<AgentConnectionState>;
 
 export const useAgentConnection: UseBoundStore<StoreApi<AgentConnectionState>> =
@@ -183,6 +195,7 @@ export const useAgentConnection: UseBoundStore<StoreApi<AgentConnectionState>> =
             oversight: stored.oversight,
             effort: stored.effort ?? {},
             customBaseUrl: stored.customBaseUrl ?? '',
+            signedIn: stored.signedIn ?? {},
             regionBaseUrl: stored.regionBaseUrl,
             ...credentialState(),
           });
@@ -199,7 +212,13 @@ export const useAgentConnection: UseBoundStore<StoreApi<AgentConnectionState>> =
           credentials.connect(provider, trimmed);
         }
         forgetRosters();
-        commit({ provider, ...credentialState() });
+        commit({ provider, signedIn: without(get().signedIn, provider), ...credentialState() });
+      },
+
+      connectSignedIn: (provider, key, at) => {
+        credentials.connect(provider, key.trim());
+        forgetRosters();
+        commit({ provider, providerPinned: false, signedIn: { ...get().signedIn, [provider]: at }, ...credentialState() });
       },
 
       forgetKey: (provider) => {
@@ -208,7 +227,7 @@ export const useAgentConnection: UseBoundStore<StoreApi<AgentConnectionState>> =
         if (!credentials.forget(id, armed)) return;
         forgetRosters();
         // Revoking the armed key also releases its transient provider pin.
-        commit({ ...credentialState(), ...(armed ? { providerPinned: false } : {}) });
+        commit({ ...credentialState(), signedIn: without(get().signedIn, id), ...(armed ? { providerPinned: false } : {}) });
       },
 
       setProvider: (provider) => commit({ provider, providerPinned: false }),

@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
-/** Pins the panel's shared hooks: the toggle set, the endpoint draft and the model roster. */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+/** Pins the panel's shared hooks: the toggle set and the endpoint draft. */
+import { describe, it, expect } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useToggleSet } from '../../../../ui/agent/hooks/use-toggle-set';
 import { useEndpointDraft } from '../../../../ui/agent/hooks/use-endpoint-draft';
-import { useModelRoster } from '../../../../ui/agent/hooks/use-model-roster';
-import { forgetRosters } from '../../../../agent/connection/model-roster';
 
 describe('useToggleSet', () => {
   it('opens and closes keys independently', () => {
@@ -30,56 +28,5 @@ describe('useEndpointDraft', () => {
     expect(result.current.bad).toBe(true);
     act(() => { result.current.settle(); });
     expect([result.current.value, result.current.bad]).toEqual(['https://c.example/v1', false]);
-  });
-});
-
-describe('useModelRoster', () => {
-  beforeEach(() => { forgetRosters(); });
-
-  const props = { provider: 'openai' as const, customBaseUrl: '', apiKey: 'k', region: undefined, connected: true };
-
-  it('loads once, answers later mounts from the session cache, and asks again on refresh', async () => {
-    const listModels = vi.fn(() => Promise.resolve(['m1', 'm2']));
-    const first = renderHook(() => useModelRoster({ ...props, listModels }));
-    expect(first.result.current.status).toBe('loading');
-    await act(async () => {});
-    expect(first.result.current).toMatchObject({ status: 'ready', models: ['m1', 'm2'] });
-    first.unmount();
-
-    const second = renderHook(() => useModelRoster({ ...props, listModels }));
-    expect(second.result.current.status).toBe('ready');
-    expect(listModels).toHaveBeenCalledTimes(1);
-    await act(async () => { second.result.current.refresh(); });
-    expect(listModels).toHaveBeenCalledTimes(2);
-  });
-
-  it('reads an answering server without a list as ready, and an unreachable one as failed', async () => {
-    const answered = renderHook(() => useModelRoster({
-      ...props, listModels: () => Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
-    }));
-    await act(async () => {});
-    expect(answered.result.current).toMatchObject({ status: 'ready', models: [] });
-
-    const silent = renderHook(() => useModelRoster({ ...props, listModels: () => Promise.reject(new Error('Failed to fetch')) }));
-    await act(async () => {});
-    expect(silent.result.current.status).toBe('failed');
-  });
-
-  it('drops the answer to a request a newer one superseded', async () => {
-    let resolveOld!: (ids: string[]) => void;
-    const listModels = vi.fn()
-      .mockImplementationOnce(() => new Promise<string[]>((resolve) => { resolveOld = resolve; }))
-      .mockImplementationOnce(() => Promise.resolve(['fresh']));
-    const { result } = renderHook(() => useModelRoster({ ...props, listModels }));
-    await act(async () => { result.current.refresh(); });
-    await act(async () => { resolveOld(['stale']); });
-    expect(result.current.models).toEqual(['fresh']);
-  });
-
-  it('stands idle without a connection', () => {
-    const listModels = vi.fn(() => Promise.resolve(['m']));
-    const { result } = renderHook(() => useModelRoster({ ...props, connected: false, listModels }));
-    expect(result.current.status).toBe('idle');
-    expect(listModels).not.toHaveBeenCalled();
   });
 });

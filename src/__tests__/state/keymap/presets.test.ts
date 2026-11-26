@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PRESETS, withCurrentIds } from '../../../state/keymap/registry';
-import { presetBinds, detectPreset, effectiveCombo, overridesFor } from '../../../state/keymap/resolve';
+import { detectPreset, effectiveCombo, overridesFor, currentBinds } from '../../../state/keymap/resolve';
 import { serializeKeybinds, parseKeybinds } from '../../../state/keymap/file';
 import { useKeybinds } from '../../../state/keymap/store';
 import { normalizeCombo } from '../../../platform/input/combo';
@@ -14,7 +14,7 @@ import { translations } from '../../../i18n/translations';
 describe('keymap presets', () => {
   it('every preset assigns a unique combo per command (internally valid)', () => {
     for (const p of PRESETS) {
-      const combos = [...presetBinds(p).values()].filter((c): c is string => c != null);
+      const combos = [...currentBinds(overridesFor(p.binds)).values()].filter((c): c is string => c != null);
       expect(new Set(combos).size, `${p.id} has duplicate combos`).toBe(combos.length);
     }
   });
@@ -25,15 +25,15 @@ describe('keymap presets', () => {
   });
 
   it('the numeric preset is meaningfully different from default', () => {
-    const def = presetBinds(PRESETS.find((p) => p.id === 'default')!);
-    const num = presetBinds(PRESETS.find((p) => p.id === 'numeric')!);
+    const def = currentBinds(overridesFor((PRESETS.find((p) => p.id === 'default')!).binds));
+    const num = currentBinds(overridesFor((PRESETS.find((p) => p.id === 'numeric')!).binds));
     let diffs = 0;
     for (const [k, v] of num) if (def.get(k) !== v) diffs++;
     expect(diffs).toBeGreaterThanOrEqual(10);
   });
 
   it('pro reproduces the pre-game-layout defaults exactly', () => {
-    const pro = presetBinds(PRESETS.find((p) => p.id === 'pro')!);
+    const pro = currentBinds(overridesFor((PRESETS.find((p) => p.id === 'pro')!).binds));
     // The shipped layout, frozen: this fixture is a record, not a derivation. If it fails, the pro
     // map drifted, not this list.
     const frozen: Record<string, string> = {
@@ -41,7 +41,7 @@ describe('keymap presets', () => {
       'tool.move': 'v', 'tool.brush': 'b', 'tool.erase': 'e', 'tool.rect': 'r',
       'tool.circle': 'c', 'tool.line': 'f', 'tool.curve': 'g', 'tool.trim': 'x', 'tool.smart': 't',
       'tool.constrain': 'shift', 'tool.break_handle': 'alt',
-      'brush.bigger': ']', 'brush.smaller': '[', 'layer.up': 'q', 'layer.down': 'z',
+      'brush.bigger': ']', 'brush.smaller': '[', 'tool.thickness_cycle': 'l',
       'selection.rotate_cw': '.', 'selection.rotate_ccw': ',', 'selection.delete': 'delete',
       'selection.deselect': 'escape', 'selection.multi': 'ctrl', 'selection.all': 'ctrl+a',
       'camera.zoom_in': '=', 'camera.zoom_out': '-', 'camera.fit': 'ctrl+0',
@@ -132,11 +132,40 @@ describe('keybinds import / export', () => {
     expect(parseKeybinds(JSON.stringify({ 'tool.brush': 'ctrl+shift+=' })).error).toBe('reserved-combo');
   });
 
+  it('drops a binding on a key the browser or the system takes, so the command keeps its shipped key', () => {
+    const res = parseKeybinds(JSON.stringify({ 'tool.brush': 'enter', 'tool.erase': 'ctrl+f5', 'history.undo': 'ctrl+alt+u' }));
+    expect(res.ok).toBe(true);
+    expect('tool.brush' in res.binds! || 'tool.erase' in res.binds!).toBe(false);
+    expect(res.binds!['history.undo']).toBe('ctrl+alt+u');
+    try {
+      useKeybinds.getState().applyBinds(res.binds!, res.overrides);
+      expect(effectiveCombo(useKeybinds.getState().overrides, 'tool.brush', 'terrain')).toBe(effectiveCombo({}, 'tool.brush', 'terrain'));
+    } finally {
+      useKeybinds.getState().resetAll();
+    }
+  });
+
+  it('opens a keymap file exported while such a key could still be bound, without that binding', () => {
+    const res = parseKeybinds(serializeKeybinds({ 'history.undo': 'enter', 'tool.brush': 'k' }));
+    expect(res.ok).toBe(true);
+    expect('history.undo' in res.binds!).toBe(false);
+    expect(res.overrides).toEqual({ 'tool.brush': 'k' });
+  });
+
   it('judges the twins against the zoom keys the file itself carries', () => {
     // Moving zoom-in off `=` frees its twin, and the file is read as one keymap.
     const res = parseKeybinds(JSON.stringify({ 'app.ui_zoom_in': 'ctrl+9', 'tool.brush': 'ctrl+shift+=' }));
     expect(res.ok).toBe(true);
     expect(res.binds!['tool.brush']).toBe('ctrl+shift+=');
+  });
+
+  it('imports a keymap exported before the layer up and down commands were removed', () => {
+    const before: Record<string, string | null> = { ...PRESETS.find((p) => p.id === 'pro')!.binds, 'layer.up': 'q', 'layer.down': 'z' };
+    delete before['tool.thickness_cycle'];
+    const res = parseKeybinds(JSON.stringify({ version: 1, binds: before }));
+    expect(res.ok).toBe(true);
+    expect('layer.up' in res.binds! || 'layer.down' in res.binds!).toBe(false);
+    expect(res.binds!['tool.brush']).toBe('b');
   });
 
   it('imports history and UI-scale bindings like any other command', () => {
@@ -168,6 +197,16 @@ describe('keymap load migration for stored Pro keymaps', () => {
     expect(overrides['selection.delete']).toBe('delete');
     expect(resolve.detectPreset(overrides)).toBe('pro');
     expect(JSON.parse(localStorage.getItem(KEY)!)['selection.delete']).toBe('delete');
+  });
+
+  it('loads a Pro keymap stored before the layer up and down commands were removed, and still reads it as Pro', async () => {
+    const before: Record<string, string | null> = { ...PRESETS.find((p) => p.id === 'pro')!.binds, 'layer.up': 'q', 'layer.down': 'z' };
+    delete before['tool.thickness_cycle'];
+    const stored = { ...overridesFor(before), 'layer.up': 'q', 'layer.down': 'z' };
+    const { overrides, resolve } = await loadWith(stored);
+    expect(overrides['tool.brush']).toBe('b');
+    expect(resolve.detectPreset(overrides)).toBe('pro');
+    expect(resolve.effectiveCombo(overrides, 'tool.thickness_cycle')).toBe('l');
   });
 
   it('leaves every other custom keymap untouched', async () => {

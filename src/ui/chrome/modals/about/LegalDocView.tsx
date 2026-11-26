@@ -26,11 +26,10 @@ import { SegmentedControl } from '../../../primitives/SegmentedControl';
 import { useScrollFade } from '../../../primitives/scroll-fade';
 import { DOCS, docNodes, type DocId } from '../../../../legal/registry';
 import { LEGAL } from '../../../../legal/config';
+import { BUNDLED_LICENSES } from '../../../../legal/bundled-licenses';
 import { LegalMarkdown } from '../../../primitives/LegalMarkdown';
 import { LOCALE_INFO, localeTag } from '../../../../i18n/locale-info';
 import { useInteractionProfiles } from '../../../design/input-mode';
-
-const bundledLicenses = BUNDLES_LICENSE_TEXTS ? import.meta.glob<string>('../../licenses/**/*', { query: '?raw', import: 'default', eager: true }) : {};
 
 interface LegalDocViewProps {
   id: DocId;
@@ -190,8 +189,8 @@ export default function LegalDocView({ id, lang, onLang, onBack, onInternalLink 
         )}
         <LegalMarkdown nodes={nodes} onInternalLink={onInternalLink} dense={isDenseScript(effLang)} zoom={zoom} />
         {BUNDLES_LICENSE_TEXTS && id === 'license' && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: 'inherit' }}>{attribution}</pre>}
-        {BUNDLES_LICENSE_TEXTS && id === 'third-party' && Object.entries(bundledLicenses).map(([path, body]) => <section key={path}>
-          <h3>{path.replace('../../licenses/', '')}</h3>
+        {id === 'third-party' && BUNDLED_LICENSES.map(({ name, body }) => <section key={name}>
+          <h3>{name}</h3>
           <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', font: 'inherit' }}>{body}</pre>
         </section>)}
       </div>

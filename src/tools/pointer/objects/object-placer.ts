@@ -106,7 +106,7 @@ export function showPlacementHover(
     return null;
   }
   if (plan.bodyElevation === null) overlay.clearGhost();
-  overlay.showGhost(cellSet(PLACEMENT_GRID, plan.cells), { wash: 'placement', valid: plan.valid });
+  overlay.showGhost(cellSet(PLACEMENT_GRID, plan.cells), { placement: true, valid: plan.valid });
   if (plan.bodyElevation !== null) {
     // plan.cells[0] is the resolved anchor (the pointer's cell or half point moved by the grab, or a
     // bridge or ramp's snapped end); `coord` alone would draw the body ghost at the pointer's cell.

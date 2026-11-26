@@ -13,7 +13,7 @@ import { PERF, perfSuite } from './_harness';
 import { denseIsland } from './_fixtures';
 import { buildChunkTerrain } from '../../view/map3d/geometry/terrain-geometry';
 import { buildRoadTrimMeshes } from '../../view/map3d/geometry/road-mesh';
-import { buildObjectInstances } from '../../view/map3d/geometry/object-meshes';
+import { objectInstance } from '../../view/map3d/geometry/object-meshes';
 import { buildModel } from '../../view/map3d/models/build-model';
 import { getSpec, modeledIds } from '../../view/map3d/models/registry';
 import { dirtyChunksFor } from '../../view/map3d/geometry/chunk-dirty';
@@ -63,7 +63,7 @@ describe.runIf(PERF)('perf: map3d', () => {
 
   it('objects: instance resolver over every placed object', async () => {
     const { state } = denseIsland();
-    await s.bench('objects/meshes-full', () => { buildObjectInstances(state); }, {
+    await s.bench('objects/meshes-full', () => { for (const obj of state.objects.values()) objectInstance(state, obj); }, {
       meta: { objects: state.objects.size },
     });
   });

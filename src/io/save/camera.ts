@@ -8,11 +8,13 @@ export function persistedCamera(view2d?: PersistedCamera['view2d'], view3d?: Per
   return { ...(view2d ? { view2d } : {}), ...(view3d ? { view3d } : {}) };
 }
 
-/** A 2D pose read field by field, or undefined when a field is missing or not finite. */
+/** A 2D pose read field by field, or undefined when a required field is missing or not finite; a
+ *  heading that is not finite is dropped, leaving the pose at the home heading. */
 export function readView2d(raw: unknown): PersistedCamera['view2d'] {
   if (!raw || typeof raw !== 'object') return undefined;
-  const { x, y, zoom } = raw as { x?: unknown; y?: unknown; zoom?: unknown };
-  return isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(zoom) ? { x, y, zoom } : undefined;
+  const { x, y, zoom, rotation } = raw as { x?: unknown; y?: unknown; zoom?: unknown; rotation?: unknown };
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(zoom)) return undefined;
+  return { x, y, zoom, ...(isFiniteNumber(rotation) ? { rotation } : {}) };
 }
 
 /** Reads valid 2D and 3D camera fields of a parsed save independently without rejecting the map. */

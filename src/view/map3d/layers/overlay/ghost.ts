@@ -1,16 +1,20 @@
 import { getCatalogItem } from '../../../../state/catalog';
 import { isRamp, isBridge } from '../../../../core/model/traits';
 import * as THREE from 'three';
-import type { MacroCoord, Rotation } from '../../../../core/model/types';
-import type { GhostCell, GhostPaint, GhostRequest, PlacementGhost, PlacementWash, PreviewCell, PreviewIcon } from '../../../../tools/pointer/runtime';
-import { GHOST_WASH_ALPHA, ghostPlan } from '../../../shared/overlay/ghost-geometry';
+import { type GridState, type MacroCoord, type PlacedObject, type Rotation } from '../../../../core/model/types';
+import type { GhostBlock, GhostCell, GhostPrior, GhostGround, GhostPaint, GhostRequest, PlacementGhost, PlacementPaint, PreviewCell, PreviewIcon } from '../../../../tools/pointer/runtime';
+import { edgeInsideSide, GHOST_WASH_ALPHA, ghostOutline, ghostPlan } from '../../../shared/overlay/ghost-geometry';
 import type { TrimmedCell } from '../../../../tools/trim';
-import { cellDecals, joinDecals, DECAL_LIFT, type DecalTrim } from '../../geometry/overlay-decals';
+import { cellDecals, joinDecals, DECAL_LIFT, type DecalMesh, type DecalTrim } from '../../geometry/overlay-decals';
 import { surfaceHeightAt } from '../../geometry/pick';
-import { cellCornerWorld } from '../../geometry/coords';
-import { groupByGrid, spanCells, type RowSpan } from '../../../../core/grid/cell-spans';
+import { GROUND_SLAB_Y, cellCornerWorld, surfaceY, waterSurfaceY } from '../../geometry/coords';
+import { PLACEMENT_GRID } from '../../../../core/game/profile';
+import { emptyMesh, quad } from '../../geometry/mesh-emit';
+import { zoneColor } from '../../draw/palette';
+import type { MeshData } from '../../geometry/types';
+import { boundaryEdges, groupByGrid, spanCells, spanMembership, type EdgeSegment, type RowSpan } from '../../../../core/grid/cell-spans';
 import { cellGrid, type CellSet, type GridId, type MixedCellSet } from '../../../../core/grid/grids';
-import { CURVE_FOOTPRINT, isPreviewCell, washColor, previewDots, previewIconRect, previewPalette, type PreviewPalette, ROUTE_TINT } from '../../../shared/overlay/preview-cell';
+import { CURVE_FOOTPRINT, isPreviewCell, previewDots, previewIconRect, previewPalette, type PreviewPalette } from '../../../shared/overlay/preview-cell';
 import { HATCH_CELLS, previewHatchCanvas, previewIconCanvas } from '../../../shared/overlay/preview-cell-raster';
 import { objectInstance } from '../../geometry/object-meshes';
 import { groupModelGeometry } from '../../models/build-model';
@@ -19,8 +23,22 @@ import { cellsBounds, cellKey } from '../../../../core/grid/rect';
 import type { ArchetypeKey } from '../../geometry/types';
 import { cellCentre, gridSize } from '../../../../core/grid/grid-convert';
 import type { OverlayHost3D } from './host';
-import { makeMat, toGeo } from './paint';
-import { GHOST_LOSS } from '../../../shared/viewport/view-constants';
+import { makeMat } from './paint';
+import { toPlainGeometry } from '../../draw/mesh-upload';
+import { GHOST_LOOK, GHOST_LOSS, ghostTint } from '../../../shared/viewport/view-constants';
+import { scratchGrid } from '../../../../core/model/grid-model';
+import { buildCellBlocks } from '../../geometry/terrain-geometry';
+import { animConfig } from '../../../shared/motion/anim-config';
+import { flipScale, groupEase } from '../../../shared/motion/group-arc';
+import type { FlipAxes } from '../../../../tools/objects';
+import { isMotionReduced } from '../../../../platform/channels/motion-state';
+import { toGeometry } from '../../draw/mesh-upload';
+import { ribbonStrips } from '../../geometry/ink-path';
+import { RoadSurfaces3D } from '../road-surfaces';
+import { roadGhost } from '../../../shared/road/region-cache';
+import { clipMeshToRects, type GroundRect } from '../../geometry/mesh-clip';
+import type { RoadLookup } from '../../../../core/model/road-lookup';
+import { roadLookup } from '../../../../state/object-index';
 
 /** Ghost depth and colour occupy orders 1 and 2. Ordinary decals stay at 0 so the
  *  pre-pass cannot erase them. Move previews use the solid scene instances. */
@@ -79,15 +97,38 @@ function cardBackground(palette: PreviewPalette, geo: THREE.BufferGeometry): THR
   return mat;
 }
 
-/** Placement ghosts: the draped cell wash or preview card a shape would leave, translucent item bodies standing over it, and the editable curve footprint. */
+/** A placement ghost's materials, one per state, kept for the overlay's life: a ghost repaints on
+ *  every pointer move, and a material made per move is a program link per move. */
+function ghostMaterial(color: number, vertexColors: boolean): THREE.MeshLambertMaterial {
+  const mat = new THREE.MeshLambertMaterial({
+    vertexColors, flatShading: true, side: THREE.DoubleSide, transparent: true, opacity: GHOST_LOOK.opacity, depthWrite: false,
+  });
+  mat.color.setHex(color).convertSRGBToLinear();
+  return mat;
+}
+
+/** How far a water block's ghost rises from the recessed waterline the mesher draws it at to the
+ *  ground the water fills, which the map still holds and would hide it under. */
+const WATER_GHOST_RISE = surfaceY(0) - waterSurfaceY(0) + DECAL_LIFT;
+
+/**
+ * Placement ghosts: what a placement lays drawn as the real thing at the ghost's opacity (terrain
+ * blocks through the terrain mesher, road tiles through the road surfaces, item models standing
+ * over their footprints), a refused one tinted and washed in the loss red, each outlined round its
+ * footprint; the draped preview card a tool shows where it acts; and the editable curve footprint.
+ */
 export class OverlayGhosts3D {
   constructor(private readonly host: OverlayHost3D) {}
 
   private curveFootprint: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   private pendingGhost: GhostRequest | null = null;
+  /** A refused placement's wash over its footprint, in the overlay's shared fill material. */
+  private refusedWash: THREE.Mesh | null = null;
+  /** The card's draped background. */
   private ghost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
   /** The `losses` half of the ghost: its own body, its own material, disposed alongside `ghost`. */
   private lossGhost: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.MeshBasicMaterial } | null = null;
+  private readonly mats = new Map<string, THREE.Material>();
 
   showGhost({ grid, cells }: MixedCellSet, paint: GhostPaint, trim?: readonly TrimmedCell[], losses?: readonly GhostCell[]): void {
     this.pendingGhost = { kind: 'cells', cells, paint, grid, trim, losses };
@@ -99,8 +140,8 @@ export class OverlayGhosts3D {
     this.host.requestRender();
   }
 
-  /** The hovered item's actual mesh, translucent + validity-tinted, standing at
-   *  the hover cell — the cell decals underneath carry the exact footprint. */
+  /** The hovered item's own model, translucent and tinted when refused, standing at the hover cell
+   *  over the footprint outline. */
   showPlacementGhost({ catalogId, x, y, rotation, elevation, spanLength }: PlacementGhost, valid: boolean): void {
     this.placementGhost ??= this.makeGhostBody();
     if (!this.paintGhostMesh(this.placementGhost, { catalogId, x, y, rotation, elevation, spanLength }, valid)) {
@@ -110,28 +151,34 @@ export class OverlayGhosts3D {
   }
 
   private placementGhost: GhostBody | null = null;
-  private ghostMat: { valid?: THREE.MeshBasicMaterial; invalid?: THREE.MeshBasicMaterial } = {};
-  private spanGhostMat: { valid?: THREE.MeshLambertMaterial; invalid?: THREE.MeshLambertMaterial } = {};
   private ghostDepthMat: THREE.MeshBasicMaterial | null = null;
 
-  private ghostMaterial(valid: boolean): THREE.MeshBasicMaterial {
-    if (!this.ghostMat.valid) {
-      // Warm yellow, not green: the ghost is a flat-colour mesh, and a green one disappears
-      // against the mountain strata it most often previews over (a ramp against a high cliff).
-      // Same family as the route drape.
-      this.ghostMat.valid = makeMat(ROUTE_TINT, 0.55);
-      this.ghostMat.invalid = makeMat(GHOST_LOSS, 0.55);
-    }
-    return valid ? this.ghostMat.valid! : this.ghostMat.invalid!;
+  /** A cached material under `key`, made by `make` the first time. */
+  private cached<M extends THREE.Material>(key: string, make: () => M): M {
+    let mat = this.mats.get(key) as M | undefined;
+    if (!mat) { mat = make(); this.mats.set(key, mat); }
+    return mat;
   }
 
-  private spanGhostMaterial(valid: boolean): THREE.MeshLambertMaterial {
-    if (!this.spanGhostMat.valid) {
-      const options = { vertexColors: true, flatShading: true, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide };
-      this.spanGhostMat.valid = new THREE.MeshLambertMaterial(options);
-      this.spanGhostMat.invalid = new THREE.MeshLambertMaterial({ ...options, color: GHOST_LOSS });
-    }
-    return valid ? this.spanGhostMat.valid! : this.spanGhostMat.invalid!;
+  /** A body's colour pass: a model's own vertex colours, or an archetype's colour, as `valid` draws them. */
+  private bodyMaterial(valid: boolean, rgb: readonly [number, number, number] | null): THREE.MeshLambertMaterial {
+    if (!rgb) return this.cached(`model:${valid}`, () => ghostMaterial(ghostTint(valid), true));
+    const hex = new THREE.Color(rgb[0], rgb[1], rgb[2]).getHex();
+    return this.cached(`body:${hex}:${valid}`, () => {
+      const mat = ghostMaterial(0xffffff, false);
+      mat.color.setRGB(rgb[0], rgb[1], rgb[2]).lerp(new THREE.Color().setHex(GHOST_LOSS).convertSRGBToLinear(), valid ? 0 : GHOST_LOOK.refusedTint);
+      return mat;
+    });
+  }
+
+  /** Terrain blocks' paint: the mesher's own colours, through a depth test that loses every tie, so
+   *  a face the map already draws in the same place (a column's lower strata) keeps the map's. */
+  private blockMaterial(valid: boolean): THREE.MeshLambertMaterial {
+    return this.cached(`block:${valid}`, () => {
+      const mat = ghostMaterial(ghostTint(valid), true);
+      mat.depthFunc = THREE.LessDepth;
+      return mat;
+    });
   }
 
   /** The pre-pass material: writes depth, no colour. `transparent` keeps it in the transparent
@@ -144,10 +191,30 @@ export class OverlayGhosts3D {
     return this.ghostDepthMat;
   }
 
+  /** Terrain blocks' pre-pass: writes depth pushed back a hair, so the colour pass still draws the
+   *  body's nearest surface while it loses every tie with the map's own faces (`blockMaterial`), and
+   *  every face behind that surface, a back wall or a block behind another, draws nothing. */
+  private blockDepthMaterial(): THREE.MeshBasicMaterial {
+    return this.cached('block-depth', () => new THREE.MeshBasicMaterial({
+      transparent: true, colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    }));
+  }
+
+  /** A terrain body's mesh at the colour order, with its depth pre-pass as a child sharing its geometry. */
+  private blockMesh(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = GHOST_COLOR_ORDER;
+    const depth = new THREE.Mesh(geo, this.blockDepthMaterial());
+    depth.renderOrder = GHOST_DEPTH_ORDER;
+    mesh.add(depth);
+    return mesh;
+  }
+
   /** One ghost body, added to the overlay group. The pre-pass is a child of the colour mesh, so a
    *  single transform drives both and hiding the body hides its depth with it. */
   private makeGhostBody(): GhostBody {
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.ghostMaterial(true));
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.bodyMaterial(true, null));
     mesh.renderOrder = GHOST_COLOR_ORDER;
     const depth = new THREE.Mesh(mesh.geometry, this.ghostDepthMaterial());
     depth.renderOrder = GHOST_DEPTH_ORDER;
@@ -158,10 +225,10 @@ export class OverlayGhosts3D {
 
   /** Resolve `catalogId`'s body at (x, y, rotation, elevation) onto ghost body `b`. Returns false
    *  (and hides `b`) when the item has no instanced/modeled body — the caller then falls back to
-   *  just the cell wash. Shared by the single hover ghost and each member of the group drag ghost. */
+   *  just the footprint. Shared by the single hover ghost and each member of the group ghost. */
   private paintGhostMesh(
     b: GhostBody, ghost: { catalogId: string; x: number; y: number; rotation: number; elevation: number; spanLength?: number },
-    valid: boolean,
+    valid: boolean, onBuilt = false,
   ): boolean {
     const { catalogId, x, y, rotation, elevation, spanLength } = ghost;
     const m = b.mesh;
@@ -176,9 +243,12 @@ export class OverlayGhosts3D {
     m.geometry = geo; // shared caches own the geometry — never disposed here
     b.depth.geometry = geo;
     const item = getCatalogItem(catalogId);
-    m.material = isModel && (isRamp(item) || isBridge(item)) ? this.spanGhostMaterial(valid) : this.ghostMaterial(valid);
     const inst = resolved.inst;
-    m.position.set(inst.x, inst.y, inst.z);
+    m.material = this.bodyMaterial(valid, isModel ? null : inst.color);
+    // A body on terrain the same ghost builds stands on that terrain, which the map does not hold yet;
+    // a ramp or a bridge already stands at its own elevation.
+    const standsAt = onBuilt && !isRamp(item) && !isBridge(item) ? surfaceY(elevation) : inst.y;
+    m.position.set(inst.x, standsAt, inst.z);
     m.rotation.set(0, inst.rotationY, 0);
     m.scale.set(inst.scaleX, inst.scaleY, inst.scaleZ);
     m.visible = true;
@@ -191,11 +261,11 @@ export class OverlayGhosts3D {
     this.host.requestRender();
   }
 
-  /** Pool of bodies for the group drag ghost — one per member, reused across pointer moves so a
+  /** Pool of bodies for the group ghost — one per member, reused across pointer moves so a
    *  40-member drag doesn't allocate/dispose 40 meshes per sample. */
   private groupGhosts: GhostBody[] = [];
 
-  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean): void {
+  showGroupPlacementGhost(members: readonly PlacementGhost[], valid: boolean, onBuilt = false): void {
     while (this.groupGhosts.length > members.length) {
       this.host.group.remove(this.groupGhosts.pop()!.mesh);
     }
@@ -205,7 +275,8 @@ export class OverlayGhosts3D {
     for (let i = 0; i < members.length; i++) {
       const mem = members[i]!;
       const body = this.groupGhosts[i]!;
-      body.mesh.visible = this.paintGhostMesh(body, { catalogId: mem.catalogId, x: mem.x, y: mem.y, rotation: mem.rotation, elevation: mem.elevation }, valid);
+      const ghost = { catalogId: mem.catalogId, x: mem.x, y: mem.y, rotation: mem.rotation, elevation: mem.elevation, spanLength: mem.spanLength };
+      body.mesh.visible = this.paintGhostMesh(body, ghost, valid, onBuilt);
     }
     this.host.requestRender();
   }
@@ -217,7 +288,7 @@ export class OverlayGhosts3D {
     this.host.requestRender();
   }
 
-  /** Hide the placement and group drag ghost bodies. */
+  /** Hide the placement and group ghost bodies. */
   hideBodies(): void {
     this.dropPlacementGhost();
     this.clearGroupPlacementGhost();
@@ -235,6 +306,12 @@ export class OverlayGhosts3D {
     if (!pending) return;
     this.pendingGhost = null;
     this.dropCard();
+    this.dropLay();
+    if (this.refusedWash) {
+      this.host.group.remove(this.refusedWash);
+      this.refusedWash.geometry.dispose();
+      this.refusedWash = null;
+    }
     if (this.ghost) {
       this.host.group.remove(this.ghost.mesh);
       this.ghost.geo.dispose();
@@ -261,7 +338,7 @@ export class OverlayGhosts3D {
         ...[...groupByGrid(pending.losses.filter((c) => !onOwn(c)), pending.grid)].map(([grid, part]) => cellDecals(this.host.state(), part, grid)),
       );
       if (lossData.positions.length) {
-        const geo = toGeo(lossData);
+        const geo = toPlainGeometry(lossData);
         const mat = makeMat(GHOST_LOSS, GHOST_WASH_ALPHA.map3d);
         const mesh = new THREE.Mesh(geo, mat);
         this.host.group.add(mesh);
@@ -269,20 +346,233 @@ export class OverlayGhosts3D {
       }
     }
     const acrossGroups = [...groupByGrid(across, pending.grid)];
-    const data = joinDecals(
-      cellDecals(this.host.state(), cells, pending.grid, trim), ...acrossGroups.map(([grid, part]) => cellDecals(this.host.state(), part, grid))
+    const footprint = (): DecalMesh => joinDecals(
+      cellDecals(this.host.state(), cells, pending.grid, trim), ...acrossGroups.map(([grid, part]) => cellDecals(this.host.state(), part, grid)),
     );
+    if (!isPreviewCell(pending.paint)) {
+      this.buildPlacement(pending, pending.paint, { cells, across: acrossGroups, trim: plan.trim, footprint });
+      return;
+    }
+    const data = footprint();
     if (!data.positions.length) return;
-    const geo = toGeo(data);
-    // The preview card or a placement wash: the same two paints the 2D overlay answers to.
-    const card = isPreviewCell(pending.paint) ? pending.paint : null;
-    const palette = card ? previewPalette(card) : null;
-    const mat = palette ? cardBackground(palette, geo) : makeMat(washColor(pending.paint as PlacementWash), GHOST_WASH_ALPHA.map3d);
+    const geo = toPlainGeometry(data);
+    const card = pending.paint;
+    const palette = previewPalette(card);
+    const mat = cardBackground(palette, geo);
     const mesh = new THREE.Mesh(geo, mat);
     this.host.group.add(mesh);
     this.ghost = { mesh, geo, mat };
-    if (card && palette) this.buildCard(cells, pending.grid, card, palette);
-    if (card && palette) for (const [grid, part] of acrossGroups) this.buildCard(part, grid, card, palette, false);
+    this.buildCard(cells, pending.grid, card, palette);
+    for (const [grid, part] of acrossGroups) this.buildCard(part, grid, card, palette, false);
+  }
+
+  /* ── a placement ─────────────────────────────────────────────────────────── */
+
+  /** The lay meshes (solid, water, waterfall blocks and turned ground), reused across moves; their geometry is the
+   *  ghost's own, rebuilt per flush. */
+  private blockMeshes: (THREE.Mesh | undefined)[] = [];
+  /** The road surfaces each road ghost look draws through (`roadSurfaces`), each with its own materials. */
+  private roads: { valid?: RoadSurfaces3D; refused?: RoadSurfaces3D; beside?: RoadSurfaces3D } = {};
+  /** The outline ribbons, rebuilt per flush. */
+  private outline: THREE.Mesh[] = [];
+  /** Each road ghost's own object version, so no cache keyed on one mistakes it for another map. */
+  private roadGhostVersion = 0;
+  /** The lookup the last road ghost's surfaces read. */
+  private roadLookup: RoadLookup | undefined;
+
+  /**
+   * What a placement lays, as the real thing: its blocks through the terrain mesher over a scratch
+   * of the map holding them, its road tiles through the road surfaces; when refused, the footprint
+   * washed in the loss red; and its outline, at the height each edge's cell will stand at.
+   */
+  private buildPlacement(
+    pending: Exclude<GhostRequest, { kind: 'clear' }>, paint: PlacementPaint,
+    parts: { cells: readonly MacroCoord[]; across: [GridId, GhostCell[]][]; trim: readonly TrimmedCell[]; footprint: () => DecalMesh },
+  ): void {
+    const live = this.host.state();
+    if (paint.ground?.length) this.paintGround(live, paint.ground, paint.valid);
+    const built = paint.blocks?.length ? this.paintBlocks(live, paint.blocks, paint.valid) : live;
+    if (paint.tiles?.length) this.paintRoads(live, paint.tiles, paint.valid);
+    if (!paint.valid) {
+      const data = parts.footprint();
+      if (data.positions.length) {
+        const mesh = new THREE.Mesh(toPlainGeometry(data), this.host.mats.fill(GHOST_LOSS, GHOST_LOOK.refusedWash));
+        this.host.group.add(mesh);
+        this.refusedWash = mesh;
+      }
+    }
+    // An edge stands at the taller of the map and what the ghost builds there, read just inside it.
+    const height = (wx: number, wz: number): number => Math.max(surfaceHeightAt(live, wx, wz), surfaceHeightAt(built, wx, wz));
+    const own = pending.kind === 'spans'
+      ? { edges: ghostOutline({ spans: pending.spans }, parts.trim), inside: spanMembership(pending.spans) }
+      : { edges: ghostOutline({ cells: parts.cells }, parts.trim), inside: memberOf(parts.cells) };
+    const paths = edgePaths(live, own.edges, pending.grid, own.inside, height);
+    for (const [grid, part] of parts.across) paths.push(...edgePaths(live, boundaryEdges(part), grid, memberOf(part), height));
+    const { outline } = GHOST_LOOK;
+    const strokes: ReadonlyArray<readonly [number, number, number]> = paint.valid
+      ? [[outline.halo, 0x000000, 0.35], [outline.valid, 0xffffff, 0.9]]
+      : [[outline.refused, GHOST_LOSS, 1]];
+    // Ahead of the bodies' depth pre-pass, so the outline shows through a translucent model; the
+    // two strokes tie on order and depth, so they draw in creation order, the core over the halo.
+    for (const [width, color, alpha] of strokes) {
+      const ribbon = ribbonStrips(paths, width);
+      if (!ribbon) continue;
+      const mesh = new THREE.Mesh(toPlainGeometry(ribbon), this.host.mats.fill(color, alpha));
+      this.host.group.add(mesh);
+      this.outline.push(mesh);
+    }
+  }
+
+  /** The blocks through the terrain mesher, read against the map with the blocks laid on a scratch
+   *  of it, which it returns; water rises to the ground it fills. */
+  private paintBlocks(live: GridState, blocks: readonly GhostBlock[], valid: boolean): GridState {
+    const built = scratchGrid(live, blocks);
+    for (const b of blocks) {
+      const cell = built.cells[b.y]?.[b.x];
+      if (cell) cell.terrain = b.terrain;
+    }
+    const meshes = buildCellBlocks(built, blocks);
+    const mat = this.blockMaterial(valid);
+    [meshes.solid, meshes.water, meshes.fall].forEach((data, i) => this.showLayMesh(i, data, mat, i === 0 ? 0 : WATER_GHOST_RISE));
+    return built;
+  }
+
+  private turning: { body: THREE.Group; born: number; sweepRad: number; flip: FlipAxes | undefined; release: (() => void) | undefined } | null = null;
+
+  /** The turning body of a placement turned a quarter: `blocks`, as the map now holds them, through the
+   *  terrain mesher as the ghost draws them, swung in from the pose before the turn about `pivot` (cells
+   *  of the placement grid) on the group rotation's clock; a flipped one opens out from its mirror
+   *  across `flip`'s axes on the flip's clock. Reduced motion draws nothing. */
+  turnBlocks(blocks: readonly GhostBlock[], prior: readonly GhostPrior[], pivot: MacroCoord, sweepDeg: number, flip?: FlipAxes): void {
+    if (isMotionReduced() || blocks.length === 0) return;
+    this.endTurn();
+    const live = this.host.state();
+    const built = scratchGrid(live, blocks);
+    for (const b of blocks) {
+      const cell = built.cells[b.y]?.[b.x];
+      if (cell) cell.terrain = b.terrain;
+    }
+    const meshes = buildCellBlocks(built, blocks);
+    const { width, height } = live.template;
+    const centre = cellCornerWorld(pivot.x, pivot.y, width, height, PLACEMENT_GRID);
+    const body = new THREE.Group();
+    body.position.set(centre.x, 0, centre.z);
+    const mat = this.blockMaterial(true);
+    [meshes.solid, meshes.water, meshes.fall].forEach((data, i) => {
+      if (!data.positions.length) return;
+      const mesh = this.blockMesh(toGeometry(data, 'turning body'), mat);
+      mesh.position.set(-centre.x, i === 0 ? 0 : WATER_GHOST_RISE, -centre.z);
+      body.add(mesh);
+    });
+    this.host.group.add(body);
+    // The landed cells show as they stood before the placement until the turn ends.
+    this.turning = { body, born: performance.now(), sweepRad: (sweepDeg * Math.PI) / 180, flip, release: this.host.holdTerrain(prior) };
+    this.host.requestRender();
+  }
+
+  /** Advances the turning body; true while it runs. */
+  tickTurn(): boolean {
+    const turn = this.turning;
+    if (!turn) return false;
+    const t = Math.min((performance.now() - turn.born) / animConfig.groupRotation.durationMs, 1);
+    if (turn.flip) {
+      // Terrain is mirrored for real, so the body takes the signed scale (three flips the face winding of a mirrored body).
+      const k = flipScale(groupEase(t));
+      turn.body.scale.set(turn.flip.x ? k : 1, 1, turn.flip.y ? k : 1);
+    } else {
+      turn.body.rotation.y = turn.sweepRad * (1 - groupEase(t));
+    }
+    if (t >= 1) { this.endTurn(); return false; }
+    return true;
+  }
+
+  private endTurn(): void {
+    if (!this.turning) return;
+    const { body, release } = this.turning;
+    release?.();
+    this.host.group.remove(body);
+    for (const mesh of body.children) (mesh as THREE.Mesh).geometry.dispose();
+    this.turning = null;
+    this.host.requestRender();
+  }
+
+  /** One of the lay meshes (solid, water, waterfall, ground), its geometry this flush's, at `y`. */
+  private showLayMesh(slot: number, data: MeshData, mat: THREE.Material, y: number): void {
+    if (!data.positions.length) return;
+    let mesh = this.blockMeshes[slot];
+    if (!mesh) {
+      mesh = this.blockMesh(new THREE.BufferGeometry(), mat);
+      this.blockMeshes[slot] = mesh;
+    }
+    setBodyGeometry(mesh, toGeometry(data, 'placement ghost'));
+    mesh.material = mat;
+    mesh.position.y = y;
+    this.host.group.add(mesh);
+  }
+
+  /** Ground a placement turns, as the land slab in its zone's colour, on the grid zones lie on. */
+  private paintGround(live: GridState, ground: readonly GhostGround[], valid: boolean): void {
+    const data = emptyMesh();
+    const { width, height } = live.template;
+    for (const g of ground) {
+      const { x, z } = cellCornerWorld(g.x, g.y, width, height, PLACEMENT_GRID);
+      quad(data, [[x, GROUND_SLAB_Y, z], [x, GROUND_SLAB_Y, z + 1], [x + 1, GROUND_SLAB_Y, z + 1], [x + 1, GROUND_SLAB_Y, z]], zoneColor(g.zone));
+    }
+    this.showLayMesh(3, data, this.blockMaterial(valid), DECAL_LIFT);
+  }
+
+  /** The road surfaces one look draws through: `refused` cut to the ghost's own cells, `beside` to
+   *  the road tiles it joins, which keep their own colours. */
+  private roadSurfaces(key: 'valid' | 'refused' | 'beside'): RoadSurfaces3D {
+    const tint = ghostTint(key !== 'refused');
+    return this.roads[key] ??= new RoadSurfaces3D({
+      scene: this.host.group, state: () => this.host.state(), hiddenLayers: () => NO_LAYERS,
+      maxAnisotropy: () => 1, disposed: () => false, requestRender: () => this.host.requestRender(),
+      rebuildOwed: () => this.host.requestRender(),
+      roads: (state) => this.roadLookup ?? roadLookup(state),
+      ...(key === 'valid' ? {} : { clip: (mesh: MeshData) => clipMeshToRects(mesh, key === 'refused' ? this.roadCells.own : this.roadCells.beside) }),
+      paint: (mat) => {
+        mat.opacity = GHOST_LOOK.opacity;
+        mat.color.multiply(new THREE.Color().setHex(tint).convertSRGBToLinear());
+      },
+    });
+  }
+
+  /** The cells the last road ghost's surfaces are cut to: its own tiles and those it joins. */
+  private roadCells: { own: GroundRect[]; beside: GroundRect[] } = { own: [], beside: [] };
+
+  /** The road tiles through the road surfaces the map draws, joined to the roads beside them; a
+   *  refused ghost tints only its own tiles. */
+  private paintRoads(live: GridState, tiles: readonly PlacedObject[], valid: boolean): void {
+    const ghost = roadGhost(live, tiles, --this.roadGhostVersion);
+    this.roadLookup = ghost.roads;
+    if (valid) { this.roadSurfaces('valid').rebuild(undefined, ghost.state); return; }
+    const { width, height } = live.template;
+    const rect = (o: PlacedObject): GroundRect => {
+      const { x, z } = cellCornerWorld(o.position.x, o.position.y, width, height, PLACEMENT_GRID);
+      return { x0: x, z0: z, x1: x + 1, z1: z + 1 };
+    };
+    this.roadCells = { own: tiles.map(rect), beside: ghost.beside.map(rect) };
+    this.roadSurfaces('refused').rebuild(undefined, ghost.state);
+    if (ghost.beside.length) this.roadSurfaces('beside').rebuild(undefined, ghost.state);
+  }
+
+  /** Take down what the last placement laid and its outline. */
+  private dropLay(): void {
+    for (const mesh of this.blockMeshes) {
+      if (!mesh?.parent) continue;
+      this.host.group.remove(mesh);
+      mesh.geometry.dispose();
+      setBodyGeometry(mesh, new THREE.BufferGeometry());
+    }
+    for (const roads of Object.values(this.roads)) {
+      roads.rebuild(undefined, { ...this.host.state(), objects: NO_OBJECTS, objectsVersion: --this.roadGhostVersion });
+    }
+    for (const mesh of this.outline) {
+      this.host.group.remove(mesh);
+      mesh.geometry.dispose();
+    }
+    this.outline = [];
   }
 
   /** The card's parts that do not stretch with the footprint: its four corner dots, its outline and
@@ -380,7 +670,7 @@ export class OverlayGhosts3D {
     this.clearCurveFootprint();
     const data = cellDecals(this.host.state(), cells, grid);
     if (!data.positions.length) return;
-    const geo = toGeo(data), mat = makeMat(CURVE_FOOTPRINT.color, CURVE_FOOTPRINT.alpha);
+    const geo = toPlainGeometry(data), mat = makeMat(CURVE_FOOTPRINT.color, CURVE_FOOTPRINT.alpha);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'curve-footprint';
     this.host.group.add(mesh);
@@ -398,15 +688,17 @@ export class OverlayGhosts3D {
 
   dispose(): void {
     this.clearCurveFootprint();
+    this.dropLay();
     if (this.placementGhost) {
       this.host.group.remove(this.placementGhost.mesh);
       this.placementGhost = null;
     }
-    this.ghostMat.valid?.dispose();
-    this.ghostMat.invalid?.dispose();
+    this.endTurn();
+    for (const roads of Object.values(this.roads)) roads.dispose();
+    this.roads = {};
+    for (const mat of this.mats.values()) mat.dispose();
+    this.mats.clear();
     this.ghostDepthMat?.dispose();
-    this.spanGhostMat.valid?.dispose();
-    this.spanGhostMat.invalid?.dispose();
   }
 
   /** Release the glyph materials; the overlay's last step. */
@@ -414,4 +706,40 @@ export class OverlayGhosts3D {
     for (const mat of this.iconMats.values()) mat.dispose();
     this.iconMats.clear();
   }
+}
+
+const NO_LAYERS: ReadonlySet<number> = new Set();
+/** Never written: an empty road ghost's objects. */
+const NO_OBJECTS = new Map<string, PlacedObject>();
+
+/** `geo` on a terrain body's mesh and on its depth pre-pass. */
+function setBodyGeometry(mesh: THREE.Mesh, geo: THREE.BufferGeometry): void {
+  mesh.geometry = geo;
+  for (const child of mesh.children) (child as THREE.Mesh).geometry = geo;
+}
+
+/** Membership of `cells`, for an outline to find the inside of its edges. */
+function memberOf(cells: readonly { x: number; y: number }[]): (x: number, y: number) => boolean {
+  return spanMembership(cells.map((c) => ({ x: c.x, y: c.y, w: 1 })));
+}
+
+/**
+ * Outline edges on `grid` as draped world paths, one per edge: each at `height` read a quarter cell
+ * inside it, on whichever side `inside` holds (a cut corner's diagonal lies within one cell, so
+ * either side reads it).
+ */
+function edgePaths(
+  state: GridState, edges: readonly EdgeSegment[], grid: GridId, inside: (x: number, y: number) => boolean,
+  height: (wx: number, wz: number) => number,
+): Array<Array<[number, number, number]>> {
+  const { width, height: mapH } = state.template;
+  const world = (x: number, y: number) => cellCornerWorld(x, y, width, mapH, grid);
+  return edges.map((e) => {
+    const { nx, ny, ahead } = edgeInsideSide(e, inside);
+    const toward = ahead ? 0.25 : -0.25;
+    const at = world((e.ax + e.bx) / 2 + nx * toward, (e.ay + e.by) / 2 + ny * toward);
+    const y = height(at.x, at.z) + DECAL_LIFT * 2;
+    const a = world(e.ax, e.ay), b = world(e.bx, e.by);
+    return [[a.x, y, a.z], [b.x, y, b.z]];
+  });
 }

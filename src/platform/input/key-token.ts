@@ -1,16 +1,17 @@
 /*
  * The one map from a KeyboardEvent to the canonical key token a combo string ends with.
  * Shared by the shortcut engine (platform/input/shortcut-manager), the chord recorder (ui/chrome/modals/keyboard),
- * and the held-key tracker (platform/input/held-keys), so they can never disagree on what
- * key a physical press represents. Numpad keys map to `num0`…`num9` / `numadd` … via `event.code`
- * so they bind independently of the top-row digits (which share `event.key`). Space → `space`.
+ * and the held-key tracker (platform/input/held-keys), so they agree on what key a physical press
+ * represents. Numpad keys map to `num0`…`num9` / `numadd` … via `event.code` so they bind
+ * independently of the top-row digits (which share `event.key`). Space → `space`.
  *
- * The top-row digits fall back to `event.code` too, but only there: on AZERTY (and other
- * non-QWERTY layouts) the unshifted digit row types symbols, not digits (French Digit1 → '&'), so
- * a keymap default like '1'..'8' for the tool row would never fire. Letters stay character-based
- * (`event.key`) on purpose — WASD-style bindings are meant to follow the layout's own keycaps, not
- * the physical position — and a shifted digit combo (shift+? etc.) stays character-based too, since
- * shift+digit is a punctuation combo the user is choosing by its glyph, not its row position.
+ * The top-row digits fall back to `event.code` too: on AZERTY (and other non-QWERTY layouts) the
+ * unshifted digit row types symbols, not digits (French Digit1 → '&'), so a keymap default like
+ * '1'..'8' for the tool row would never fire. Letters stay character-based (`event.key`) on purpose —
+ * WASD-style bindings are meant to follow the layout's own keycaps, not the physical position — and a
+ * shifted digit reads first as the symbol it types, since a combo like shift+? is chosen by its glyph
+ * (a Russian Shift+7). The engine alone also reads it as its digit (`eventKeyTokens`), so a cycle's
+ * way back on Shift and a digit fires on any layout.
  */
 const NUMPAD_OP: Record<string, string> = {
   Add: 'numadd', Subtract: 'numsubtract', Multiply: 'nummultiply',
@@ -30,4 +31,19 @@ export function eventKeyToken(e: Pick<KeyboardEvent, 'key' | 'shiftKey'> & { cod
     if (key !== digit) return digit;
   }
   return key;
+}
+
+/** The tokens the shortcut engine matches a press by, the typed one first: Shift on the digit row also
+ *  reads as its digit, so `shift+5` answers Shift and 5 where that types `%`. */
+export function eventKeyTokens(e: Pick<KeyboardEvent, 'key' | 'shiftKey'> & { code?: string }): readonly string[] {
+  const typed = eventKeyToken(e);
+  const digit = e.shiftKey ? eventKeyToken({ key: e.key, code: e.code, shiftKey: false }) : typed;
+  return digit === typed ? [typed] : [typed, digit];
+}
+
+/** Whether Shift with `token`'s key is read as `token` (`eventKeyTokens`): a Latin letter, which Shift
+ *  capitalises (Turkish `i` aside, whose capital is `İ`), or a digit, read by its row. Elsewhere what
+ *  Shift types depends on the layout (`,` into `<`, a French `ù` into `%`). */
+export function shiftKeepsToken(token: string): boolean {
+  return /^[a-z0-9]$/.test(token);
 }

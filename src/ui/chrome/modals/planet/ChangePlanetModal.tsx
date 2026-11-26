@@ -1,20 +1,16 @@
 import { SUPPORTS_JSON_FILES, SUPPORTS_VIDEO_IMPORT } from '../../../../platform/build/edition';
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'framer-motion';
-import { quantityParams, useLocale, useT } from '../../../../i18n/context';
+import { useLocale, useT } from '../../../../i18n/context';
 import { useEditorStore } from '../../../../state/store';
 import { useWindow, type WindowProps } from '../use-window';
 import type { GridState, MapTemplate } from '../../../../core/model/types';
 import { mapChunkAxes } from '../../../../core/grid/map-chunks';
-import { isCustomTemplate } from '../../../../core/model/planet';
-import { showToast } from '../../../../platform/channels/toast-bus';
-import { onAfterPaint } from '../../../../platform/async/after-paint';
+import { JSON_ACCEPT } from '../../../../io/import/facts';
 import { hasCarriableContent } from '../../../../editor/operations/transfer-map';
-import type { PlanetDraft } from '../../../../editor/operations/planet-session';
-import type { ScanOutcome } from '../../../../pipelines/planet-scan';
+import { changePlanet, pickStepGoes, planetPick, switchFooter, type SwitchStep } from '../../../../editor/session/planet-switch';
 import {
-  downloadPlanetFile, draftFromScan, duplicatePlanetEntry, importPlanetFile, planetEntryFor, removePlanetEntry, renamePlanetEntry,
-  type PlanetEntry,
+  downloadPlanetFile, duplicatePlanetEntry, importPlanetFile, removePlanetEntry, type PlanetEntry,
 } from '../../../../editor/session/planet-library';
 import { useMapDerived } from '../../../session/use-map-derived';
 import { useUndoDepth } from '../../../session/use-undo-depth';
@@ -29,30 +25,34 @@ import { DuplicateIcon, EditIcon, ExportFileIcon, RenameIcon, TrashIcon } from '
 import { useSizeGlide } from '../../../primitives/use-size-glide';
 import { WindowBody, WindowFooter, WindowHeader, windowColumn, windowFrame } from '../../../primitives/Window';
 import { useOpenCount } from '../../../primitives/use-open-count';
+import { useLatch } from '../../../primitives/use-latch';
+import { useFilePick } from '../../../primitives/use-file-pick';
 import { skin, windowIconButton } from '../../../design/window-skin';
 import { ERROR, PANEL_EDGE } from '../../../design/tokens';
 import { MOTIONS } from '../../../design/motion/registry';
 import { seconds } from '../../../design/motion';
 import { useTransition } from '../../../design/motion/use-motion';
 import { PlanetCarryStep, useCarryPreview, type Carry } from './PlanetCarryStep';
-import { PlanetConfirm } from './PlanetConfirm';
+import { ControlConfirm } from '../../../primitives/ControlConfirm';
 import { PlanetStep } from './PlanetStep';
 import { PlanetNameField, usePlanetNameReview } from './PlanetNameField';
-import { PlanetPicker, planetChoices, type PlanetChoice } from './PlanetPicker';
+import { PlanetPicker } from './PlanetPicker';
 import { PlanetPreview } from './PlanetPreview';
 import { usePlanetLibrary, usePlanetName } from './use-planet-library';
 import { loadPlanetImportWindow } from '../../loaders';
 import { useHandedImport } from '../import/use-handed-import';
 import { ExportFirstButton } from '../ExportFirstButton';
 import { useWindowColumns } from '../use-window-columns';
+import { useAway } from '../../../primitives/away';
+import { pressCommand } from '../../../../editor/commands/run';
 
 interface ChangePlanetModalProps extends WindowProps {
-  /** The verb: open `target` (a built-in's id, or any other planet's template), carrying this map's build along or leaving it behind. */
-  onSwitch: (target: string | MapTemplate, carry: boolean) => void;
-  /** Opens the planet editor on a saved planet, or on a new one when null; it refuses when the
-   *  editor cannot open now. */
-  onEditPlanet?: (entry: PlanetEntry | PlanetDraft | null) => void;
-  /** Whether the planet editor can open over the current map, as `onEditPlanet`'s owner reads it. */
+  /** Stands in for the switch (`editor/session/planet-switch.ts:changePlanet`) where the window is a
+   *  picture, which must not move the visitor's map: it is handed `target` (a built-in's id, or any
+   *  other planet's template) and whether the build comes along. */
+  onSwitch?: (target: string | MapTemplate, carry: boolean) => void;
+  /** Whether the planet editor can open over the current map, as the frame reads it with the
+   *  assistant's job; the window's editor entries press `planet.edit`, and a picture passes none. */
   canEditPlanet?: boolean;
   /** The Help Center's preview map; when absent, carry availability reads the open map. */
   subject?: GridState;
@@ -70,6 +70,8 @@ const PlanetImportWindow = SUPPORTS_VIDEO_IMPORT ? lazy(loadPlanetImportWindow) 
  *  the window drops its own while it reads a video. */
 const UNBLURRED: CSSProperties = { backdropFilter: 'none', WebkitBackdropFilter: 'none' };
 const cardStyle: CSSProperties = windowFrame;
+/** The Help page the window and its questions answer What's this with. */
+const PLANET_HELP = { page: 'planet' } as const;
 
 /** Everything inside the card, and the box whose height eases; it clips while it travels. */
 const bodyStyle: CSSProperties = { ...windowColumn, gap: 18 };
@@ -104,50 +106,31 @@ const chunkCount = (template: MapTemplate) => {
 export function ChangePlanetModal({ open: openProp, onClose, ...props }: ChangePlanetModalProps) {
   const t = useT();
   const { open, close: closeWindow } = useWindow('newProject', { open: openProp, onClose });
-  const locale = useLocale();
-  const setModal = useEditorStore((s) => s.setModal);
-  const canEdit = !!props.canEditPlanet && !!props.onEditPlanet;
-  // A ref, not the busy state: the press yields a macrotask before it acts, and a second press
-  // within that gap reads the state its own render closed over.
-  const running = useRef(false);
-  // Not closeable while the transfer runs: there is nothing to cancel once the replay is under way.
-  const close = () => { if (!running.current) closeWindow(); };
-  const fileRef = useRef<HTMLInputElement>(null);
+  const canEdit = !!props.canEditPlanet;
+  // The store keeps the window open while a switch runs.
+  const close = closeWindow;
   const importRef = useRef<((file: File) => Promise<void>) | null>(null);
-  const pickFile = () => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } };
+  const file = useFilePick({ accept: JSON_ACCEPT, onFile: (f) => { void importRef.current?.(f); } });
+  const pickFile = file.pick;
   const importOpen = useEditorStore((s) => s.modals.planetImport);
   // Kept mounted after its first open, so its closing animation can finish.
-  const importEver = useRef(false);
-  if (importOpen) importEver.current = true;
+  const importEver = useLatch(importOpen);
   // Each opening of Import planet's window is a fresh window.
   const importSession = useOpenCount(importOpen);
-  // Change Planet closing takes its import window with it.
-  useEffect(() => { if (!open && useEditorStore.getState().modals.planetImport) setModal('planetImport', false); }, [open, setModal]);
-
-  /** Opens a planet read from a video in the planet editor; false when the editor cannot open now. */
-  const openScanned = (outcome: ScanOutcome): boolean => {
-    const { onEditPlanet } = props;
-    if (!onEditPlanet || !canEdit) return false;
-    onEditPlanet(draftFromScan(outcome));
-    if (!useEditorStore.getState().planetSession) return false;
-    if (outcome.partial) showToast(t('planet.scan_partial', quantityParams(locale, { percent: Math.round(outcome.coverage * 100) })), 'info');
-    return true;
-  };
 
   return (
     <>
-    <ModalShell helpTarget={{ page: 'planet' }} open={open} onClose={close} size="panel" width={900} cardStyle={cardStyle} backdropStyle={importOpen ? UNBLURRED : undefined} ariaLabel={t('modal.new_title')}>
+    <ModalShell helpTarget={PLANET_HELP} open={open} onClose={close} size="panel" width={900} cardStyle={cardStyle} backdropStyle={importOpen ? UNBLURRED : undefined} ariaLabel={t('modal.new_title')}>
       {SUPPORTS_JSON_FILES && (
-        <input ref={fileRef} type="file" hidden accept=".json,application/json" data-testid="planet-file"
-          onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) void importRef.current?.(f); }} />
+        <input {...file.input} data-testid="planet-file" />
       )}
-      <ChangePlanetBody {...props} open={open} canEdit={canEdit} running={running} close={close} pickFile={pickFile} importRef={importRef} />
+      <ChangePlanetBody {...props} open={open} canEdit={canEdit} close={close} pickFile={pickFile} importRef={importRef} />
     </ModalShell>
-    {PlanetImportWindow && importEver.current && (
+    {PlanetImportWindow && importEver && (
       <RenderBoundary resetKey={importOpen} fallback={<ChunkNotice />}>
         <Suspense fallback={null}>
           <PlanetImportWindow key={importSession} canEdit={canEdit} takesHandedFiles={props.takesHandedFiles ?? false}
-            {...(SUPPORTS_JSON_FILES ? { onPickFile: pickFile } : {})} onScanned={openScanned} />
+            {...(SUPPORTS_JSON_FILES ? { onPickFile: pickFile } : {})} />
         </Suspense>
       </RenderBoundary>
     )}
@@ -158,7 +141,6 @@ export function ChangePlanetModal({ open: openProp, onClose, ...props }: ChangeP
 interface ChangePlanetBodyProps extends Omit<ChangePlanetModalProps, 'open' | 'onClose'> {
   open: boolean;
   canEdit: boolean;
-  running: React.MutableRefObject<boolean>;
   close: () => void;
   pickFile: () => void;
   /** Where the card's file input hands a picked planet file. */
@@ -166,7 +148,7 @@ interface ChangePlanetBodyProps extends Omit<ChangePlanetModalProps, 'open' | 'o
 }
 
 function ChangePlanetBody(
-  { open, onSwitch, onEditPlanet, subject, initialChosen, takesHandedFiles = false, canEdit, running, close, pickFile, importRef }: ChangePlanetBodyProps,
+  { open, onSwitch = changePlanet, subject, initialChosen, takesHandedFiles = false, canEdit, close, pickFile, importRef }: ChangePlanetBodyProps,
 ) {
   const t = useT();
   const locale = useLocale();
@@ -186,10 +168,10 @@ function ChangePlanetBody(
     setNamedChosen(initialChosen);
     if (initialChosen) setChosenKey(initialChosen);
   }
-  const [step, setStep] = useState<'pick' | 'carry'>('pick');
+  const [step, setStep] = useState<SwitchStep>('pick');
   const [carry, setCarry] = useState<Carry>('carry');
   const [asking, setAsking] = useState<Asking>(null);
-  const [busy, setBusy] = useState(false);
+  const busy = useEditorStore((s) => s.planetSwitching);
   const renameRef = useRef<HTMLButtonElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
 
@@ -199,33 +181,19 @@ function ChangePlanetBody(
   const currentTemplate = gridState?.template;
   const currentName = usePlanetName(currentTemplate);
   const currentId = currentTemplate?.id;
-  const { current, builtin, mine } = useMemo(() => {
-    const choices = planetChoices(library.entries, locale);
-    // A map can stand on a planet no longer in the list: its saved shape was edited or deleted, or
-    // saving it failed. It still gets its row, in a group of its own, so it can be started over.
-    const listed = [...choices.builtin, ...choices.mine].some((c) => c.template.id === currentId);
-    if (listed || !currentTemplate) return { current: undefined, ...choices };
-    const here: PlanetChoice = { key: currentTemplate.id, name: currentName, template: currentTemplate, entry: null };
-    return { current: here, ...choices };
-  }, [library.entries, locale, currentTemplate, currentId, currentName]);
-  const all = [...(current ? [current] : []), ...builtin, ...mine];
-  // A copy shares its original's template id; the entry that names the map's planet is the current one.
-  const currentEntryId = currentTemplate ? planetEntryFor(currentTemplate)?.entryId : undefined;
-  const currentChoice = all.find((c) => c.entry !== null && c.entry.entryId === currentEntryId) ?? all.find((c) => c.template.id === currentId);
-  const chosen: PlanetChoice = all.find((c) => c.key === chosenKey) ?? currentChoice ?? builtin[0]!;
+  const { current, builtin, mine, chosen, startingOver, target } = useMemo(() => planetPick({
+    entries: library.entries, locale, here: currentTemplate ? { template: currentTemplate, name: currentName } : null, chosenKey,
+  }), [library.entries, locale, currentTemplate, currentName, chosenKey]);
   const entry = chosen.entry;
-  const startingOver = chosen.template.id === currentId;
-  // A built-in travels by its id; any other planet by its template, which no id lookup can find.
-  const target: string | MapTemplate = isCustomTemplate(chosen.template) ? chosen.template : chosen.key;
 
   const reduced = useReducedMotionConfig() === true;
   // The replay takes the thread, so it waits for the step's crossfade and the card's glide to land.
   const settleMs = reduced ? 0 : Math.max(seconds('section.opacity'), seconds('modal.resize')) * 1000;
   const carryPreview = useCarryPreview(gridState ?? null, chosen.template, open && step === 'carry', settleMs);
-  const body = useSizeGlide<HTMLDivElement>(`${open}|${step}|${busy}|${locale}`, { axis: 'height', motionId: 'modal.resize' });
+  const body = useSizeGlide<HTMLDivElement>({ change: `${open}|${step}|${busy}|${locale}`, axis: 'height', motionId: 'modal.resize' });
   // The control that moved the step leaves with it, so focus lands on the new step's own choice.
   const stepMoved = useRef(false);
-  const toStep = (next: 'pick' | 'carry') => { stepMoved.current = true; setStep(next); };
+  const toStep = (next: SwitchStep) => { stepMoved.current = true; setStep(next); };
   useEffect(() => {
     if (!stepMoved.current) return;
     stepMoved.current = false;
@@ -240,32 +208,15 @@ function ChangePlanetBody(
 
   const choose = (key: string) => { setAsking(null); setChosenKey(key); };
 
-  const go = (bring: boolean) => {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    // The busy state paints before the synchronous replay takes the thread.
-    onAfterPaint(() => {
-      try {
-        onSwitch(target, bring);
-      } catch (error) {
-        console.error('[planet] switch failed', error);
-        showToast(t('planet.switch_failed'), 'error');
-      } finally {
-        // A transfer that threw leaves the visitor where they were, so the window must work again.
-        running.current = false;
-        setBusy(false);
-      }
-    });
-  };
+  const go = (bring: boolean) => { onSwitch(target, bring); };
 
   const primary = () => {
-    if (startingOver || !hasBuild) go(false);
+    if (pickStepGoes(startingOver, hasBuild) === 'switch') go(false);
     else { setCarry('carry'); toStep('carry'); }
   };
 
   // The press on Export first closes this window; the export window opens in its place.
-  const exportFirst = () => { close(); useEditorStore.getState().openShare('keep'); };
+  const exportFirst = () => { close(); pressCommand('window.open', { window: 'share', section: 'keep' }); };
 
   const importFile = async (file: File) => {
     const entry = await importPlanetFile(file, locale);
@@ -283,7 +234,7 @@ function ChangePlanetBody(
 
   const rename = (e: PlanetEntry, name: string) => {
     setAsking(null);
-    renamePlanetEntry(e, name);
+    pressCommand('planets.rename', { planet: e.entryId, name });
   };
 
   const remove = (e: PlanetEntry) => {
@@ -292,15 +243,16 @@ function ChangePlanetBody(
   };
 
   const chunks = chunkCount(chosen.template);
-  const showExportFirst = unsaved && (step === 'carry' || (startingOver && hasBuild));
-  const verb = step === 'carry' || !(startingOver || hasBuild) ? t('planet.switch_to', { name: chosen.name })
-      : startingOver ? t('planet.start_over_on', { name: chosen.name })
-        : t('planet.next');
-  const verbDisabled = step === 'pick' && startingOver && !hasBuild;
+  const footer = switchFooter({ step, startingOver, hasBuild, unsaved });
+  const showExportFirst = footer.exportFirst;
+  const verb = footer.verb === 'switch' ? t('planet.switch_to', { name: chosen.name })
+    : footer.verb === 'start-over' ? t('planet.start_over_on', { name: chosen.name })
+      : t('planet.next');
+  const verbDisabled = footer.disabled;
 
   const picker = (
     <PlanetPicker key="picker" current={current} builtin={builtin} mine={mine} chosenKey={chosen.key} currentId={currentId}
-      onChoose={choose} newDisabled={!canEdit} onNew={() => onEditPlanet?.(null)}
+      onChoose={choose} newDisabled={!canEdit} onNew={() => pressCommand('planet.edit')}
       {...(columns === 1 ? { style: stackedList, scrolls: false } : {})}
       {...(PlanetImportWindow ? { onImport: () => setModal('planetImport', true) } : SUPPORTS_JSON_FILES ? { onImport: pickFile } : {})} />
   );
@@ -312,7 +264,7 @@ function ChangePlanetBody(
           <AnimatePresence initial={false}>
             {entry && (
               <PlanetTools key="tools" canEdit={canEdit} renameRef={renameRef} deleteRef={deleteRef}
-                onEdit={() => onEditPlanet?.(entry)}
+                onEdit={() => pressCommand('planet.edit', { planet: entry.entryId })}
                 onRename={() => setAsking(asking === 'rename' ? null : 'rename')}
                 onDuplicate={() => duplicate(entry)}
                 {...(SUPPORTS_JSON_FILES ? { onExport: () => downloadPlanetFile(entry) } : {})}
@@ -368,7 +320,7 @@ function ChangePlanetBody(
           <RenameCard key={`rename-${entry.entryId}`} anchor={renameRef} entry={entry} onCancel={() => setAsking(null)} onRename={(name) => rename(entry, name)} />
         )}
         {entry && asking === 'delete' && (
-          <PlanetConfirm key={`delete-${entry.entryId}`} anchor={deleteRef} floor={false}
+          <ControlConfirm key={`delete-${entry.entryId}`} anchor={deleteRef} floor={false} helpTarget={PLANET_HELP}
             title={t('planet.delete_title', { name: entry.name })} cancelLabel={t('delete.cancel')} confirmLabel={t('planet.delete')}
             onCancel={() => setAsking(null)} onConfirm={() => remove(entry)} />
         )}
@@ -392,9 +344,10 @@ function PreviewSwap({ choiceKey, style, children }: { choiceKey: string; style?
 function SwapLayer({ children }: { children: React.ReactNode }) {
   const swap = useTransition('planet.preview.swap');
   const present = useIsPresent();
+  const away = useAway();
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={swap}
-      {...(present ? {} : { inert: '', 'aria-hidden': true, 'data-leaving': '' })}
+      {...away}
       style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: present ? undefined : 'none' }}>
       {children}
     </motion.div>
@@ -451,9 +404,9 @@ function RenameCard({ anchor, entry, onCancel, onRename }: {
   const check = usePlanetNameReview(present, name, entry.name);
   // After the card's own initial focus, so the name is what the keyboard lands on.
   useEffect(() => { fieldRef.current?.focus(); fieldRef.current?.select(); }, []);
-  const confirm = () => { if (check.approved) onRename(name.trim()); };
+  const confirm = () => check.commit(() => onRename(name.trim()));
   return (
-    <PlanetConfirm anchor={anchor} floor={false} lockSide title={t('planet.rename_title')} cancelLabel={t('delete.cancel')} confirmLabel={t('planet.ok')}
+    <ControlConfirm anchor={anchor} floor={false} lockSide helpTarget={PLANET_HELP} title={t('planet.rename_title')} cancelLabel={t('delete.cancel')} confirmLabel={t('planet.ok')}
       confirmDisabled={!check.approved} onCancel={onCancel} onConfirm={confirm}
       body={<PlanetNameField check={check} inputRef={fieldRef} value={name} onChange={setName} onSubmit={confirm} />} />
   );

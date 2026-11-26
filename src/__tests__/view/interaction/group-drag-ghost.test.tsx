@@ -132,7 +132,7 @@ describe('dragging a plural selection', () => {
     expect(valid).toBe(false);
     const [ghost, paint] = overlay.showGhost.mock.calls[0]!;
     const cells = (ghost as { cells: unknown[] }).cells;
-    expect(paint).toEqual({ wash: 'placement', valid: false });
+    expect(paint).toEqual({ placement: true, valid: false });
     expect(cells).toHaveLength(3); // still every member's destination, just tinted red
   });
 
@@ -152,27 +152,23 @@ describe('dragging a plural selection', () => {
   });
 
   it('a halfStep member of a group reads its OWN planned elevation, not the ground under a half index', () => {
-    // `gs.cells[y]?.[x]` with a fractional x is undefined, so a ground read would give 0. The
-    // terrain leaves a lane at y 10 to 14 that only the half anchor x = 4.5 clears, and the ramp
-    // standing there at elevation 1 must keep it in the group ghost.
+    // `gs.cells[y]?.[x]` with a fractional x is undefined, so a ground read would give 0. The ramp
+    // stands on its half anchor against the cliff along y = 9 and slides along it with the hut.
     const ramp: PlacedObject = { id: 'r', catalogId: 'ramp-teak-stair', position: { x: 4.5, y: 9 }, rotation: 0, elevation: 1 };
     const { overlay } = setUp([ramp, tree('h', 2, 2)], ['r', 'h']);
-    for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if (y <= 9) setTerrain(gs, x, y, TerrainType.Mountain, 1);
-    for (let y = 10; y <= 14; y++) {
-      setTerrain(gs, 7, y, TerrainType.Mountain, 1);
-      setTerrain(gs, 4, y, TerrainType.Water, 0);
-    }
+    for (let y = 0; y <= 9; y++) for (let x = 0; x < 20; x++) setTerrain(gs, x, y, TerrainType.Mountain, 1);
 
-    // Press at macro (5, 9), inside the ramp, so grabOffset is (-0.5, 0); dragging to (5, 10) puts
-    // the candidate at (4.5, 10), which the heightDrop trait re-detects to (4.5, 9), elevation 1.
-    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 55, clientY: 95 }));
-    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 55, clientY: 105 }));
+    // Press the hut at macro (2, 2) and drag three cells east: the ramp's candidate is (7.5, 9).
+    el.dispatchEvent(pointer('pointerdown', { button: 0, buttons: 1, clientX: 25, clientY: 25 }));
+    window.dispatchEvent(pointer('pointermove', { buttons: 1, clientX: 55, clientY: 25 }));
 
     expect(overlay.showObjectMove).toHaveBeenCalled();
     const groupCalls = overlay.showObjectMove.mock.calls;
-    const [members] = groupCalls[groupCalls.length - 1]!;
+    const [members, valid] = groupCalls[groupCalls.length - 1]!;
+    expect(valid).toBe(true);
     const rampGhost = members.find((m: { catalogId: string }) => m.catalogId === 'ramp-teak-stair');
     expect(rampGhost, 'the ramp member is in the ghost').toBeTruthy();
-    expect(rampGhost.elevation, 'the deck elevation, not the ground under a half index').toBe(1);
+    expect(rampGhost.position).toEqual({ x: 7.5, y: 9 });
+    expect(rampGhost.elevation, 'the high end it reaches, not the ground under a half index').toBe(1);
   });
 });

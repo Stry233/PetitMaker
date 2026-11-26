@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { inlineArt } from '../../../ui/help/inline-art';
-import { ASSISTANT_BLOCK, GLYPHS, LAYERS_STACK_SRC, MODES, TOP_RIGHT } from '../../../ui/shell/frame';
+import { ASSISTANT_BLOCK, GLYPHS, MODES, TOP_RIGHT } from '../../../ui/shell/frame';
 import { TOOL_CELLS } from '../../../ui/shell/bars/terrain-cells';
 import { SMART } from '../../../ui/shell/bars/smart-menu';
 
@@ -28,7 +28,6 @@ describe('help inline art reads the owners\' own records', () => {
     expect(inlineArt('rail-zoom-in')).toEqual({ kind: 'glyph', glyph: GLYPHS.zoomIn });
     expect(inlineArt('rail-zoom-out')).toEqual({ kind: 'glyph', glyph: GLYPHS.zoomOut });
     expect(inlineArt('rail-hide')).toEqual({ kind: 'glyph', glyph: GLYPHS.hideUi });
-    expect(inlineArt('rail-layers')).toEqual({ kind: 'img', src: LAYERS_STACK_SRC, plate: true });
   });
 
   it('the tool cells and the smart star are the bar\'s own glyphs', () => {

@@ -19,7 +19,7 @@ import { TOUCH_TARGET } from '../../design/scale-model';
 import { useViewportSize } from '../../design/scale';
 import { cursors, font, radii, z } from '../../design/styles';
 import { OVERLAY_DIM } from '../../design/tokens';
-import { TEXT_ROLES } from '../../design/text-weight';
+import { TEXT_ROLES, roleSize } from '../../design/text-weight';
 import { visualRect } from '../../design/visual-rect';
 import { skin, WINDOW_ICON_BUTTON } from '../../design/window-skin';
 import { ActionButton } from '../../primitives/ActionButton';
@@ -34,7 +34,8 @@ import { useObservedSize } from '../../primitives/use-observed-size';
 import { asksToSaveData } from '../../../platform/device/device-quality';
 import { useHandoffCovered } from '../../session/splash-handoff';
 import { helpTargetAttr } from '../../session/help-targets';
-import { REEL_CAPTIONS, REEL_TYPES, reelTiming, type ReelFiles, type ReelTiming } from './reels';
+import { REEL_TYPES, type ReelTiming } from '../../../assets/tour/reel-set';
+import { REEL_CAPTIONS, reelTiming, type ReelFiles } from './reels';
 import { SWIPE_VAR } from './use-swipe-turn';
 
 const BAR_H = 4;
@@ -160,7 +161,7 @@ type Enlarged = { files: ReelFiles; phase: 'lift' | 'out' | 'back'; at: Slot; fo
 
 /** The caption's look at a foot grown `foot` times. */
 const captionText = (foot: number, centred: boolean): CSSProperties => ({
-  fontSize: CAPTION.px * foot, fontWeight: CAPTION.weight, color: skin.plateInk, minHeight: '1.35em', lineHeight: 1.35, textAlign: centred ? 'center' : 'start',
+  fontSize: roleSize('body') * foot, fontWeight: CAPTION.weight, color: skin.plateInk, minHeight: '1.35em', lineHeight: 1.35, textAlign: centred ? 'center' : 'start',
   // Narrower than the column on a plate, it keeps to the clip's leading edge unless it centres.
   alignSelf: centred ? 'center' : 'flex-start',
 });

@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
 import { useTouchMode } from '../design/input-mode';
+import { enterBack, holdBackKey, leaveBack, reachableRoot, routeBackKey, surfaceOrder, type BackEntry, type BackRank } from '../../platform/input/back-stack';
+import { isComposingKey } from '../../platform/input/text-entry';
 
 const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]';
 
 export function focusableWithin(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) =>
-    el.tabIndex >= 0 && !el.matches(':disabled') && !el.closest('[inert], [aria-hidden="true"]')
-    && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden');
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && reachableRoot(el));
 }
 
 interface Surface {
@@ -19,7 +19,16 @@ interface Surface {
   outside: boolean;
   /** A press outside puts the surface away and still acts on what lies beneath. */
   passes: boolean;
+  /** A notice nobody asked for. */
+  notice: boolean;
+  rank: BackRank;
   restore: boolean;
+  /** Backed out of and not yet closed by its owner. */
+  backed: boolean;
+  /** Its entry on the page's back stack while open. */
+  back: BackEntry;
+  /** The id of a state's own entry it takes the place of while open, so that state stands on the stack once. */
+  backId?: string;
 }
 
 export const SurfaceOwner = createContext<symbol | null>(null);
@@ -43,15 +52,20 @@ function focusMenu(surface: Surface, last = false): void {
   if (!items.length) root.focus();
 }
 
-function onKeyDown(event: KeyboardEvent): void {
-  const surface = surfaces[surfaces.length - 1];
-  if (!surface || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    surface.onClose();
-    return;
+/** The surface the keyboard and a press outside reach: the first open one in the back stack's order
+ *  (`surfaceOrder`), the one Escape ends, within reach unless `all`. */
+function foreground(all = false): Surface | undefined {
+  for (const entry of surfaceOrder(all)) {
+    const surface = surfaces.find((s) => s.back === entry);
+    if (surface) return surface;
   }
+  return undefined;
+}
+
+/** Arrows and Tab within the foreground surface; Escape is the back stack's (`platform/input/back-stack.ts`). */
+function onKeyDown(event: KeyboardEvent): void {
+  const surface = foreground();
+  if (!surface || event.defaultPrevented || isComposingKey(event)) return;
   const root = surface.root.current;
   if (!root || surface.focus === 'none') return;
   const items = focusableWithin(root);
@@ -102,7 +116,7 @@ function onClick(event: MouseEvent): void {
  * surface that `passes`, when no other outside-dismissed surface is open, is put away and the press goes on.
  */
 function onPointerDown(event: PointerEvent): void {
-  const surface = surfaces[surfaces.length - 1];
+  const surface = foreground();
   if (!surface?.outside || !(event.target instanceof Node)) return;
   if (surface.root.current?.contains(event.target) || surface.trigger?.current?.contains(event.target)) return;
   // Only alone: under another open surface the press would act while that surface still stands.
@@ -119,25 +133,53 @@ function onPointerDown(event: PointerEvent): void {
   surface.onClose();
 }
 
-/** Portal key events reach React ancestors before the document's native listeners. */
+/** Portal key events reach React ancestors before the document's native listeners, so a portaled
+ *  surface hands them to the back key and its own keys first. */
 export function routeSurfaceKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+  routeBackKey(event.nativeEvent);
   onKeyDown(event.nativeEvent);
   if (event.nativeEvent.defaultPrevented) event.stopPropagation();
 }
 
+/** Surfaces opened, so each back entry takes an id of its own. */
+let opened = 0;
+let releaseBackKey: (() => void) | null = null;
+
+/** The back stack's entry for `surface`: standing while open and not yet backed out of, within reach
+ *  only while its root is, ending through its `onClose`. */
+function backEntryOf(surface: Surface): BackEntry {
+  return {
+    id: surface.backId ?? `surface:${++opened}`,
+    stands: () => !surface.backed,
+    reachable: () => reachableRoot(surface.root.current),
+    back: () => { surface.backed = true; surface.onClose(); },
+    rank: () => surface.rank,
+    surface: true,
+    // A surface holding the keyboard (a menu, a question) keeps Delete; a notice or a card passes it on.
+    deletes: () => (surface.notice || surface.focus === 'none' ? 'pass' : null),
+    // Only a surface that holds the keyboard keeps the editor's keys out.
+    root: () => (surface.focus === 'none' ? null : surface.root.current),
+  };
+}
+
 /**
- * React ownership follows portals; the foreground surface alone handles keyboard dismissal.
- * `outside` puts the surface away on a press outside it; `'notice'` marks a surface nobody asked
- * for (a hint bubble), which in touch mode lets that press act beneath too, since a finger's tap
- * on the map is the work the notice must not cost.
+ * React ownership follows portals. Each open surface stands on the page's back stack, so Escape
+ * closes it only while it is the newest state that stands (`rank` puts one under every other state or
+ * over them all); the foreground surface alone takes the arrows and Tab. `outside` puts the surface
+ * away on a press outside it; `'notice'` marks a surface nobody asked for (a hint bubble), which in
+ * touch mode lets that press act beneath too, since a finger's tap on the map is the work the
+ * notice must not cost. Delete passes over a surface that does not hold the keyboard.
  */
-export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', outside = false }: {
+export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', outside = false, rank = 0, backId }: {
   open: boolean;
   onClose(): void;
   root: RefObject<HTMLElement | null>;
   trigger?: RefObject<HTMLElement | null>;
   focus?: Surface['focus'];
   outside?: boolean | 'notice';
+  rank?: BackRank;
+  /** The entry id of the state this surface shows (`editor/back/back-out.ts`), whose place it takes. */
+  backId?: string;
 }): symbol {
   const parent = useContext(SurfaceOwner);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -145,24 +187,38 @@ export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', 
   const touch = useTouchMode();
   const passes = outside === 'notice' && touch;
   const dismisses = outside !== false;
-  const entry = useRef<Surface>({ id, parent, root, trigger, onClose, focus, outside: dismisses, passes, restore: true }).current;
-  Object.assign(entry, { parent, root, trigger, onClose, focus, outside: dismisses, passes });
+  const notice = outside === 'notice';
+  const entry = useRef<Surface>(null as unknown as Surface);
+  if (!entry.current) {
+    const made = { id, parent, root, trigger, onClose, focus, outside: dismisses, passes, notice, rank, backId, restore: true, backed: false } as Surface;
+    made.back = backEntryOf(made);
+    entry.current = made;
+  }
+  const surface = entry.current;
+  Object.assign(surface, { parent, root, trigger, onClose, focus, outside: dismisses, passes, notice, rank, backId });
   useLayoutEffect(() => {
     if (!open) return;
+    const entry = surface;
     openerRef.current = trigger?.current ?? document.activeElement as HTMLElement | null;
     swallowClickUntil = -Infinity;
     entry.restore = true;
-    const child = surfaces.findIndex((surface) => belongsTo(surface, id));
+    entry.backed = false;
+    entry.back = backEntryOf(entry);
+    const children = surfaces.filter((other) => belongsTo(other, id));
+    const child = children.length > 0 ? surfaces.indexOf(children[0]!) : -1;
     if (child < 0) surfaces.push(entry);
     else surfaces.splice(child, 0, entry);
+    const childEntries = new Set(children.map((other) => other.back));
+    enterBack(entry.back, (other) => childEntries.has(other));
     if (surfaces.length === 1) {
+      releaseBackKey = holdBackKey();
       document.addEventListener('keydown', onKeyDown);
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('pointerdown', onPointerDown, true);
     }
     let focusFrame = 0;
     const enter = () => {
-      if (surfaces[surfaces.length - 1] !== entry) return;
+      if (foreground(true) !== entry) return;
       // A hidden surface cannot receive focus until its visibility reaches the DOM.
       if (root.current && getComputedStyle(root.current).visibility === 'hidden') {
         focusFrame = requestAnimationFrame(enter);
@@ -176,20 +232,23 @@ export function useSurfaceScope({ open, onClose, root, trigger, focus = 'none', 
       cancelAnimationFrame(focusFrame);
       const index = surfaces.indexOf(entry);
       if (index >= 0) surfaces.splice(index, 1);
+      leaveBack(entry.back);
       if (!surfaces.length) {
+        releaseBackKey?.();
+        releaseBackKey = null;
         document.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('pointerdown', onPointerDown, true);
       }
     };
-  }, [open, id, entry, focus, root, trigger]);
+  }, [open, id, surface, focus, root, trigger]);
   useEffect(() => {
     if (!open) return;
     return () => {
       const opener = openerRef.current;
       // Restore after React's commit-time focus preservation has finished.
-      if (entry.restore && opener?.isConnected && focus !== 'none') opener.focus();
+      if (surface.restore && opener?.isConnected && focus !== 'none') opener.focus();
     };
-  }, [open, entry, focus]);
+  }, [open, surface, focus]);
   return id;
 }

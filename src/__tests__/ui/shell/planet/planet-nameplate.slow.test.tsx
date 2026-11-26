@@ -42,7 +42,7 @@ const t = (key: TextKey, params?: Record<string, string | number>) => translate(
 
 function mount() {
   return render(
-    <Shell onRestoreSession={() => {}}><div /></Shell>,
+    <Shell><div /></Shell>,
     { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
   );
 }
@@ -76,7 +76,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => { stopPlanetEditing(); });
+  act(() => { stopPlanetEditing({ discard: true }); });
   host.camera.takeQueued();
   cleanup();
   vi.restoreAllMocks();
@@ -88,7 +88,7 @@ describe('placement', () => {
     sizeWindow(390, 844);
     atScale(TOUCH_UI_ZOOM_DEFAULT);
     render(
-      <InputModeProvider inputMode="touch"><Shell onRestoreSession={() => {}}><div /></Shell></InputModeProvider>,
+      <InputModeProvider inputMode="touch"><Shell><div /></Shell></InputModeProvider>,
       { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
     );
     enter();
@@ -116,7 +116,7 @@ describe('across the window', () => {
   // Any session draws with the same modes.
   const sessionCount = sessionModes({} as PlanetSession).length;
   const layoutOptions = { open: false, plateDepth: plateDepth('pill'), plateMinDepth: plateMinDepth('pill'), plateMinWidth: PLATE_MIN_WIDTH,
-    modes: sessionCount, corner: cornerArt(true) };
+    modes: sessionCount, corner: cornerArt('planet') };
 
   it('never meets the mode row or the corner at any window and UI scale', () => {
     const windows = [[1440, 900], [1280, 800], [1024, 768], [390, 844], [844, 390], [780, 360], [2560, 1440]] as const;
@@ -133,7 +133,7 @@ describe('across the window', () => {
           right: (blockCentre(i) + (MODE_PLATE_W * MODE_SCALE) / 2) * frameZoom,
           top: MODE_ROW_TOP * frameZoom, bottom: (MODE_ROW_TOP + MODE.height) * frameZoom,
         }));
-        const menu = cornerArt(true)[0]!;
+        const menu = cornerArt('planet')[0]!;
         const menuW = topRightHeight(menu) * menu.w / menu.h;
         const corner: Box = {
           left: (layout.width - layout.edgeRight - menuW) * frameZoom, right: (layout.width - layout.edgeRight) * frameZoom,
@@ -183,7 +183,7 @@ describe('the toast band', () => {
     setSize(390, 844);
     try {
       render(
-        <InputModeProvider inputMode="touch" shape="portrait"><Shell onRestoreSession={() => {}}><div /></Shell></InputModeProvider>,
+        <InputModeProvider inputMode="touch" shape="portrait"><Shell><div /></Shell></InputModeProvider>,
         { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
       );
       enter();

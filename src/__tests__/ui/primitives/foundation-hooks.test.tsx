@@ -34,6 +34,44 @@ describe('useTransient', () => {
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('drops at once on clear', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useTransient<string>(100));
+    act(() => { result.current.show('a'); });
+    act(() => { result.current.clear(); });
+    expect(result.current.value).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('follows what it lingers after, never dropping it before its hold, and steps with no hold', () => {
+    vi.useFakeTimers();
+    const seen: (string | null)[] = [];
+    const { result, rerender } = renderHook(({ on, hold }) => {
+      const { value } = useTransient<string>(hold, { linger: on });
+      seen.push(value);
+      return value;
+    }, { initialProps: { on: null as string | null, hold: 100 } });
+    expect(result.current).toBeNull();
+    rerender({ on: 'a', hold: 100 });
+    expect(result.current).toBe('a');
+    seen.length = 0;
+    rerender({ on: null, hold: 100 });
+    // Every render from the turn on shows what stood.
+    expect(seen.every((v) => v === 'a')).toBe(true);
+    act(() => { vi.advanceTimersByTime(99); });
+    expect(result.current).toBe('a');
+    // Back on mid-hold, it follows again and its hold no longer runs.
+    rerender({ on: 'b', hold: 100 });
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(result.current).toBe('b');
+    rerender({ on: null, hold: 100 });
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(result.current).toBeNull();
+    rerender({ on: 'c', hold: 0 });
+    rerender({ on: null, hold: 0 });
+    expect(result.current).toBeNull();
+  });
 });
 
 describe('useRootCssVars', () => {

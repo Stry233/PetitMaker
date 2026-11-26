@@ -10,7 +10,7 @@ vi.setConfig({ testTimeout: 60_000 });
 import { MAP_TEMPLATES } from '../../../../../config/maps';
 import { makeRng } from '../../../../../core/base/rng';
 import type { MapTemplate } from '../../../../../core/model/types';
-import { type Rect } from '../../../../../core/grid/rect';
+import { indexBounds, type Rect } from '../../../../../core/grid/rect';
 import { categoryOf, getCatalogItem } from '../../../../../state/catalog';
 import { objectRect } from '../../../../../state/object-geometry';
 import { plantableSurface } from '../../../../../tools/reading';
@@ -20,7 +20,7 @@ import { familyOf, planPalettes, type RegionPalette } from '../../../../../tools
 import { THEME_LIBRARY, themeRef } from '../../../../../tools/generation/designer/themes';
 import { mirrorOf, symmetrize } from '../../../../../tools/generation/designer/dressing/symmetry';
 import { designedMap, type DesignedRun } from '../_designed-map';
-import { boxOf, compose, coverCap } from '../../../../../tools/generation/designer/dressing/elements';
+import { compose, coverCap } from '../../../../../tools/generation/designer/dressing/elements';
 import { planKitGround } from '../../../../../tools/generation/designer/dressing';
 import { styleOf } from '../../../../../tools/generation/designer/dressing/kits';
 import type { KitCanvas } from '../../../../../tools/generation/designer/dressing/types';
@@ -47,7 +47,7 @@ function canvasOf(rect: Rect, palette: RegionPalette, cover: number, treeShare =
     for (let x = rect.x; x < rect.x + rect.w; x++) cells.add(y * CANVAS_W + x);
   }
   return {
-    regionId: palette.regionId, cells, box: boxOf(cells, CANVAS_W), elevation: 1, W: CANVAS_W,
+    regionId: palette.regionId, cells, box: indexBounds(cells, CANVAS_W), elevation: 1, W: CANVAS_W,
     cover, treeShare, orientation: 'south', palette, rng: makeRng(4242),
   };
 }

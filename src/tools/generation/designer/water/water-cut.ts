@@ -53,8 +53,9 @@ export function freeAt(ground: WaterGround, x: number, y: number, tier: number):
 export function atTier(
   t: TerrainPlan, grass: Uint8Array, flat: Uint8Array, rect: Rect, tier: number,
 ): boolean {
+  const ground: WaterGround = { t, grass, flat };
   for (let y = rect.y; y < rect.y + rect.h; y++) {
-    for (let x = rect.x; x < rect.x + rect.w; x++) if (!freeAt({ t, grass, flat }, x, y, tier)) return false;
+    for (let x = rect.x; x < rect.x + rect.w; x++) if (!freeAt(ground, x, y, tier)) return false;
   }
   return true;
 }
@@ -71,8 +72,9 @@ export function cellsFit(
 ): boolean {
   if (cells.length === 0) return false;
   const own = new Set(cells.map((c) => flatIndex(c.x, c.y, t.width)));
+  const ground: WaterGround = { t, grass, flat };
   for (const c of cells) {
-    if (!freeAt({ t, grass, flat }, c.x, c.y, tier)) return false;
+    if (!freeAt(ground, c.x, c.y, tier)) return false;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue;
@@ -93,6 +95,7 @@ export function poolFits(
 ): boolean {
   if (rect.w < 1 || rect.h < 1) return false;
   if (rect.x < 1 || rect.y < 1 || rect.x + rect.w + 1 > t.width || rect.y + rect.h + 1 > t.height) return false;
+  const ground: WaterGround = { t, grass, flat };
   for (let y = rect.y - 1; y <= rect.y + rect.h; y++) {
     for (let x = rect.x - 1; x <= rect.x + rect.w; x++) {
       const inside = rectContains(rect, x, y);
@@ -101,7 +104,7 @@ export function poolFits(
       // four, so a bed that takes none of them cannot refuse a street however closely it runs beside
       // one. The ring is free to be reserved ground.
       if (inside) {
-        if (!freeAt({ t, grass, flat }, x, y, tier)) return false;
+        if (!freeAt(ground, x, y, tier)) return false;
         continue;
       }
       if (surfaceOf(t, x, y) < tier) return false;

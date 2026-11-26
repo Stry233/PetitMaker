@@ -98,6 +98,7 @@ describe('sizing the block row by the cube its drawings share', () => {
     mountain: [172, 165, 207, 187],
     water: [172, 168, 207, 200],
     generate: [176, 174, 208, 180],
+    blueprint: [176, 192, 208, 202],
   };
 
   it('lays every mode drawing out at one width, whatever it was exported at', () => {

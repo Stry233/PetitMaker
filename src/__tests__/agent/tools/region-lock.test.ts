@@ -1,8 +1,7 @@
 /**
  * A painted region is a boundary the agent cannot cross on any write path: `runStroke` and the callback
  * variant `runStrokeBody` both check every command as applied, since bridge and ramp snapping moves a
- * command during validation. `build_road_network` and `frame_crossing` also take the region as a planning
- * input, so their cases assert containment rather than refusal.
+ * command during validation.
  */
 import { describe, it, expect } from 'vitest';
 import { runStroke } from '../../../agent/tools/stroke';
@@ -176,15 +175,6 @@ describe('a half-anchored ramp partially over the region boundary', () => {
 
 const call = (name: string, input: Record<string, unknown>) => ({ id: 't1', name, input });
 
-function rect(x1: number, y1: number, x2: number, y2: number): MacroCoord[] {
-  const out: MacroCoord[] = [];
-  for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) out.push({ x, y });
-  return out;
-}
-
-const covers = (region: MacroCoord[], c: MacroCoord) => region.some((r) => r.x === c.x && r.y === c.y);
-
-const smallBuilding = () => getCatalogByCategory(ItemCategory.Building).find((i) => i.width <= 3 && i.height <= 3)!;
 const rotatableBuilding = () => getCatalogByCategory(ItemCategory.Building)
   .find((i) => i.rotatable && i.width <= 3 && i.height <= 3)!;
 
@@ -205,6 +195,25 @@ describe('build_road', () => {
     const r = await executeToolCall(call('build_road', { line: { x1: 1, y1: 2, x2: 4, y2: 2 } }), deps);
     expect(r.isError).toBe(false);
     expect(state.objects.size).toBeGreaterThan(0);
+  });
+});
+
+describe('paint_terrain', () => {
+  it('paints under every cell of the region, whose ground is inside it', async () => {
+    const { state, deps } = world(REGION);
+    const r = await executeToolCall(call('paint_terrain', { rect: { x1: 1, y1: 1, x2: 4, y2: 4 }, terrain: 'mountain', elevation: 1 }), deps);
+    expect(r.isError, r.content).toBe(false);
+    expect(r.content).toContain('16/16');
+    expect(state.cells[1]![1]!.terrain?.elevation).toBe(1);
+  });
+
+  it('refuses a cell beside the region and names it', async () => {
+    const { state, deps } = world(REGION);
+    const r = await executeToolCall(call('paint_terrain', { rect: { x1: 1, y1: 1, x2: 5, y2: 4 }, terrain: 'mountain', elevation: 1 }), deps);
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('OUT OF REGION');
+    expect(r.content).toContain('reached the ground between cells (5,0)-(6,1)');
+    expect(state.cells.flat().every((c) => c.terrain === null)).toBe(true);
   });
 });
 
@@ -252,106 +261,5 @@ describe('rotate_object', () => {
     const r = await executeToolCall(call('rotate_object', { objectId: 'o1', rotation: 90 }), deps);
     expect(r.isError).toBe(false);
     expect(state.objects.get('o1')?.rotation).toBe(90);
-  });
-});
-
-describe('decorate_zone', () => {
-  const far = { x: 14, y: 14, w: 14, h: 14, theme: 'orchard' };
-
-  it('decorates that rect with no region painted', async () => {
-    const { state, deps } = world([], 32, 32);
-    const r = await executeToolCall(call('decorate_zone', far), deps);
-    expect(r.isError).toBe(false);
-    expect(state.objects.size).toBeGreaterThan(0);
-  });
-
-  it('refuses the same rect once the user has painted elsewhere', async () => {
-    const region = rect(1, 1, 6, 6);
-    const { state, executor, deps } = world(region, 32, 32);
-    const before = executor.historyDepth();
-    const r = await executeToolCall(call('decorate_zone', far), deps);
-    expect(r.isError).toBe(true);
-    expect(r.content).toContain('OUT OF REGION');
-    expect(r.content).toContain('(1,1)-(6,6)');
-    expect(state.objects.size).toBe(0);
-    expect(executor.historyDepth()).toBe(before);
-  });
-});
-
-describe('plant_forest', () => {
-  const far = { x: 2, y: 2, w: 20, h: 20, density: 0.8 };
-
-  it('plants that rect with no region painted', async () => {
-    const { state, deps } = world([], 32, 32);
-    const r = await executeToolCall(call('plant_forest', far), deps);
-    expect(r.isError).toBe(false);
-    expect(state.objects.size).toBeGreaterThan(0);
-  });
-
-  it('refuses the same rect once the user has painted elsewhere', async () => {
-    const region = rect(25, 25, 30, 30);
-    const { state, executor, deps } = world(region, 32, 32);
-    const before = executor.historyDepth();
-    const r = await executeToolCall(call('plant_forest', far), deps);
-    expect(r.isError).toBe(true);
-    expect(r.content).toContain('OUT OF REGION');
-    expect(r.content).toContain('(25,25)-(30,30)');
-    expect(state.objects.size).toBe(0);
-    expect(executor.historyDepth()).toBe(before);
-  });
-});
-
-describe('build_road_network', () => {
-  /** Two houses inside the region, one far outside it, all pre-existing. */
-  function houses(state: ReturnType<typeof world>['state']) {
-    const b = smallBuilding();
-    state.objects.set('in-a', { id: 'in-a', catalogId: b.id, position: { x: 4, y: 4 }, rotation: 0, elevation: 0 });
-    state.objects.set('in-b', { id: 'in-b', catalogId: b.id, position: { x: 12, y: 12 }, rotation: 0, elevation: 0 });
-    state.objects.set('far', { id: 'far', catalogId: b.id, position: { x: 26, y: 26 }, rotation: 0, elevation: 0 });
-  }
-  const seeded = { id: new Set(['in-a', 'in-b', 'far']) };
-  const laid = (state: ReturnType<typeof world>['state']) =>
-    [...state.objects.values()].filter((o) => !seeded.id.has(o.id));
-
-  it('routes across the whole map with no region painted', async () => {
-    const { state, deps } = world([], 32, 32);
-    houses(state);
-    const r = await executeToolCall(call('build_road_network', { seed: 7 }), deps);
-    expect(r.isError).toBe(false);
-    expect(laid(state).some((o) => o.position.x > 16 || o.position.y > 16)).toBe(true);
-  });
-
-  it('plans inside the region instead of being refused for straying', async () => {
-    const region = rect(2, 2, 16, 16);
-    const { state, deps } = world(region, 32, 32);
-    houses(state);
-    const r = await executeToolCall(call('build_road_network', { seed: 7 }), deps);
-    expect(r.content).not.toContain('OUT OF REGION');
-    expect(laid(state).length).toBeGreaterThan(0);
-    for (const o of laid(state)) expect(covers(region, o.position)).toBe(true);
-  });
-});
-
-describe('frame_crossing', () => {
-  /** A one-tier plateau over the right half, so the seam at x=16 is a ramp site. */
-  function cliff(state: ReturnType<typeof world>['state']) {
-    for (let y = 0; y < 32; y++) for (let x = 16; x < 32; x++) setTerrain(state, x, y, TerrainType.Mountain, 1);
-  }
-
-  it('realizes a crossing at the seam with no region painted', async () => {
-    const { state, deps } = world([], 32, 32);
-    cliff(state);
-    const r = await executeToolCall(call('frame_crossing', { x: 15, y: 11 }), deps);
-    expect(r.isError).toBe(false);
-    expect(state.objects.size).toBeGreaterThan(0);
-  });
-
-  it('scans only the region, so a seam outside it is never touched', async () => {
-    const region = rect(1, 1, 6, 6); // low ground only; the seam is nowhere near it
-    const { state, deps } = world(region, 32, 32);
-    cliff(state);
-    const r = await executeToolCall(call('frame_crossing', { x: 15, y: 11 }), deps);
-    expect(r.content).not.toContain('OUT OF REGION');
-    expect(state.objects.size).toBe(0);
   });
 });

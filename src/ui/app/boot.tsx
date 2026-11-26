@@ -8,12 +8,14 @@ import { createRoot } from 'react-dom/client';
 import { prepareEditor } from '../../editor/session/install';
 import { loadLocale } from '../../i18n/translations';
 import { useEditorStore } from '../../state/store';
+import { publishMotionVars } from '../design/motion/css-vars';
 
 /** Readies the editor (`editor/session/install.ts:prepareEditor`), then renders `app` into `root`
  *  once the saved locale's strings have arrived and `ready` has settled; a failed load renders in
  *  English, the fallback of every string. */
 export function mountApp(root: HTMLElement, app: ReactNode, ready?: Promise<unknown>): void {
   prepareEditor();
+  publishMotionVars();
   const render = () => { createRoot(root).render(<StrictMode>{app}</StrictMode>); };
   void Promise.allSettled([loadLocale(useEditorStore.getState().locale), ready]).then(render);
 }

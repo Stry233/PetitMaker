@@ -27,8 +27,11 @@ import { jsonFile } from '../../../../_support/json-file';
 import { newMap } from '../../../../../editor/operations';
 import { transferPreviewOf } from '../../../../../tools/generation/run/planet-preview';
 import { currentEditor, editorPort } from '../../../../../editor/session/context';
+import { stopPlanetEditing } from '../../../../../editor/session/planet-editing';
 import { createExecutor } from '../../../../../state/executor';
 import { installPictureRenderer } from '../../../../_support/picture-renderer';
+import { watchUncheckedPlanetNames } from '../../../../../editor/session/planet-library';
+import { reviewPlanetNames } from '../../../../../editor/review/edition-review';
 
 // Names are checked by the export text review; these tests stub its verdict as approved.
 vi.mock('../../../../../pipelines/moderation/text/reviewer', async (original) => ({
@@ -82,6 +85,8 @@ const press = async () => { await act(async () => { fireEvent.click(verb()); awa
 const toasts: [string, string][] = [];
 let unpresent: () => void = () => {};
 let pictures: ReturnType<typeof installPictureRenderer>;
+/** The editor's background check of planet names, as the live session installs it. */
+let stopNameChecks = () => {};
 
 beforeEach(() => {
   // The pictures come from the map's renderer, which jsdom stands in for.
@@ -90,8 +95,14 @@ beforeEach(() => {
   toasts.length = 0;
   unpresent = setToastPresenter((text, type) => { toasts.push([text, type]); });
   useEditorStore.setState({ exportedAt: null, locale: 'en' });
+  stopNameChecks = watchUncheckedPlanetNames(() => { void reviewPlanetNames(); });
 });
-afterEach(() => { cleanup(); unpresent(); pictures.uninstall(); useEditorStore.setState({ exportedAt: null, tourRunning: false }); });
+afterEach(() => {
+  stopNameChecks();
+  cleanup(); unpresent(); pictures.uninstall(); useEditorStore.setState({ exportedAt: null, tourRunning: false });
+  useEditorStore.getState().setPlanetSwitching(false);
+  useEditorStore.getState().setModal('newProject', false);
+});
 
 /** Row test ids under the Current planet and My planets headings of the list. */
 function listGroups() {
@@ -265,23 +276,23 @@ describe('the preview tools', () => {
   it('edit opens the planet editor on the chosen planet, and New planet on a new one', () => {
     world();
     const bay = saved();
-    const onEditPlanet = vi.fn();
-    show({ onEditPlanet, canEditPlanet: true, initialChosen: bay.entryId });
+    show({ canEditPlanet: true, initialChosen: bay.entryId });
     fireEvent.click(screen.getByRole('button', { name: 'Edit shape' }));
-    expect(onEditPlanet).toHaveBeenLastCalledWith(expect.objectContaining({ entryId: bay.entryId }));
+    expect(useEditorStore.getState().planetSession).toMatchObject({ entryId: bay.entryId });
+    act(() => { stopPlanetEditing({ discard: true }); });
     fireEvent.click(screen.getByTestId('planet-new'));
-    expect(onEditPlanet).toHaveBeenLastCalledWith(null);
+    expect(useEditorStore.getState().planetSession).toMatchObject({ entryId: null });
+    act(() => { stopPlanetEditing({ discard: true }); });
   });
 
   it('keeps the editor entries unavailable while its owner says a planet session cannot start', () => {
     world();
     const bay = saved();
-    const onEditPlanet = vi.fn();
-    show({ onEditPlanet, canEditPlanet: false, initialChosen: bay.entryId });
+    show({ canEditPlanet: false, initialChosen: bay.entryId });
     expect((screen.getByTestId('planet-new') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Edit shape' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('planet-new'));
-    expect(onEditPlanet).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().planetSession).toBeNull();
   });
 });
 
@@ -457,10 +468,18 @@ describe('the verb', () => {
     expect(screen.getByTestId('planet-tafa').getAttribute('aria-pressed')).toBe('true');
   });
 
+  /** The app's own window: opened by the store, switching through the editor's verb. */
+  const showLive = () => {
+    act(() => { useEditorStore.getState().setModal('newProject', true); });
+    return render(<I18nProvider><ChangePlanetModal /></I18nProvider>);
+  };
+  const windowOpen = () => useEditorStore.getState().modals.newProject;
+
   it('acts once however many times it is pressed', async () => {
     world();
-    const onSwitch = vi.fn();
-    show({ onSwitch });
+    showLive();
+    let maps = 0;
+    const off = useEditorStore.subscribe((now, was) => { if (now.gridState !== was.gridState) maps += 1; });
     fireEvent.click(screen.getByTestId('planet-tafa'));
     await act(async () => {
       fireEvent.click(verb());
@@ -468,29 +487,30 @@ describe('the verb', () => {
       fireEvent.click(verb());
       await afterPaint();
     });
-    expect(onSwitch).toHaveBeenCalledTimes(1);
+    off();
+    expect(maps).toBe(1);
+    expect(useEditorStore.getState().gridState!.template.id).toBe(TAFA.id);
   });
 
-  it('cannot be dismissed while the transfer is running', async () => {
+  it('cannot be dismissed while the transfer is running, and closes once it lands', async () => {
     world();
-    const onClose = vi.fn();
-    const onSwitch = vi.fn();
-    show({ onClose, onSwitch });
+    showLive();
     fireEvent.click(screen.getByTestId('planet-tafa'));
     fireEvent.click(verb());
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onClose).not.toHaveBeenCalled();
+    expect(windowOpen()).toBe(true);
     await flush();
-    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(useEditorStore.getState().gridState!.template.id).toBe(TAFA.id);
+    expect(windowOpen()).toBe(false);
   });
 
   it('and a transfer that throws says so and leaves the window usable', () => {
     vi.useFakeTimers();
     try {
       world();
-      const onClose = vi.fn();
-      show({ onClose, onSwitch: () => { throw new Error('replay failed'); } });
+      showLive();
+      vi.spyOn(editorPort, 'install').mockImplementation(() => { throw new Error('replay failed'); });
       fireEvent.click(screen.getByTestId('planet-tafa'));
       fireEvent.click(verb());
       const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -499,9 +519,11 @@ describe('the verb', () => {
       expect(toasts).toContainEqual(['Change a planet: this planet could not be opened', 'error']);
       act(() => {});
       expect(verb().disabled).toBe(false);
+      expect(windowOpen()).toBe(true);
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(onClose).toHaveBeenCalled();
+      expect(windowOpen()).toBe(false);
     } finally {
+      vi.restoreAllMocks();
       vi.useRealTimers();
     }
   });

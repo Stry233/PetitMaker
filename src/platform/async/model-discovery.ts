@@ -4,16 +4,18 @@
  * list, a refusal counter a refused field shakes on, and the default-model fallback. Each form's
  * adapter makes the request and says what the answer meant.
  */
+import { createSignal } from '../../core/base/signal';
 
-/** What a probe ended in: the models listed, an endpoint that will not enumerate, a refused
- *  credential, or no request made. */
-export type ProbeAnswer = { models: readonly string[] } | 'unlisted' | 'refused' | 'skipped';
+
+/** What a probe ended in: the models listed, an endpoint that will not enumerate, nothing answering
+ *  at all, a refused credential, or no request made. */
+export type ProbeAnswer = { models: readonly string[] } | 'unlisted' | 'unreachable' | 'refused' | 'skipped';
 
 /** One connection form's model request. A throw is a failure the form may still generate through,
  *  so it settles as `unlisted`; an adapter that reports the failure catches it itself. */
 type ModelProbe<Req> = (request: Req, signal: AbortSignal, isCurrent: () => boolean) => Promise<ProbeAnswer>;
 
-export type DiscoveryState = 'none' | 'loading' | 'ready' | 'unlisted' | 'refused';
+export type DiscoveryState = 'none' | 'loading' | 'ready' | 'unlisted' | 'unreachable' | 'refused';
 
 interface DiscoverySnapshot {
   state: DiscoveryState;
@@ -53,13 +55,13 @@ export function settledModel(current: string, snap: Pick<DiscoverySnapshot, 'sta
 
 export function createModelDiscovery<Req>(ask: ModelProbe<Req>): ModelDiscovery<Req> {
   let snap: DiscoverySnapshot = { state: 'none', models: [], refusals: 0, arrivals: 0 };
-  const listeners = new Set<() => void>();
+  const published = createSignal();
   let generation = 0;
   let pending: { timer: ReturnType<typeof setTimeout> | undefined; abort: AbortController } | null = null;
 
   const set = (next: Partial<DiscoverySnapshot>) => {
     snap = { ...snap, ...next };
-    for (const listener of [...listeners]) listener();
+    published.emit();
   };
   const outdate = () => {
     generation += 1;
@@ -73,6 +75,7 @@ export function createModelDiscovery<Req>(ask: ModelProbe<Req>): ModelDiscovery<
       pending = null;
       if (answer === 'skipped') set({ state: 'none' });
       else if (answer === 'refused') set({ state: 'refused', refusals: snap.refusals + 1 });
+      else if (answer === 'unreachable') set({ state: 'unreachable' });
       else if (answer === 'unlisted' || answer.models.length === 0) set({ state: 'unlisted' });
       else set({ state: 'ready', models: answer.models, arrivals: snap.arrivals + 1 });
     }, () => {
@@ -84,10 +87,7 @@ export function createModelDiscovery<Req>(ask: ModelProbe<Req>): ModelDiscovery<
 
   return {
     get: () => snap,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
+    subscribe: (listener) => published.subscribe(listener),
     probe(request, debounceMs = 0) {
       outdate();
       const mine = generation;

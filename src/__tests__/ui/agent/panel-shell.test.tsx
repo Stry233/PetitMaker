@@ -19,6 +19,7 @@ import { onCharacterCue } from '../../../ui/agent/character/intent';
 import type { JobView, SessionPhase } from '../../../agent/core/project-view';
 import type { Locale } from '../../../core/model/locale';
 import { makeJob, makeView, panelProps, renderWithI18n } from '../../_support/agent-panel';
+import { __setSignInRound } from '../../../agent/connection/sign-in-round';
 
 const backing = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -125,7 +126,7 @@ describe('PanelShell: the four zones', () => {
         connected: true,
         now: 0,
         ...VERBS,
-        lane: { task: 'planting the grove', ops: 4, opName: 'plant_forest' },
+        lane: { d1: { task: 'planting the grove', ops: 4, opName: 'scatter_objects' } },
       })}
       />,
     );
@@ -166,18 +167,15 @@ describe('PanelShell: what the job zone shows', () => {
   });
 
   it('walks into setup on Connect, and back out to the rest when the form leaves', () => {
-    const onCollapse = vi.fn();
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS, onCollapse })} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
     expect(getByTestId('setup-screen')).toBeTruthy();
     expect(queryByTestId('dream-office')).toBeNull();
 
-    // Back returns to the rest and no further; putting the panel away is the character's press.
     fireEvent.click(getByTestId('setup-leave'));
     expect(getByTestId('dream-office')).toBeTruthy();
-    expect(onCollapse).not.toHaveBeenCalled();
   });
 
   /**
@@ -287,6 +285,62 @@ describe('PanelShell: what the job zone shows', () => {
     expect(document.activeElement).toBe(getByTestId('setup-key-input'));
   });
 
+  /** A key a sign-in returned is not typed again: its repair is the provider's own page. */
+  it('offers signing in again for a refused key that came from a sign-in, then the refused order once that is done', async () => {
+    const started: string[] = [];
+    let returnKey!: (outcome: { key: string }) => void;
+    __setSignInRound((id) => { started.push(id); return new Promise((resolve) => { returnKey = resolve; }); });
+    const onRepair = vi.fn();
+    const incident = makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'auth', orderAt: 1000 })] });
+    function Standing({ at }: { at: number }) {
+      return <PanelShell {...panelProps({ view: incident, connected: true, now: 0, ...VERBS, onRepair, signIn: { provider: 'openrouter', at } })} />;
+    }
+    const { getByTestId, rerender } = renderWithI18n(<Standing at={500} />);
+    expect(getByTestId('banner').getAttribute('data-cls')).toBe('sign-in-expired');
+    expect((getByTestId('composer-input') as HTMLInputElement).placeholder).toBe(translations.en['agent.composer_blocked_sign_in']);
+    expect(getByTestId('dock-act').textContent).toBe(translations.en['agent.banner_action_sign_in']);
+
+    fireEvent.click(getByTestId('dock-act'));
+    expect(started).toEqual(['openrouter']);
+    expect(onRepair, 'no key is dropped for a sign-in').not.toHaveBeenCalled();
+
+    await act(async () => { returnKey({ key: 'sk-or-v1-renewed' }); });
+    rerender(<Standing at={2000} />);
+    expect(getByTestId('banner').getAttribute('data-cls')).toBe('signed-in-again');
+    expect((getByTestId('composer-input') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(getByTestId('dock-act'));
+    expect(onRepair).toHaveBeenCalledWith('try-again');
+    __setSignInRound(null);
+  });
+
+  it('keeps asking for a key where the refused one was pasted', () => {
+    const { getByTestId } = renderWithI18n(
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'auth', orderAt: 1000 })] }),
+        connected: true, now: 0, ...VERBS, signIn: { provider: 'openrouter' },
+      })}
+      />,
+    );
+    expect(getByTestId('banner').getAttribute('data-cls')).toBe('auth');
+    expect(getByTestId('dock-act').textContent).toBe(translations.en['agent.dock_act_fix_key']);
+  });
+
+  it('says the account is not ready, with the key kept, where the provider asks for the account to be completed', () => {
+    const onRepair = vi.fn();
+    const { getByTestId, getAllByRole } = renderWithI18n(
+      <PanelShell {...panelProps({
+        view: makeView({ phase: 'incident', jobs: [makeJob({ outcome: 'incident', errorCls: 'account' })] }),
+        connected: true, now: 0, ...VERBS, onRepair,
+      })}
+      />,
+    );
+    expect(getByTestId('banner').getAttribute('data-cls')).toBe('account');
+    expect(getByTestId('banner').textContent).toContain(translations.en['agent.banner_account']);
+    expect(getAllByRole('button').map((b) => b.textContent)).not.toContain(translations.en['agent.banner_action_fix_key']);
+    fireEvent.click(getByTestId('dock-act'));
+    expect(onRepair).toHaveBeenCalledWith('try-again');
+  });
+
   /** The gear's door: chrome over the session, so the record goes and the desk keeps its own face. */
   it('puts the manage card in the zone while the gear is lit, and takes it away on Done', () => {
     // A complete connection, so Done has nothing owed and opens the session again.
@@ -334,7 +388,7 @@ describe('PanelShell: what the job zone shows', () => {
   /** Every step of the connection screen has its own verb, and none is an order. */
   it('draws no composer on the connection screen either', () => {
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, onCollapse: () => {}, ...VERBS })} />,
+      <PanelShell {...panelProps({ view: makeView(), connected: false, now: 0, ...VERBS })} />,
     );
     fireEvent.click(getByTestId('dream-connect'));
     expect(getByTestId('setup-screen')).toBeTruthy();
@@ -419,7 +473,7 @@ describe('PanelShell: what the job zone shows', () => {
 
   // The card draws from the job's ask record, so it survives the answer; `view.gate` is the open half.
   it('shows the open gate, and answers it by gateId', () => {
-    const answers: [string, string][] = [];
+    const answers: [string, unknown][] = [];
     const { getAllByTestId } = renderWithI18n(
       <PanelShell {...panelProps({
         view: makeView({

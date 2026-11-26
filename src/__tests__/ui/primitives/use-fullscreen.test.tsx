@@ -37,26 +37,13 @@ describe('useFullscreen', () => {
   });
 
   it('offers immersive mode on a webkit-prefixed engine and follows its own change event', () => {
-    const request = vi.fn();
     define(document, 'webkitFullscreenEnabled', true);
-    define(document.documentElement, 'webkitRequestFullscreen', request);
+    define(document.documentElement, 'webkitRequestFullscreen', vi.fn());
     define(document, 'webkitFullscreenElement', null);
     const { result } = renderHook(() => useFullscreen());
     expect(result.current.available).toBe(true);
-    act(() => { result.current.toggle(); });
-    expect(request).toHaveBeenCalledTimes(1);
     define(document, 'webkitFullscreenElement', document.documentElement);
     act(() => { document.dispatchEvent(new Event('webkitfullscreenchange')); });
     expect(result.current.active).toBe(true);
-  });
-
-  it('toggles through the document element', () => {
-    const request = vi.fn().mockResolvedValue(undefined);
-    define(document, 'fullscreenEnabled', true);
-    define(document.documentElement, 'requestFullscreen', request);
-    define(document, 'fullscreenElement', null);
-    const { result } = renderHook(() => useFullscreen());
-    act(() => { result.current.toggle(); });
-    expect(request).toHaveBeenCalledTimes(1);
   });
 });

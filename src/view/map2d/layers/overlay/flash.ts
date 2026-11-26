@@ -8,6 +8,7 @@ import { FlashPolicy, flashDecay, type ErrorFlashRect, type FlashKind } from '..
 import { splitFlashShapes } from '../../../shared/overlay/ghost-geometry';
 import { mergeCellSpans } from '../../../../core/grid/cell-spans';
 import type { OverlayHost } from './host';
+import { timedBeat } from '../../../shared/viewport/frame-loop';
 import { bodyRect, spanRect } from './paint';
 
 /** The refusal and commit flashes: cells and bodies fading out from a peak. */
@@ -16,7 +17,7 @@ export class OverlayFlashes {
 
   readonly errorGraphics = new PIXI.Graphics();
   readonly commitGraphics = new PIXI.Graphics();
-  private commitAnimId: number | null = null;
+  private stopCommit: (() => void) | null = null;
   /** What shape a cell actually holds, for the flashes. Auto-trim cuts corners, so a flash of flat
    *  squares advertises a result the map does not have. Supplied by the renderer, which owns the
    *  live grid; absent (or for a macro-grid object flash) every cell reads as a plain square. */
@@ -27,7 +28,7 @@ export class OverlayFlashes {
     this.shapeAt = fn;
   }
 
-  private errorAnimId: number | null = null;
+  private stopError: (() => void) | null = null;
 
   /**
    * Shared alpha-fade flash loop (`alpha = peakAlpha·(1 − t²)`, ease-out: fast
@@ -44,7 +45,7 @@ export class OverlayFlashes {
     color: number;
     peakAlpha: number;
     durationMs: number;
-    setAnimId: (id: number | null) => void;
+    setStop: (stop: (() => void) | null) => void;
     onEnd: () => void;
   }): void {
     if (this.host.disposed) { opts.onEnd(); return; }
@@ -55,10 +56,8 @@ export class OverlayFlashes {
     // large region (a whole-shape commit, a big footprint) as per-cell rects
     // would tessellate tens of thousands of rects per frame.
     const spans = mergeCellSpans(plain);
-    const startTime = performance.now();
-    const animate = () => {
-      this.host.requestRender();
-      const t = Math.min((performance.now() - startTime) / durationMs, 1);
+    let ended = false;
+    const stop = this.host.play(timedBeat(durationMs, (t) => {
       const alpha = flashDecay(peakAlpha, t);
       g.clear();
       if (alpha > 0.01) {
@@ -71,21 +70,21 @@ export class OverlayFlashes {
           const block = { bx: c.x * TILE_SIZE + shift.x, by: c.y * TILE_SIZE + shift.y, halfSize: QUADRANT_PX };
           drawTrimmedBlock(g, c.corners as Corners, block, { color, alpha, patchOnly: c.patchOnly });
         }
-        opts.setAnimId(requestAnimationFrame(animate));
-      } else {
-        opts.onEnd();
+        return true;
       }
-    };
-    opts.setAnimId(requestAnimationFrame(animate));
+      ended = true;
+      opts.onEnd();
+      return false;
+    }));
+    if (!ended) opts.setStop(stop);
   }
 
   private readonly policy = new FlashPolicy(() => performance.now());
 
   /** Stop the `kind` flash still fading, the policy's latest-wins. */
   private replace(kind: FlashKind): void {
-    const id = kind === 'error' ? this.errorAnimId : this.commitAnimId;
-    if (id !== null) cancelAnimationFrame(id);
-    if (kind === 'error') { this.errorAnimId = null; this.errorGraphics.clear(); } else this.commitAnimId = null;
+    (kind === 'error' ? this.stopError : this.stopCommit)?.();
+    if (kind === 'error') { this.stopError = null; this.errorGraphics.clear(); } else this.stopCommit = null;
   }
 
   /**
@@ -104,8 +103,8 @@ export class OverlayFlashes {
       color: animConfig.flash.error.color,
       peakAlpha: animConfig.flash.error.peakAlpha,
       durationMs: animConfig.flash.error.durationMs,
-      setAnimId: (id) => { this.errorAnimId = id; },
-      onEnd: () => { this.errorAnimId = null; },
+      setStop: (stop) => { this.stopError = stop; },
+      onEnd: () => { this.stopError = null; },
     });
   }
 
@@ -122,18 +121,19 @@ export class OverlayFlashes {
       color: opts.color ?? defaultColor,
       peakAlpha,
       durationMs,
-      setAnimId: (id) => { this.commitAnimId = id; },
+      setStop: (stop) => { this.stopCommit = stop; },
       onEnd: () => { this.endCommitFlash(); },
     });
   }
 
   private endCommitFlash(): void {
     if (!this.host.disposed) this.commitGraphics.clear();
-    this.commitAnimId = null;
+    this.stopCommit = null;
   }
 
   dispose(): void {
-    for (const id of [this.errorAnimId, this.commitAnimId]) if (id !== null) cancelAnimationFrame(id);
-    this.errorAnimId = this.commitAnimId = null;
+    this.stopError?.();
+    this.stopCommit?.();
+    this.stopError = this.stopCommit = null;
   }
 }

@@ -68,13 +68,13 @@ const ROUTING: { [K in Kind]: FieldTable<K> } = {
     callId: ['fold:pending-gate status, the map-shot footprint, callApproved provenance'],
     summary: ['ui:gate-summary, verbatim in the locale it was asked in'],
     turnSeq: ['record:the occurrence key, same as toolResult.turnSeq; no reader today'],
-    quickAnswers: ['ui:QuickRow pills on the standing ask; the answered card\'s "quick" verdict refinement'],
-    options: ['ui:OptionPick cards; the answered card\'s "picked" verdict refinement'],
+    quickAnswers: ['ui:QuickRow pills on the standing ask', 'fold:the answered ask\'s answeredBy'],
+    options: ['ui:OptionPick cards', 'fold:the answered ask\'s answeredBy and picked'],
   },
   gateAnswered: {
     gateId: ['fold:clears the open gate, files the verdict on its ask'],
     answer: ['ui:the verdict chip', 'fold:skipped/words op status, allowAll'],
-    words: ['ui:the verdict chip\'s quoted word', 'model:echoed back as "(about your request) …"'],
+    words: ['ui:the verdict chip\'s quoted word', 'fold:the answered ask\'s answeredBy and picked', 'model:echoed back as "(about your request) …"'],
   },
   noteRefused: {
     steerSeq: ['fold:drops the refused note from queue and ticket', 'model:the note is never delivered'],
@@ -122,6 +122,7 @@ const ROUTING: { [K in Kind]: FieldTable<K> } = {
     summary: ['ui:the answer paper\'s body and the receipt\'s closing words, as rendered markdown'],
     question: ['ui:the asking dress (spine + quick row) on the settled card', 'fold:celebrate withheld'],
     undoIndex: ['ui:the take-back confirm\'s "n steps, m yours" split'],
+    stoppedBy: ['ui:stop-map-left, the stop card\'s line saying another map was opened'],
   },
   replySuggested: {
     orderSeq: ['fold:binds the optional draft to the latest settled question'],
@@ -150,6 +151,7 @@ const DETAIL_ROUTING: { [F in keyof ToolResultDetail]-?: Routes } = {
   skill: ['ui:the op row\'s skill chip, the playbook stamp, the dock\'s skill name'],
   damper: ['ui:the job\'s damper stamp'],
   repeatRefused: ['fold:governor\'s streak counter must not count a refusal as an attempt', 'record:the run dump shows the refusal honestly'],
+  loopNote: ['ui:the op row\'s chip and detail for a call the loop answered itself'],
   childOps: ['ui:laneRollup — the settled delegate row\'s chip'],
   childError: ['ui:laneRollup\'s "helper stopped" chip'],
   violations: ['ui:the detail well\'s localized rule, translated at the well'],

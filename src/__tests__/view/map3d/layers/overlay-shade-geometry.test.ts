@@ -191,9 +191,11 @@ describe('3D shades: cell-set drapes', () => {
   it('the ghost lays its cells on the grid it is given, half-cell anchors included', () => {
     const gs = state();
     const o = overlayFor(gs);
-    o.showGhost(mixedCellSet('object', [{ x: 10.5, y: 12.5 }, { x: 11.5, y: 12.5 }]), { wash: 'placement', valid: true });
+    o.showGhost(mixedCellSet('object', [{ x: 10.5, y: 12.5 }, { x: 11.5, y: 12.5 }]), { placement: true, valid: false });
     o.flush();
-    expectCovers(macroExtent(gs, lastFill(o), 'object'), { x: 10.5, y: 12.5, w: 2, h: 1 });
+    // The refused wash, ahead of the outline drawn round it.
+    const wash = o.group.children.find((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh)!;
+    expectCovers(macroExtent(gs, wash, 'object'), { x: 10.5, y: 12.5, w: 2, h: 1 });
   });
 
   it('the route drape is on the TERRAIN grid — the maze walls stand there', () => {

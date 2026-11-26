@@ -1,10 +1,16 @@
 /**
  * What a settled tool result says about the map, read from its structured fields only. The governor,
  * the panel projection and the helper rollup all classify results here, never from result prose.
+ * A loop-authored note standing as a result is filed here, so it carries the field its readers ask.
  */
 import type { ToolResultDetail } from './types';
 
 type ResultFields = { write?: boolean; isError: boolean; detail?: ToolResultDetail };
+
+/** A loop-authored note (`nudges.ts`) as the failed result standing where a tool's own answer would be. */
+export function loopNoteResult(content: string, detail: ToolResultDetail = {}): { content: string; isError: true; detail: ToolResultDetail } {
+  return { content, isError: true, detail: { ...detail, loopNote: true } };
+}
 
 /** Whether a write left edits on the map, including the retained part of a partial rollback. */
 export function retainedWrite(result: ResultFields): boolean {

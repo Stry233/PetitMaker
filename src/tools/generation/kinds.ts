@@ -1,9 +1,10 @@
 /**
  * The generation kinds a caller offers (a maze, a letter, a picture, a designed island) as the
- * engine reads them: the algorithm each runs, the input it reads ahead of the run, its ceiling and
- * materials, and the recipe a kind's settings make. Labels, Help pages and geometry stay with the
- * surface that shows them.
+ * engine reads them: the algorithm each runs, the input it reads ahead of the run and the build
+ * capability that input asks for, its ceiling and materials, the knobs it takes, and the recipe a
+ * kind's settings make. Labels, Help pages and geometry stay with the surface that shows them.
  */
+import type { EditionNeed } from '../../platform/build/edition';
 import { RECIPE_RANGES, defaultConfig, type GenerateAlgorithm, type GenerateConfig, type MazeGates, type StencilPlan } from './recipe';
 import { pictureRecipe, type StencilFillKind } from './stencil/fill-recipes';
 import { STENCIL_MIN_SIDE } from './stencil/stencil';
@@ -27,25 +28,59 @@ export interface KindEngine {
   readonly fills: readonly StencilFillKind[];
   /** Whether a run carries entrance and exit marks. */
   readonly gates: boolean;
+  /** Whether the kind's width knob is the corridor width rather than richness. */
+  readonly corridor: boolean;
+  /** Whether the picture's contrast is a knob. */
+  readonly contrast: boolean;
+  /** Whether the object material lays the one item the caller picks. */
+  readonly pickItem: boolean;
+  /** Where the height knob applies: every material, terrain-laying materials only, or none (a
+   *  letter follows its base surface). */
+  readonly elevation: 'always' | 'terrain' | 'none';
 }
 
 const TEXT_FILLS: readonly StencilFillKind[] = ['mountain', 'water', 'object', 'print'];
 const IMAGE_FILLS: readonly StencilFillKind[] = ['mountain', 'water', 'object', 'flora', 'trees', 'road'];
 
+/** A kind built from its recipe alone: no material to pick from, no picture to read. */
+const BUILT = { input: null, fills: [], contrast: false, pickItem: false, elevation: 'always' } as const;
+const STENCIL = { algorithm: 'stencil', maxElevation: RECIPE_RANGES.maxElevation.max.stencil, gates: false, corridor: false } as const;
+
 export const KIND_ENGINE: Readonly<Record<GenerateKind, KindEngine>> = {
-  maze: { algorithm: 'maze', input: null, maxElevation: RECIPE_RANGES.maxElevation.max.maze, fills: [], gates: true },
-  text: { algorithm: 'stencil', input: 'text', maxElevation: RECIPE_RANGES.maxElevation.max.stencil, fills: TEXT_FILLS, gates: false },
-  image: { algorithm: 'stencil', input: 'image', maxElevation: RECIPE_RANGES.maxElevation.max.stencil, fills: IMAGE_FILLS, gates: false },
-  island: { algorithm: 'designed', input: null, maxElevation: RECIPE_RANGES.maxElevation.max.designed, fills: [], gates: false },
+  maze: { ...BUILT, algorithm: 'maze', maxElevation: RECIPE_RANGES.maxElevation.max.maze, gates: true, corridor: true },
+  text: { ...STENCIL, input: 'text', fills: TEXT_FILLS, contrast: false, pickItem: true, elevation: 'none' },
+  image: { ...STENCIL, input: 'image', fills: IMAGE_FILLS, contrast: true, pickItem: false, elevation: 'terrain' },
+  island: { ...BUILT, algorithm: 'designed', maxElevation: RECIPE_RANGES.maxElevation.max.designed, gates: false, corridor: false },
 };
+
+/** The capability a kind's input asks of the build. */
+const INPUT_NEEDS: Readonly<Record<StencilKind, EditionNeed>> = { text: 'letterGeneration', image: 'pictureGeneration' };
+
+/** The build capability a kind's input needs; null for a kind that reads none, offered everywhere. */
+export function kindNeeds(kind: GenerateKind): EditionNeed | null {
+  const { input } = KIND_ENGINE[kind];
+  return input ? INPUT_NEEDS[input] : null;
+}
 
 export function isStencilKind(kind: GenerateKind): boolean {
   return KIND_ENGINE[kind].input !== null;
 }
 
 /** Whether a picture material lays terrain (and so takes the height knob) rather than objects. */
-export function fillLaysTerrain(fill: StencilFillKind): boolean {
+function fillLaysTerrain(fill: StencilFillKind): boolean {
   return pictureRecipe(fill).tiles === null;
+}
+
+/** Whether the kind's material needs the item the caller picks. */
+export function fillTakesItem(kind: GenerateKind, fill: StencilFillKind): boolean {
+  return KIND_ENGINE[kind].pickItem && fill === 'object';
+}
+
+/** Whether the height knob applies to the kind's material. */
+export function fillTakesElevation(kind: GenerateKind, fill: StencilFillKind): boolean {
+  const { elevation } = KIND_ENGINE[kind];
+  if (elevation === 'terrain') return fillLaysTerrain(fill);
+  return elevation === 'always';
 }
 
 /** Checks an explicit region against the workflow's minimum short side; null means the whole map. */

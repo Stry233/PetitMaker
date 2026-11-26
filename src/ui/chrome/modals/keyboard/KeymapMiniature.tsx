@@ -7,7 +7,7 @@
 import { useToolbarContext } from '../../../session/use-toolbar-context';
 import { useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { aliasIndex, bindingIndex } from '../../../../state/keymap/resolve';
+import { aliasIndex, bindingIndex, commandOnCombo } from '../../../../state/keymap/resolve';
 import { useKeybinds } from '../../../../state/keymap/store';
 import { COMMAND_BY_ID } from '../../../../editor/commands/commands';
 import { inkTint } from '../../../design/tokens';
@@ -49,7 +49,7 @@ export function KeymapMiniature({ style }: { style?: CSSProperties }) {
       const width = w * U + (w - 1) * G;
       if (!key.spacer) {
         const combo = comboFor(key, BASE);
-        const cmdId = combo ? (index.get(combo) ?? aliases.get(combo)) : undefined;
+        const cmdId = combo ? commandOnCombo(combo, index, aliases) : undefined;
         const cmd = cmdId ? COMMAND_BY_ID.get(cmdId) : undefined;
         const fill = key.fixed ? inkTint(0.07) : cmd ? CATEGORY_COLOR[cmd.category] : skin.plate;
         keys.push(

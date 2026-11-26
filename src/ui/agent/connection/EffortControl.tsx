@@ -9,6 +9,8 @@ import { roleFont } from '../../design/text-weight';
 import { NOTE_STYLE } from './setup-parts';
 import { effortKey, useAgentConnection } from '../../../agent/boot';
 import { Disclosure } from '../../primitives/Disclosure';
+import { InfoLine } from '../../primitives/InfoLine';
+import { StepSlider } from '../../primitives/StepSlider';
 import type { I18nKey } from '../../../i18n/keys';
 
 const LEVEL_KEYS: Record<string, I18nKey> = {
@@ -50,15 +52,14 @@ function EffortFields({ label, current, count, onPick }: {
   return (
     <div data-testid="manage-effort" aria-hidden={!present || undefined}
       style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label htmlFor="agent-effort" style={{ ...roleFont('label'), color: INK, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ ...roleFont('label'), color: INK, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
         <span>{t('agent.effort_label')}</span><span data-testid="manage-effort-value">{label}</span>
-      </label>
-      <input id="agent-effort" data-testid="manage-effort-slider" type="range" min={0} max={count} step={1}
-        disabled={!present}
-        value={current} aria-valuetext={label}
-        onChange={(e) => { if (present) onPick(Number(e.target.value)); }}
-        style={{ width: '100%', accentColor: INK, margin: 0 }} />
-      <p style={NOTE_STYLE}>{t('agent.effort_hint')}</p>
+      </div>
+      <div data-testid="manage-effort-slider" style={{ display: 'flex' }}>
+        <StepSlider label={t('agent.effort_label')} stops={count + 1} value={current} valueText={label} mark={0}
+          onPick={(value) => { if (present) onPick(value); }} />
+      </div>
+      <p style={NOTE_STYLE}><InfoLine>{t('agent.effort_hint')}</InfoLine></p>
     </div>
   );
 }

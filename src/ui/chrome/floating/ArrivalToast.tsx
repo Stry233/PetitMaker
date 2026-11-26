@@ -12,9 +12,8 @@ import { iconUrl } from '../../../assets/icon-urls';
 import { useT } from '../../../i18n/context';
 import { timedHint } from '../timed-hint';
 import { useEditorStore } from '../../../state/store';
-import type { Arrival, ArrivalLine } from '../../session/arrival-bus';
-import { setArrivalStanding, subscribeArrival } from '../../session/arrival-bus';
-import { declineRestoreOffer } from '../../session/restore-offer';
+import { subscribeArrival, type Arrival, type ArrivalLine } from '../../../editor/session/arrival';
+import { setArrivalStanding } from '../../session/arrival-standing';
 import { shellEngaged, useShellEngaged, useVisitorEngaged } from '../../session/engagement';
 import type { MapTemplate } from '../../../core/model/types';
 import { useChromeLayer } from '../../primitives/chrome-layer';
@@ -26,13 +25,15 @@ import { useGlidingChromeScale, useViewportSize } from '../../design/scale';
 import { useSizeGlide } from '../../primitives/use-size-glide';
 import { useObservedSize } from '../../primitives/use-observed-size';
 import { useRootCssVars } from '../../primitives/use-root-css-vars';
-import { tourSettled } from '../tour/use-tour';
+import { tourSettled } from '../../../state/tour-offer';
 import { usePlanetName } from '../modals/planet/use-planet-library';
 import { ARRIVAL_AIR, ARRIVAL_ROW, ARRIVAL_ROW_VAR, arrivalTop, bandCentre, bandMaxWidth, fromChromePx, toastRow, uprightArrivalTop } from './toast-band';
-import { ARRIVAL_LEAD_KEY, arrivalLines, arrivalNoticeOpens } from './arrival-gate';
+import { ARRIVAL_LEAD_KEY, arrivalLines } from './arrival-lines';
+import { greetingGate } from '../../../state/greetings';
 import { PANEL_EDGE, PLATE, FRAME_INK, MUTED, SURFACE_SECONDARY } from '../../design/tokens';
 import { useInteractionProfiles, useLayoutShape, useTouchMode } from '../../design/input-mode';
 import { useMorph } from '../../primitives/morph';
+import { pressCommand } from '../../../editor/commands/run';
 
 /** Seconds the final line remains visible. */
 const ARRIVAL_AFTER_S = 8;
@@ -172,7 +173,7 @@ const answerStyle: CSSProperties = {
   position: 'relative',
   borderRadius: radii.pill,
   padding: '6px 16px',
-  ...roleFont('menu'),
+  ...roleFont('action'),
   fontFamily: font.family,
   whiteSpace: 'nowrap',
   flex: 'none',
@@ -274,7 +275,7 @@ export function ArrivalCard({ art, eyebrow, name, seq, paused, onOk, onSwitch, m
     const computed = parseFloat(getComputedStyle(el).width);
     setWordsW(Number.isFinite(computed) ? computed : el.offsetWidth);
   }, [measured]);
-  const row = useSizeGlide<HTMLDivElement>(measured, { axis: 'width', motionId: 'notice.resize' });
+  const row = useSizeGlide<HTMLDivElement>({ change: measured, axis: 'width', motionId: 'notice.resize' });
   const profiles = useInteractionProfiles();
   // A finger answers here, so touch mode draws each answer a fingertip tall and the notice's zoom
   // keeps it so on screen (`NoticeBar.tsx:useNoticeZoom`).
@@ -359,7 +360,6 @@ interface ArrivalToastProps {
 
 export function ArrivalToast({ splashActive }: ArrivalToastProps) {
   const t = useT();
-  const setModal = useEditorStore((s) => s.setModal);
   // Subscribed for the retry they trigger rather than for their values: the gate below reads the
   // store live, because the check is deferred past the commit these are read in.
   const tourRunning = useEditorStore((s) => s.tourRunning);
@@ -405,13 +405,8 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
     // are read live in here for the same reason.
     const timer = setTimeout(() => {
       const st = useEditorStore.getState();
-      const open = arrivalNoticeOpens({
-        splashActive,
-        tourRunning: st.tourRunning,
-        whatsNewOpen: st.modals.whatsNew,
-        repairOpen: st.repairSession !== null,
-        tourSettled: tourSettled(),
-      }, shellEngaged());
+      // A greeting standing is withdrawn as soon as the visitor sets to work, so none goes up then.
+      const open = greetingGate(st, { splashActive, tourSettled: tourSettled() }) && !shellEngaged();
       const template = st.gridState?.template;
       if (!open || !template) return;
       seq.current += 1;
@@ -446,14 +441,14 @@ export function ArrivalToast({ splashActive }: ArrivalToastProps) {
    *  the map: whoever presses OK has said this is where they are, and the offer's own path is what
    *  puts it away. The countdown's own press is not an answer and leaves the card alone. */
   const dismiss = useCallback((byClock: boolean) => {
-    if (!byClock) declineRestoreOffer();
+    if (!byClock) pressCommand('session.decline_restore');
     setShown(null);
   }, []);
   const switchPlanet = useCallback(() => {
-    declineRestoreOffer();
+    pressCommand('session.decline_restore');
     setShown(null);
-    setModal('newProject', true);
-  }, [setModal]);
+    pressCommand('app.new');
+  }, []);
 
   const art = shown ? iconUrl(`planet-${shown.template.id}`) : undefined;
   const planetName = usePlanetName(shown?.template);

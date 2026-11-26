@@ -8,9 +8,9 @@ import { describe, it } from 'vitest';
 import { PERF, perfSuite } from './_harness';
 import { SandboxWorld } from '../../editor/sandbox/demo-world';
 import { HELP_SCENES, sceneWorld, type DemoCtx, type DemoView, type HelpScene } from '../../ui/help/figures/scenes';
-import { HELP_PAGES, HELP_PAGE_ORDER } from '../../ui/help/catalog';
-import { searchHelp, __resetHelpSearch } from '../../ui/help/search';
-import { helpFacts } from '../../ui/help/facts';
+import { HELP_PAGES, HELP_PAGE_ORDER } from '../../editor/help/catalog';
+import { searchHelp, __resetHelpSearch } from '../../editor/help/search';
+import { helpFactsAbove, readerFacts } from '../../ui/help/facts';
 import { installHelpTables } from '../_support/locale-tables';
 import { translateFor } from '../../i18n/context';
 import type { Locale } from '../../core/model/locale';
@@ -22,7 +22,7 @@ const s = perfSuite('help');
 /** Every mark a no-op, as in `__tests__/ui/help/catalog.test.ts`. */
 const NO_VIEW: DemoView = {
   clearGhost: () => {}, groupGhost: () => {},
-  paintGhost: () => {}, region: () => {}, route: () => {},
+  region: () => {}, route: () => {},
   marks: () => {}, loadMeter: () => {}, plop: () => {}, poof: () => {}, annotations: () => {},
   spin: () => {}, groupSpin: () => {},
 };
@@ -91,7 +91,7 @@ describe.runIf(PERF)('perf: help', () => {
   });
 
   it('search: cold index build', async () => {
-    await s.bench('search/build', () => { searchHelp('en', 'terrain'); }, {
+    await s.bench('search/build', () => { searchHelp('en', 'terrain', helpFactsAbove); }, {
       setup: () => { __resetHelpSearch(); },
       meta: { pages: HELP_PAGE_ORDER.length },
     });
@@ -104,14 +104,14 @@ describe.runIf(PERF)('perf: help', () => {
       'why does placing', 'how do i undo', 'auto-save', '视角',
     ];
     await s.bench('search/query-20', () => {
-      for (const q of queries) searchHelp('en', q);
+      for (const q of queries) searchHelp('en', q, helpFactsAbove);
     }, { meta: { queries: queries.length } });
   });
 
   it('catalog: resolve every page\'s own title, section and Q&A strings', async () => {
     // `search.ts:buildIndex`'s walk for one locale, without the search blob's English twin.
     function resolveAllPages(locale: Locale): number {
-      const facts = helpFacts(locale);
+      const facts = readerFacts(locale);
       let n = 0;
       for (const id of HELP_PAGE_ORDER) {
         const page = HELP_PAGES[id];
@@ -148,8 +148,8 @@ describe.runIf(PERF)('perf: help', () => {
   });
 
   it('facts: the memoized record every reader receives', async () => {
-    // `helpFacts` caches per locale, so after the first call this is the lookup every reader pays.
-    await s.bench('facts/help-facts-en', () => { helpFacts('en'); });
-    await s.bench('facts/help-facts-zh', () => { helpFacts('zh'); });
+    // `readerFacts` caches per locale, so after the first call this is the lookup every reader pays.
+    await s.bench('facts/help-facts-en', () => { readerFacts('en'); });
+    await s.bench('facts/help-facts-zh', () => { readerFacts('zh'); });
   });
 });

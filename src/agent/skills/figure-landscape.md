@@ -1,23 +1,25 @@
-FIGURE LANDSCAPE — a picture or word drawn INTO the ground: the expert maps carry a heart lake, a paw pond, and a whole "I ♥ ..." banner flooded into a wall top. A figure is the strongest single move a map can make, and the methodology lists it as its own place type (文字/图案景观). One figure is a signature; three are wallpaper.
+Figures in the ground: how land and water are shaped into the design of a place with draw_area. Choose the devices that suit the idea; the user's constraints and existing work come first.
 
-Adapt this reference to the requested area, features and scale. Its examples are optional; keep existing work and explicit constraints. Choose the relevant techniques, not the entire layout.
+With every object taken away, the ground alone should still be a picture. Pick two or three devices for an area, one of them large, and let the rest of the design follow from them.
 
-THE PARAMETRIC SHAPES FIRST: draw_figure lays a heart, ring or crescent as ground water with TRUE symmetry in one call (size 8-48 across), and ringId plants a single-species ring around the outline — use it for every figure it covers, and compose cells by hand only for what it cannot draw (letters, custom marks).
+Devices
+- Terraces: bands of digits rising toward the main sight, each band one level higher and 4 to 8 cells deep, its edge shaped (stepped, bayed, or curved round what it holds) rather than a copy of the band below, and a stair on the axis. Several low terraces read better than one high wall.
+- Stage: a platform one level above its surroundings, a rectangle with stepped corners or an octagon, carrying a court, a pool or a building, with stairs on its axes.
+- Pool with an outline: water whose rows shorten toward the top and the bottom by a cell or two, so that it is an octagon, a round or a stepped shape. A plain rectangle of water is for a frame that calls for one.
+- Island: land left inside a pool, an odd number of cells across so that what stands on it has a middle, reached by a path across water 3 to 5 cells wide.
+- Land in water as a pattern: islands at an even pitch across a pool, or strokes of land that draw a sign.
+- Channels: straight water 2 or 3 cells wide that cuts a field into plots, as a grid between them or as a moat around one. Paths cross a channel 3 wide.
+- Figure and ground exchanged: the same shape used twice in neighbouring places, once as water in land and once as land in water, or once raised and once sunk.
+- Steps of water: pools on successive terraces, each one level lower than the last, lined up on one axis.
 
-THE THREE CANVASES
-- GROUND WATER (easiest): paint_terrain water elevation 0 with shape cells on open grass — no caps needed, any outline works. Best for hearts, rings, crescents, paws at 150-400 cells.
-- FLOODED TERRACE (the banner): build a flat bench (paint_terrain mountain, elev 2-4), then paint the figure as water AT the bench's elevation, keeping every figure cell 1+ cell inside the bench edge — the bench itself is the containment, and the untouched bench cells are the STROKES. Letters read as dry bench standing in water: flood the REGION and leave the letters, not the reverse. This is how the expert wall banner works.
-- FLOWER FIGURE: scatter_objects one species, spacing 0, over composed cells — a colored figure on lawn. Use for small marks (a heart of roses by a door), not billboards.
+Drawing them
+- One drawing holds the ground of the whole area: digits for land levels, "~" for water, "." for ground left alone. Write a long run as its mark and count, "2{26}", rather than counting characters, and keep every row the same length. Water lies at the level of the lowest ground beside it, so a pool drawn inside a terrace of 2s lies in that terrace.
+- Where land and water meet, the one drawn less keeps its drawn shape: an island of one mark in a pool is an island, a channel of two marks through a field is a channel.
+- Keep a ring of the terrace's own digits around a pool on raised ground: water drawn touching lower ground sinks to it. A drawing makes no falls; carve_river begun inside a raised pool carries its water down, framing a fall at each step it crosses.
+- Draw the half or the quarter and mirror it: a figure is exact when it is mirrored.
+- Size figures to read: a stroke 2 or 3 cells thick, a pool at least 6 across, an island 3 or 5 across, a mark of a sign about 7 wide and 9 tall with 2 clear columns between marks.
 
-DRAWING RULES (cells are pixels)
-- Compose on graph logic: pick the bounding rect first (a readable letter needs 5x7 cells minimum, a heart reads from 9x8 up), write the cell list row by row, then ONE paint_terrain shape cells call per figure. For text, 1-cell stroke width at 5x7, 2-cell strokes from 10x14 up; leave 2+ blank columns between letters.
-- SITE IT FOR THE VIEW: a figure is only worth building where it is SEEN — beside the plaza, along the main street, filling a terrace the low ground looks up at. Orient the figure toward the viewpoint (text reads from the south on a north wall).
-- Frame it: a 2-wide paved rim or a single-species edging around the figure's rect separates it from ordinary ground. Inside the frame, nothing else — a figure with decorations on it stops reading.
-- verify with view_map after painting: token grids show the shape, but only the picture tells you whether it READS. Expect one round of cell-level touch-up (paint_terrain / erase_terrain on the miswritten cells).
-
-FAILURE MODES
-- Free-handing letter cells without planning the rect: strokes drift a row and the word breaks. Write the full cell list before the call.
-- A figure at elevation on a slope: the containment fails and the call REVERTS. The canvas bench must be ONE flat elevation first.
-- Competing figures: the map's ONE primary figure gets the size and the framing; any second figure is small, far away, and echoes the first (the heart lake and the paw pond are a rhyme, not rivals).
-
-DONE BAR: the figure names itself at a glance in view_map, stands framed with empty ground inside the frame, and faces the walk that looks at it.
+Then
+- lay_route joins the levels and crosses the water: a stair at each level, one level at a time, and a bridge over each channel.
+- Frame a figure with one paving or one planting on the cells around it and keep it uncluttered.
+- Look once with view_map layer ground after drawing: it shows each level in its own colour and marks every waterfall, which the rendered map shows only as faint shades. Correct miswritten cells with a small drawing.

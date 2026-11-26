@@ -40,6 +40,13 @@ function fold(s: string): string {
   return s.normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+/** Whether `query`, trimmed, stands anywhere in `text`, both folded: a filter that keeps its own
+ *  order and wants no ranking. A blank query matches nothing. */
+export function foldedIncludes(text: string, query: string): boolean {
+  const q = fold(query.trim());
+  return q !== '' && fold(text).includes(q);
+}
+
 /** A "letter or number" in any script, Unicode-property aware — CJK ideographs count, so a run of
  *  them is one word and a space/punctuation boundary is what starts the next. */
 const WORD_CHAR = /[\p{L}\p{N}]/u;

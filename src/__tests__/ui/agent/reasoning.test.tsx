@@ -12,6 +12,7 @@ import { translations } from '../../_support/locale-tables';
 import { append, createLog } from '../../../agent/core/log';
 import { deriveView } from '../../../agent/core/project-view';
 import { REASONING_EXCERPT_CHARS } from '../../../agent/core/types';
+import { STALL_NOTICE_MS } from '../../../agent/limits';
 import { deserializeLog, serializeLog } from '../../../agent/session/log-codec';
 import { AnswerPaper } from '../../../ui/agent/record/AnswerPaper';
 import { DeskHeader } from '../../../ui/agent/desk/DeskHeader';
@@ -124,13 +125,10 @@ describe('the presence counter: the status card says how much has been thought, 
 });
 
 describe('the stall face: past the threshold the status card states the fact', () => {
-  /** The silence, in ms, before the status card reports a stall. */
-  const STALL_MS = 90_000;
-
   it('keeps the thinking face while the silence is inside the threshold', () => {
     const view = thinking({ orderAt: 0, lastEventAt: 60_000 });
     const { getByTestId, queryByTestId } = renderWithI18n(
-      <DeskHeader view={view} now={60_000 + STALL_MS - 1_000} />,
+      <DeskHeader view={view} now={60_000 + STALL_NOTICE_MS - 1_000} />,
     );
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
     expect(queryByTestId('dock-stall-clock')).toBeNull();
@@ -141,7 +139,7 @@ describe('the stall face: past the threshold the status card states the fact', (
     const { getByTestId } = renderWithI18n(<DeskHeader view={view} now={275_000} />);
 
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_still_thinking']);
-    expect(getByTestId('dock-meta').textContent).toBe('nothing received, 2:10');
+    expect(getByTestId('dock-meta').textContent).toBe(translations.en['agent.dock_stall']!.replace('{t}', '2:10'));
     expect(getByTestId('dock-stall-clock').textContent).toBe('2:10');
     // The job clock counts from the order, not from the last event.
     expect(getByTestId('dock-elapsed').textContent).toBe('4:35');
@@ -172,17 +170,13 @@ describe('the stall face: past the threshold the status card states the fact', (
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
   });
 
-  /** With `lastEventAt` frozen, only the unlogged reasoning stream (`useLastActivity`'s live
-   *  signature) can end the stall. */
+  /** With `lastEventAt` frozen, only the session's stamp of the unlogged stream can end the stall. */
   it('returns to the thinking face on a live dribble alone, with the log stamp frozen', () => {
-    const at = (chars: number) => thinking({
-      orderAt: 0, lastEventAt: 0, thought: { chars, turns: 1, marks: [], ms: 0, live: 'r'.repeat(chars) },
-    });
-    const { getByTestId, rerender } = renderWithI18n(<DeskHeader view={at(500)} now={0} />);
-    rerender(<DeskHeader view={at(500)} now={STALL_MS} />);
+    const view = thinking({ orderAt: 0, lastEventAt: 0, thought: { chars: 500, turns: 1, marks: [], ms: 0, live: 'r'.repeat(500) } });
+    const { getByTestId, rerender } = renderWithI18n(<DeskHeader view={view} now={STALL_NOTICE_MS} />);
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_still_thinking']);
 
-    rerender(<DeskHeader view={at(756)} now={STALL_MS} />);
+    rerender(<DeskHeader view={view} now={STALL_NOTICE_MS} liveAt={STALL_NOTICE_MS} />);
     expect(getByTestId('dock-sentence').textContent).toBe(translations.en['agent.dock_thinking']);
   });
 

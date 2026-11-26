@@ -29,6 +29,7 @@ const FIXTURE: BuildChecklist = {
     { layer: 0, blocks: 0, water: 2 },
     { layer: 1, blocks: 10, water: 0 },
   ],
+  placedTotal: 15,
   objectTotal: 23,
   landmarks: [
     { catalogId: 'plaza', name: name('Neighbor Center'), count: 1 },
@@ -42,7 +43,7 @@ describe('buildChecklistText', () => {
   it('prints the exact shape: header, landmarks, per-category sections, roads with cells, terrain a line per layer', () => {
     expect(buildChecklistText(FIXTURE, 'en', t)).toBe(
       [
-        'Into the game: 15 in total',
+        'Map stats: 15 in total',
         '',
         'Fixed buildings (2)',
         '  1x Neighbor Center',
@@ -69,10 +70,10 @@ describe('buildChecklistText', () => {
   it('omits a section entirely when it has nothing, and says so when the whole map is empty', () => {
     const empty: BuildChecklist = {
       groups: FIXTURE.groups.map((g) => ({ ...g, items: [], total: 0 })),
-      roads: [], roadTotal: 0, layers: [], objectTotal: 0, landmarks: [], landmarkTotal: 0, unresolved: 0,
+      roads: [], roadTotal: 0, layers: [], placedTotal: 0, objectTotal: 0, landmarks: [], landmarkTotal: 0, unresolved: 0,
     };
     expect(buildChecklistText(empty, 'en', t)).toBe(
-      ['Into the game: 0 in total', '', 'Nothing on the map yet.'].join('\n'),
+      ['Map stats: 0 in total', '', 'Nothing on the map yet.'].join('\n'),
     );
   });
 

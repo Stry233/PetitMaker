@@ -25,8 +25,8 @@ const SEEDS = [12345, 777, 42, 2026, 7];
 
 /** The pure sculpt for one seed: the three planning stages, then the ground they stand on. */
 function sculptFor(seed: number, template: MapTemplate, richness: number): TerrainSculpt {
-  const { composition, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
-  return sculptTerrain({ template, composition, streets, plan, anchors, seed, richness, ground });
+  const { composition, planet, streets, plan, anchors, ground } = planDesign({ seed, template, richness });
+  return sculptTerrain({ template, composition, planet, streets, plan, anchors, seed, richness, ground });
 }
 
 /** `sculptFor`, sculpted once per (seed, template, richness) for this file. Read-only. */
@@ -63,8 +63,8 @@ describe('the ground is the composition, realized', () => {
 
   it('carves every flight landing at the tier the street plan declared', () => {
     for (const seed of SEEDS) {
-      const { composition, streets, plan, anchors, ground } = planDesign({ seed, template: HEXIA, richness: 1 });
-      const s = sculptTerrain({ template: HEXIA, composition, streets, plan, anchors, seed, richness: 1, ground });
+      const { composition, planet, streets, plan, anchors, ground } = planDesign({ seed, template: HEXIA, richness: 1 });
+      const s = sculptTerrain({ template: HEXIA, composition, planet, streets, plan, anchors, seed, richness: 1, ground });
       for (const flight of streets.flights) {
         for (const landing of flight.landings) {
           for (let y = landing.rect.y; y < landing.rect.y + landing.rect.h; y++) {
@@ -91,8 +91,8 @@ describe('the ground is the composition, realized', () => {
   });
 
   it('honours a lowered ceiling', () => {
-    const { composition, streets, plan, anchors } = planDesign({ seed: 42, template: HEXIA, richness: 1, maxElevation: 3 });
-    const s = sculptTerrain({ template: HEXIA, composition, streets, plan, anchors, seed: 42, richness: 1 });
+    const { composition, planet, streets, plan, anchors } = planDesign({ seed: 42, template: HEXIA, richness: 1, maxElevation: 3 });
+    const s = sculptTerrain({ template: HEXIA, composition, planet, streets, plan, anchors, seed: 42, richness: 1 });
     // The sculptor gets no ceiling of its own: it reads the cap off the plan, so the passes that add a
     // tier (a place's terrace, a door's backing) stay under it.
     expect(s.wall.peak).toBeLessThanOrEqual(3);
@@ -102,8 +102,8 @@ describe('the ground is the composition, realized', () => {
 
   it('never puts water under a building or its doorstep', () => {
     for (const template of [HEXIA, TAFA]) {
-      const { composition, streets, plan, anchors, ground } = planDesign({ seed: 31337, template, richness: 1 });
-      const s = sculptTerrain({ template, composition, streets, plan, anchors, seed: 31337, richness: 1, ground });
+      const { composition, planet, streets, plan, anchors, ground } = planDesign({ seed: 31337, template, richness: 1 });
+      const s = sculptTerrain({ template, composition, planet, streets, plan, anchors, seed: 31337, richness: 1, ground });
       for (const p of anchors.placements) {
         for (const cell of [p.position, p.gate, p.approach]) {
           const i = flatIndex(cell.x, cell.y, template.width);

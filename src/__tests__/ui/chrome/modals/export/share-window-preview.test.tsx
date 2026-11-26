@@ -99,13 +99,13 @@ describe('the share picture across sections', () => {
     await tripAway('Keep working');
   });
 
-  it('keeps the picture when the reader goes Keep working, For a friend, then Into the game for the first time', async () => {
+  it('keeps the picture when the reader goes Keep working, For a friend, then Map stats for the first time', async () => {
     render(<I18nProvider><ShareWindow /></I18nProvider>);
     act(() => { useEditorStore.getState().setModal('share', true); });
     await screen.findByRole('dialog', { name: 'Save and share' });
     fireEvent.click(tab('For a friend'));
     await settled();
-    await tripAway('Into the game');
+    await tripAway('Map stats');
   });
 
   spec('UI-31', 'on an upright screen the picture stands after the reader turns from Keep working to For a friend', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MODE_ROW_LEFT, MODE_ROW_TOP, TOP_RIGHT, TOP_RIGHT_TOP, cornerWidth } from '../../../ui/shell/frame';
-import { planFrame } from '../../../ui/shell/frame-plan';
+import { planFrame, railFoldOf } from '../../../ui/shell/frame-plan';
 import { CHARACTER_SEAT, PANEL_LEFT, PANEL_TOP } from '../../../ui/shell/panel-frame';
 import { EDGE_RIGHT, MODE, PLATE_BAND, SHELF_TABS, ZOOM } from '../../../ui/shell/units';
 import { PLATE_MIN_WIDTH, plateDepth, plateMinDepth } from '../../../ui/shell/controls/layer-plate';
@@ -18,7 +18,7 @@ describe('the landscape PC frame plan places every surface at its fixed anchor',
       expect(p.character, at).toEqual({ left: CHARACTER_SEAT.left, top: CHARACTER_SEAT.top });
       expect(p.cornerTop, at).toBe(TOP_RIGHT_TOP);
       expect(p.panel, at).toEqual({ left: PANEL_LEFT, top: PANEL_TOP });
-      expect(p.bar, at).toEqual({ bottom: 0, height: PLATE_BAND.top, tabsTop: SHELF_TABS.floor });
+      expect(p.bar, at).toEqual({ bottom: 0, height: PLATE_BAND.top, tabsTop: SHELF_TABS.floor, unfold: p.height - Math.max(p.railTop, PANEL_TOP) });
       // The narrowest window draws the right gutter in to keep room for the layer plate.
       if (vw >= 1024) expect(p.edgeRight, at).toBe(EDGE_RIGHT);
       expect(p.cornerLeft, at).toBe(p.width - p.edgeRight - cornerWidth(TOP_RIGHT));
@@ -43,6 +43,20 @@ describe('the landscape PC frame plan places every surface at its fixed anchor',
     for (const [vw, vh] of WINDOWS) {
       expect(planFrame(vw / ZOOM, vh / ZOOM, { ...options, shape: 'landscape', inputMode: 'pc' }))
         .toEqual(planFrame(vw / ZOOM, vh / ZOOM, options));
+    }
+  });
+});
+
+describe('a rail held in a fold', () => {
+  /** A UI-zoom glide plans each frame's room in the fold it lands on, so the column refolds once. */
+  it('stands in the fold it is given in any room, and in its own fold when given that', () => {
+    for (const shape of ['landscape', 'portrait'] as const) {
+      const tall = planFrame(1280 / ZOOM, 1400 / ZOOM, { ...options, shape }).rail;
+      const short = planFrame(1280 / ZOOM, 520 / ZOOM, { ...options, shape }).rail;
+      expect(short.kitFiles, `${shape}: a short room folds the kit`).toBeGreaterThan(tall.kitFiles);
+      const held = planFrame(1280 / ZOOM, 1400 / ZOOM, { ...options, shape, railFold: railFoldOf(short) }).rail;
+      expect(railFoldOf(held)).toEqual(railFoldOf(short));
+      expect(planFrame(1280 / ZOOM, 520 / ZOOM, { ...options, shape, railFold: railFoldOf(short) }).rail).toEqual(short);
     }
   });
 });

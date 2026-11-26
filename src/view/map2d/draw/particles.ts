@@ -8,6 +8,7 @@
 import * as PIXI from 'pixi.js-legacy';
 import { animConfig, easeOutCubic } from '../../shared/motion/anim-config';
 import { isMotionReduced } from '../../../platform/channels/motion-state';
+import type { PlayBeat } from '../../shared/viewport/frame-loop';
 
 /** Concurrent live-particle count across every burst (place + delete). */
 let live = 0;
@@ -40,8 +41,8 @@ const jitter = (i: number): number => {
  */
 export function spawnPuff(
   container: PIXI.Container, cx: number, cy: number, opts: PuffOpts,
-  /** Opens the render window of the renderer the burst lives on. */
-  requestRender: () => void,
+  /** Plays on the frame loop of the renderer the burst lives on. */
+  play: PlayBeat,
 ): void {
   if (isMotionReduced() || opts.count <= 0) return;
   if (live + opts.count > animConfig.puff.globalCap) return; // new-burst-yields
@@ -76,17 +77,22 @@ export function spawnPuff(
   // the object icons; far above them for the delete poof → over the empty spot.
   g.zIndex = opts.behind ? -1 : 9999;
   container.addChild(g);
-  const start = performance.now();
+  let start: number | null = null;
+  let ended = false;
+  const end = (): void => {
+    if (ended) return;
+    ended = true;
+    try { container.removeChild(g); g.destroy(); } catch { /* already gone */ }
+    live = Math.max(0, live - n);
+  };
 
-  const tick = (ts: number) => {
+  // Open-ended: each particle has its own life, and the burst runs while any is alive.
+  play({ step: (now) => {
     // The host can be torn down mid-burst (a view unmounts, a world swaps): destroying the
     // container destroys `g` with it, and a destroyed Graphics has no geometry left to clear.
-    if (g.destroyed) {
-      live = Math.max(0, live - n);
-      return;
-    }
-    requestRender();        // render-on-demand: keep drawing while the puff lives
-    const elapsed = ts - start;
+    if (g.destroyed) { end(); return false; }
+    start ??= now;
+    const elapsed = now - start;
     g.clear();
     let alive = false;
     for (const p of parts) {
@@ -104,13 +110,8 @@ export function spawnPuff(
       const alpha = 1 - pp * pp;
       g.beginFill(opts.color, 0.9 * alpha); g.drawCircle(x, y, r); g.endFill();
     }
-    if (alive) {
-      requestAnimationFrame(tick);
-    } else {
-      try { container.removeChild(g); g.destroy(); } catch { /* already gone */ }
-      live = Math.max(0, live - n);
-    }
-  };
-  requestAnimationFrame(tick);
+    if (!alive) end();
+    return alive;
+  }, settle: end });
 }
 

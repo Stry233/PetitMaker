@@ -10,6 +10,8 @@ import { brandName } from '../i18n/terms/brand';
 import { parseLegalMarkdown, type Inline, type MdNode } from './markdown';
 import { agentProviderDisclosureList, illustrationProviderDisclosureList } from './providers-list';
 import { loadedTable } from '../i18n/translations';
+import { IS_LITE } from '../platform/build/edition';
+import { editionWording } from './edition-wording';
 
 // Canonical repository and generated document sources.
 import LICENSE_SRC from '../../LICENSE?raw';
@@ -46,7 +48,14 @@ export interface DocMeta {
   sourcePath: { en: string; zh: string | null };
   /** Whether the document states an effective date and policy version. */
   dated: boolean;
+  /** The offline edition leaves the document out: About cannot open it there, and its source is empty
+   *  there, so none of its words reach the offline bundle. */
+  lite?: false;
 }
+
+/** A left-out document's source in the offline edition; `IS_LITE ? NOT_CARRIED : ...` at each one lets the
+ *  build drop its text. */
+const NOT_CARRIED = { en: '', zh: null };
 
 /** QQ serves a channel's public page, with its join prompt, at pd.qq.com/g/<channel number>. */
 export const qqChannelPageUrl = (channel: string): string => `https://pd.qq.com/g/${channel}`;
@@ -54,15 +63,17 @@ export const qqChannelPageUrl = (channel: string): string => `https://pd.qq.com/
 /** Each document's own facts; its id and slug come from `DOC_SLUGS`. */
 const DOC_ENTRIES: Record<DocId, Omit<DocMeta, 'id' | 'slug'>> = {
   privacy: {
+    lite: false,
     titleKey: 'legal.doc_privacy',
-    source: { en: PRIVACY_EN_SRC, zh: PRIVACY_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: PRIVACY_EN_SRC, zh: PRIVACY_ZH_SRC },
     sourceKind: 'authored',
     sourcePath: { en: 'src/legal/content/privacy.en.md', zh: 'src/legal/content/privacy.zh.md' },
     dated: true,
   },
   terms: {
+    lite: false,
     titleKey: 'legal.doc_terms',
-    source: { en: TERMS_EN_SRC, zh: TERMS_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: TERMS_EN_SRC, zh: TERMS_ZH_SRC },
     sourceKind: 'authored',
     sourcePath: { en: 'src/legal/content/terms.en.md', zh: 'src/legal/content/terms.zh.md' },
     dated: true,
@@ -89,29 +100,33 @@ const DOC_ENTRIES: Record<DocId, Omit<DocMeta, 'id' | 'slug'>> = {
     dated: false,
   },
   about: {
+    lite: false,
     titleKey: 'legal.doc_about',
-    source: { en: ABOUT_EN_SRC, zh: ABOUT_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: ABOUT_EN_SRC, zh: ABOUT_ZH_SRC },
     sourceKind: 'authored',
     sourcePath: { en: 'src/legal/content/about.en.md', zh: 'src/legal/content/about.zh.md' },
     dated: false,
   },
   security: {
+    lite: false,
     titleKey: 'legal.doc_security',
-    source: { en: SECURITY_EN_SRC, zh: SECURITY_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: SECURITY_EN_SRC, zh: SECURITY_ZH_SRC },
     sourceKind: 'canonical-root',
     sourcePath: { en: 'SECURITY.md', zh: 'docs/SECURITY.zh-CN.md' },
     dated: false,
   },
   contact: {
+    lite: false,
     titleKey: 'legal.doc_contact',
-    source: { en: CONTACT_EN_SRC, zh: CONTACT_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: CONTACT_EN_SRC, zh: CONTACT_ZH_SRC },
     sourceKind: 'authored',
     sourcePath: { en: 'src/legal/content/contact.en.md', zh: 'src/legal/content/contact.zh.md' },
     dated: false,
   },
   changelog: {
+    lite: false,
     titleKey: 'legal.doc_changelog',
-    source: { en: CHANGELOG_EN_SRC, zh: CHANGELOG_ZH_SRC },
+    source: IS_LITE ? NOT_CARRIED : { en: CHANGELOG_EN_SRC, zh: CHANGELOG_ZH_SRC },
     sourceKind: 'canonical-root',
     sourcePath: { en: 'docs/CHANGELOG.md', zh: 'docs/CHANGELOG.zh-CN.md' },
     dated: false,
@@ -158,6 +173,8 @@ function tokensFor(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): Record<strin
     repo: cfg.repoUrl,
     operator: cfg.operatorName[lang],
   };
+  // The offline edition carries only the licences, which use none of the tokens below.
+  if (IS_LITE) return tokens;
   if (id === 'contact') {
     tokens.qqFeedbackChannel = cfg.qqFeedbackChannel;
     tokens.qqFeedbackChannelUrl = qqChannelPageUrl(cfg.qqFeedbackChannel);
@@ -202,7 +219,7 @@ function substituteTokens(src: string, tokens: Record<string, string>): string {
 export function docBody(id: DocId, lang: 'en' | 'zh', cfg: LegalConfig): string {
   const meta = DOCS[id];
   const src = lang === 'zh' ? (meta.source.zh ?? meta.source.en) : meta.source.en;
-  return substituteTokens(src, tokensFor(id, lang, cfg));
+  return substituteTokens(editionWording(src, IS_LITE), tokensFor(id, lang, cfg));
 }
 
 // Root-relative document paths that have a Chinese source.

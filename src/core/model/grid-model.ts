@@ -170,9 +170,18 @@ export function objectDeltasSince(state: Pick<GridState, 'objectsVersion' | 'obj
   return out.reverse();
 }
 
-/** Cache identity for content, layer locks and placement policy. */
+/** The map's edit revision as `cellsVersion:objectsVersion`; `0:0` for no map. Every edit, undo and
+ *  redo moves it, so a value cached against the map's content is current while two strings match.
+ *  The one spelling of it; `mapVersionKey` extends it. */
+export function mapRevisionOf(grid: Pick<GridState, 'cellsVersion' | 'objectsVersion'> | null | undefined): string {
+  return `${grid?.cellsVersion ?? 0}:${grid?.objectsVersion ?? 0}`;
+}
+
+/** The edit revision with what a rule check also reads, the layer locks and the load policy
+ *  (`ignoreChunkLoad`): the key of anything worked out under the rules, such as a preview of an edit;
+ *  a reader of the content alone keys on `mapRevisionOf`. */
 export function mapVersionKey(state: Pick<GridState, 'cellsVersion' | 'objectsVersion' | 'lockedLayers' | 'ignoreChunkLoad'>): string {
-  return `${state.cellsVersion}|${state.objectsVersion}|${[...state.lockedLayers].sort().join(',')}|${state.ignoreChunkLoad ? 1 : 0}`;
+  return `${mapRevisionOf(state)}|${[...state.lockedLayers].sort().join(',')}|${state.ignoreChunkLoad ? 1 : 0}`;
 }
 
 /** Mark a mutation of `state.cells` — the sibling of bumpObjectsVersion, read by

@@ -5,7 +5,9 @@
  * number, and a picture's object URL is released when replaced or when the shelf closes.
  */
 import { KIND_ENGINE, RECIPE_RANGES, newSeed, parseSeed, type GenerateKind, type StencilFillKind } from '../../tools/generation/facts';
-import { releaseStencilImage } from './generate-batch';
+import { forgetStencilImage } from '../../tools/generation/stencil';
+import type { Rotation } from '../../core/model/types';
+import { createSignal } from '../../core/base/signal';
 
 /** What each kind remembers for itself. */
 interface KindMemory {
@@ -23,6 +25,8 @@ interface RecipeState {
   /** The item an object letter is tiled with: the generator's own setting, not the placer's arming. */
   fillItem: string | null;
   contrast: number;
+  /** The map direction a Letter's or Picture's top points, clockwise from north. */
+  facing: Rotation;
   ownText: string | null;
   ownImage: { src: string; name: string } | null;
 }
@@ -30,7 +34,7 @@ interface RecipeState {
 /** The knobs' starting values, in the shelf's own units. */
 interface RecipeDefaults { richness: number; corridorWidth: number; contrast: number }
 
-interface GenerateRecipeController {
+export interface GenerateRecipeController {
   get(): RecipeState;
   subscribe(listener: () => void): () => void;
   setKind(kind: GenerateKind): void;
@@ -42,6 +46,7 @@ interface GenerateRecipeController {
   setCorridorWidth(value: number): void;
   setFillItem(id: string | null): void;
   setContrast(value: number): void;
+  setFacing(facing: Rotation): void;
   /** Files the own card's typed text; whether the card's recipe changed. */
   commitCustom(raw: string): boolean;
   /** Takes a picture the visitor chose, letting the previous one's object URL and decode go. */
@@ -59,6 +64,12 @@ export function recipeElevation(state: RecipeState): number {
   return Math.min(Math.max(state.byKind[state.kind].maxElevation, RECIPE_FLOOR), recipeCeiling(state.kind));
 }
 
+/** Lets go of a picture the visitor replaced: its decode, the plans built from it and its object URL. */
+function releaseStencilImage(src: string): void {
+  forgetStencilImage(src);
+  URL.revokeObjectURL(src);
+}
+
 export function createGenerateRecipe(
   kinds: readonly GenerateKind[], initialKind: GenerateKind, defaults: RecipeDefaults,
 ): GenerateRecipeController {
@@ -69,22 +80,19 @@ export function createGenerateRecipe(
       base: firstSeed, maxElevation: recipeCeiling(kind), fillKind: 'mountain', customSeed: null,
     } satisfies KindMemory])) as Record<GenerateKind, KindMemory>,
     richness: defaults.richness, corridorWidth: defaults.corridorWidth, fillItem: null, contrast: defaults.contrast,
-    ownText: null, ownImage: null,
+    facing: 0, ownText: null, ownImage: null,
   };
-  const listeners = new Set<() => void>();
+  const published = createSignal();
   const set = (next: Partial<RecipeState>) => {
     state = { ...state, ...next };
-    for (const listener of [...listeners]) listener();
+    published.emit();
   };
   const remember = (next: Partial<KindMemory>) =>
     set({ byKind: { ...state.byKind, [state.kind]: { ...state.byKind[state.kind], ...next } } });
 
   return {
     get: () => state,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => { listeners.delete(listener); };
-    },
+    subscribe: (listener) => published.subscribe(listener),
     setKind: (kind) => set({ kind }),
     reroll: () => remember({ base: newSeed() }),
     setMaxElevation: (maxElevation) => remember({ maxElevation }),
@@ -93,6 +101,7 @@ export function createGenerateRecipe(
     setCorridorWidth: (corridorWidth) => set({ corridorWidth }),
     setFillItem: (fillItem) => set({ fillItem }),
     setContrast: (contrast) => set({ contrast }),
+    setFacing: (facing) => set({ facing }),
     commitCustom(raw) {
       if (KIND_ENGINE[state.kind].input === 'text') {
         const next = raw.trim() || null;

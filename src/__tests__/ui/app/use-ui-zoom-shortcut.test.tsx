@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The UI-scale keys have no run body: this always-live listener is what carries them out. It reads
+ * The UI-scale keys are heard by this always-live listener, which runs their commands. It reads
  * their effective bindings, so a rebind has to reach it, and it stays live behind an open modal
  * while still standing aside for a text field.
  */
@@ -73,6 +73,16 @@ describe('the UI-scale listener', () => {
     expect(zoom()).toBeCloseTo(1, 5);
     // The same press away from the field still scales.
     expect(press({ key: 'j' })).toBe(true);
+    expect(zoom()).toBeCloseTo(1.05, 5);
+    field.remove();
+    view.unmount();
+  });
+
+  it('[EDIT-40] answers its chord from a text field, where the chord types nothing', () => {
+    const view = render(<UiZoomShortcut />);
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    expect(press({ key: '=', ctrlKey: true }, field)).toBe(true);
     expect(zoom()).toBeCloseTo(1.05, 5);
     field.remove();
     view.unmount();

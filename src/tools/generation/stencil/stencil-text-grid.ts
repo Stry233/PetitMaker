@@ -1,5 +1,6 @@
 import { simplifyStrokePath } from './stencil-line-path';
 import type { Stencil } from '../recipe';
+import { enclosedPieces, labelComponents } from '../../../core/grid/cell-sets';
 
 type Point = readonly [number, number];
 type Path = readonly Point[];
@@ -26,28 +27,10 @@ const MIN_HEIGHT = 5;
 
 /** Foreground uses corner connectivity; a counter must have no edge-connected route outside. */
 export function textTopology(ink: Uint8Array, width: number, height: number, minimumCounterArea = 0): { pieces: number; counters: number } {
-  const seen = new Uint8Array(ink.length);
-  let pieces = 0, counters = 0;
-  for (let start = 0; start < ink.length; start++) {
-    if (seen[start]) continue;
-    const filled = ink[start]! > 0;
-    const todo = [start];
-    seen[start] = 1;
-    let border = false;
-    for (let head = 0; head < todo.length; head++) {
-      const i = todo[head]!, x = i % width, y = Math.floor(i / width);
-      border ||= x === 0 || y === 0 || x === width - 1 || y === height - 1;
-      for (let d = 0; d < 8; d += filled ? 1 : 2) {
-        const [dx, dy] = NEIGHBORS[d]!, nx = x + dx, ny = y + dy;
-        const j = ny * width + nx;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height || seen[j] || (ink[j]! > 0) !== filled) continue;
-        seen[j] = 1; todo.push(j);
-      }
-    }
-    if (filled) pieces++;
-    else if (!border && todo.length >= minimumCounterArea) counters++;
-  }
-  return { pieces, counters };
+  return {
+    pieces: labelComponents(ink, width, height, true).sizes.length - 1,
+    counters: enclosedPieces(ink, width, height, minimumCounterArea),
+  };
 }
 
 function distanceInside(ink: Uint8Array, w: number, h: number): Float32Array {

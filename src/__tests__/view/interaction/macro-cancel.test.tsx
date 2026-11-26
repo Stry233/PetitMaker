@@ -32,8 +32,8 @@ afterEach(() => {
 function setup() {
   const state = makeState(20, 20), executor = makeExecutor(state);
   useEditorStore.setState({
-    gridState: state, commandExecutor: executor, armingEpoch: 1, region: [], selectingRegion: false,
-    selection: [], layerPinned: false, activeLayer: 1, autoEdgeCut: 'off',
+    gridState: state, commandExecutor: executor, armingEpoch: 1, regions: {}, selectingRegion: false,
+    selection: [], autoEdgeCut: 'off',
     ...armedEditMode({ tool: ToolType.Macro, macro: 'raise', item: null, content: 'mountain' }),
   });
   const manager = new ToolManager(makeStubView(), executor, state, editorToolWiring());
@@ -44,7 +44,7 @@ function setup() {
       clearSelection: vi.fn(), showSelection: vi.fn(), flashCommit: vi.fn() },
     camera: { pan: vi.fn(), zoomBy: vi.fn() }, 
   } as unknown as ActiveView;
-  manager.setActiveTool(ToolType.Macro); useEditorStore.setState({ activeLayer: 1 });
+  manager.setActiveTool(ToolType.Macro);
   registerToolManager(manager); setActiveView(view);
   const answers: Array<() => void> = [];
   manager.getContext().macroContext.offThread = { preview: null, build: (snapshot, id, opts) => {

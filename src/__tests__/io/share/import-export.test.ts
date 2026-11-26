@@ -86,7 +86,7 @@ describe('PetitGlyph raster-first import/export', () => {
       // a plausible-but-different map.
       expect(canonicalBytes(canonicalize(result.state))).toEqual(canonicalBytes(canonicalize(state)));
     } else {
-      // Uncorrectable: decodeGlyph rejects before decodeMapPayload's hash gate (no-payload) or after
+      // Uncorrectable: readGlyph rejects before decodeMapPayload's hash gate (no-payload) or after
       // it (corrupt, decode-failed), and never returns a different map.
       expect(['no-payload', 'corrupt', 'decode-failed']).toContain(result.error.code);
     }

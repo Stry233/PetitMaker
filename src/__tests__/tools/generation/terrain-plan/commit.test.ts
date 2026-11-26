@@ -3,6 +3,7 @@ import { TerrainType } from '../../../../core/model/types';
 import { paintLayer, planToCommands, raiseBottomUp, type RaiseTarget } from '../../../../tools/generation/terrain-plan/commit';
 import type { Command, PaintTerrainCommand, ValidationResult } from '../../../../core/model/types';
 import type { TerrainPlan } from '../../../../tools/generation/terrain-plan/types';
+import { makeScope } from '../../../../tools/generation/terrain-plan/scope';
 
 describe('planToCommands', () => {
   it('emits a PaintTerrain per (type,elevation) layer + nothing for ground', () => {
@@ -34,7 +35,7 @@ describe('planToCommands', () => {
 
   it('region-scopes the cells', () => {
     const plan: TerrainPlan = { width: 4, height: 1, tier: new Int8Array([1, 1, 0, 0]), water: new Int8Array(4).fill(-1) };
-    const cmds = planToCommands(plan, [{ x: 0, y: 0 }]); // only (0,0) in region
+    const cmds = planToCommands(plan, makeScope([{ x: 0, y: 0 }], 4, 1)); // only (0,0) in region
     expect(cmds[0]!.cells).toEqual([{ x: 0, y: 0 }]);
   });
 });
@@ -57,7 +58,7 @@ describe('paintLayer', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('retries a refused batch cell by cell and names each refusal', () => {
+  it('splits a refused batch down to the refused cells and names each refusal', () => {
     const { execute } = recorder((c) => c.cells.some((p) => p.x === 1));
     const refused: number[] = [];
     expect(paintLayer([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }], TerrainType.Mountain, 1, execute, (i) => refused.push(i))).toBe(2);

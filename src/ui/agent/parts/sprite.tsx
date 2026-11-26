@@ -2,10 +2,13 @@
  * Monochrome SVG sprite for the assistant panel, generated from the project's design source. Do not
  * hand-edit path data. Every visible fill and stroke uses `currentColor`; internal masks and even-odd
  * paths create knockouts without introducing a second paint color. `pw-disconnected` represents an
- * unplugged connection, while `pw-cloud-off` represents a connection lost during a run.
+ * unplugged connection, while `pw-cloud-off` represents a connection lost during a run. The marks the
+ * interface's one set already draws (`SET_MARKS`) come from `primitives/line-glyphs.tsx` instead.
  */
 
+import type { ComponentType } from 'react';
 import { MASK_CUT, MASK_KEEP } from '../../design/drawing-palette';
+import { CheckIcon, ChevronIcon, CloseIcon, ExternalLinkIcon, QuestionIcon, WarningIcon } from '../../primitives/line-glyphs';
 
 const SYMBOLS = `
   <symbol id="pw-terrain-raise" viewBox="0 0 24 24"><g transform="translate(1.162 1.093) scale(0.907)"><path d="M 4 19.6 L 9.4 10.6 L 14.8 19.6 Z" fill="currentColor" stroke="currentColor" stroke-width="4.6" stroke-linejoin="round"/><path d="M 15.2 9 L 22 9 L 18.6 2.9 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 18.6 8.4 L 18.6 8.4 Q 20.4 8.4 20.4 10.2 L 20.4 13.4 Q 20.4 15.2 18.6 15.2 L 18.6 15.2 Q 16.8 15.2 16.8 13.4 L 16.8 10.2 Q 16.8 8.4 18.6 8.4 Z" fill="currentColor"/></g></symbol>
@@ -36,23 +39,17 @@ const SYMBOLS = `
   <symbol id="pw-history" viewBox="0 0 24 24"><path d="M 2.6 12 A 9.4 9.4 0 1 1 21.4 12 A 9.4 9.4 0 1 1 2.6 12 Z M 5.7 12 A 6.3 6.3 0 1 0 18.3 12 A 6.3 6.3 0 1 0 5.7 12 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 12 8.3 L 12 12.5 L 15.2 14.3" fill="none" stroke="currentColor" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="pw-region-frame" viewBox="0 0 24 24"><path d="M 3.4 9.2 L 3.4 6.4 Q 3.4 3.4 6.4 3.4 L 9.2 3.4" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 14.8 3.4 L 17.6 3.4 Q 20.6 3.4 20.6 6.4 L 20.6 9.2" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 20.6 14.8 L 20.6 17.6 Q 20.6 20.6 17.6 20.6 L 14.8 20.6" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M 9.2 20.6 L 6.4 20.6 Q 3.4 20.6 3.4 17.6 L 3.4 14.8" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="pw-key" viewBox="0 0 24 24"><g transform="rotate(-38 12 12)"><path d="M 1.6 12 A 5 5 0 1 1 11.6 12 A 5 5 0 1 1 1.6 12 Z M 4.3 12 A 2.3 2.3 0 1 0 8.9 12 A 2.3 2.3 0 1 0 4.3 12 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 11.9 10.6 L 19.7 10.6 Q 21.2 10.6 21.2 12.1 L 21.2 12.1 Q 21.2 13.6 19.7 13.6 L 11.9 13.6 Q 10.4 13.6 10.4 12.1 L 10.4 12.1 Q 10.4 10.6 11.9 10.6 Z" fill="currentColor"/><path d="M 15 12.6 L 15 12.6 Q 16.4 12.6 16.4 14 L 16.4 16 Q 16.4 17.4 15 17.4 L 15 17.4 Q 13.6 17.4 13.6 16 L 13.6 14 Q 13.6 12.6 15 12.6 Z" fill="currentColor"/><path d="M 19.6 12.6 L 19.8 12.6 Q 21.2 12.6 21.2 14 L 21.2 16.8 Q 21.2 18.2 19.8 18.2 L 19.6 18.2 Q 18.2 18.2 18.2 16.8 L 18.2 14 Q 18.2 12.6 19.6 12.6 Z" fill="currentColor"/></g></symbol>
-  <symbol id="pw-link-out" viewBox="0 0 24 24"><path d="M 6.4 6.2 L 14.4 6.2 Q 17.8 6.2 17.8 9.6 L 17.8 17.6 Q 17.8 21 14.4 21 L 6.4 21 Q 3 21 3 17.6 L 3 9.6 Q 3 6.2 6.4 6.2 Z M 13.3 3.4 L 18.6 3.4 Q 21 3.4 21 5.8 L 21 10.7 Q 21 13.1 18.6 13.1 L 13.3 13.1 Q 10.9 13.1 10.9 10.7 L 10.9 5.8 Q 10.9 3.4 13.3 3.4 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 13.3 10.7 L 16.8 7.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><path d="M 14.4 3.2 L 20.9 3.2 L 20.9 9.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
   <symbol id="pw-send" viewBox="0 0 24 24"><g transform="translate(0.804 0.811) scale(0.933)"><path d="M 2.8 11.4 L 21.2 3 L 15.6 21.2 L 11 14.4 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></g></symbol>
   <symbol id="pw-stop" viewBox="0 0 24 24"><path d="M 9.2 4.6 L 14.8 4.6 Q 19.4 4.6 19.4 9.2 L 19.4 14.8 Q 19.4 19.4 14.8 19.4 L 9.2 19.4 Q 4.6 19.4 4.6 14.8 L 4.6 9.2 Q 4.6 4.6 9.2 4.6 Z" fill="currentColor"/></symbol>
   <symbol id="pw-pause" viewBox="0 0 24 24"><path d="M 8.1 4.4 L 8.1 4.4 Q 10.4 4.4 10.4 6.7 L 10.4 17.3 Q 10.4 19.6 8.1 19.6 L 8.1 19.6 Q 5.8 19.6 5.8 17.3 L 5.8 6.7 Q 5.8 4.4 8.1 4.4 Z" fill="currentColor"/><path d="M 15.9 4.4 L 15.9 4.4 Q 18.2 4.4 18.2 6.7 L 18.2 17.3 Q 18.2 19.6 15.9 19.6 L 15.9 19.6 Q 13.6 19.6 13.6 17.3 L 13.6 6.7 Q 13.6 4.4 15.9 4.4 Z" fill="currentColor"/></symbol>
   <symbol id="pw-resume" viewBox="0 0 24 24"><path d="M 7.2 5 L 19.6 12 L 7.2 19 Z" fill="currentColor" stroke="currentColor" stroke-width="3.6" stroke-linejoin="round"/></symbol>
-  <symbol id="pw-check" viewBox="0 0 24 24"><path d="M 5 12.6 L 10 17.6 L 19 7" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="pw-cross" viewBox="0 0 24 24"><path d="M 6.6 6.6 L 17.4 17.4" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M 17.4 6.6 L 6.6 17.4" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="pw-skip-forward" viewBox="0 0 24 24"><path d="M 5 5.8 L 15.4 12 L 5 18.2 Z" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M 18.7 4.8 L 18.7 4.8 Q 20.6 4.8 20.6 6.7 L 20.6 17.3 Q 20.6 19.2 18.7 19.2 L 18.7 19.2 Q 16.8 19.2 16.8 17.3 L 16.8 6.7 Q 16.8 4.8 18.7 4.8 Z" fill="currentColor"/></symbol>
   <symbol id="pw-undo-arrow" viewBox="0 0 24 24"><path d="M 3.59 10.61 A 8.6 8.6 0 1 1 18.78 17.69 L 15.47 15.11 A 4.4 4.4 0 1 0 7.7 11.49 Z" fill="currentColor"/><path d="M 1.76 10.59 L 4.97 17.09 L 9.44 11.95 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></symbol>
   <symbol id="pw-rewind" viewBox="0 0 24 24"><path d="M 12.4 6.2 L 3.6 12 L 12.4 17.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/><path d="M 21.2 6.2 L 12.4 12 L 21.2 17.8 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/></symbol>
   <symbol id="pw-take-back" viewBox="0 0 24 24"><path d="M 4.2 13.6 L 4.2 17.6 Q 4.2 20.4 7 20.4 L 17 20.4 Q 19.8 20.4 19.8 17.6 L 19.8 13.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M 7.4 9.4 L 16.6 9.4 L 12 15.2 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M 12 2.8 L 12 2.8 Q 13.8 2.8 13.8 4.6 L 13.8 8.4 Q 13.8 10.2 12 10.2 L 12 10.2 Q 10.2 10.2 10.2 8.4 L 10.2 4.6 Q 10.2 2.8 12 2.8 Z" fill="currentColor"/></symbol>
-  <symbol id="pw-chevron" viewBox="0 0 24 24"><path d="M 6 9 L 12 15.4 L 18 9" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="pw-drag-handle" viewBox="0 0 24 24"><path d="M 6.6 5.6 A 2 2 0 1 1 10.6 5.6 A 2 2 0 1 1 6.6 5.6 Z" fill="currentColor"/><path d="M 13.4 5.6 A 2 2 0 1 1 17.4 5.6 A 2 2 0 1 1 13.4 5.6 Z" fill="currentColor"/><path d="M 6.6 12 A 2 2 0 1 1 10.6 12 A 2 2 0 1 1 6.6 12 Z" fill="currentColor"/><path d="M 13.4 12 A 2 2 0 1 1 17.4 12 A 2 2 0 1 1 13.4 12 Z" fill="currentColor"/><path d="M 6.6 18.4 A 2 2 0 1 1 10.6 18.4 A 2 2 0 1 1 6.6 18.4 Z" fill="currentColor"/><path d="M 13.4 18.4 A 2 2 0 1 1 17.4 18.4 A 2 2 0 1 1 13.4 18.4 Z" fill="currentColor"/></symbol>
-  <symbol id="pw-warning" viewBox="0 0 24 24"><g transform="translate(-1.56 -1.56) scale(1.13)"><path d="M 10.72 5.26 Q 12 3.0 13.28 5.26 L 20.32 17.64 Q 21.6 19.9 19.0 19.9 L 5.0 19.9 Q 2.4 19.9 3.68 17.64 Z M 12 7.6 Q 10.3 7.6 10.3 9.3 L 10.3 11.2 Q 10.3 12.9 12 12.9 Q 13.7 12.9 13.7 11.2 L 13.7 9.3 Q 13.7 7.6 12 7.6 Z M 10.05 16.15 A 1.95 1.95 0 1 0 13.95 16.15 A 1.95 1.95 0 1 0 10.05 16.15 Z" fill="currentColor" fill-rule="evenodd"/></g></symbol>
   <symbol id="pw-retry-clock" viewBox="0 0 24 24"><g transform="translate(0.82 0.767) scale(0.929)"><path d="M 5.6 13.2 A 6.4 6.4 0 1 1 18.4 13.2 A 6.4 6.4 0 1 1 5.6 13.2 Z M 12 9 L 12 9 Q 12.95 9 12.95 9.95 L 12.95 13.25 Q 12.95 14.2 12 14.2 L 12 14.2 Q 11.05 14.2 11.05 13.25 L 11.05 9.95 Q 11.05 9 12 9 Z M 12 12.35 L 14.5 12.35 Q 15.45 12.35 15.45 13.3 L 15.45 13.3 Q 15.45 14.25 14.5 14.25 L 12 14.25 Q 11.05 14.25 11.05 13.3 L 11.05 13.3 Q 11.05 12.35 12 12.35 Z" fill="currentColor" fill-rule="evenodd"/><path d="M 1.17 15.11 A 11 11 0 0 1 17.5 3.67 L 16.3 5.75 A 8.6 8.6 0 0 0 3.53 14.69 Z" fill="currentColor"/><path d="M 19.41 3.01 L 21.07 7.62 L 16 7.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></g></symbol>
   <symbol id="pw-plug" viewBox="0 0 24 24"><path d="M 9.65 3.2 L 9.65 3.2 Q 11.1 3.2 11.1 4.65 L 11.1 8.15 Q 11.1 9.6 9.65 9.6 L 9.65 9.6 Q 8.2 9.6 8.2 8.15 L 8.2 4.65 Q 8.2 3.2 9.65 3.2 Z" fill="currentColor"/><path d="M 14.35 3.2 L 14.35 3.2 Q 15.8 3.2 15.8 4.65 L 15.8 8.15 Q 15.8 9.6 14.35 9.6 L 14.35 9.6 Q 12.9 9.6 12.9 8.15 L 12.9 4.65 Q 12.9 3.2 14.35 3.2 Z" fill="currentColor"/><path d="M 9.6 9 L 14.4 9 Q 17.6 9 17.6 12.2 L 17.6 13.4 Q 17.6 16.6 14.4 16.6 L 9.6 16.6 Q 6.4 16.6 6.4 13.4 L 6.4 12.2 Q 6.4 9 9.6 9 Z" fill="currentColor"/><path d="M 12 16 L 12 16 Q 13.4 16 13.4 17.4 L 13.4 19.4 Q 13.4 20.8 12 20.8 L 12 20.8 Q 10.6 20.8 10.6 19.4 L 10.6 17.4 Q 10.6 16 12 16 Z" fill="currentColor"/></symbol>
-  <symbol id="pw-question" viewBox="0 0 24 24"><path d="M 7.8 8.4 C 7.8 5.4 9.8 3.9 12.2 3.9 C 14.9 3.9 16.6 5.7 16.6 8 C 16.6 10.6 13.9 11 12.3 12.6 C 12.3 12.6 12.2 13.2 12.2 14.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M 10.2 19.4 A 2 2 0 1 1 14.2 19.4 A 2 2 0 1 1 10.2 19.4 Z" fill="currentColor"/></symbol>
   <symbol id="pw-tick-ok" viewBox="0 0 24 24"><path d="M 4.6 12.8 L 10 18.2 L 19.4 6.6" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="pw-tick-run" viewBox="0 0 24 24"><path d="M 5.1 9.7 L 10.5 9.7 Q 12.8 9.7 12.8 12 L 12.8 12 Q 12.8 14.3 10.5 14.3 L 5.1 14.3 Q 2.8 14.3 2.8 12 L 2.8 12 Q 2.8 9.7 5.1 9.7 Z" fill="currentColor"/><path d="M 12 5.4 L 12 18.6 L 21.2 12 Z" fill="currentColor" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round"/></symbol>
   <symbol id="pw-tick-revert" viewBox="0 0 24 24"><g transform="translate(0.901 0.939) scale(0.915)"><path d="M 3 10.49 A 9.2 9.2 0 1 1 19.25 18.06 L 15.15 14.86 A 4 4 0 1 0 8.09 11.57 Z" fill="currentColor"/><path d="M 1.17 10.49 L 4.81 17.68 L 9.83 12.02 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></g></symbol>
@@ -81,7 +78,8 @@ const SYMBOLS = `
   <symbol id="pw-badge-note" viewBox="0 0 24 24"><path d="M 6.6 3 L 13.8 3 L 20 9.2 L 20 18.4 Q 20 21 17.4 21 L 6.6 21 Q 4 21 4 18.4 L 4 5.6 Q 4 3 6.6 3 Z M 13.8 3 L 13.8 8.1 Q 13.8 9.2 14.9 9.2 L 20 9.2 Z M 8.9 13 L 14.3 13 Q 15.6 13 15.6 14.3 L 15.6 14.3 Q 15.6 15.6 14.3 15.6 L 8.9 15.6 Q 7.6 15.6 7.6 14.3 L 7.6 14.3 Q 7.6 13 8.9 13 Z" fill="currentColor" fill-rule="evenodd"/></symbol>`;
 
 /** Every icon id defined by the sprite, in source order. */
-export type IconId =
+/** The marks the sprite itself draws. */
+type SpriteId =
   | 'pw-terrain-raise'
   | 'pw-terrain-lower'
   | 'pw-water'
@@ -110,23 +108,17 @@ export type IconId =
   | 'pw-history'
   | 'pw-region-frame'
   | 'pw-key'
-  | 'pw-link-out'
   | 'pw-send'
   | 'pw-stop'
   | 'pw-pause'
   | 'pw-resume'
-  | 'pw-check'
-  | 'pw-cross'
   | 'pw-skip-forward'
   | 'pw-undo-arrow'
   | 'pw-rewind'
   | 'pw-take-back'
-  | 'pw-chevron'
   | 'pw-drag-handle'
-  | 'pw-warning'
   | 'pw-retry-clock'
   | 'pw-plug'
-  | 'pw-question'
   | 'pw-tick-ok'
   | 'pw-tick-run'
   | 'pw-tick-revert'
@@ -164,9 +156,28 @@ export function IconSprite() {
   );
 }
 
-/** One glyph, referencing the mounted sprite by id. Colour comes from the caller's `color`, never a
- *  prop here. */
+/** The panel's names for marks the interface's one set draws. */
+const SET_MARKS = {
+  'pw-check': CheckIcon,
+  'pw-cross': CloseIcon,
+  'pw-chevron': ChevronIcon,
+  'pw-question': QuestionIcon,
+  'pw-warning': WarningIcon,
+  'pw-link-out': ExternalLinkIcon,
+} satisfies Record<string, ComponentType<{ size?: number }>>;
+
+export type SetMarkId = keyof typeof SET_MARKS;
+export type IconId = SpriteId | SetMarkId;
+
+const isSetMark = (id: IconId): id is SetMarkId => id in SET_MARKS;
+
+/** One glyph: a set mark drawn by `primitives/line-glyphs.tsx`, else the mounted sprite's symbol by id.
+ *  Colour comes from the caller's `color`, never a prop here. */
 export function Icon({ id, size = 15 }: { id: IconId; size?: number }) {
+  if (isSetMark(id)) {
+    const Mark = SET_MARKS[id];
+    return <Mark size={size} />;
+  }
   return (
     <svg className="i" width={size} height={size} aria-hidden="true">
       <use href={`#${id}`} />

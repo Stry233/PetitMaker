@@ -7,23 +7,22 @@ import { AskPrimary } from './GateBlock';
 import { Icon } from '../parts/sprite';
 import { ModelProse } from '../parts/model-prose';
 import { OpsList } from './OpRow';
-import { buildHistory } from '../derive/build-history';
-import { useHeightTransition } from '../../primitives/use-height-transition';
+import { buildHistory, type JobView, type TakeBackFacts, takeBackStanding } from '../../../agent/panel';
+import { useSizeGlide } from '../../primitives/use-size-glide';
 import { useViewportEpoch } from '../../primitives/use-viewport-epoch';
 import { edge, POSTCARD } from '../panel-skin';
 import { font, radii } from '../../design/styles';
 import { cssMotion } from '../../design/motion';
-import { rewindConfirmCopy, rollbackCost, rollbackReaches } from '../derive/rollback';
+import { AT_REST, rewindConfirmCopy, takeBackControl } from '../derive/rollback';
 import { ConfirmPill } from '../parts/ConfirmPill';
 import { RewindSquare } from '../parts/RewindSquare';
 import { INK } from '../../design/tokens';
 import { roleFont } from '../../design/text-weight';
 import { useT } from '../../../i18n/context';
-import type { JobView } from '../../../agent/panel';
 import type { Translate } from '../../../i18n/keys';
 import {
   CARD_FLOOR, COMPACT_FLOOR, FACE, FOOT, HEAD_STAMP, HEADLINE, ON_MAP, OutcomeStamp, SPACER, StatRow, StepList,
-  stageFigure, statsOf, stepName, SUMMARY, THOUGHT_TOTAL, thoughtLine, type Checkpoint, type StepRow,
+  stageFigure, statsOf, stepName, SUMMARY, THOUGHT_TOTAL, thoughtLine, type StepRow,
 } from './ticket-parts';
 
 /* ── the flip family: done, done at the cap, the compact settle ── */
@@ -34,7 +33,7 @@ export function FlipTicket({
   compact = false,
   archiveStamp,
   rolledBack = false,
-  undoDepth,
+  takeBack = AT_REST,
   onRewind,
   onRewindAll,
   onFileAway,
@@ -49,10 +48,10 @@ export function FlipTicket({
   archiveStamp?: string;
   /** Whether the job's edits are absent from the map. */
   rolledBack?: boolean;
-  /** Live undo depth used to calculate rewind cost; absence produces unnumbered confirmation copy. */
-  undoDepth?: number;
-  /** Rewinds to the selected checkpoint watermark. */
-  onRewind?: (checkpoint: Checkpoint) => void;
+  /** The live facts each take-back is read against; with no live depth the question carries no number. */
+  takeBack?: TakeBackFacts;
+  /** Rewinds to the job's checkpoint at this index. */
+  onRewind?: (job: JobView, checkpointIndex: number) => void;
   /** Rewinds the whole job after confirmation. */
   onRewindAll?: () => void;
   /** Files the record into history. */
@@ -67,7 +66,6 @@ export function FlipTicket({
   const [sent, setSent] = useState(false);
   /** Checkpoint index awaiting confirmation, used to preview every discarded later row. */
   const [askingStep, setAskingStep] = useState<number | null>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
   const frontFlipRef = useRef<HTMLButtonElement>(null);
   const backFlipRef = useRef<HTMLButtonElement>(null);
   const transferFocus = useRef(false);
@@ -75,11 +73,9 @@ export function FlipTicket({
   const stats = statsOf(job);
   const history = buildHistory(job);
   const thoughtTotal = thoughtLine(job, t);
-  const canRewind = Boolean(onRewind) && !rolledBack;
-  /** Whole-job rewind cost for confirmation copy. */
-  const wholeCopy = rewindConfirmCopy(t, job.checkpoints[0]
-    ? rollbackCost(job.checkpoints[0].undoIndex, undoDepth, job.endUndoIndex)
-    : null);
+  /** The whole-job take-back, offered beside the per-step ones. */
+  const whole = onRewind && onRewindAll ? takeBackControl(takeBackStanding(job, 'whole', takeBack)) : null;
+  const wholeCopy = rewindConfirmCopy(t, whole?.cost ?? null);
   /** Read-only jobs with no checkpoint retain a single face. */
   const hasBack = job.checkpoints.length > 0 || job.ops.some(op => !op.isRead);
   /** Capped ledger reports plan stages rather than low-level checkpoints. */
@@ -94,7 +90,7 @@ export function FlipTicket({
   const storyKey = rolledBack ? 'agent.ticket_what_taken_back' : 'agent.ticket_how_built';
 
   const viewport = useViewportEpoch();
-  useHeightTransition(innerRef, { motionId: 'panel.height', resetKey: viewport });
+  const { ref: innerRef } = useSizeGlide<HTMLDivElement>({ axis: 'height', motionId: 'panel.height', resetKey: viewport });
 
   useLayoutEffect(() => {
     if (!transferFocus.current) return;
@@ -282,7 +278,7 @@ export function FlipTicket({
             key={`steps-${String(flipped)}`}
             testId="ticket-step"
             rows={stepRows({
-              job, t, history, canRewind, rolledBack, askingStep, ...(undoDepth !== undefined ? { undoDepth } : {}), onAsk: setAskingStep,
+              job, t, history, takeBack, rolledBack, askingStep, onAsk: setAskingStep,
               ...(onRewind ? { onRewind } : {})
             })}
           />
@@ -290,10 +286,11 @@ export function FlipTicket({
           <div style={FOOT}>
             {flipButton('back')}
             <span style={SPACER} />
-            {canRewind && onRewindAll && (
+            {whole && onRewindAll && (
               <ConfirmPill
                 key={`rewind-all-${String(flipped)}`}
                 testId="ticket-rewind-all"
+                disabled={whole.busy}
                 title={wholeCopy.confirmLabel}
                 {...(wholeCopy.question !== wholeCopy.confirmLabel ? { message: wholeCopy.question } : {})}
                 actLabel={t('agent.ticket_rewind_all')}
@@ -313,20 +310,19 @@ export function FlipTicket({
 }
 
 /** The back face's steps: each checkpoint, its ops, and a take-back where one would pop something. */
-function stepRows({ job, t, history, canRewind, rolledBack, askingStep, undoDepth, onAsk, onRewind }: {
+function stepRows({ job, t, history, takeBack, rolledBack, askingStep, onAsk, onRewind }: {
   job: JobView;
   t: Translate;
   history: ReturnType<typeof buildHistory>;
-  canRewind: boolean;
+  takeBack: TakeBackFacts;
   rolledBack: boolean;
   /** The step whose take-back is asking; it and every later step preview as discarded. */
   askingStep: number | null;
-  undoDepth?: number;
   onAsk(step: number | null): void;
-  onRewind?(checkpoint: Checkpoint): void;
+  onRewind?(job: JobView, checkpointIndex: number): void;
 }): StepRow[] {
   return job.checkpoints.map((checkpoint, i) => {
-    const offers = canRewind && rollbackReaches(checkpoint.undoIndex, undoDepth);
+    const offers = onRewind ? takeBackControl(takeBackStanding(job, i, takeBack)) : null;
     return {
       name: stepName(job, checkpoint, i, t),
       ...(history.steps[i]?.length ? { details: <OpsList ops={history.steps[i]!} /> } : {}),
@@ -339,9 +335,10 @@ function stepRows({ job, t, history, canRewind, rolledBack, askingStep, undoDept
               testId="ticket-step-rewind"
               label={t('agent.ticket_rewind')}
               actLabel={t('agent.ticket_rewind')}
-              cost={rollbackCost(checkpoint.undoIndex, undoDepth, job.endUndoIndex)}
+              cost={offers.cost}
+              busy={offers.busy}
               onAskChange={(asking) => onAsk(asking ? i : null)}
-              onConfirm={() => onRewind?.(checkpoint)}
+              onConfirm={() => onRewind?.(job, i)}
             />
           </span>
         ),

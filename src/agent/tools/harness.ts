@@ -1,10 +1,11 @@
 /**
- * Tools about the job rather than the map: the plan, replies and export the user sees, skills,
+ * Tools about the job rather than the map: the plan, replies the user sees, skills,
  * delegation, and the job's own history. The protocol tools (`core/protocol.ts`) have no `run`: the
  * loop or the executor answers them, and they are declared here so the model is offered them.
  */
 import { SKILLS, type AgentSkill } from '../skills';
 import { TOOL_DEFAULTS } from './defaults';
+import { corners } from './geometry';
 import { int, list, obj, oneOf, req, str } from './schema';
 import { defineTool } from './spec';
 
@@ -15,22 +16,6 @@ export const updatePlanTool = defineTool({
     completedStages: int({ min: 0, description: 'Number of consecutive completed stages in the existing plan. Send without stages; verify existing work before marking it complete.' }),
   }),
   access: 'read',
-  // The plan is the parent's progress surface in the panel header, which a helper would clobber.
-  parentOnly: true,
-});
-
-export const exportMapTool = defineTool({
-  description: "Open the export flow for the user to save their map: kind 'image' (a shareable PNG with the visible share-code band) or 'json' (the sectioned project file). This opens the export dialog for the user to confirm and download — you do not receive the file. Use only when the user asks to export, save, or share their map.",
-  input: obj({ kind: req(oneOf(['image', 'json'])) }),
-  access: 'read',
-  parentOnly: true,
-  run(deps, { kind }) {
-    if (!deps.requestExport) {
-      return { isError: true, content: 'Export is only available in the live editor, not in this context.' };
-    }
-    deps.requestExport(kind);
-    return { isError: false, content: `Opened the ${kind === 'json' ? 'JSON project' : 'share image'} export dialog for the user to review and download.` };
-  },
 });
 
 export const suggestReplyTool = defineTool({
@@ -38,21 +23,18 @@ export const suggestReplyTool = defineTool({
   description: "When your closing message leaves ONE obvious next step (a yes/no offer, a single natural follow-up), call this with the short reply the user would most likely send, in the user's own language. It appears as a one-tap suggestion inside their reply box, which shows about 30 characters in a Latin script and about 15 in Chinese, Japanese or Korean and simply cuts off what does not fit — so keep it to a few words. Skip it whenever the next step is genuinely open.",
   input: obj({ reply: req(str({ description: 'The predicted user reply, verbatim-sendable. A few words: ~30 Latin characters, ~15 CJK.' })) }),
   access: 'read',
-  parentOnly: true,
 });
 
-/** The skill catalogue as list_skills answers it: methods first, then style set pieces. */
+/** The skill catalogue as list_skills answers it: methods first, then style set pieces, a kind with no skill left out. */
 function listSkills(): string {
-  const methods = Object.entries(SKILLS).filter(([, s]) => s.kind === 'method');
-  const styles = Object.entries(SKILLS).filter(([, s]) => s.kind === 'style');
-  const fmt = ([name, s]: [string, AgentSkill]) => `- ${name}: ${s.description}`;
+  const group = (header: string, kind: AgentSkill['kind']): string[] => {
+    const rows = Object.entries(SKILLS).filter(([, s]) => s.kind === kind).map(([name, s]) => `- ${name}: ${s.description}`);
+    return rows.length > 0 ? [[header, ...rows].join('\n')] : [];
+  };
   return [
-    'METHOD skills (transferable craft, compose with any request):',
-    ...methods.map(fmt),
-    '',
-    'STYLE set pieces (reference layouts for specific aesthetics):',
-    ...styles.map(fmt),
-  ].join('\n');
+    ...group('METHOD skills (transferable craft, compose with any request):', 'method'),
+    ...group('STYLE set pieces (reference layouts for specific aesthetics):', 'style'),
+  ].join('\n\n');
 }
 
 export const listSkillsTool = defineTool({
@@ -74,17 +56,24 @@ export const loadSkillTool = defineTool({
   },
 });
 
+const briefItems = (description: string) => list(str(), { maxItems: 8, description });
+
 /** The helper this spawns runs its own writes in a fresh context, so this one approval covers that
  *  whole burst and is the only place a user in checkpoint oversight can decline it. */
 export const delegateTaskTool = defineTool({
-  description: 'Spawn a focused sub-agent with a FRESH context to execute one well-scoped build task, and get back its summary. Use for big requests: split them into independent parts (e.g. "terrain the north hills", "build the village at (40,60)-(70,90)", "decorate the lakeshore") and delegate each. The sub-agent sees the live map but NOT this conversation — the task text must be self-contained (locations, sizes, style). While it works, the panel names it by `label` if you gave one, else by the first line of `task` — so give a short `label` whenever `task` runs longer than a few words.',
+  description: 'Hand one region of a job of several regions to a helper: a sub-agent with a fresh context that builds on the same map and sees none of this conversation, so the brief must say everything it needs. Build the shared ground and paths yourself first. The helper edits only inside x1,y1..x2,y2 (inclusive corners, cut to the user\'s region when one is set) and cannot undo. A region of at most 1600 cells with no side over 56 is one place, built by a helper. A larger one, up to 72 on a side, is a district: it goes to a lead of its own, who plans it and briefs helpers for its places. Helpers briefed in the same turn work at the same time, so brief every region that is ready in one turn and give them bounds that do not overlap. The result gives a status (done, partial, capped or failed), how many write calls landed and how many were refused or reverted, what the region gained or lost, and the helper\'s report. Read it instead of inspecting the region again, and look only where it names a problem.',
   input: obj({
-    task: req(str({ description: 'Complete, self-contained instructions incl. coordinates/area and desired style.' })),
-    label: str({ description: "Optional short name (a few words, e.g. \"north grove\") shown in the panel while the helper works. Omit only when task already reads as one." }),
+    label: str({ description: 'Short name shown to the user while the helper works, a few words, e.g. "north grove".' }),
+    ...corners,
+    goal: str({ description: 'The idea of the whole place in a sentence, then what this region is and the one thing that makes it memorable.' }),
+    include: briefItems('What must be there, one short phrase each.'),
+    preserve: briefItems('What must be kept as it is, one short phrase each.'),
+    interfaces: str({ description: 'How the region meets its neighbours: entry cells, the ground level at its edges.' }),
+    skills: list(oneOf(() => Object.keys(SKILLS)), { maxItems: 3, description: 'Skills the helper loads before it builds.' }),
+    done: briefItems('Completion checks, one short phrase each.'),
   }),
   access: 'wide',
-  // Delegation depth is capped at one.
-  parentOnly: true,
+  example: 'label: "north grove", x1: 10, y1: 10, x2: 30, y2: 24, goal: "An oak grove around a small clearing."',
 });
 
 const historySteps = int({ min: 1, max: 10 });

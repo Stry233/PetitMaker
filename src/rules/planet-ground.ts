@@ -10,6 +10,7 @@ import { definePreRule } from './define';
 
 export const planetGroundRule = definePreRule({
   id: 'V-PLANET-01',
+  description: 'While a planet is being shaped, the ground under a placed object keeps its zone: move or remove the object before reshaping the ground beneath it.',
   appliesTo: [CommandType.PaintTerrain, CommandType.EraseTerrain],
   validate(cmd, state, fail) {
     if (cmd.ground === undefined) return [];

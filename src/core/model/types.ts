@@ -11,6 +11,7 @@
 
 import type { ProvenanceState } from '../provenance/types';
 import type { AnnotationsState } from './annotations';
+import type { PlacedGroup } from './placed-group';
 import type { GridCell, GridId } from '../grid/grids';
 import type { LocalizedName } from './locale';
 import type { Rect } from '../grid/rect';
@@ -277,6 +278,9 @@ export interface GridState extends MapSessionFields {
   /** The plan-notes annotation layer (zones, texts, route arrows) plus its own eye/lock state.
    *  Saves and PetitGlyph payloads carry it separately from the canonical terrain/object map. */
   annotations?: AnnotationsState;
+  /** The placed blueprints kept as groups (`placed-group.ts`). Saves carry them; share codes, exports
+   *  and the canonical map never do. Changed only through `Stroke.setGroups`, so undo restores them. */
+  groups?: readonly PlacedGroup[];
 }
 
 /** The recipe of the map's last full generation. Core stores it without reading it: its shape is the
@@ -415,6 +419,9 @@ export interface Refusal { cmd: Command; errors: ValidationError[]; }
  */
 export interface PreCommandRule {
   id: string;
+  /** What the rule requires, in plain English for any reader: the one statement of it, which
+   *  changes with the rule. */
+  description: string;
   phase: 'pre-command';
   appliesTo: CommandType[];
   resolve?(cmd: Command, state: GridState): Command;
@@ -436,6 +443,8 @@ export interface StrokeScope {
  */
 export interface PostStrokeRule {
   id: string;
+  /** What the rule requires, as `PreCommandRule.description`. */
+  description: string;
   phase: 'post-stroke';
   /** `opts.firstOnly` asks for a yes/no answer: return on the first violation
    *  found. The auto-revert loop re-validates once per undone command, so the

@@ -47,7 +47,7 @@ const t = (key: TextKey, params?: Record<string, string | number>) => translate(
 
 function mount() {
   return render(
-    <Shell onRestoreSession={() => {}}><div data-testid="map-views" /></Shell>,
+    <Shell><div data-testid="map-views" /></Shell>,
     { wrapper: ({ children }) => <I18nProvider>{children}</I18nProvider> },
   );
 }
@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => { stopPlanetEditing(); });
+  act(() => { stopPlanetEditing({ discard: true }); });
   host.camera.takeQueued();
   useKeybinds.getState().resetAll();
   cleanup();
@@ -96,8 +96,8 @@ afterEach(() => {
 });
 
 describe('the session modes', () => {
-  it('are mountain, water and object in the session and all five otherwise', () => {
-    expect(sessionModes(null)).toEqual(['object', 'road', 'mountain', 'water', 'generate']);
+  it('are mountain, water and object in the session and all six otherwise', () => {
+    expect(sessionModes(null)).toEqual(['object', 'road', 'mountain', 'water', 'blueprint', 'generate']);
     enter();
     expect(sessionModes(store().planetSession)).toEqual(['mountain', 'water', 'object']);
   });
@@ -148,7 +148,7 @@ describe('the reduced shell', () => {
     mount();
     enter();
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Open menu' })).toHaveLength(1));
-    act(() => { stopPlanetEditing(); store().setModal('newProject', false); });
+    act(() => { stopPlanetEditing({ discard: true }); store().setModal('newProject', false); });
     // The session's corner leaves after its exit motion, while the map's corner already stands.
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Open menu' })).toHaveLength(1));
     fireEvent.click(button('Open menu'));
@@ -177,7 +177,7 @@ describe('the reduced shell', () => {
     expect(layerNumbersShown(store())).toBe(true);
     enter();
     expect(layerNumbersShown(store())).toBe(false);
-    act(() => { stopPlanetEditing(); });
+    act(() => { stopPlanetEditing({ discard: true }); });
     expect(layerNumbersShown(store())).toBe(true);
     act(() => { store().setShowLayerNumbers(false); });
   });

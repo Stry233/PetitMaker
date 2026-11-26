@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js-legacy';
+import { holdFailedImage } from '../../../platform/async/art-retry';
 import { sampleIconRGB } from '../../shared/icon/icon-sampling';
 
 const _iconTexCache = new Map<string, PIXI.Texture>();
@@ -31,6 +32,18 @@ function steppedDownscale(img: HTMLImageElement | HTMLCanvasElement, target: num
   return out;
 }
 
+/** Hands a texture's picture to the next retry each time its load fails; the retry loads it into the
+ *  same texture, so every sprite already built on it fits itself when the picture lands. */
+const heldOnFailure = new WeakSet<PIXI.BaseTexture>();
+function holdOnFailure(base: PIXI.BaseTexture): void {
+  if (heldOnFailure.has(base) || base.valid) return;
+  heldOnFailure.add(base);
+  const resource = base.resource as unknown as { source?: unknown; load?: () => Promise<unknown> } | null;
+  // Pixi rejects its load promise on a failure, which the retry outlives.
+  resource?.load?.().catch(() => {});
+  base.on('error', () => { if (resource?.source instanceof HTMLImageElement) holdFailedImage(resource.source); });
+}
+
 /** Bumped whenever an icon's cache entry is ASYNC-swapped to its downscaled LOD texture (image
  *  decode lands after getIconTexture returned the raw fallback). Skip-if-unchanged consumers
  *  (ObjectLayer.updateLod) must include this in their gate or they pin the raw texture forever. */
@@ -52,6 +65,7 @@ export function getIconTexture(url: string, targetPx = 256): PIXI.Texture {
   let tex = _iconTexCache.get(key);
   if (!tex) {
     const raw = PIXI.Texture.from(url);
+    holdOnFailure(raw.baseTexture);
     _iconBaseByUrl.set(url, raw);
     raw.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
     raw.baseTexture.anisotropicLevel = 8;

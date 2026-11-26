@@ -48,6 +48,7 @@ export function chunkLoadViolations(
 
 export const chunkLoadRule = definePreRule({
   id: RULE_ID,
+  description: `When regional load enforcement is on, each region may carry at most ${CHUNK_LOAD_LIMIT}.`,
   appliesTo: [CommandType.PlaceObject],
   validate(cmd, state, _fail, scope) {
     if (!isChunkLoadEnforced(state) || cmd.object.patchOnly) return [];

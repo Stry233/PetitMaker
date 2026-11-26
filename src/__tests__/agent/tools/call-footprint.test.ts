@@ -23,6 +23,13 @@ describe('the cells a gated call is about', () => {
       .toEqual({ origin: { x: 7, y: 7 }, width: 1, height: 1 });
   });
 
+  it('reads a shape drawn as rows of text as the box of its marked cells', () => {
+    expect(callFootprint({ shape: 'picture', x1: 10, y1: 20, picture: ['..#..', '.###.', '.....'] }))
+      .toEqual({ origin: { x: 11, y: 20 }, width: 3, height: 2 });
+    expect(callFootprint({ x1: 4, y1: 6, x2: 9, y2: 8, picture: [] }))
+      .toEqual({ origin: { x: 4, y: 6 }, width: 6, height: 3 });
+  });
+
   it('names no rectangle where the arguments name no place, so the card shows no box', () => {
     expect(callFootprint(undefined)).toBeUndefined();
     expect(callFootprint({})).toBeUndefined();
