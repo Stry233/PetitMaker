@@ -4,6 +4,10 @@ All notable changes to PetitMaker are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1185] - 2026-11-26
+
+_No user-facing changes._
+
 ## [2.1.1178] - 2026-11-25
 
 ### Added

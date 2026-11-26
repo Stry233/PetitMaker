@@ -108,9 +108,14 @@ export function assetSizes(dir: string): AssetSizes {
   return Object.fromEntries(Object.entries(sizes).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+/** The largest file the production hosts take: Cloudflare Workers static assets and ESA Pages each
+ *  refuse a deployment holding a file over 25 MiB, which a local, CI or dev-site build never meets. */
+export const HOST_FILE_LIMIT = 25 * 1024 * 1024;
+
 /** Writes `ASSET_SIZES_FILE` over the final web build output and serves it in development, where
- *  the paths are the source tree's (`src/assets/...`) and the public folder's. */
-export function assetSizeManifest(): Plugin {
+ *  the paths are the source tree's (`src/assets/...`) and the public folder's. The build fails on a
+ *  file over `fileLimit`, so an oversized asset stops here rather than at a host's deploy. */
+export function assetSizeManifest({ fileLimit = HOST_FILE_LIMIT }: { fileLimit?: number } = {}): Plugin {
   let outDir = 'dist';
   let root = process.cwd();
   let publicDir = '';
@@ -138,7 +143,13 @@ export function assetSizeManifest(): Plugin {
       // After every other writer, the moderation folder's move included.
       order: 'post',
       handler() {
-        writeFileSync(join(outDir, ASSET_SIZES_FILE), JSON.stringify(assetSizes(outDir)));
+        const sizes = assetSizes(outDir);
+        const over = Object.entries(sizes).filter(([, size]) => size > fileLimit);
+        if (over.length > 0) {
+          const list = over.map(([path, size]) => `${path} (${(size / 1048576).toFixed(1)} MiB)`).join(', ');
+          throw new Error(`Files over the hosts' ${(fileLimit / 1048576).toFixed(0)} MiB limit: ${list}`);
+        }
+        writeFileSync(join(outDir, ASSET_SIZES_FILE), JSON.stringify(sizes));
       },
     },
   };

@@ -1,7 +1,7 @@
 {
   "name": "petitmaker",
   "private": true,
-  "version": "2.1.1178",
+  "version": "2.1.1185",
   "type": "module",
   "homepage": "https://petitmaker.cc/",
   "repository": {
@@ -61,7 +61,7 @@
     "naughty-words": "1.2.0",
     "nsfwjs": "4.4.0",
     "obscenity": "0.4.6",
-    "onnxruntime-web": "^1.31.1",
+    "onnxruntime-web": "1.29.0",
     "openai": "^6.42.0",
     "opencc-js": "1.4.2",
     "pixi.js-legacy": "^7.4.3",

@@ -147,8 +147,8 @@ This project includes the following third-party open-source packages, resolved f
 | nsfwjs | 4.4.0 | MIT | Gant Laborde | https://nsfwjs.com |
 | object-inspect | 1.13.4 | MIT | James Halliday <mail@substack.net> (http://substack.net) | https://github.com/inspect-js/object-inspect |
 | obscenity | 0.4.6 | MIT | Joseph Liu <https://github.com/jo3-l> | https://github.com/jo3-l/obscenity#readme |
-| onnxruntime-common | 1.31.1 | MIT | fs-eire | — |
-| onnxruntime-web | 1.31.1 | MIT | fs-eire | — |
+| onnxruntime-common | 1.29.0 | MIT | fs-eire | — |
+| onnxruntime-web | 1.29.0 | MIT | fs-eire | — |
 | openai | 6.42.0 | Apache-2.0 | OpenAI <support@openai.com> | — |
 | opencc-js | 1.4.2 | MIT AND Apache-2.0 | The nk2028 Project | https://github.com/nk2028/opencc-js#readme |
 | opencollective-postinstall | 2.0.3 | MIT | Xavier Damman (@xdamman) | https://github.com/opencollective/opencollective-postinstall#readme |

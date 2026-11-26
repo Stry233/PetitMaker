@@ -4,6 +4,10 @@
 
 本文件的格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号力求遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.1185] - 2026-11-26
+
+_本次发布没有面向用户的改动。_
+
 ## [2.1.1178] - 2026-11-25
 
 ### 新增
